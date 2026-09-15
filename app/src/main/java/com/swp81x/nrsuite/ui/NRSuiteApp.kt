@@ -105,8 +105,7 @@ private val modules = listOf(
         description = "Capture 802.11 frames and export PCAP.",
         icon = Icons.AutoMirrored.Filled.Article,
         category = "Wireless",
-        available = false,
-        statusLabel = "Planned",
+        available = true,
     ),
     ModuleCardSpec(
         id = "beacon",
@@ -168,6 +167,9 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
     val logs by viewModel.logs.collectAsState()
     val scanning by viewModel.scanning.collectAsState()
     val networks by viewModel.networks.collectAsState()
+    val sniffing by viewModel.sniffing.collectAsState()
+    val sniffPacketCount by viewModel.sniffPacketCount.collectAsState()
+    val capturePath by viewModel.capturePath.collectAsState()
 
     var selectedTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var activeModuleId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -280,6 +282,18 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
                     scanning = scanning,
                     networks = networks,
                     onScan = viewModel::scanWifi,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "sniff" -> {
+                SniffScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    sniffing = sniffing,
+                    packetCount = sniffPacketCount,
+                    capturePath = capturePath,
+                    onStart = viewModel::startSniff,
+                    onStop = viewModel::stopSniff,
                     modifier = contentModifier,
                 )
             }
