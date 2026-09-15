@@ -96,6 +96,7 @@ private val modules = listOf(
         title = "WiFi Scan",
         description = "Active 2.4 GHz scan with SSID, BSSID, channel, RSSI, and security.",
         icon = Icons.Default.Wifi,
+        category = "Wireless",
         available = true,
     ),
     ModuleCardSpec(
@@ -103,6 +104,7 @@ private val modules = listOf(
         title = "Packet Sniffer",
         description = "Capture 802.11 frames and export PCAP.",
         icon = Icons.AutoMirrored.Filled.Article,
+        category = "Wireless",
         available = false,
         statusLabel = "Planned",
     ),
@@ -111,6 +113,7 @@ private val modules = listOf(
         title = "Beacon Broadcast",
         description = "Broadcast custom or hidden SSIDs.",
         icon = Icons.Default.Campaign,
+        category = "Wireless",
         available = false,
         statusLabel = "Planned",
     ),
@@ -119,6 +122,7 @@ private val modules = listOf(
         title = "Captive Portal",
         description = "Start an AP and serve a custom HTML page.",
         icon = Icons.Default.Lock,
+        category = "Wireless",
         available = false,
         statusLabel = "Planned",
     ),
@@ -127,6 +131,7 @@ private val modules = listOf(
         title = "BLE HID",
         description = "Keyboard emulation handled by the ESP32.",
         icon = Icons.Default.Bluetooth,
+        category = "HID",
         available = false,
         statusLabel = "Planned",
     ),
@@ -135,6 +140,7 @@ private val modules = listOf(
         title = "Mass Storage",
         description = "Browse and manage files on the device.",
         icon = Icons.Default.Storage,
+        category = "Storage",
         available = false,
         statusLabel = "Planned",
     ),
@@ -143,6 +149,7 @@ private val modules = listOf(
         title = "BadUSB",
         description = "Native USB HID payloads.",
         icon = Icons.Default.Keyboard,
+        category = "HID",
         available = false,
         statusLabel = "Planned",
     ),
@@ -278,8 +285,10 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
             }
 
             selectedTab == AppTab.HOME -> HomeScreen(
+                connectionState = connectionState,
                 modules = modules,
                 onOpenModule = { activeModuleId = it },
+                onGoToDevice = { selectedTab = AppTab.DEVICE },
                 modifier = contentModifier,
             )
 
@@ -332,36 +341,163 @@ private fun ConnectionStatusIndicator(state: ConnectionState) {
 
 @Composable
 private fun HomeScreen(
+    connectionState: ConnectionState,
     modules: List<ModuleCardSpec>,
     onOpenModule: (String) -> Unit,
+    onGoToDevice: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxSize()) {
-        Text(
-            text = "Dashboard",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp),
-        )
-        Text(
-            text = "Tap a module to open its control screen.",
-            style = MaterialTheme.typography.bodySmall,
-            color = NrOnSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-        )
+    val availableModules = modules.filter { it.available }
 
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(220.dp),
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            items(modules, key = { it.id }) { module ->
-                ModuleCard(
-                    module = module,
-                    onClick = { onOpenModule(module.id) },
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Text(
+                text = "Dashboard",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "Device status and quick module access.",
+                style = MaterialTheme.typography.bodySmall,
+                color = NrOnSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+
+        item {
+            DashboardDeviceCard(
+                state = connectionState,
+                onGoToDevice = onGoToDevice,
+            )
+        }
+
+        if (connectionState is ConnectionState.Connected) {
+            item {
+                Text(
+                    text = "Quick actions",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 4.dp),
                 )
+            }
+
+            if (availableModules.isEmpty()) {
+                item {
+                    Text(
+                        text = "No modules are available for this firmware yet.",
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+            } else {
+                items(availableModules, key = { it.id }) { module ->
+                    ModuleCard(
+                        module = module,
+                        onClick = { onOpenModule(module.id) },
+                    )
+                }
+            }
+        } else {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                ) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text(
+                            text = "Available after connection",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = "Connect your ESP32 over USB OTG to enable WiFi Scan and future modules.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardDeviceCard(
+    state: ConnectionState,
+    onGoToDevice: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            when (state) {
+                ConnectionState.Disconnected -> {
+                    StatusIndicator(
+                        label = "No companion device connected",
+                        color = StatusAmber,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Plug in your NRSuite ESP32 with a USB OTG cable, then grant USB permission.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = onGoToDevice) {
+                        Text("Connect a device")
+                    }
+                }
+
+                ConnectionState.Connecting -> {
+                    StatusIndicator(
+                        label = "Connecting to device...",
+                        color = StatusAmber,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Waiting for the USB serial handshake and PING response.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+
+                is ConnectionState.Connected -> {
+                    StatusIndicator(
+                        label = "Connected to ${state.chip ?: "NRSuite device"}",
+                        color = StatusGreen,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Firmware: ${state.firmwareVersion ?: "unknown"}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = NrOnSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(onClick = onGoToDevice) {
+                        Text("Manage device")
+                    }
+                }
+
+                is ConnectionState.Failed -> {
+                    StatusIndicator(
+                        label = "Connection problem",
+                        color = StatusRed,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = state.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = onGoToDevice) {
+                        Text("Open Device tab")
+                    }
+                }
             }
         }
     }
@@ -380,22 +516,33 @@ private fun ModulesScreen(
     ) {
         item {
             Text(
-                text = "Modules",
+                text = "Module catalog",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "WiFi is available now. More modules will appear as the firmware and app support them.",
+                text = "Grouped by category. Unavailable modules show their status.",
                 style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
             )
         }
-        items(modules, key = { it.id }) { module ->
-            ModuleCard(
-                module = module,
-                onClick = { onOpenModule(module.id) },
-            )
+
+        modules.groupBy { it.category }.forEach { (category, categoryModules) ->
+            item(key = "header-$category") {
+                Text(
+                    text = category.uppercase(),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = NrAccent,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            items(categoryModules, key = { it.id }) { module ->
+                ModuleCard(
+                    module = module,
+                    onClick = { onOpenModule(module.id) },
+                )
+            }
         }
     }
 }

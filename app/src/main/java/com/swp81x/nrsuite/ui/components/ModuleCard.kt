@@ -29,6 +29,7 @@ data class ModuleCardSpec(
     val title: String,
     val description: String,
     val icon: ImageVector,
+    val category: String = "General",
     val available: Boolean = true,
     val statusLabel: String? = null,
 )
