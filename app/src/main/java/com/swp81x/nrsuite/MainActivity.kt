@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Bundle
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -51,6 +52,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.theme.NRSuiteTheme
+import org.json.JSONObject
 
 private const val ACTION_USB_PERMISSION = "com.swp81x.nrsuite.USB_PERMISSION"
 
@@ -78,6 +80,7 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
     val connectionState by viewModel.connectionState.collectAsState()
     val logs by viewModel.logs.collectAsState()
     val scanning by viewModel.scanning.collectAsState()
+    val networks by viewModel.networks.collectAsState()
 
     val permissionReceiver = remember {
         object : BroadcastReceiver() {
@@ -119,88 +122,101 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
             TopAppBar(title = { Text("NRSuite") })
         },
     ) { innerPadding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(12.dp),
+                .padding(horizontal = 12.dp),
+            contentPadding = PaddingValues(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            ConnectionCard(
-                state = connectionState,
-                scanning = scanning,
-                onScan = viewModel::scanWifi,
-                onDisconnect = viewModel::disconnect,
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "USB devices",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
+            item {
+                ConnectionCard(
+                    state = connectionState,
+                    scanning = scanning,
+                    onScan = viewModel::scanWifi,
+                    onDisconnect = viewModel::disconnect,
                 )
-                TextButton(onClick = viewModel::refreshDevices) {
-                    Text("Refresh")
-                }
             }
 
-            if (devices.isEmpty()) {
-                Text(
-                    text = "No supported USB serial devices found. Plug in an ESP32 and tap Refresh.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 8.dp),
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    items(devices, key = { it.device.deviceId }) { device ->
-                        DeviceRow(
-                            entry = device,
-                            hasPermission = usbManager.hasPermission(device.device),
-                            onConnect = {
-                                if (usbManager.hasPermission(device.device)) {
-                                    viewModel.connect(device.device)
-                                } else {
-                                    requestPermission(device.device)
-                                }
-                            },
-                        )
+                    Text(
+                        text = "USB devices",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = viewModel::refreshDevices) {
+                        Text("Refresh")
                     }
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
-
-            Text(
-                text = "Session log",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(160.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(8.dp),
-                    )
-                    .padding(8.dp),
-            ) {
-                items(logs) { line ->
+            if (devices.isEmpty()) {
+                item {
                     Text(
-                        text = line,
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "No supported USB serial devices found. Plug in an ESP32 and tap Refresh.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                items(devices, key = { it.device.deviceId }) { device ->
+                    DeviceRow(
+                        entry = device,
+                        hasPermission = usbManager.hasPermission(device.device),
+                        onConnect = {
+                            if (usbManager.hasPermission(device.device)) {
+                                viewModel.connect(device.device)
+                            } else {
+                                requestPermission(device.device)
+                            }
+                        },
                     )
                 }
             }
+
+            if (connectionState is ConnectionState.Connected) {
+                item {
+                    Text(
+                        text = "WiFi scan",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+                if (networks.isEmpty()) {
+                    item {
+                        Text(
+                            text = "No scan results yet. Tap Scan WiFi above.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
+                    items(networks.take(50), key = { it.optString("bssid", it.toString()) }) { network ->
+                        NetworkRow(network)
+                    }
+                }
+            }
+
+            item {
+                Text(
+                    text = "Session log",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            items(logs.takeLast(100).reversed()) { line ->
+                Text(
+                    text = line,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
     }
+
 }
 
 @Composable
@@ -266,6 +282,29 @@ private fun ConnectionCard(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NetworkRow(network: JSONObject) {
+    val ssid = network.optString("ssid").ifBlank { "(hidden)" }
+    val bssid = network.optString("bssid")
+    val channel = network.optInt("channel")
+    val rssi = network.optInt("rssi")
+    val security = network.optString("security").ifBlank { "?" }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(10.dp)) {
+            Text(
+                text = ssid,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = "$bssid  •  ch $channel  •  $rssi dBm  •  $security",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
