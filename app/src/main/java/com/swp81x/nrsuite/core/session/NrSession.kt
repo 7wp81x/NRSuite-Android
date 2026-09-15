@@ -103,6 +103,12 @@ class NrSession(
         _state.value = ConnectionState.Disconnected
     }
 
+    suspend fun scanWifi(timeoutMs: Long = 30_000): Int? {
+        val response = sendCommand("SCAN_WIFI", timeoutMs = timeoutMs) ?: return null
+        if (!response.optBoolean("ok")) return -1
+        return response.optInt("count", 0)
+    }
+
     suspend fun sendCommand(
         cmd: String,
         args: JSONObject? = null,

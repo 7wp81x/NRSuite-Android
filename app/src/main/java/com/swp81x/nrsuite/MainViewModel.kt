@@ -37,6 +37,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _events = MutableStateFlow<List<JSONObject>>(emptyList())
     val events: StateFlow<List<JSONObject>> = _events.asStateFlow()
 
+    private val _networks = MutableStateFlow<List<JSONObject>>(emptyList())
+    val networks: StateFlow<List<JSONObject>> = _networks.asStateFlow()
+
+    private val _scanning = MutableStateFlow(false)
+    val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
+
     private var session: NrSession? = null
     private var sessionObservers: List<Job> = emptyList()
 
@@ -92,6 +98,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun scanWifi() {
+        val activeSession = session
+        if (activeSession == null) {
+            appendLog("Connect to a device before scanning.")
+            return
+        }
+        if (_scanning.value) return
+
+        _networks.value = emptyList()
+        _scanning.value = true
+        viewModelScope.launch {
+            appendLog("Starting WiFi scan...")
+            val count = activeSession.scanWifi()
+            _scanning.value = false
+            when {
+                count == null -> appendLog("WiFi scan timed out.")
+                count < 0 -> appendLog("WiFi scan failed.")
+                else -> appendLog("WiFi scan complete: $count network(s).")
+            }
+        }
+    }
+
     fun disconnect() {
         val current = session
         session = null
@@ -112,6 +140,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch {
                 session.events.collect { event ->
                     _events.update { (it + event).takeLast(100) }
+                    when (event.optString("type")) {
+                        "scan_ap" -> {
+                            _networks.update { current ->
+                                val bssid = event.optString("bssid")
+                                (current.filterNot { it.optString("bssid") == bssid } + event)
+                                    .sortedByDescending { it.optInt("rssi", -999) }
+                            }
+                            val ssid = event.optString("ssid").ifBlank { "(hidden)" }
+                            appendLog(
+                                "AP: $ssid  ${event.optString("bssid")}  " +
+                                    "ch ${event.optInt("channel")}  ${event.optInt("rssi")} dBm  " +
+                                    event.optString("security")
+                            )
+                        }
+                        "heartbeat" -> Unit
+                    }
                 }
             },
         )

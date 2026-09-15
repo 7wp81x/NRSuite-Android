@@ -77,6 +77,7 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
     val devices by viewModel.devices.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val logs by viewModel.logs.collectAsState()
+    val scanning by viewModel.scanning.collectAsState()
 
     val permissionReceiver = remember {
         object : BroadcastReceiver() {
@@ -126,6 +127,8 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
         ) {
             ConnectionCard(
                 state = connectionState,
+                scanning = scanning,
+                onScan = viewModel::scanWifi,
                 onDisconnect = viewModel::disconnect,
             )
 
@@ -203,6 +206,8 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
 @Composable
 private fun ConnectionCard(
     state: ConnectionState,
+    scanning: Boolean,
+    onScan: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
     val (statusText, statusColor) = when (state) {
@@ -249,8 +254,16 @@ private fun ConnectionCard(
             }
             if (state !is ConnectionState.Disconnected) {
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = onDisconnect) {
-                    Text("Disconnect")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = onDisconnect) {
+                        Text("Disconnect")
+                    }
+                    if (state is ConnectionState.Connected) {
+                        Spacer(Modifier.width(8.dp))
+                        Button(onClick = onScan, enabled = !scanning) {
+                            Text(if (scanning) "Scanning..." else "Scan WiFi")
+                        }
+                    }
                 }
             }
         }
