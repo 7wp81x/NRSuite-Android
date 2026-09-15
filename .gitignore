@@ -14,3 +14,6 @@ captures/
 # Local machine config
 local.properties
 .DS_Store
+.gradle-agent/
+.android-agent/
+*.log
