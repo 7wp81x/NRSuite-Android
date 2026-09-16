@@ -73,6 +73,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -191,6 +192,22 @@ private val modules = listOf(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
+    var showStartup by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(900)
+        showStartup = false
+    }
+    Box(modifier = Modifier.fillMaxSize()) {
+        NRSuiteContent(viewModel = viewModel)
+        if (showStartup) {
+            StartupScreen()
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NRSuiteContent(viewModel: MainViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val usbManager = remember {
         context.getSystemService(Context.USB_SERVICE) as UsbManager
