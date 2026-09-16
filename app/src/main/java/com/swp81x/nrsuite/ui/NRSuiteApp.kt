@@ -256,6 +256,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val portalEventLog by viewModel.portalEventLog.collectAsState()
     val portalHandshake by viewModel.portalHandshake.collectAsState()
     val evilTwinPasswords by viewModel.evilTwinPasswords.collectAsState()
+    val evilTwinResults by viewModel.evilTwinResults.collectAsState()
     val storageFiles by viewModel.storageFiles.collectAsState()
     val storageTotal by viewModel.storageTotal.collectAsState()
     val storageUsed by viewModel.storageUsed.collectAsState()
@@ -592,7 +593,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                     scanning = scanning,
                     networks = networks,
                     handshake = portalHandshake,
-                    passwords = evilTwinPasswords,
+                    results = evilTwinResults,
                     selectedHtmlName = portalHtmlName,
                     onScanWifi = viewModel::scanWifi,
                     onChooseHtml = { htmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },

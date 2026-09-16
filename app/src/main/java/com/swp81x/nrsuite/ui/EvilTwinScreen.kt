@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
+import com.swp81x.nrsuite.core.wpa.EvilTwinResult
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
@@ -55,7 +56,7 @@ fun EvilTwinScreen(
     scanning: Boolean,
     networks: List<JSONObject>,
     handshake: EapolHandshake,
-    passwords: List<String>,
+    results: List<EvilTwinResult>,
     selectedHtmlName: String?,
     onScanWifi: () -> Unit,
     onChooseHtml: () -> Unit,
@@ -220,34 +221,44 @@ fun EvilTwinScreen(
             Column(Modifier.padding(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Captured passwords (${passwords.size})",
+                        text = "Captured passwords (${results.size})",
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f),
                     )
                     IconButton(
                         onClick = {
-                            clipboard.setText(AnnotatedString(passwords.joinToString("\n")))
+                            clipboard.setText(AnnotatedString(results.joinToString("\n") { it.password }))
                         },
-                        enabled = passwords.isNotEmpty(),
+                        enabled = results.isNotEmpty(),
                     ) {
                         Icon(Icons.Default.ContentCopy, contentDescription = "Copy passwords")
                     }
-                    IconButton(onClick = onClearPasswords, enabled = passwords.isNotEmpty()) {
+                    IconButton(onClick = onClearPasswords, enabled = results.isNotEmpty()) {
                         Icon(Icons.Default.Delete, contentDescription = "Clear passwords")
                     }
                 }
-                if (passwords.isEmpty()) {
+                if (results.isEmpty()) {
                     Text(
                         text = "Passwords submitted to the portal will appear here.",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
                 } else {
-                    passwords.reversed().forEach { password ->
+                    results.reversed().forEach { result ->
+                        val statusText = when (result.status) {
+                            EvilTwinResult.Status.CORRECT -> "correct"
+                            EvilTwinResult.Status.INCORRECT -> "incorrect"
+                            EvilTwinResult.Status.PENDING -> "pending"
+                        }
+                        val statusColor = when (result.status) {
+                            EvilTwinResult.Status.CORRECT -> StatusGreen
+                            EvilTwinResult.Status.INCORRECT -> MaterialTheme.colorScheme.error
+                            EvilTwinResult.Status.PENDING -> StatusAmber
+                        }
                         Text(
-                            text = "$password  ·  verification pending (beta)",
+                            text = "${result.password}  ·  $statusText",
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = NrOnSurfaceVariant,
+                            color = statusColor,
                             modifier = Modifier.padding(vertical = 3.dp),
                         )
                     }

@@ -17,6 +17,10 @@ import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.pcap.PcapWriter
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
+import com.swp81x.nrsuite.core.wpa.WpaHandshakeVerifier
+import com.swp81x.nrsuite.core.wpa.WpaHandshakeParser
+import com.swp81x.nrsuite.core.wpa.WpaHandshake
+import com.swp81x.nrsuite.core.wpa.EvilTwinResult
 import com.swp81x.nrsuite.core.sniff.SniffRequest
 import com.swp81x.nrsuite.core.storage.StorageFile
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
@@ -148,6 +152,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _evilTwinPasswords = MutableStateFlow<List<String>>(emptyList())
     val evilTwinPasswords: StateFlow<List<String>> = _evilTwinPasswords.asStateFlow()
+
+    private val _portalWpaHandshake = MutableStateFlow(WpaHandshake())
+    val portalWpaHandshake: StateFlow<WpaHandshake> = _portalWpaHandshake.asStateFlow()
+
+    private val _evilTwinResults = MutableStateFlow<List<EvilTwinResult>>(emptyList())
+    val evilTwinResults: StateFlow<List<EvilTwinResult>> = _evilTwinResults.asStateFlow()
 
     private var portalPcapJob: Job? = null
 
@@ -670,14 +680,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             updateForegroundService()
             _portalHtmlSize.value = 0
             _portalHandshake.value = EapolHandshake()
+            _portalWpaHandshake.value = WpaHandshake()
 
             if (cleanBssid.isNotBlank()) {
                 portalPcapJob?.cancel()
                 val captureHandshake = EapolHandshake()
+                val wpaHandshake = WpaHandshake()
                 portalPcapJob = viewModelScope.launch(Dispatchers.IO) {
                     activeSession.pcap.collect { frame ->
                         EapolParser.parse(frame, captureHandshake)
                         _portalHandshake.value = captureHandshake.copy()
+                        WpaHandshakeParser.parse(frame, wpaHandshake)
+                        _portalWpaHandshake.value = wpaHandshake.copyHandshake()
+                        verifyEvilTwinPasswords()
                     }
                 }
             }
@@ -751,6 +766,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearEvilTwinPasswords() {
         _evilTwinPasswords.value = emptyList()
+        _evilTwinResults.value = emptyList()
+    }
+
+    private fun verifyEvilTwinPasswords() {
+        val handshake = _portalWpaHandshake.value
+        val ssid = _portalSsid.value
+        val results = _evilTwinPasswords.value.map { password ->
+            val status = when {
+                !handshake.isComplete -> EvilTwinResult.Status.PENDING
+                WpaHandshakeVerifier.verify(handshake, ssid, password) -> EvilTwinResult.Status.CORRECT
+                else -> EvilTwinResult.Status.INCORRECT
+            }
+            EvilTwinResult(password, status)
+        }
+        _evilTwinResults.value = results
     }
 
     fun clearPortalEventLog() {
@@ -1363,6 +1393,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             }
                             if (submittedPassword.isNotBlank()) {
                                 _evilTwinPasswords.update { (it + submittedPassword).takeLast(50) }
+                                verifyEvilTwinPasswords()
                             }
                         }
                         "client_associated" -> {
