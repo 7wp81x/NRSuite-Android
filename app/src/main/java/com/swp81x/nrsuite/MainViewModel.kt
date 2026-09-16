@@ -18,11 +18,13 @@ import com.swp81x.nrsuite.core.usb.UsbSerialTransport
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -67,6 +69,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _capturePath = MutableStateFlow<String?>(null)
     val capturePath: StateFlow<String?> = _capturePath.asStateFlow()
+
+    private val _beaconRunning = MutableStateFlow(false)
+    val beaconRunning: StateFlow<Boolean> = _beaconRunning.asStateFlow()
+
+    private val _beaconSent = MutableStateFlow(0)
+    val beaconSent: StateFlow<Int> = _beaconSent.asStateFlow()
+
+    private val _beaconSsidCount = MutableStateFlow(0)
+    val beaconSsidCount: StateFlow<Int> = _beaconSsidCount.asStateFlow()
+
+    private val _beaconChannel = MutableStateFlow(0)
+    val beaconChannel: StateFlow<Int> = _beaconChannel.asStateFlow()
+
+    private var beaconStatusJob: Job? = null
 
     private var session: NrSession? = null
     private var sessionObservers: List<Job> = emptyList()
@@ -165,6 +181,88 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun startBeacon(
+        ssids: List<String>,
+        channel: Int,
+        intervalMs: Int,
+        hidden: Boolean,
+        randomBssid: Boolean,
+    ) {
+        val activeSession = session
+        if (activeSession == null) {
+            appendLog("Connect to a device before starting beacon broadcast.")
+            return
+        }
+        if (_beaconRunning.value) return
+
+        val cleanSsids = ssids.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (cleanSsids.isEmpty()) {
+            appendLog("At least one SSID is required.")
+            return
+        }
+        if (cleanSsids.size > 32) {
+            appendLog("Firmware supports at most 32 SSIDs.")
+            return
+        }
+
+        viewModelScope.launch {
+            appendLog("Starting beacon broadcast (${cleanSsids.size} SSID(s), channel $channel)...")
+            val args = JSONObject().apply {
+                put("ssids", cleanSsids.joinToString("\n"))
+                put("channel", channel.coerceIn(1, 13))
+                put("interval_ms", intervalMs.coerceIn(10, 2000))
+                put("hidden", hidden)
+                put("random_bssid", randomBssid)
+            }
+            val response = activeSession.sendCommand("START_BEACON", args, timeoutMs = 10_000)
+            if (response?.optBoolean("ok") == true) {
+                _beaconRunning.value = true
+                _beaconSent.value = 0
+                _beaconSsidCount.value = response.optInt("ssids", cleanSsids.size)
+                _beaconChannel.value = response.optInt("channel", channel)
+                appendLog("Beacon broadcast started.")
+                startBeaconStatusPolling(activeSession)
+            } else {
+                appendLog("Failed to start beacon broadcast: ${response?.optString("msg") ?: "timeout"}")
+            }
+        }
+    }
+
+    fun stopBeacon() {
+        if (!_beaconRunning.value) return
+        beaconStatusJob?.cancel()
+        beaconStatusJob = null
+        _beaconRunning.value = false
+
+        val activeSession = session
+        viewModelScope.launch {
+            val response = activeSession?.sendCommand("STOP_BEACON", timeoutMs = 6_000)
+            if (response?.optBoolean("ok") == true) {
+                _beaconSent.value = response.optInt("sent", _beaconSent.value)
+                _beaconSsidCount.value = response.optInt("ssids", _beaconSsidCount.value)
+                appendLog("Beacon stopped. Frames sent: ${_beaconSent.value}.")
+            } else {
+                appendLog("Beacon stop request sent, but the device did not confirm.")
+            }
+        }
+    }
+
+    private fun startBeaconStatusPolling(activeSession: NrSession) {
+        beaconStatusJob?.cancel()
+        beaconStatusJob = viewModelScope.launch {
+            while (isActive && _beaconRunning.value) {
+                delay(2_000)
+                val response = activeSession.sendCommand("BEACON_STATUS", timeoutMs = 4_000) ?: continue
+                if (response.optBoolean("ok")) {
+                    _beaconRunning.value = response.optBoolean("active", _beaconRunning.value)
+                    _beaconSent.value = response.optInt("sent", _beaconSent.value)
+                    _beaconSsidCount.value = response.optInt("ssids", _beaconSsidCount.value)
+                    _beaconChannel.value = response.optInt("channel", _beaconChannel.value)
+                }
+            }
+        }
+    }
+
     fun startSniff(fixedMode: Boolean, channel: Int, intervalMs: Int) {
         val activeSession = session
         if (activeSession == null) {
@@ -254,6 +352,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun disconnect() {
         val current = session
+        beaconStatusJob?.cancel()
+        beaconStatusJob = null
+        if (_beaconRunning.value) {
+            _beaconRunning.value = false
+            viewModelScope.launch {
+                runCatching { current?.sendCommand("STOP_BEACON", timeoutMs = 4_000) }
+            }
+        }
         if (_sniffing.value) {
             _sniffing.value = false
             pcapJob?.cancel()

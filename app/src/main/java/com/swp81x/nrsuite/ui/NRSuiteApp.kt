@@ -116,8 +116,7 @@ private val modules = listOf(
         description = "Broadcast custom or hidden SSIDs.",
         icon = Icons.Default.Campaign,
         category = "Wireless",
-        available = false,
-        statusLabel = "Planned",
+        available = true,
     ),
     ModuleCardSpec(
         id = "portal",
@@ -174,6 +173,10 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
     val sniffPacketCount by viewModel.sniffPacketCount.collectAsState()
     val capturePath by viewModel.capturePath.collectAsState()
     val exportDirectoryName by viewModel.exportDirectoryName.collectAsState()
+    val beaconRunning by viewModel.beaconRunning.collectAsState()
+    val beaconSent by viewModel.beaconSent.collectAsState()
+    val beaconSsidCount by viewModel.beaconSsidCount.collectAsState()
+    val beaconChannel by viewModel.beaconChannel.collectAsState()
 
     var selectedTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var activeModuleId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -308,6 +311,19 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
                     onChooseExportDirectory = { folderPicker.launch(null) },
                     onStart = viewModel::startSniff,
                     onStop = viewModel::stopSniff,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "beacon" -> {
+                BeaconScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    running = beaconRunning,
+                    sentFrames = beaconSent,
+                    ssidCount = beaconSsidCount,
+                    activeChannel = beaconChannel,
+                    onStart = viewModel::startBeacon,
+                    onStop = viewModel::stopBeacon,
                     modifier = contentModifier,
                 )
             }
