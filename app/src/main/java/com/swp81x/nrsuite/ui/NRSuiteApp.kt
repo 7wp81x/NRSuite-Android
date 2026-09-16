@@ -47,6 +47,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Lock
@@ -151,6 +152,14 @@ private val modules = listOf(
         description = "Start an AP and serve a custom HTML page.",
         icon = Icons.Default.Lock,
         category = "Wireless",
+        available = true,
+    ),
+    ModuleCardSpec(
+        id = "ducky",
+        title = "Ducky Editor",
+        description = "Create, import, and export DuckyScript payloads.",
+        icon = Icons.Default.Edit,
+        category = "HID",
         available = true,
     ),
     ModuleCardSpec(
@@ -585,6 +594,10 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
                     onArm = viewModel::armBadUsb,
                     modifier = contentModifier,
                 )
+            }
+
+            activeModuleId == "ducky" -> {
+                DuckyEditorScreen(modifier = contentModifier)
             }
 
             activeModuleId == "ble" -> {
