@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NRSuite Evil Twin Test</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d0d0f;
+      --card: #181a1f;
+      --line: #2a2e35;
+      --text: #e8eaed;
+      --muted: #9aa0a6;
+      --accent: #a3e635;
+      --danger: #ef4444;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .card {
+      width: min(420px, 100%);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 22px;
+      box-shadow: 0 18px 50px rgba(0,0,0,.35);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 12px rgba(163, 230, 53, .7);
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 20px;
+    }
+
+    p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    label {
+      display: block;
+      margin: 14px 0 6px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    input[type="password"],
+    input[type="text"] {
+      width: 100%;
+      padding: 13px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #101216;
+      color: var(--text);
+      font-size: 16px;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(163, 230, 53, .15);
+    }
+
+    button {
+      width: 100%;
+      margin-top: 18px;
+      padding: 13px 14px;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #0d0d0f;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .warning {
+      margin-top: 16px;
+      padding: 10px 12px;
+      border: 1px solid rgba(239, 68, 68, .35);
+      border-radius: 10px;
+      color: #fca5a5;
+      font-size: 12px;
+      line-height: 1.4;
+      background: rgba(239, 68, 68, .08);
+    }
+
+    .success {
+      display: none;
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 10px;
+      background: rgba(163, 230, 53, .12);
+      color: var(--accent);
+      font-size: 14px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">
+      <span class="dot"></span>
+      <span>NRSuite Test Portal</span>
+    </div>
+
+    <h1>Wi-Fi Access</h1>
+    <p>
+      This is a test page for the NRSuite Evil Twin workflow. Enter any test
+      password and submit it to <code>/login</code>.
+    </p>
+
+    <form id="test-form" method="POST" action="/login">
+      <label for="password">Password</label>
+      <input
+        id="password"
+        name="password"
+        type="password"
+        placeholder="Enter test password"
+        autocomplete="off"
+        required
+      >
+
+      <button type="submit">Connect</button>
+    </form>
+
+    <div id="success" class="success">
+      Submitted. Return to NRSuite to check the captured password result.
+    </div>
+
+    <div class="warning">
+      Authorized testing only. This page is intentionally simple so the
+      NRSuite Evil Twin pipeline can capture the submitted <code>password</code>
+      field.
+    </div>
+  </main>
+
+  <script>
+    const form = document.getElementById('test-form');
+    const success = document.getElementById('success');
+
+    form.addEventListener('submit', () => {
+      success.style.display = 'block';
+    });
+  </script>
+</body>
+</html>
