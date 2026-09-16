@@ -4,6 +4,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import org.json.JSONObject
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -82,6 +85,7 @@ fun DeauthScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(12.dp),
         ) {
             ConfigZone(
@@ -116,7 +120,6 @@ fun DeauthScreen(
                 sentFrames = sentFrames,
                 targetBssid = targetBssid,
                 activeChannel = activeChannel,
-                modifier = Modifier.weight(1f),
             )
         }
 
@@ -271,17 +274,18 @@ private fun ConfigZone(
                             val ssid = network.optString("ssid").ifBlank { "(hidden)" }
                             val bssidValue = network.optString("bssid")
                             val channelValue = network.optInt("channel", 1)
-                            Text(
-                                text = "$ssid  $bssidValue  ch $channelValue",
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                color = NrOnSurfaceVariant,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onBssidChange(bssidValue)
-                                        onChannelChange(channelValue)
-                                    }
-                                    .padding(vertical = 6.dp),
+                            NetworkTargetRow(
+                                ssid = ssid,
+                                bssid = bssidValue,
+                                channel = channelValue,
+                                rssi = network.optInt("rssi", -100),
+                                security = network.optString("security", "?"),
+                                selected = bssid.trim().equals(bssidValue, ignoreCase = true),
+                                onClick = {
+                                    onBssidChange(bssidValue)
+                                    onChannelChange(channelValue)
+                                },
+                                modifier = Modifier.padding(vertical = 3.dp),
                             )
                         }
                     }

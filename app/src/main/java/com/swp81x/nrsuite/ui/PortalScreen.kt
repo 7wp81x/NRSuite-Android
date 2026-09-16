@@ -2,6 +2,8 @@ package com.swp81x.nrsuite.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.ContentCopy
@@ -114,6 +116,11 @@ fun PortalScreen(
             Spacer(Modifier.height(10.dp))
 
             if (selectedTab == 0) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                ) {
                 ConfigZone(
                     connected = connected,
                     running = running,
@@ -143,8 +150,8 @@ fun PortalScreen(
                     portalViews = portalViews,
                     portalClients = portalClients,
                     capturedData = capturedData,
-                    modifier = Modifier.weight(1f),
                 )
+                }
             } else {
                 Card(
                     modifier = Modifier
@@ -186,8 +193,11 @@ fun PortalScreen(
                                 color = NrOnSurfaceVariant,
                             )
                         } else {
-                            LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                items(eventLog.reversed()) { line ->
+                            Column(
+                                modifier = Modifier.verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                eventLog.reversed().forEach { line ->
                                     Text(
                                         text = line,
                                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),

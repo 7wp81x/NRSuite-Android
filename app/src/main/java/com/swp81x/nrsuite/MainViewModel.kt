@@ -266,6 +266,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         appendLog("Found ${found.size} supported USB serial device(s).")
     }
 
+    fun clearLogs() {
+        _logs.value = emptyList()
+    }
+
     fun onUsbDeviceAttached() {
         refreshDevices()
         appendLog("USB device attached.", level = LogLevel.USB)

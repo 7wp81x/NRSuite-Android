@@ -1,6 +1,7 @@
 package com.swp81x.nrsuite.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
@@ -29,7 +30,8 @@ fun StatusIndicator(
         Spacer(
             modifier = Modifier
                 .size(10.dp)
-                .background(color, CircleShape),
+                .background(color, CircleShape)
+                .border(1.dp, color.copy(alpha = 0.35f), CircleShape),
         )
         Spacer(Modifier.width(8.dp))
         Text(

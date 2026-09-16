@@ -46,6 +46,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
@@ -65,6 +67,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -97,6 +100,7 @@ import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
+import com.swp81x.nrsuite.ui.theme.NrSurface
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
@@ -192,7 +196,7 @@ private val modules = listOf(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
-    var showStartup by remember { mutableStateOf(true) }
+    var showStartup by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(900)
         showStartup = false
@@ -299,7 +303,8 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                 val device = intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE)
                 val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
                 if (device != null) {
-                    viewModel.onPermissionResult(device, granted)
+                    val reallyGranted = granted || usbManager.hasPermission(device)
+                    viewModel.onPermissionResult(device, reallyGranted)
                 }
             }
         }
@@ -441,17 +446,10 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = activeTitle,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = "Wireless research toolkit",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = NrOnSurfaceVariant,
-                        )
-                    }
+                    Text(
+                        text = activeTitle,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 },
                 navigationIcon = {
                     if (activeModuleId != null) {
@@ -477,7 +475,10 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
         },
         bottomBar = {
             if (activeModuleId == null) {
-                NavigationBar {
+                NavigationBar(
+                    containerColor = NrSurface,
+                    tonalElevation = 0.dp,
+                ) {
                     AppTab.entries.forEach { tab ->
                         NavigationBarItem(
                             selected = selectedTab == tab,
@@ -485,6 +486,13 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                                 selectedTab = tab
                                 activeModuleId = null
                             },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NrAccent,
+                                selectedTextColor = NrAccent,
+                                indicatorColor = NrAccent.copy(alpha = 0.16f),
+                                unselectedIconColor = NrOnSurfaceVariant,
+                                unselectedTextColor = NrOnSurfaceVariant,
+                            ),
                             icon = {
                                 Icon(
                                     imageVector = when (tab) {
@@ -663,6 +671,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
             )
 
             selectedTab == AppTab.MODULES -> ModulesScreen(
+                connectionState = connectionState,
                 modules = liveModules,
                 onOpenModule = { activeModuleId = it },
                 modifier = contentModifier,
@@ -670,6 +679,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
 
             selectedTab == AppTab.LOGS -> LogsScreen(
                 logs = logs,
+                onClearLogs = viewModel::clearLogs,
                 modifier = contentModifier,
             )
         }
@@ -763,13 +773,27 @@ private fun HomeScreen(
             )
         }
 
-        items(modules, key = { it.id }) { module ->
-            val dimmed = connectionState !is ConnectionState.Connected
-            Box(modifier = Modifier.alpha(if (dimmed) 0.4f else 1f)) {
-                ModuleCard(
-                    module = module,
-                    onClick = { if (!dimmed) onOpenModule(module.id) },
+        modules.groupBy { it.category }.forEach { (category, categoryModules) ->
+            item(key = "header-$category") {
+                Text(
+                    text = category,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = NrAccent,
+                    modifier = Modifier.padding(top = 6.dp),
                 )
+            }
+            items(categoryModules, key = { it.id }) { module ->
+                val dimmed = connectionState !is ConnectionState.Connected
+                Box(modifier = Modifier.alpha(if (dimmed) 0.4f else 1f)) {
+                    ModuleCard(
+                        module = if (dimmed) {
+                            module.copy(available = false, statusLabel = "Connect device")
+                        } else {
+                            module
+                        },
+                        onClick = { if (!dimmed) onOpenModule(module.id) },
+                    )
+                }
             }
         }
     }
@@ -855,10 +879,12 @@ private fun DashboardDeviceCard(
 
 @Composable
 private fun ModulesScreen(
+    connectionState: ConnectionState,
     modules: List<ModuleCardSpec>,
     onOpenModule: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val connected = connectionState is ConnectionState.Connected
     var selectedCategory by remember { mutableStateOf<String?>(null) }
     val categories = listOf(null to "All") + modules.map { it.category }.distinct().map { it to it }
     val filtered = if (selectedCategory == null) modules else modules.filter { it.category == selectedCategory }
@@ -895,9 +921,14 @@ private fun ModulesScreen(
         }
 
         items(filtered, key = { it.id }) { module ->
+            val effective = if (connected) {
+                module
+            } else {
+                module.copy(available = false, statusLabel = "Connect device")
+            }
             ModuleCard(
-                module = module,
-                onClick = { onOpenModule(module.id) },
+                module = effective,
+                onClick = { if (connected) onOpenModule(module.id) },
             )
         }
     }
@@ -906,9 +937,11 @@ private fun ModulesScreen(
 @Composable
 private fun LogsScreen(
     logs: List<LogEntry>,
+    onClearLogs: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     var selectedLevel by remember { mutableStateOf<LogLevel?>(null) }
     val filtered = logs.filter { selectedLevel == null || it.level == selectedLevel }
 
@@ -930,6 +963,12 @@ private fun LogsScreen(
                 )
                 IconButton(onClick = {
                     val text = logs.joinToString("\n") { "${it.timestamp} [${it.tag}] ${it.message}" }
+                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+                }) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy log")
+                }
+                IconButton(onClick = {
+                    val text = logs.joinToString("\n") { "${it.timestamp} [${it.tag}] ${it.message}" }
                     val intent = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
                         putExtra(Intent.EXTRA_TEXT, text)
@@ -937,6 +976,9 @@ private fun LogsScreen(
                     context.startActivity(Intent.createChooser(intent, "Export log"))
                 }) {
                     Icon(Icons.Default.Share, contentDescription = "Export log")
+                }
+                IconButton(onClick = onClearLogs, enabled = logs.isNotEmpty()) {
+                    Icon(Icons.Default.Delete, contentDescription = "Clear log")
                 }
             }
         }

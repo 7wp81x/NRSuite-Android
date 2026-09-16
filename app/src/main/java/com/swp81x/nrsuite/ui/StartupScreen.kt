@@ -7,8 +7,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,10 +45,10 @@ fun StartupScreen() {
                 color = NrOnSurfaceVariant,
             )
             Spacer(Modifier.height(24.dp))
-            CircularProgressIndicator(
-                modifier = Modifier.size(28.dp),
+            LinearProgressIndicator(
+                modifier = Modifier.width(160.dp),
                 color = NrAccent,
-                strokeWidth = 2.dp,
+                trackColor = com.swp81x.nrsuite.ui.theme.NrOutline,
             )
         }
     }

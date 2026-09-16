@@ -2,6 +2,8 @@ package com.swp81x.nrsuite.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -71,6 +73,7 @@ fun BadUsbScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(12.dp),
         ) {
             ConfigZone(
@@ -92,7 +95,6 @@ fun BadUsbScreen(
                 uploading = uploading,
                 progress = progress,
                 selectedPayloadName = selectedPayloadName,
-                modifier = Modifier.weight(1f),
             )
         }
 

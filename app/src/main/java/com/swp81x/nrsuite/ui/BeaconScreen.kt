@@ -7,6 +7,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +21,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -102,6 +106,7 @@ fun BeaconScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(12.dp),
         ) {
             ConfigZone(
@@ -120,6 +125,7 @@ fun BeaconScreen(
                 onListMenuChange = { listMenuExpanded = it },
                 onLoadList = { ssidsText = it.joinToString("\n") },
                 onSaveList = { showSaveDialog = true },
+                onDeleteList = onDeleteList,
                 onImportFile = { importPicker.launch(arrayOf("text/plain", "*/*")) },
                 onSsidsChange = { ssidsText = it },
                 onChannelChange = { channel = it.coerceIn(1, 13) },
@@ -136,7 +142,6 @@ fun BeaconScreen(
                 sentFrames = sentFrames,
                 ssidCount = ssidCount,
                 activeChannel = activeChannel,
-                modifier = Modifier.weight(1f),
             )
         }
 
@@ -241,6 +246,7 @@ private fun ConfigZone(
     onListMenuChange: (Boolean) -> Unit,
     onLoadList: (List<String>) -> Unit,
     onSaveList: () -> Unit,
+    onDeleteList: (String) -> Unit,
     onImportFile: () -> Unit,
     onSsidsChange: (String) -> Unit,
     onChannelChange: (Int) -> Unit,
@@ -304,13 +310,16 @@ private fun ConfigZone(
                     )
 
                     Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Box {
                             OutlinedButton(
                                 onClick = { onListMenuChange(true) },
                                 enabled = !running && savedLists.isNotEmpty(),
                             ) {
-                                Text("Load list")
+                                Text("Load")
                             }
                             DropdownMenu(
                                 expanded = listMenuExpanded,
@@ -323,15 +332,32 @@ private fun ConfigZone(
                                             onLoadList(savedLists[name].orEmpty())
                                             onListMenuChange(false)
                                         },
+                                        trailingIcon = {
+                                            IconButton(
+                                                onClick = {
+                                                    onDeleteList(name)
+                                                    onListMenuChange(false)
+                                                },
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = "Delete $name",
+                                                    tint = StatusRed,
+                                                )
+                                            }
+                                        },
                                     )
                                 }
                             }
                         }
                         OutlinedButton(onClick = onSaveList, enabled = !running && parsedCount > 0) {
-                            Text("Save list")
+                            Text("Save")
                         }
                         OutlinedButton(onClick = onImportFile, enabled = !running) {
-                            Text("Import file")
+                            Icon(
+                                imageVector = Icons.Default.FileUpload,
+                                contentDescription = "Import SSID file",
+                            )
                         }
                     }
 
