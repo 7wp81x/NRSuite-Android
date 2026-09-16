@@ -33,13 +33,14 @@ fun NetworkTargetRow(
     rssi: Int,
     security: String,
     selected: Boolean,
+    enabled: Boolean = true,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable { onClick() },
+            .clickable(enabled = enabled) { onClick() },
         colors = CardDefaults.cardColors(
             containerColor = if (selected) NrSurfaceVariant else NrSurface,
         ),
@@ -68,6 +69,7 @@ fun NetworkTargetRow(
             RadioButton(
                 selected = selected,
                 onClick = onClick,
+                enabled = enabled,
             )
         }
     }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,6 +27,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Tab
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +75,7 @@ fun EvilTwinScreen(
     var channel by remember { mutableStateOf(6) }
     var targetBssid by remember { mutableStateOf("") }
     val clipboard = LocalClipboardManager.current
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     Column(
         modifier = modifier
@@ -79,6 +84,12 @@ fun EvilTwinScreen(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        TabRow(selectedTabIndex = selectedTab) {
+            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Overview") })
+            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Logs (${eventLog.size})") })
+        }
+
+        if (selectedTab == 0) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -131,7 +142,7 @@ fun EvilTwinScreen(
                     enabled = connected && !running && !scanning,
                 ) {
                     Icon(Icons.Default.Wifi, contentDescription = null)
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(if (scanning) "Scanning..." else "Scan WiFi")
                 }
                 if (networks.isNotEmpty()) {
@@ -149,6 +160,7 @@ fun EvilTwinScreen(
                                 rssi = network.optInt("rssi", -100),
                                 security = network.optString("security", "?"),
                                 selected = targetBssid.equals(bssidValue, ignoreCase = true),
+                                enabled = !running,
                                 onClick = {
                                     targetBssid = bssidValue
                                     channel = network.optInt("channel", channel)
@@ -264,7 +276,8 @@ fun EvilTwinScreen(
                     color = StatusAmber,
                 )
             }
-
+        }
+        } else {
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),

@@ -156,8 +156,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _portalHtmlName = MutableStateFlow<String?>(null)
     val portalHtmlName: StateFlow<String?> = _portalHtmlName.asStateFlow()
 
+    private val _portalMode = MutableStateFlow<String?>(null)
+    val portalMode: StateFlow<String?> = _portalMode.asStateFlow()
+
     private val _portalEventLog = MutableStateFlow<List<String>>(emptyList())
     val portalEventLog: StateFlow<List<String>> = _portalEventLog.asStateFlow()
+
+    private val _evilTwinEventLog = MutableStateFlow<List<String>>(emptyList())
+    val evilTwinEventLog: StateFlow<List<String>> = _evilTwinEventLog.asStateFlow()
+
+    private val _evilTwinHtmlUri = MutableStateFlow<Uri?>(null)
+    private val _evilTwinHtmlName = MutableStateFlow<String?>(null)
+    val evilTwinHtmlName: StateFlow<String?> = _evilTwinHtmlName.asStateFlow()
 
     private val _portalHandshake = MutableStateFlow(EapolHandshake())
     val portalHandshake: StateFlow<EapolHandshake> = _portalHandshake.asStateFlow()
@@ -409,21 +419,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun hasPermission(device: UsbDevice): Boolean = usbManager.hasPermission(device)
 
     fun onPermissionResult(device: UsbDevice, granted: Boolean) {
-        appendLog("USB permission response for ${device.deviceName}: $granted")
-        viewModelScope.launch {
-            repeat(6) { attempt ->
-                if (usbManager.hasPermission(device)) {
-                    appendLog("USB permission confirmed; connecting...")
-                    connect(device)
-                    return@launch
-                }
-                if (attempt == 5) {
-                    appendLog("USB permission not granted for ${device.deviceName}.")
-                } else {
-                    delay(250)
-                }
+        appendLog(
+            if (granted || usbManager.hasPermission(device)) {
+                "USB permission granted for ${device.deviceName}."
+            } else {
+                "USB permission denied for ${device.deviceName}."
             }
-        }
+        )
     }
 
     fun connect(device: UsbDevice) {
@@ -725,6 +727,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setEvilTwinHtmlFile(uri: Uri, name: String?) {
+        _evilTwinHtmlUri.value = uri
+        _evilTwinHtmlName.value = name ?: uri.lastPathSegment ?: "evil_twin.html"
+        appendLog("Evil Twin HTML selected: ${_evilTwinHtmlName.value}")
+    }
+
+    fun clearEvilTwinHtmlFile() {
+        _evilTwinHtmlUri.value = null
+        _evilTwinHtmlName.value = null
+        appendLog("Evil Twin HTML cleared.")
+    }
+
     fun setPortalHtmlFile(uri: Uri, name: String?) {
         _portalHtmlUri.value = uri
         _portalHtmlName.value = name ?: uri.lastPathSegment ?: "HTML file"
@@ -738,12 +752,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startPortal(ssid: String, channel: Int, targetBssid: String) {
+        startPortalInternal(ssid, channel, targetBssid, _portalHtmlUri.value, "portal")
+    }
+
+    fun startEvilTwin(ssid: String, channel: Int, targetBssid: String) {
+        startPortalInternal(ssid, channel, targetBssid, _evilTwinHtmlUri.value, "evil_twin")
+    }
+
+    private fun startPortalInternal(
+        ssid: String,
+        channel: Int,
+        targetBssid: String,
+        htmlUri: Uri?,
+        mode: String,
+    ) {
         val activeSession = session
         if (activeSession == null) {
             appendLog("Connect to a device before starting the portal.")
             return
         }
         if (_portalRunning.value) return
+        _portalMode.value = mode
 
         val cleanSsid = ssid.trim().ifBlank { "Free WiFi" }
         val cleanBssid = targetBssid.trim().uppercase()
@@ -807,7 +836,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             _portalHtmlComplete.value = false
 
-            val htmlUri = _portalHtmlUri.value
             if (htmlUri != null) {
                 val bytes = withContext(Dispatchers.IO) {
                     runCatching {
@@ -919,6 +947,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _evilTwinResults.value = results
     }
 
+    fun clearEvilTwinEventLog() {
+        _evilTwinEventLog.value = emptyList()
+    }
+
     fun clearPortalEventLog() {
         _portalEventLog.value = emptyList()
     }
@@ -926,7 +958,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun portalLog(message: String) {
         val timestamp = java.time.LocalTime.now()
             .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
-        _portalEventLog.update { (it + "[$timestamp] $message").takeLast(300) }
+        val line = "[$timestamp] $message"
+        if (_portalMode.value == "evil_twin") {
+            _evilTwinEventLog.update { (it + line).takeLast(300) }
+        } else {
+            _portalEventLog.update { (it + line).takeLast(300) }
+        }
     }
 
     fun stopPortal() {
@@ -936,6 +973,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         portalPcapJob?.cancel()
         portalPcapJob = null
         _portalRunning.value = false
+        _portalMode.value = null
         updateForegroundService()
 
         val activeSession = session
@@ -1536,7 +1574,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             val submittedPassword = data?.optString("password").orEmpty().ifBlank {
                                 data?.optString("pass").orEmpty()
                             }
-                            if (submittedPassword.isNotBlank()) {
+                            if (submittedPassword.isNotBlank() && _portalMode.value == "evil_twin") {
                                 _evilTwinPasswords.update { (it + submittedPassword).takeLast(50) }
                                 verifyEvilTwinPasswords()
                             }

@@ -60,6 +60,7 @@ import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -253,6 +254,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val deauthTarget by viewModel.deauthTarget.collectAsState()
     val deauthChannel by viewModel.deauthChannel.collectAsState()
     val portalRunning by viewModel.portalRunning.collectAsState()
+    val portalMode by viewModel.portalMode.collectAsState()
     val portalHtmlSize by viewModel.portalHtmlSize.collectAsState()
     val portalHtmlComplete by viewModel.portalHtmlComplete.collectAsState()
     val portalSsid by viewModel.portalSsid.collectAsState()
@@ -262,6 +264,8 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val portalCapturedData by viewModel.portalCapturedData.collectAsState()
     val portalHtmlName by viewModel.portalHtmlName.collectAsState()
     val portalEventLog by viewModel.portalEventLog.collectAsState()
+    val evilTwinEventLog by viewModel.evilTwinEventLog.collectAsState()
+    val evilTwinHtmlName by viewModel.evilTwinHtmlName.collectAsState()
     val portalHandshake by viewModel.portalHandshake.collectAsState()
     val evilTwinPasswords by viewModel.evilTwinPasswords.collectAsState()
     val evilTwinResults by viewModel.evilTwinResults.collectAsState()
@@ -332,6 +336,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     }
 
     var selectedTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
+    var permissionRevision by remember { mutableIntStateOf(0) }
     var activeModuleId by rememberSaveable { mutableStateOf<String?>(null) }
     var firmwareFileName by rememberSaveable { mutableStateOf<String?>(null) }
     var rootPromptShown by rememberSaveable { mutableStateOf(false) }
@@ -350,6 +355,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                 if (device != null) {
                     val reallyGranted = granted || usbManager.hasPermission(device)
                     viewModel.onPermissionResult(device, reallyGranted)
+                    permissionRevision++
                 }
             }
         }
@@ -454,6 +460,20 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                 )
             }
             viewModel.setPortalHtmlFile(uri, null)
+        }
+    }
+
+    val evilTwinHtmlPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            viewModel.setEvilTwinHtmlFile(uri, null)
         }
     }
 
@@ -633,19 +653,19 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
             activeModuleId == "evil_twin" -> {
                 EvilTwinScreen(
                     connected = connectionState is ConnectionState.Connected,
-                    running = portalRunning,
+                    running = portalRunning && portalMode == "evil_twin",
                     scanning = scanning,
                     networks = networks,
                     handshake = portalHandshake,
                     results = evilTwinResults,
-                    eventLog = portalEventLog,
-                    selectedHtmlName = portalHtmlName,
+                    eventLog = evilTwinEventLog,
+                    selectedHtmlName = evilTwinHtmlName,
                     onScanWifi = viewModel::scanWifi,
-                    onChooseHtml = { htmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
-                    onStart = viewModel::startPortal,
+                    onChooseHtml = { evilTwinHtmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
+                    onStart = viewModel::startEvilTwin,
                     onStop = viewModel::stopPortal,
                     onClearPasswords = viewModel::clearEvilTwinPasswords,
-                    onClearEventLog = viewModel::clearPortalEventLog,
+                    onClearEventLog = viewModel::clearEvilTwinEventLog,
                     modifier = contentModifier,
                 )
             }
@@ -653,7 +673,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
             activeModuleId == "portal" -> {
                 PortalScreen(
                     connected = connectionState is ConnectionState.Connected,
-                    running = portalRunning,
+                    running = portalRunning && portalMode == "portal",
                     htmlSize = portalHtmlSize,
                     htmlComplete = portalHtmlComplete,
                     activeSsid = portalSsid,
@@ -742,6 +762,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
             selectedTab == AppTab.HOME -> HomeScreen(
                 connectionState = connectionState,
                 activeDeviceName = activeDeviceName,
+                permissionRevision = permissionRevision,
                 devices = devices,
                 usbManager = usbManager,
                 modules = liveModules,
@@ -795,6 +816,7 @@ private fun ConnectionStatusIndicator(state: ConnectionState) {
 private fun HomeScreen(
     connectionState: ConnectionState,
     activeDeviceName: String?,
+    permissionRevision: Int,
     devices: List<UsbSerialDevice>,
     usbManager: UsbManager,
     modules: List<ModuleCardSpec>,
@@ -859,6 +881,7 @@ private fun HomeScreen(
                     DeviceRow(
                         entry = device,
                         hasPermission = usbManager.hasPermission(device.device),
+                        permissionRevision = permissionRevision,
                         onConnect = { onConnect(device.device) },
                     )
                 }
@@ -1206,6 +1229,7 @@ private fun DeviceScreen(
                 DeviceRow(
                     entry = device,
                     hasPermission = usbManager.hasPermission(device.device),
+                    permissionRevision = 0,
                     onConnect = { onConnect(device.device) },
                 )
             }
@@ -1291,8 +1315,11 @@ private fun DeviceConnectionCard(
 private fun DeviceRow(
     entry: UsbSerialDevice,
     hasPermission: Boolean,
+    permissionRevision: Int,
     onConnect: () -> Unit,
 ) {
+    @Suppress("UNUSED_EXPRESSION")
+    permissionRevision
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1316,8 +1343,24 @@ private fun DeviceRow(
                 )
             }
             Spacer(Modifier.width(8.dp))
-            Button(onClick = onConnect) {
-                Text("Connect")
+            if (hasPermission) {
+                Button(
+                    onClick = onConnect,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = NrAccent,
+                        contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
+                    ),
+                ) {
+                    Text("Connect")
+                }
+            } else {
+                OutlinedButton(
+                    onClick = onConnect,
+                    border = BorderStroke(1.dp, NrAccent),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = NrAccent),
+                ) {
+                    Text("Request")
+                }
             }
         }
     }
