@@ -13,6 +13,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
 import com.swp81x.nrsuite.core.eapol.EapolParser
+import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.history.HistoryEntry
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.pcap.PcapWriter
@@ -67,6 +69,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _logs = MutableStateFlow<List<LogEntry>>(emptyList())
     val logs: StateFlow<List<LogEntry>> = _logs.asStateFlow()
+
+    private val _history = MutableStateFlow<List<HistoryEntry>>(emptyList())
+    val history: StateFlow<List<HistoryEntry>> = _history.asStateFlow()
+
+    private val _activeDeviceName = MutableStateFlow<String?>(null)
+    val activeDeviceName: StateFlow<String?> = _activeDeviceName.asStateFlow()
 
     private val _events = MutableStateFlow<List<JSONObject>>(emptyList())
     val events: StateFlow<List<JSONObject>> = _events.asStateFlow()
@@ -227,6 +235,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         loadExportDirectory()
         loadBeaconLists()
         loadDuckyScripts()
+        loadHistory()
         refreshDevices()
     }
 
@@ -304,14 +313,80 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _logs.value = emptyList()
     }
 
+    fun clearHistory() {
+        _history.value = emptyList()
+        persistHistory()
+    }
+
+    fun addHistory(module: String, summary: String, level: HistoryLevel = HistoryLevel.INFO) {
+        val entry = HistoryEntry(
+            id = System.currentTimeMillis(),
+            timestamp = java.time.LocalTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")),
+            module = module,
+            summary = summary,
+            level = level,
+        )
+        _history.update { (listOf(entry) + it).take(300) }
+        persistHistory()
+    }
+
+    private fun loadHistory() {
+        val raw = preferences.getString(PREF_HISTORY, null) ?: return
+        runCatching {
+            val array = org.json.JSONArray(raw)
+            val entries = mutableListOf<HistoryEntry>()
+            for (i in 0 until array.length()) {
+                val obj = array.optJSONObject(i) ?: continue
+                entries += HistoryEntry(
+                    id = obj.optLong("id"),
+                    timestamp = obj.optString("timestamp"),
+                    module = obj.optString("module"),
+                    summary = obj.optString("summary"),
+                    level = runCatching {
+                        HistoryLevel.valueOf(obj.optString("level"))
+                    }.getOrDefault(HistoryLevel.INFO),
+                )
+            }
+            _history.value = entries
+        }
+    }
+
+    private fun persistHistory() {
+        val array = org.json.JSONArray()
+        _history.value.forEach { entry ->
+            array.put(org.json.JSONObject().apply {
+                put("id", entry.id)
+                put("timestamp", entry.timestamp)
+                put("module", entry.module)
+                put("summary", entry.summary)
+                put("level", entry.level.name)
+            })
+        }
+        preferences.edit().putString(PREF_HISTORY, array.toString()).apply()
+    }
+
     fun onUsbDeviceAttached() {
         refreshDevices()
         appendLog("USB device attached.", level = LogLevel.USB)
+        autoConnectLastDevice()
+    }
+
+    private fun autoConnectLastDevice() {
+        val savedName = preferences.getString(PREF_LAST_DEVICE_NAME, null) ?: return
+        val entry = _devices.value.firstOrNull { it.device.deviceName == savedName } ?: return
+        if (usbManager.hasPermission(entry.device)) {
+            appendLog("Auto-reconnecting to ${entry.displayName}...")
+            connect(entry.device)
+        } else {
+            appendLog("Last device attached; tap Connect to grant USB permission.")
+        }
     }
 
     fun onUsbDeviceDetached(device: UsbDevice) {
         refreshDevices()
         appendLog("USB device detached: ${device.deviceName}", level = LogLevel.USB)
+        _activeDeviceName.value = null
         val activeDevice = session
         if (activeDevice != null) {
             disconnect()
@@ -353,6 +428,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             scope = viewModelScope,
         )
         session = newSession
+        _activeDeviceName.value = entry.displayName
+        preferences.edit().putString(PREF_LAST_DEVICE_NAME, entry.device.deviceName).apply()
         observe(newSession)
         viewModelScope.launch {
             appendLog("Opening ${entry.displayName}...")
@@ -377,7 +454,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             when {
                 count == null -> appendLog("WiFi scan timed out.")
                 count < 0 -> appendLog("WiFi scan failed.")
-                else -> appendLog("WiFi scan complete: $count network(s).")
+                else -> {
+                    appendLog("WiFi scan complete: $count network(s).")
+                    addHistory("scan", "WiFi scan complete: $count network(s)", HistoryLevel.SUCCESS)
+                }
             }
         }
     }
@@ -532,6 +612,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 if (response?.optBoolean("ok") == true) {
                     appendLog("BadUSB payload armed. Unplug and re-plug the device to execute it once.")
+                    addHistory("badusb", "Payload armed for next boot", HistoryLevel.SUCCESS)
                 } else {
                     appendLog("Failed to arm BadUSB payload: ${response?.optString("msg") ?: "timeout"}")
                 }
@@ -726,6 +807,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             startPortalStatusPolling(activeSession)
             appendLog("Portal is running.")
+            addHistory("portal", "Portal started: $cleanSsid", HistoryLevel.SUCCESS)
         }
     }
 
@@ -815,6 +897,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val response = activeSession?.sendCommand("STOP_PORTAL", timeoutMs = 8_000)
             if (response?.optBoolean("ok") == true) {
                 appendLog("Portal stopped.")
+                addHistory("portal", "Portal stopped", HistoryLevel.SUCCESS)
             } else {
                 appendLog("Portal stop request sent, but the device did not confirm.")
             }
@@ -871,6 +954,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _blePeer.value = ""
                 startBleStatusPolling(activeSession)
                 appendLog("BLE HID advertising started.")
+                addHistory("ble", "BLE HID advertising started as '$name'", HistoryLevel.SUCCESS)
             } else {
                 appendLog("Failed to start BLE HID: ${response?.optString("msg") ?: "timeout or unsupported"}")
             }
@@ -1045,6 +1129,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             updateForegroundService()
             if (response?.optBoolean("ok") == true) {
                 appendLog("Deauth burst completed.")
+                addHistory("deauth", "Deauth burst completed on $cleanBssid", HistoryLevel.SUCCESS)
             } else {
                 appendLog("Deauth request failed: ${response?.optString("msg") ?: "timeout"}")
             }
@@ -1093,6 +1178,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _beaconSsidCount.value = response.optInt("ssids", cleanSsids.size)
                 _beaconChannel.value = response.optInt("channel", channel)
                 appendLog("Beacon broadcast started.")
+                addHistory("beacon", "Beacon broadcast started (${cleanSsids.size} SSIDs)", HistoryLevel.SUCCESS)
                 startBeaconStatusPolling(activeSession)
             } else {
                 appendLog("Failed to start beacon broadcast: ${response?.optString("msg") ?: "timeout"}")
@@ -1114,6 +1200,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _beaconSent.value = response.optInt("sent", _beaconSent.value)
                 _beaconSsidCount.value = response.optInt("ssids", _beaconSsidCount.value)
                 appendLog("Beacon stopped. Frames sent: ${_beaconSent.value}.")
+                addHistory("beacon", "Beacon stopped; ${_beaconSent.value} frames sent", HistoryLevel.SUCCESS)
             } else {
                 appendLog("Beacon stop request sent, but the device did not confirm.")
             }
@@ -1249,13 +1336,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             val response = activeSession.sendCommand("START_SNIFF", args, timeoutMs = 12_000)
             if (response?.optBoolean("ok") == true) {
-                appendLog(
-                    if (request.fixedMode) {
-                        "Sniffing started on channel ${request.channel.coerceIn(1, 13)}."
-                    } else {
-                        "Channel-hopping sniffing started."
-                    }
-                )
+                val message = if (request.fixedMode) {
+                    "Sniffing started on channel ${request.channel.coerceIn(1, 13)}."
+                } else {
+                    "Channel-hopping sniffing started."
+                }
+                appendLog(message)
+                addHistory("sniff", message, HistoryLevel.SUCCESS)
             } else {
                 appendLog("Failed to start sniffing: ${response?.optString("msg") ?: "timeout"}")
                 stopSniff()
@@ -1284,7 +1371,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 runCatching { pcapWriter?.close() }
             }
             pcapWriter = null
-            _capturePath.value?.let { appendLog("Capture saved: $it") }
+            _capturePath.value?.let {
+                appendLog("Capture saved: $it")
+                addHistory("sniff", "Capture saved: $it", HistoryLevel.SUCCESS)
+            }
         }
     }
 
@@ -1518,6 +1608,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
         private const val PREF_BEACON_LISTS = "beacon_lists"
         private const val PREF_DUCKY_SCRIPTS = "ducky_scripts"
+        private const val PREF_HISTORY = "session_history"
+        private const val PREF_LAST_DEVICE_NAME = "last_device_name"
         private val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
         private const val HTML_RAW_CHUNK_SIZE = 640
         private const val BADUSB_RAW_CHUNK_SIZE = 693

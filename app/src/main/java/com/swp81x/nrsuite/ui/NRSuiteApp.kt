@@ -72,6 +72,10 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.history.HistoryEntry
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -80,6 +84,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -228,6 +233,8 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val devices by viewModel.devices.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val logs by viewModel.logs.collectAsState()
+    val history by viewModel.history.collectAsState()
+    val activeDeviceName by viewModel.activeDeviceName.collectAsState()
     val scanning by viewModel.scanning.collectAsState()
     val networks by viewModel.networks.collectAsState()
     val sniffing by viewModel.sniffing.collectAsState()
@@ -724,6 +731,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
 
             selectedTab == AppTab.HOME -> HomeScreen(
                 connectionState = connectionState,
+                activeDeviceName = activeDeviceName,
                 devices = devices,
                 usbManager = usbManager,
                 modules = liveModules,
@@ -749,7 +757,9 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
 
             selectedTab == AppTab.LOGS -> LogsScreen(
                 logs = logs,
+                history = history,
                 onClearLogs = viewModel::clearLogs,
+                onClearHistory = viewModel::clearHistory,
                 modifier = contentModifier,
             )
         }
@@ -774,6 +784,7 @@ private fun ConnectionStatusIndicator(state: ConnectionState) {
 @Composable
 private fun HomeScreen(
     connectionState: ConnectionState,
+    activeDeviceName: String?,
     devices: List<UsbSerialDevice>,
     usbManager: UsbManager,
     modules: List<ModuleCardSpec>,
@@ -798,6 +809,16 @@ private fun HomeScreen(
         }
 
         if (connectionState !is ConnectionState.Connected) {
+            activeDeviceName?.let { name ->
+                item {
+                    Text(
+                        text = "Last used: $name",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+            }
+
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -993,105 +1014,132 @@ private fun ModulesScreen(
 @Composable
 private fun LogsScreen(
     logs: List<LogEntry>,
+    history: List<HistoryEntry>,
     onClearLogs: () -> Unit,
+    onClearHistory: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    var selectedTab by remember { mutableIntStateOf(0) }
     var selectedLevel by remember { mutableStateOf<LogLevel?>(null) }
     val filtered = logs.filter { selectedLevel == null || it.level == selectedLevel }
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+    Column(modifier = modifier.fillMaxSize()) {
+        TabRow(selectedTabIndex = selectedTab) {
+            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Runtime") })
+            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("History (${history.size})") })
+        }
+
+        if (selectedTab == 0) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text(
-                    text = "Session log",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClick = {
-                    val text = logs.joinToString("\n") { "${it.timestamp} [${it.tag}] ${it.message}" }
-                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
-                }) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy log")
-                }
-                IconButton(onClick = {
-                    val text = logs.joinToString("\n") { "${it.timestamp} [${it.tag}] ${it.message}" }
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, text)
+                item {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Session log",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = {
+                            val text = logs.joinToString("\n") { "${it.timestamp} [${it.tag}] ${it.message}" }
+                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+                        }) { Icon(Icons.Default.ContentCopy, contentDescription = "Copy log") }
+                        IconButton(onClick = {
+                            val text = logs.joinToString("\n") { "${it.timestamp} [${it.tag}] ${it.message}" }
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, text)
+                            }
+                            context.startActivity(Intent.createChooser(intent, "Export log"))
+                        }) { Icon(Icons.Default.Share, contentDescription = "Export log") }
+                        IconButton(onClick = onClearLogs, enabled = logs.isNotEmpty()) {
+                            Icon(Icons.Default.Delete, contentDescription = "Clear log")
+                        }
                     }
-                    context.startActivity(Intent.createChooser(intent, "Export log"))
-                }) {
-                    Icon(Icons.Default.Share, contentDescription = "Export log")
                 }
-                IconButton(onClick = onClearLogs, enabled = logs.isNotEmpty()) {
-                    Icon(Icons.Default.Delete, contentDescription = "Clear log")
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val levels = listOf(null to "All", LogLevel.ERROR to "Errors", LogLevel.USB to "USB", LogLevel.SUCCESS to "Success")
+                        levels.forEach { (level, label) ->
+                            FilterChip(selected = selectedLevel == level, onClick = { selectedLevel = level }, label = { Text(label) })
+                        }
+                    }
                 }
-            }
-        }
-
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                val levels = listOf(
-                    null to "All",
-                    LogLevel.ERROR to "Errors",
-                    LogLevel.USB to "USB",
-                    LogLevel.SUCCESS to "Success",
-                )
-                levels.forEach { (level, label) ->
-                    FilterChip(
-                        selected = selectedLevel == level,
-                        onClick = { selectedLevel = level },
-                        label = { Text(label) },
-                    )
+                if (filtered.isEmpty()) {
+                    item { Text("No logs yet. Connect a device or run a module.", color = NrOnSurfaceVariant) }
+                } else {
+                    items(filtered.takeLast(300).reversed()) { entry ->
+                        val textColor = when (entry.level) {
+                            LogLevel.ERROR -> LogColorError
+                            LogLevel.SUCCESS -> LogColorSuccess
+                            LogLevel.USB -> LogColorUsb
+                            LogLevel.INFO -> LogColorInfo
+                        }
+                        val bg = if (entry.level == LogLevel.ERROR) LogBgError else Color.Transparent
+                        Row(
+                            modifier = Modifier.fillMaxWidth().background(bg, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
+                        ) {
+                            Text(entry.timestamp, fontSize = 11.sp, color = NrOnSurfaceVariant, fontFamily = FontFamily.Monospace, modifier = Modifier.width(56.dp))
+                            Text("[${entry.tag}] ${entry.message}", fontSize = 12.sp, color = textColor, fontFamily = FontFamily.Monospace)
+                        }
+                    }
                 }
-            }
-        }
-
-        if (filtered.isEmpty()) {
-            item {
-                Text(
-                    text = "No logs yet. Connect a device or run a module.",
-                    color = NrOnSurfaceVariant,
-                )
             }
         } else {
-            items(filtered.takeLast(300).reversed()) { entry ->
-                val textColor = when (entry.level) {
-                    LogLevel.ERROR -> LogColorError
-                    LogLevel.SUCCESS -> LogColorSuccess
-                    LogLevel.USB -> LogColorUsb
-                    LogLevel.INFO -> LogColorInfo
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                item {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Session history",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = {
+                            val text = history.joinToString("\n") { "${it.timestamp} [${it.module}] ${it.summary}" }
+                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+                        }, enabled = history.isNotEmpty()) { Icon(Icons.Default.ContentCopy, contentDescription = "Copy history") }
+                        IconButton(onClick = {
+                            val text = history.joinToString("\n") { "${it.timestamp} [${it.module}] ${it.summary}" }
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, text)
+                            }
+                            context.startActivity(Intent.createChooser(intent, "Export history"))
+                        }, enabled = history.isNotEmpty()) { Icon(Icons.Default.Share, contentDescription = "Export history") }
+                        IconButton(onClick = onClearHistory, enabled = history.isNotEmpty()) {
+                            Icon(Icons.Default.Delete, contentDescription = "Clear history")
+                        }
+                    }
                 }
-                val bg = if (entry.level == LogLevel.ERROR) LogBgError else Color.Transparent
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(bg, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 10.dp, vertical = 7.dp),
-                ) {
-                    Text(
-                        text = entry.timestamp,
-                        fontSize = 11.sp,
-                        color = NrOnSurfaceVariant,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.width(56.dp),
-                    )
-                    Text(
-                        text = "[${entry.tag}] ${entry.message}",
-                        fontSize = 12.sp,
-                        color = textColor,
-                        fontFamily = FontFamily.Monospace,
-                    )
+                if (history.isEmpty()) {
+                    item { Text("No session history yet.", color = NrOnSurfaceVariant) }
+                } else {
+                    items(history) { entry ->
+                        val color = when (entry.level) {
+                            HistoryLevel.SUCCESS -> LogColorSuccess
+                            HistoryLevel.ERROR -> LogColorError
+                            HistoryLevel.INFO -> LogColorInfo
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        ) {
+                            Text(entry.timestamp, fontSize = 11.sp, color = NrOnSurfaceVariant, fontFamily = FontFamily.Monospace, modifier = Modifier.width(56.dp))
+                            Column {
+                                Text("[${entry.module}]", fontSize = 12.sp, color = color, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                                Text(entry.summary, fontSize = 12.sp, color = NrOnSurfaceVariant, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
                 }
             }
         }
