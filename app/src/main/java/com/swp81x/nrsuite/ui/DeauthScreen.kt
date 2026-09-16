@@ -1,6 +1,8 @@
 package com.swp81x.nrsuite.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import org.json.JSONObject
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +28,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -57,6 +60,9 @@ fun DeauthScreen(
     sentFrames: Int,
     targetBssid: String,
     activeChannel: Int,
+    scanning: Boolean,
+    networks: List<JSONObject>,
+    onScanWifi: () -> Unit,
     onStart: (bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -90,6 +96,9 @@ fun DeauthScreen(
                 intervalMs = intervalMs,
                 validBssid = validBssid,
                 validClient = validClient,
+                scanning = scanning,
+                networks = networks,
+                onScanWifi = onScanWifi,
                 onToggle = { configExpanded = !configExpanded },
                 onBssidChange = { bssid = it },
                 onClientChange = { client = it },
@@ -182,6 +191,9 @@ private fun ConfigZone(
     intervalMs: Int,
     validBssid: Boolean,
     validClient: Boolean,
+    scanning: Boolean,
+    networks: List<JSONObject>,
+    onScanWifi: () -> Unit,
     onToggle: () -> Unit,
     onBssidChange: (String) -> Unit,
     onClientChange: (String) -> Unit,
@@ -241,6 +253,39 @@ private fun ConfigZone(
                         isError = bssid.isNotBlank() && !validBssid,
                         singleLine = true,
                     )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onScanWifi,
+                        enabled = connected && !scanning && !running,
+                    ) {
+                        Text(if (scanning) "Scanning..." else "Scan WiFi for targets")
+                    }
+
+                    if (networks.isNotEmpty()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Select target",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        networks.take(6).forEach { network ->
+                            val ssid = network.optString("ssid").ifBlank { "(hidden)" }
+                            val bssidValue = network.optString("bssid")
+                            val channelValue = network.optInt("channel", 1)
+                            Text(
+                                text = "$ssid  $bssidValue  ch $channelValue",
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                color = NrOnSurfaceVariant,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onBssidChange(bssidValue)
+                                        onChannelChange(channelValue)
+                                    }
+                                    .padding(vertical = 6.dp),
+                            )
+                        }
+                    }
+
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = client,

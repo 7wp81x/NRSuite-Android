@@ -6,7 +6,7 @@ import androidx.compose.ui.graphics.Color
 val NrBackground = Color(0xFF0D0F12)
 val NrSurface = Color(0xFF1A1D21)
 val NrSurfaceVariant = Color(0xFF24282D)
-val NrAccent = Color(0xFF3D9BFF)
+val NrAccent = Color(0xFFA3E635)
 val NrOnBackground = Color(0xFFE6E9EE)
 val NrOnSurface = Color(0xFFE6E9EE)
 val NrOnSurfaceVariant = Color(0xFFAAB2BD)

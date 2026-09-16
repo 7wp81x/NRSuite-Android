@@ -131,7 +131,7 @@ private val modules = listOf(
     ),
     ModuleCardSpec(
         id = "beacon",
-        title = "Beacon Broadcast",
+        title = "Beacon",
         description = "Broadcast custom or hidden SSIDs.",
         icon = Icons.Default.Campaign,
         category = "Wireless",
@@ -139,7 +139,7 @@ private val modules = listOf(
     ),
     ModuleCardSpec(
         id = "deauth",
-        title = "Deauthentication",
+        title = "Deauth",
         description = "Send a targeted deauth burst to a BSSID.",
         icon = Icons.Default.Warning,
         category = "Wireless",
@@ -194,12 +194,14 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
     val networks by viewModel.networks.collectAsState()
     val sniffing by viewModel.sniffing.collectAsState()
     val sniffPacketCount by viewModel.sniffPacketCount.collectAsState()
+    val sniffHandshake by viewModel.sniffHandshake.collectAsState()
     val capturePath by viewModel.capturePath.collectAsState()
     val exportDirectoryName by viewModel.exportDirectoryName.collectAsState()
     val beaconRunning by viewModel.beaconRunning.collectAsState()
     val beaconSent by viewModel.beaconSent.collectAsState()
     val beaconSsidCount by viewModel.beaconSsidCount.collectAsState()
     val beaconChannel by viewModel.beaconChannel.collectAsState()
+    val beaconLists by viewModel.beaconListMap.collectAsState()
     val deauthRunning by viewModel.deauthRunning.collectAsState()
     val deauthSent by viewModel.deauthSent.collectAsState()
     val deauthTarget by viewModel.deauthTarget.collectAsState()
@@ -213,6 +215,7 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
     val portalClients by viewModel.portalClients.collectAsState()
     val portalCapturedData by viewModel.portalCapturedData.collectAsState()
     val portalHtmlName by viewModel.portalHtmlName.collectAsState()
+    val portalEventLog by viewModel.portalEventLog.collectAsState()
     val storageFiles by viewModel.storageFiles.collectAsState()
     val storageTotal by viewModel.storageTotal.collectAsState()
     val storageUsed by viewModel.storageUsed.collectAsState()
@@ -226,8 +229,22 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
     val blePeer by viewModel.blePeer.collectAsState()
     val blePayloadName by viewModel.blePayloadName.collectAsState()
 
+    val connectedChip = (connectionState as? ConnectionState.Connected)?.chip
     val liveModules = modules.map { module ->
+        val supported = when (module.id) {
+            "ble" -> connectedChip == null || connectedChip in setOf("ESP32-C3", "ESP32-S3", "ESP32")
+            "badusb" -> connectedChip == null || connectedChip in setOf("ESP32-S2", "ESP32-S3")
+            else -> true
+        }
+        val supportLabel = when {
+            supported -> module.statusLabel
+            module.id == "ble" -> "No BLE radio on this chip"
+            module.id == "badusb" -> "Requires ESP32-S2/S3"
+            else -> "Not supported"
+        }
         module.copy(
+            available = module.available && supported,
+            statusLabel = supportLabel,
             isRunning = when (module.id) {
                 "wifi" -> scanning
                 "sniff" -> sniffing
@@ -477,8 +494,12 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
                     sniffing = sniffing,
                     packetCount = sniffPacketCount,
                     capturePath = capturePath,
+                    handshake = sniffHandshake,
+                    scanning = scanning,
+                    networks = networks,
                     exportDirectoryName = exportDirectoryName,
                     onChooseExportDirectory = { folderPicker.launch(null) },
+                    onScanWifi = viewModel::scanWifi,
                     onStart = viewModel::startSniff,
                     onStop = viewModel::stopSniff,
                     modifier = contentModifier,
@@ -492,6 +513,9 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
                     sentFrames = beaconSent,
                     ssidCount = beaconSsidCount,
                     activeChannel = beaconChannel,
+                    savedLists = beaconLists,
+                    onSaveListAction = viewModel::saveBeaconList,
+                    onDeleteList = viewModel::deleteBeaconList,
                     onStart = viewModel::startBeacon,
                     onStop = viewModel::stopBeacon,
                     modifier = contentModifier,
@@ -505,6 +529,9 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
                     sentFrames = deauthSent,
                     targetBssid = deauthTarget,
                     activeChannel = deauthChannel,
+                    scanning = scanning,
+                    networks = networks,
+                    onScanWifi = viewModel::scanWifi,
                     onStart = viewModel::startDeauth,
                     modifier = contentModifier,
                 )
@@ -522,8 +549,10 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
                     portalClients = portalClients,
                     capturedData = portalCapturedData,
                     selectedHtmlName = portalHtmlName,
+                    eventLog = portalEventLog,
                     onChooseHtml = { htmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
                     onClearHtml = viewModel::clearPortalHtmlFile,
+                    onClearEventLog = viewModel::clearPortalEventLog,
                     onStart = viewModel::startPortal,
                     onStop = viewModel::stopPortal,
                     modifier = contentModifier,
@@ -1102,7 +1131,7 @@ private fun DeviceRow(
             }
             Spacer(Modifier.width(8.dp))
             Button(onClick = onConnect) {
-                Text(if (hasPermission) "Connect" else "Allow")
+                Text("Connect")
             }
         }
     }

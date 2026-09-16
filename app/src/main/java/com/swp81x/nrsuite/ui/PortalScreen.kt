@@ -2,6 +2,14 @@ package com.swp81x.nrsuite.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,8 +73,10 @@ fun PortalScreen(
     portalClients: Int,
     capturedData: Int,
     selectedHtmlName: String?,
+    eventLog: List<String>,
     onChooseHtml: () -> Unit,
     onClearHtml: () -> Unit,
+    onClearEventLog: () -> Unit,
     onStart: (ssid: String, channel: Int, targetBssid: String) -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
@@ -78,43 +89,116 @@ fun PortalScreen(
 
     val validTargetBssid = targetBssid.isBlank() || MAC_REGEX.matches(targetBssid.trim())
 
+    var selectedTab by remember { mutableIntStateOf(0) }
+    val clipboardManager = LocalClipboardManager.current
+
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(12.dp),
         ) {
-            ConfigZone(
-                connected = connected,
-                running = running,
-                expanded = configExpanded,
-                ssid = ssid,
-                channel = channel,
-                targetBssid = targetBssid,
-                validTargetBssid = validTargetBssid,
-                selectedHtmlName = selectedHtmlName,
-                onToggle = { configExpanded = !configExpanded },
-                onSsidChange = { ssid = it },
-                onChannelChange = { channel = it.coerceIn(1, 13) },
-                onTargetBssidChange = { targetBssid = it },
-                onChooseHtml = onChooseHtml,
-                onClearHtml = onClearHtml,
-            )
+            TabRow(selectedTabIndex = selectedTab) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("Overview") },
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text("Logs (${eventLog.size})") },
+                )
+            }
 
             Spacer(Modifier.height(10.dp))
 
-            ResultZone(
-                connected = connected,
-                running = running,
-                htmlSize = htmlSize,
-                htmlComplete = htmlComplete,
-                activeSsid = activeSsid,
-                activeChannel = activeChannel,
-                portalViews = portalViews,
-                portalClients = portalClients,
-                capturedData = capturedData,
-                modifier = Modifier.weight(1f),
-            )
+            if (selectedTab == 0) {
+                ConfigZone(
+                    connected = connected,
+                    running = running,
+                    expanded = configExpanded,
+                    ssid = ssid,
+                    channel = channel,
+                    targetBssid = targetBssid,
+                    validTargetBssid = validTargetBssid,
+                    selectedHtmlName = selectedHtmlName,
+                    onToggle = { configExpanded = !configExpanded },
+                    onSsidChange = { ssid = it },
+                    onChannelChange = { channel = it.coerceIn(1, 13) },
+                    onTargetBssidChange = { targetBssid = it },
+                    onChooseHtml = onChooseHtml,
+                    onClearHtml = onClearHtml,
+                )
+
+                Spacer(Modifier.height(10.dp))
+
+                ResultZone(
+                    connected = connected,
+                    running = running,
+                    htmlSize = htmlSize,
+                    htmlComplete = htmlComplete,
+                    activeSsid = activeSsid,
+                    activeChannel = activeChannel,
+                    portalViews = portalViews,
+                    portalClients = portalClients,
+                    capturedData = capturedData,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Column(Modifier.fillMaxSize().padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "Portal event log",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(eventLog.joinToString("\n")))
+                                },
+                                enabled = eventLog.isNotEmpty(),
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy logs")
+                            }
+                            IconButton(
+                                onClick = onClearEventLog,
+                                enabled = eventLog.isNotEmpty(),
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = "Clear logs")
+                            }
+                        }
+                        if (eventLog.isEmpty()) {
+                            Text(
+                                text = "No portal events yet. Page views, client associations, and POST data will appear here.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NrOnSurfaceVariant,
+                            )
+                        } else {
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                items(eventLog.reversed()) { line ->
+                                    Text(
+                                        text = line,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                        color = NrOnSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         if (connected) {

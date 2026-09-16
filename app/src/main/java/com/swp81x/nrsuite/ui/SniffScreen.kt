@@ -1,6 +1,9 @@
 package com.swp81x.nrsuite.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import com.swp81x.nrsuite.core.eapol.EapolHandshake
+import org.json.JSONObject
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +29,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.Switch
@@ -58,8 +62,12 @@ fun SniffScreen(
     sniffing: Boolean,
     packetCount: Long,
     capturePath: String?,
+    handshake: EapolHandshake,
+    scanning: Boolean,
+    networks: List<JSONObject>,
     exportDirectoryName: String,
     onChooseExportDirectory: () -> Unit,
+    onScanWifi: () -> Unit,
     onStart: (SniffRequest) -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
@@ -70,6 +78,7 @@ fun SniffScreen(
     var intervalMs by remember { mutableStateOf(300) }
     var deauthBeforeCapture by remember { mutableStateOf(false) }
     var eapolOnly by remember { mutableStateOf(false) }
+    var targetNetworkOnly by remember { mutableStateOf(false) }
     var targetBssid by remember { mutableStateOf("") }
     var client by remember { mutableStateOf("FF:FF:FF:FF:FF:FF") }
     var deauthCount by remember { mutableStateOf(0) }
@@ -95,6 +104,7 @@ fun SniffScreen(
                 onChooseExportDirectory = onChooseExportDirectory,
                 deauthBeforeCapture = deauthBeforeCapture,
                 eapolOnly = eapolOnly,
+                targetNetworkOnly = targetNetworkOnly,
                 targetBssid = targetBssid,
                 client = client,
                 deauthCount = deauthCount,
@@ -107,6 +117,10 @@ fun SniffScreen(
                 onIntervalChange = { intervalMs = it.coerceIn(50, 1000) },
                 onDeauthBeforeCaptureChange = { deauthBeforeCapture = it },
                 onEapolOnlyChange = { eapolOnly = it },
+                onTargetNetworkOnlyChange = { targetNetworkOnly = it },
+                scanning = scanning,
+                networks = networks,
+                onScanWifi = onScanWifi,
                 onTargetBssidChange = { targetBssid = it },
                 onClientChange = { client = it },
                 onDeauthCountChange = { deauthCount = it.coerceAtLeast(0) },
@@ -120,6 +134,7 @@ fun SniffScreen(
                 sniffing = sniffing,
                 packetCount = packetCount,
                 capturePath = capturePath,
+                handshake = handshake,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -138,6 +153,7 @@ fun SniffScreen(
                                 deauthBeforeCapture = deauthBeforeCapture,
                                 targetBssid = targetBssid.trim(),
                                 eapolOnly = eapolOnly,
+                                targetNetworkOnly = targetNetworkOnly,
                                 client = client.trim(),
                                 deauthCount = deauthCount,
                                 deauthIntervalMs = deauthIntervalMs,
@@ -172,6 +188,7 @@ private fun ConfigZone(
     onChooseExportDirectory: () -> Unit,
     deauthBeforeCapture: Boolean,
     eapolOnly: Boolean,
+    targetNetworkOnly: Boolean,
     targetBssid: String,
     client: String,
     deauthCount: Int,
@@ -184,6 +201,10 @@ private fun ConfigZone(
     onIntervalChange: (Int) -> Unit,
     onDeauthBeforeCaptureChange: (Boolean) -> Unit,
     onEapolOnlyChange: (Boolean) -> Unit,
+    onTargetNetworkOnlyChange: (Boolean) -> Unit,
+    scanning: Boolean,
+    networks: List<JSONObject>,
+    onScanWifi: () -> Unit,
     onTargetBssidChange: (String) -> Unit,
     onClientChange: (String) -> Unit,
     onDeauthCountChange: (Int) -> Unit,
@@ -310,6 +331,52 @@ private fun ConfigZone(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
+                            text = "Target specific network",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(
+                            checked = targetNetworkOnly,
+                            onCheckedChange = onTargetNetworkOnlyChange,
+                            enabled = !sniffing,
+                        )
+                    }
+
+                    if (targetNetworkOnly) {
+                        Spacer(Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = onScanWifi,
+                            enabled = connected && !sniffing && !scanning,
+                        ) {
+                            Text(if (scanning) "Scanning..." else "Scan WiFi for targets")
+                        }
+                        if (networks.isNotEmpty()) {
+                            networks.take(6).forEach { network ->
+                                val ssid = network.optString("ssid").ifBlank { "(hidden)" }
+                                val bssidValue = network.optString("bssid")
+                                val channelValue = network.optInt("channel", 1)
+                                Text(
+                                    text = "$ssid  $bssidValue  ch $channelValue",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                    color = NrOnSurfaceVariant,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onTargetBssidChange(bssidValue)
+                                            onChannelChange(channelValue)
+                                        }
+                                        .padding(vertical = 6.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
                             text = "EAPOL-only capture",
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.weight(1f),
@@ -338,7 +405,7 @@ private fun ConfigZone(
                         )
                     }
 
-                    if (eapolOnly || deauthBeforeCapture) {
+                    if (eapolOnly || deauthBeforeCapture || targetNetworkOnly) {
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
                             value = targetBssid,
@@ -444,6 +511,7 @@ private fun ResultZone(
     sniffing: Boolean,
     packetCount: Long,
     capturePath: String?,
+    handshake: EapolHandshake,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -503,10 +571,27 @@ private fun ResultZone(
                 color = NrOnSurfaceVariant,
             )
 
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = "EAPOL handshake",
+                style = MaterialTheme.typography.labelLarge,
+                color = NrOnSurfaceVariant,
+            )
+            Text(
+                text = buildString {
+                    append("M1 ${if (handshake.m1) "✓" else "—"}  ")
+                    append("M2 ${if (handshake.m2) "✓" else "—"}  ")
+                    append("M3 ${if (handshake.m3) "✓" else "—"}  ")
+                    append("M4 ${if (handshake.m4) "✓" else "—"}")
+                },
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                color = if (handshake.isComplete) StatusGreen else NrOnSurfaceVariant,
+            )
+
             if (!connected) {
                 Spacer(Modifier.height(24.dp))
                 Text(
-                    text = "Open the Device tab, connect your ESP32, then return here to start sniffing.",
+                    text = "Connect an ESP32 to start packet capture.",
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )

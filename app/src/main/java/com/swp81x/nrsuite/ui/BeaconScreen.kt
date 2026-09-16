@@ -1,6 +1,11 @@
 package com.swp81x.nrsuite.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +31,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -56,6 +62,9 @@ fun BeaconScreen(
     sentFrames: Int,
     ssidCount: Int,
     activeChannel: Int,
+    savedLists: Map<String, List<String>>,
+    onSaveListAction: (String, List<String>) -> Unit,
+    onDeleteList: (String) -> Unit,
     onStart: (List<String>, Int, Int, Boolean, Boolean) -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
@@ -67,6 +76,23 @@ fun BeaconScreen(
     var hidden by remember { mutableStateOf(false) }
     var randomBssid by remember { mutableStateOf(true) }
     var confirmStart by remember { mutableStateOf(false) }
+    var listMenuExpanded by remember { mutableStateOf(false) }
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var newListName by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val importPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    ssidsText = stream.readBytes().toString(Charsets.UTF_8)
+                }
+            }.onFailure {
+                // Reading failure is reported through the global log in the app shell.
+            }
+        }
+    }
 
     val parsedSsids = remember(ssidsText) {
         ssidsText.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
@@ -88,7 +114,13 @@ fun BeaconScreen(
                 hidden = hidden,
                 randomBssid = randomBssid,
                 parsedCount = parsedSsids.size,
+                savedLists = savedLists,
+                listMenuExpanded = listMenuExpanded,
                 onToggle = { configExpanded = !configExpanded },
+                onListMenuChange = { listMenuExpanded = it },
+                onLoadList = { ssidsText = it.joinToString("\n") },
+                onSaveList = { showSaveDialog = true },
+                onImportFile = { importPicker.launch(arrayOf("text/plain", "*/*")) },
                 onSsidsChange = { ssidsText = it },
                 onChannelChange = { channel = it.coerceIn(1, 13) },
                 onIntervalChange = { intervalMs = it.coerceIn(10, 2000) },
@@ -129,6 +161,37 @@ fun BeaconScreen(
                 )
             }
         }
+    }
+
+    if (showSaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveDialog = false },
+            title = { Text("Save SSID list") },
+            text = {
+                OutlinedTextField(
+                    value = newListName,
+                    onValueChange = { newListName = it },
+                    label = { Text("List name") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onSaveListAction(newListName, parsedSsids)
+                        newListName = ""
+                        showSaveDialog = false
+                    },
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 
     if (confirmStart) {
@@ -172,7 +235,13 @@ private fun ConfigZone(
     hidden: Boolean,
     randomBssid: Boolean,
     parsedCount: Int,
+    savedLists: Map<String, List<String>>,
+    listMenuExpanded: Boolean,
     onToggle: () -> Unit,
+    onListMenuChange: (Boolean) -> Unit,
+    onLoadList: (List<String>) -> Unit,
+    onSaveList: () -> Unit,
+    onImportFile: () -> Unit,
     onSsidsChange: (String) -> Unit,
     onChannelChange: (Int) -> Unit,
     onIntervalChange: (Int) -> Unit,
@@ -233,6 +302,38 @@ private fun ConfigZone(
                             Text("$parsedCount/32 SSIDs will be broadcast.")
                         },
                     )
+
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box {
+                            OutlinedButton(
+                                onClick = { onListMenuChange(true) },
+                                enabled = !running && savedLists.isNotEmpty(),
+                            ) {
+                                Text("Load list")
+                            }
+                            DropdownMenu(
+                                expanded = listMenuExpanded,
+                                onDismissRequest = { onListMenuChange(false) },
+                            ) {
+                                savedLists.keys.sorted().forEach { name ->
+                                    DropdownMenuItem(
+                                        text = { Text(name) },
+                                        onClick = {
+                                            onLoadList(savedLists[name].orEmpty())
+                                            onListMenuChange(false)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                        OutlinedButton(onClick = onSaveList, enabled = !running && parsedCount > 0) {
+                            Text("Save list")
+                        }
+                        OutlinedButton(onClick = onImportFile, enabled = !running) {
+                            Text("Import file")
+                        }
+                    }
 
                     Spacer(Modifier.height(10.dp))
                     NumberStepper(

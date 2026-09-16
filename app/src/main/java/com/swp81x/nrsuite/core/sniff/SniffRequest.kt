@@ -10,4 +10,5 @@ data class SniffRequest(
     val deauthCount: Int = 0,
     val deauthIntervalMs: Int = 80,
     val eapolOnly: Boolean = false,
+    val targetNetworkOnly: Boolean = false,
 )

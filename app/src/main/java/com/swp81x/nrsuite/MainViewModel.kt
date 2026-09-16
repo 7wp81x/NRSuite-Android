@@ -75,6 +75,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _sniffPacketCount = MutableStateFlow(0L)
     val sniffPacketCount: StateFlow<Long> = _sniffPacketCount.asStateFlow()
 
+    private val _sniffHandshake = MutableStateFlow(EapolHandshake())
+    val sniffHandshake: StateFlow<EapolHandshake> = _sniffHandshake.asStateFlow()
+
     private val _capturePath = MutableStateFlow<String?>(null)
     val capturePath: StateFlow<String?> = _capturePath.asStateFlow()
 
@@ -89,6 +92,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _beaconChannel = MutableStateFlow(0)
     val beaconChannel: StateFlow<Int> = _beaconChannel.asStateFlow()
+
+    private val _beaconListMap = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    val beaconListMap: StateFlow<Map<String, List<String>>> = _beaconListMap.asStateFlow()
 
     private var beaconStatusJob: Job? = null
 
@@ -133,6 +139,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _portalHtmlName = MutableStateFlow<String?>(null)
     val portalHtmlName: StateFlow<String?> = _portalHtmlName.asStateFlow()
+
+    private val _portalEventLog = MutableStateFlow<List<String>>(emptyList())
+    val portalEventLog: StateFlow<List<String>> = _portalEventLog.asStateFlow()
 
     private var portalStatusJob: Job? = null
 
@@ -187,7 +196,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         loadExportDirectory()
+        loadBeaconLists()
         refreshDevices()
+    }
+
+    fun saveBeaconList(name: String, ssids: List<String>) {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return
+        val cleanSsids = ssids.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        _beaconListMap.update { it + (cleanName to cleanSsids) }
+        persistBeaconLists()
+        appendLog("Saved beacon SSID list '$cleanName' (${cleanSsids.size} SSIDs).")
+    }
+
+    fun deleteBeaconList(name: String) {
+        _beaconListMap.update { it - name }
+        persistBeaconLists()
+        appendLog("Deleted beacon SSID list '$name'.")
+    }
+
+    private fun loadBeaconLists() {
+        val raw = preferences.getString(PREF_BEACON_LISTS, null) ?: return
+        runCatching {
+            val json = JSONObject(raw)
+            val map = mutableMapOf<String, List<String>>()
+            json.keys().forEach { key ->
+                val array = json.optJSONArray(key) ?: return@forEach
+                val list = mutableListOf<String>()
+                for (i in 0 until array.length()) {
+                    val value = array.optString(i)
+                    if (value.isNotBlank()) list += value
+                }
+                map[key] = list
+            }
+            _beaconListMap.value = map
+        }
+    }
+
+    private fun persistBeaconLists() {
+        val json = JSONObject()
+        _beaconListMap.value.forEach { (name, ssids) ->
+            val array = org.json.JSONArray()
+            ssids.forEach { array.put(it) }
+            json.put(name, array)
+        }
+        preferences.edit().putString(PREF_BEACON_LISTS, json.toString()).apply()
     }
 
     fun setExportDirectory(uri: Uri) {
@@ -613,6 +666,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
+    fun clearPortalEventLog() {
+        _portalEventLog.value = emptyList()
+    }
+
+    private fun portalLog(message: String) {
+        val timestamp = java.time.LocalTime.now()
+            .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
+        _portalEventLog.update { (it + "[$timestamp] $message").takeLast(300) }
+    }
+
     fun stopPortal() {
         if (!_portalRunning.value) return
         portalStatusJob?.cancel()
@@ -977,6 +1040,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         pcapWriter = writer
         _capturePath.value = captureDisplayPath
         _sniffPacketCount.value = 0
+        _sniffHandshake.value = EapolHandshake()
         _sniffing.value = true
         updateForegroundService()
 
@@ -986,15 +1050,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         var eapolStopRequested = false
         pcapJob = viewModelScope.launch(Dispatchers.IO) {
             activeSession.pcap.collect { frame ->
-                try {
-                    writer.writePacket(frame)
-                    _sniffPacketCount.update { it + 1 }
-                } catch (t: Throwable) {
-                    appendLog("PCAP write error: ${t.message}")
+                val matchesTarget = !request.targetNetworkOnly ||
+                    frameMatchesBssid(frame, request.targetBssid)
+                if (matchesTarget) {
+                    try {
+                        writer.writePacket(frame)
+                        _sniffPacketCount.update { it + 1 }
+                    } catch (t: Throwable) {
+                        appendLog("PCAP write error: ${t.message}")
+                    }
                 }
 
                 if (request.eapolOnly) {
                     EapolParser.parse(frame, eapolState)
+                    _sniffHandshake.value = eapolState.copy()
                     val targetMatches = MAC_PATTERN.matches(request.targetBssid.trim().uppercase())
                     if (!eapolStopRequested && targetMatches && eapolState.isComplete) {
                         eapolStopRequested = true
@@ -1181,22 +1250,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                         "portal_viewed" -> {
                             _portalViews.update { it + 1 }
-                            appendLog("Portal viewed from ${event.optString("client_ip", "unknown")}.")
+                            val ip = event.optString("client_ip", "unknown")
+                            appendLog("Portal viewed from $ip.")
+                            portalLog("GET / from $ip")
                         }
                         "captive_data" -> {
                             _portalCapturedData.update { it + 1 }
-                            appendLog("Captive data received from ${event.optString("ip", "unknown")}.")
+                            val ip = event.optString("ip", "unknown")
+                            val userAgent = event.optString("user_agent", "")
+                            val data = event.optJSONObject("data")
+                            val fields = data?.keys()?.asSequence()?.joinToString(", ") { key ->
+                                "$key=${data.optString(key)}"
+                            } ?: ""
+                            appendLog("Captive data received from $ip.")
+                            portalLog("POST /login from $ip | UA: $userAgent | data: $fields")
                         }
                         "client_associated" -> {
                             _portalClients.update { it + 1 }
-                            appendLog(
-                                "Client associated: ${event.optString("client")} " +
-                                    "(${event.optInt("rssi")} dBm)."
-                            )
+                            val client = event.optString("client")
+                            val rssi = event.optInt("rssi")
+                            appendLog("Client associated: $client ($rssi dBm).")
+                            portalLog("Client associated: $client ($rssi dBm)")
                         }
                         "deauth_stats" -> {
                             _deauthSent.value = event.optInt("sent_frames", _deauthSent.value)
                             appendLog("Deauth stats: ${_deauthSent.value} frame(s) sent.")
+                            portalLog("Deauth stats: ${_deauthSent.value} frame(s) sent")
                         }
                         "heartbeat" -> Unit
                     }
@@ -1241,6 +1320,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             ?: "Selected folder"
     }
 
+    private fun frameMatchesBssid(frame: ByteArray, bssid: String): Boolean {
+        val parts = bssid.trim().uppercase().split(":")
+        if (parts.size != 6) return false
+        val target = ByteArray(6) { index ->
+            parts[index].toIntOrNull(16)?.toByte() ?: return false
+        }
+        if (frame.size < 8) return false
+        val radiotapLength = (frame[2].toInt() and 0xFF) or
+            ((frame[3].toInt() and 0xFF) shl 8)
+        val macBase = radiotapLength
+        if (frame.size < macBase + 22) return false
+        for (offset in intArrayOf(4, 10, 16)) {
+            var matches = true
+            for (i in 0 until 6) {
+                if (frame[macBase + offset + i] != target[i]) {
+                    matches = false
+                    break
+                }
+            }
+            if (matches) return true
+        }
+        return false
+    }
+
     private fun appendLog(
         message: String,
         level: LogLevel = LogLevel.INFO,
@@ -1259,6 +1362,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val PREFERENCES_NAME = "nrsuite"
         private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
+        private const val PREF_BEACON_LISTS = "beacon_lists"
         private val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
         private const val HTML_RAW_CHUNK_SIZE = 640
         private const val BADUSB_RAW_CHUNK_SIZE = 693
