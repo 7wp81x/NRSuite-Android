@@ -10,6 +10,8 @@ import android.provider.DocumentsContract
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.swp81x.nrsuite.core.eapol.EapolHandshake
+import com.swp81x.nrsuite.core.eapol.EapolParser
 import com.swp81x.nrsuite.core.pcap.PcapWriter
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
@@ -810,6 +812,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         appendLog("Capture file: $captureDisplayPath")
 
+        val eapolState = EapolHandshake()
+        var eapolStopRequested = false
         pcapJob = viewModelScope.launch(Dispatchers.IO) {
             activeSession.pcap.collect { frame ->
                 try {
@@ -817,6 +821,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _sniffPacketCount.update { it + 1 }
                 } catch (t: Throwable) {
                     appendLog("PCAP write error: ${t.message}")
+                }
+
+                if (request.eapolOnly) {
+                    EapolParser.parse(frame, eapolState)
+                    val targetMatches = MAC_PATTERN.matches(request.targetBssid.trim().uppercase())
+                    if (!eapolStopRequested && targetMatches && eapolState.isComplete) {
+                        eapolStopRequested = true
+                        appendLog("[+] Valid 4-Way Handshake captured!")
+                        stopSniff()
+                    }
                 }
             }
         }
