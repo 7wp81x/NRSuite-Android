@@ -27,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +52,8 @@ fun SniffScreen(
     sniffing: Boolean,
     packetCount: Long,
     capturePath: String?,
+    exportDirectoryName: String,
+    onChooseExportDirectory: () -> Unit,
     onStart: (fixedMode: Boolean, channel: Int, intervalMs: Int) -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
@@ -73,6 +76,8 @@ fun SniffScreen(
                 fixedMode = fixedMode,
                 channel = channel,
                 intervalMs = intervalMs,
+                exportDirectoryName = exportDirectoryName,
+                onChooseExportDirectory = onChooseExportDirectory,
                 onToggle = { configExpanded = !configExpanded },
                 onModeChange = { fixedMode = it },
                 onChannelChange = { channel = it.coerceIn(1, 13) },
@@ -116,6 +121,8 @@ private fun ConfigZone(
     fixedMode: Boolean,
     channel: Int,
     intervalMs: Int,
+    exportDirectoryName: String,
+    onChooseExportDirectory: () -> Unit,
     onToggle: () -> Unit,
     onModeChange: (Boolean) -> Unit,
     onChannelChange: (Int) -> Unit,
@@ -232,6 +239,27 @@ private fun ConfigZone(
                             ) {
                                 Text("+", style = MaterialTheme.typography.titleLarge)
                             }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = "Output",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = exportDirectoryName,
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = NrOnSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = onChooseExportDirectory) {
+                            Text("Change")
                         }
                     }
 

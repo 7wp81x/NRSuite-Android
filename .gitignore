@@ -17,3 +17,5 @@ local.properties
 .gradle-agent/
 .android-agent/
 *.log
+.home/
+.tools/
