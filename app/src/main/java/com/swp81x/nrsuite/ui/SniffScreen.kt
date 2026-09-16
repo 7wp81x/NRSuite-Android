@@ -68,6 +68,7 @@ fun SniffScreen(
     var channel by remember { mutableStateOf(6) }
     var intervalMs by remember { mutableStateOf(300) }
     var deauthBeforeCapture by remember { mutableStateOf(false) }
+    var eapolOnly by remember { mutableStateOf(false) }
     var targetBssid by remember { mutableStateOf("") }
     var client by remember { mutableStateOf("FF:FF:FF:FF:FF:FF") }
     var deauthCount by remember { mutableStateOf(0) }
@@ -92,6 +93,7 @@ fun SniffScreen(
                 exportDirectoryName = exportDirectoryName,
                 onChooseExportDirectory = onChooseExportDirectory,
                 deauthBeforeCapture = deauthBeforeCapture,
+                eapolOnly = eapolOnly,
                 targetBssid = targetBssid,
                 client = client,
                 deauthCount = deauthCount,
@@ -103,6 +105,7 @@ fun SniffScreen(
                 onChannelChange = { channel = it.coerceIn(1, 13) },
                 onIntervalChange = { intervalMs = it.coerceIn(50, 1000) },
                 onDeauthBeforeCaptureChange = { deauthBeforeCapture = it },
+                onEapolOnlyChange = { eapolOnly = it },
                 onTargetBssidChange = { targetBssid = it },
                 onClientChange = { client = it },
                 onDeauthCountChange = { deauthCount = it.coerceAtLeast(0) },
@@ -133,6 +136,7 @@ fun SniffScreen(
                                 intervalMs = intervalMs,
                                 deauthBeforeCapture = deauthBeforeCapture,
                                 targetBssid = targetBssid.trim(),
+                                eapolOnly = eapolOnly,
                                 client = client.trim(),
                                 deauthCount = deauthCount,
                                 deauthIntervalMs = deauthIntervalMs,
@@ -166,6 +170,7 @@ private fun ConfigZone(
     exportDirectoryName: String,
     onChooseExportDirectory: () -> Unit,
     deauthBeforeCapture: Boolean,
+    eapolOnly: Boolean,
     targetBssid: String,
     client: String,
     deauthCount: Int,
@@ -177,6 +182,7 @@ private fun ConfigZone(
     onChannelChange: (Int) -> Unit,
     onIntervalChange: (Int) -> Unit,
     onDeauthBeforeCaptureChange: (Boolean) -> Unit,
+    onEapolOnlyChange: (Boolean) -> Unit,
     onTargetBssidChange: (String) -> Unit,
     onClientChange: (String) -> Unit,
     onDeauthCountChange: (Int) -> Unit,
@@ -302,6 +308,23 @@ private fun ConfigZone(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
+                            text = "EAPOL-only capture",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(
+                            checked = eapolOnly,
+                            onCheckedChange = onEapolOnlyChange,
+                            enabled = !sniffing,
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
                             text = "Send deauth before capture",
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.weight(1f),
@@ -313,7 +336,7 @@ private fun ConfigZone(
                         )
                     }
 
-                    if (deauthBeforeCapture) {
+                    if (eapolOnly || deauthBeforeCapture) {
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
                             value = targetBssid,

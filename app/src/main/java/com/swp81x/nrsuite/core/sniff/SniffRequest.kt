@@ -9,4 +9,5 @@ data class SniffRequest(
     val client: String = "FF:FF:FF:FF:FF:FF",
     val deauthCount: Int = 0,
     val deauthIntervalMs: Int = 80,
+    val eapolOnly: Boolean = false,
 )

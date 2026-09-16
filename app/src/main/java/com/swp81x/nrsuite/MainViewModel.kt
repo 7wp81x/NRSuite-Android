@@ -840,10 +840,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
+            val cleanFilterBssid = request.targetBssid.trim().uppercase()
             val args = JSONObject().apply {
                 put("mode", if (request.fixedMode) "fixed" else "hop")
                 put("channel", request.channel.coerceIn(1, 13))
                 put("interval_ms", request.intervalMs.coerceIn(50, 2_000))
+                if (request.eapolOnly) {
+                    put("eapol_only", true)
+                }
+                if (MAC_PATTERN.matches(cleanFilterBssid)) {
+                    put("bssid", cleanFilterBssid)
+                }
             }
             val response = activeSession.sendCommand("START_SNIFF", args, timeoutMs = 12_000)
             if (response?.optBoolean("ok") == true) {
