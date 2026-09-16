@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.ui.components.SavedScriptPicker
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -57,6 +58,8 @@ fun BleScreen(
     bleConnected: Boolean,
     peer: String,
     selectedPayloadName: String?,
+    savedScripts: Map<String, String>,
+    onUseSavedScript: (String) -> Unit,
     onChoosePayload: () -> Unit,
     onClearPayload: () -> Unit,
     onStartAdvertising: (String) -> Unit,
@@ -123,6 +126,14 @@ fun BleScreen(
                         text = selectedPayloadName ?: "No payload selected",
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = NrOnSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    SavedScriptPicker(
+                        names = savedScripts.keys.toList(),
+                        selectedName = selectedPayloadName?.takeIf { it in savedScripts },
+                        onSelect = onUseSavedScript,
+                        onDelete = {},
+                        enabled = !advertising,
                     )
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

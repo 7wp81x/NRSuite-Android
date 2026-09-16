@@ -345,7 +345,7 @@ private fun ConfigZone(
                         )
                     }
 
-                    if (targetNetworkOnly) {
+                    if (targetNetworkOnly || deauthBeforeCapture || eapolOnly) {
                         Spacer(Modifier.height(6.dp))
                         OutlinedButton(
                             onClick = onScanWifi,
@@ -411,15 +411,10 @@ private fun ConfigZone(
 
                     if (eapolOnly || deauthBeforeCapture || targetNetworkOnly) {
                         Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = targetBssid,
-                            onValueChange = onTargetBssidChange,
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !sniffing,
-                            label = { Text("Target BSSID") },
-                            placeholder = { Text("AA:BB:CC:DD:EE:FF") },
-                            isError = targetBssid.isNotBlank() && !validDeauthTarget,
-                            singleLine = true,
+                        Text(
+                            text = "Target: ${targetBssid.ifBlank { "none selected — scan below" }}",
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = if (validDeauthTarget) NrOnSurfaceVariant else StatusAmber,
                         )
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(

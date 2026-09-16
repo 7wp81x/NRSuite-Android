@@ -12,7 +12,7 @@ val NrOnSurface = Color(0xFFE6E9EE)
 val NrOnSurfaceVariant = Color(0xFFAAB2BD)
 val NrOutline = Color(0xFF3A4047)
 
-val StatusGreen = Color(0xFF34D399)
+val StatusGreen = NrAccent
 val StatusAmber = Color(0xFFF59E0B)
 val StatusRed = Color(0xFFEF4444)
 val StatusNeutral = Color(0xFF8B949E)

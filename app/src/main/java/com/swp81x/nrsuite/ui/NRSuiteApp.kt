@@ -152,6 +152,14 @@ private val modules = listOf(
         available = true,
     ),
     ModuleCardSpec(
+        id = "evil_twin",
+        title = "Evil Twin",
+        description = "Portal + deauth + EAPOL capture workflow (beta).",
+        icon = Icons.Default.Lock,
+        category = "Wireless",
+        available = true,
+    ),
+    ModuleCardSpec(
         id = "portal",
         title = "Captive Portal",
         description = "Start an AP and serve a custom HTML page.",
@@ -246,6 +254,8 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val portalCapturedData by viewModel.portalCapturedData.collectAsState()
     val portalHtmlName by viewModel.portalHtmlName.collectAsState()
     val portalEventLog by viewModel.portalEventLog.collectAsState()
+    val portalHandshake by viewModel.portalHandshake.collectAsState()
+    val evilTwinPasswords by viewModel.evilTwinPasswords.collectAsState()
     val storageFiles by viewModel.storageFiles.collectAsState()
     val storageTotal by viewModel.storageTotal.collectAsState()
     val storageUsed by viewModel.storageUsed.collectAsState()
@@ -254,26 +264,30 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val badUsbPayloadName by viewModel.badUsbPayloadName.collectAsState()
     val badUsbUploading by viewModel.badUsbUploading.collectAsState()
     val badUsbProgress by viewModel.badUsbProgress.collectAsState()
+    val duckyScripts by viewModel.duckyScriptMap.collectAsState()
     val bleAdvertising by viewModel.bleAdvertising.collectAsState()
     val bleConnected by viewModel.bleConnected.collectAsState()
     val blePeer by viewModel.blePeer.collectAsState()
     val blePayloadName by viewModel.blePayloadName.collectAsState()
 
     val connectedChip = (connectionState as? ConnectionState.Connected)?.chip
+    val isDeviceConnected = connectionState is ConnectionState.Connected
     val liveModules = modules.map { module ->
-        val supported = when (module.id) {
-            "ble" -> connectedChip == null || connectedChip in setOf("ESP32-C3", "ESP32-S3", "ESP32")
-            "badusb" -> connectedChip == null || connectedChip in setOf("ESP32-S2", "ESP32-S3")
+        val runsWithoutDevice = module.id == "ducky"
+        val chipSupported = when (module.id) {
+            "ble" -> connectedChip in setOf("ESP32-C3", "ESP32-S3", "ESP32")
+            "badusb" -> connectedChip in setOf("ESP32-S2", "ESP32-S3")
             else -> true
         }
+        val available = module.available && (runsWithoutDevice || (isDeviceConnected && chipSupported))
         val supportLabel = when {
-            supported -> module.statusLabel
-            module.id == "ble" -> "No BLE radio on this chip"
-            module.id == "badusb" -> "Requires ESP32-S2/S3"
-            else -> "Not supported"
+            !isDeviceConnected && !runsWithoutDevice -> null
+            isDeviceConnected && !chipSupported && module.id == "ble" -> "No BLE radio on this chip"
+            isDeviceConnected && !chipSupported && module.id == "badusb" -> "Requires ESP32-S2/S3"
+            else -> module.statusLabel
         }
         module.copy(
-            available = module.available && supported,
+            available = available,
             statusLabel = supportLabel,
             isRunning = when (module.id) {
                 "wifi" -> scanning
@@ -571,6 +585,24 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                 )
             }
 
+            activeModuleId == "evil_twin" -> {
+                EvilTwinScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    running = portalRunning,
+                    scanning = scanning,
+                    networks = networks,
+                    handshake = portalHandshake,
+                    passwords = evilTwinPasswords,
+                    selectedHtmlName = portalHtmlName,
+                    onScanWifi = viewModel::scanWifi,
+                    onChooseHtml = { htmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
+                    onStart = viewModel::startPortal,
+                    onStop = viewModel::stopPortal,
+                    onClearPasswords = viewModel::clearEvilTwinPasswords,
+                    modifier = contentModifier,
+                )
+            }
+
             activeModuleId == "portal" -> {
                 PortalScreen(
                     connected = connectionState is ConnectionState.Connected,
@@ -614,6 +646,8 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                     uploading = badUsbUploading,
                     progress = badUsbProgress,
                     selectedPayloadName = badUsbPayloadName,
+                    savedScripts = duckyScripts,
+                    onUseSavedScript = viewModel::useBadUsbSavedScript,
                     onChoosePayload = { badUsbPicker.launch(arrayOf("text/plain", "*/*")) },
                     onClearPayload = viewModel::clearBadUsbPayload,
                     onArm = viewModel::armBadUsb,
@@ -622,7 +656,12 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
             }
 
             activeModuleId == "ducky" -> {
-                DuckyEditorScreen(modifier = contentModifier)
+                DuckyEditorScreen(
+                    savedScripts = duckyScripts,
+                    onSaveScript = viewModel::saveDuckyScript,
+                    onDeleteScript = viewModel::deleteDuckyScript,
+                    modifier = contentModifier,
+                )
             }
 
             activeModuleId == "ble" -> {
@@ -632,6 +671,8 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                     bleConnected = bleConnected,
                     peer = blePeer,
                     selectedPayloadName = blePayloadName,
+                    savedScripts = duckyScripts,
+                    onUseSavedScript = viewModel::useBleSavedScript,
                     onChoosePayload = { blePicker.launch(arrayOf("text/plain", "*/*")) },
                     onClearPayload = viewModel::clearBlePayload,
                     onStartAdvertising = viewModel::startBle,
@@ -671,7 +712,6 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
             )
 
             selectedTab == AppTab.MODULES -> ModulesScreen(
-                connectionState = connectionState,
                 modules = liveModules,
                 onOpenModule = { activeModuleId = it },
                 modifier = contentModifier,
@@ -783,17 +823,10 @@ private fun HomeScreen(
                 )
             }
             items(categoryModules, key = { it.id }) { module ->
-                val dimmed = connectionState !is ConnectionState.Connected
-                Box(modifier = Modifier.alpha(if (dimmed) 0.4f else 1f)) {
-                    ModuleCard(
-                        module = if (dimmed) {
-                            module.copy(available = false, statusLabel = "Connect device")
-                        } else {
-                            module
-                        },
-                        onClick = { if (!dimmed) onOpenModule(module.id) },
-                    )
-                }
+                ModuleCard(
+                    module = module,
+                    onClick = { if (module.available) onOpenModule(module.id) },
+                )
             }
         }
     }
@@ -879,12 +912,10 @@ private fun DashboardDeviceCard(
 
 @Composable
 private fun ModulesScreen(
-    connectionState: ConnectionState,
     modules: List<ModuleCardSpec>,
     onOpenModule: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val connected = connectionState is ConnectionState.Connected
     var selectedCategory by remember { mutableStateOf<String?>(null) }
     val categories = listOf(null to "All") + modules.map { it.category }.distinct().map { it to it }
     val filtered = if (selectedCategory == null) modules else modules.filter { it.category == selectedCategory }
@@ -921,14 +952,9 @@ private fun ModulesScreen(
         }
 
         items(filtered, key = { it.id }) { module ->
-            val effective = if (connected) {
-                module
-            } else {
-                module.copy(available = false, statusLabel = "Connect device")
-            }
             ModuleCard(
-                module = effective,
-                onClick = { if (connected) onOpenModule(module.id) },
+                module = module,
+                onClick = { if (module.available) onOpenModule(module.id) },
             )
         }
     }
@@ -1245,6 +1271,7 @@ private fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val currentFirmware = (connectionState as? ConnectionState.Connected)?.firmwareVersion
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(
         modifier = modifier
@@ -1296,6 +1323,24 @@ private fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
                 )
+                val chip = (connectionState as? ConnectionState.Connected)?.chip
+                val boardName = when (chip) {
+                    "ESP32-C3" -> "ESP32-C3"
+                    "ESP32-S3" -> "ESP32-S3"
+                    "ESP32-S2" -> "ESP32-S2"
+                    "ESP32" -> "Classic ESP32 devkit"
+                    else -> "Auto-detect on connect"
+                }
+                Text(
+                    text = "Detected board: $boardName",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                )
+                Text(
+                    text = "Flash offset: 0x0",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                )
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = firmwareFileName ?: "No firmware .bin selected",
@@ -1334,6 +1379,31 @@ private fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text("Developer", fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = "NRSuite is developed by @7wp81x.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/7wp81x/NRSuite"))
+                        )
+                    }
+                }) {
+                    Text("Open GitHub")
+                }
             }
         }
 

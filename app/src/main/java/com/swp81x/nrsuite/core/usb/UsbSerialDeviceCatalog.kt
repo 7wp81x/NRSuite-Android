@@ -18,9 +18,6 @@ data class UsbSerialDevice(
                 append(' ')
             }
             append(product ?: "USB serial device")
-            append(" (")
-            append(device.deviceName)
-            append(')')
         }
 }
 

@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.ui.components.SavedScriptPicker
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -60,6 +61,8 @@ fun BadUsbScreen(
     uploading: Boolean,
     progress: Int,
     selectedPayloadName: String?,
+    savedScripts: Map<String, String>,
+    onUseSavedScript: (String) -> Unit,
     onChoosePayload: () -> Unit,
     onClearPayload: () -> Unit,
     onArm: (mscMode: Boolean) -> Unit,
@@ -81,6 +84,8 @@ fun BadUsbScreen(
                 uploading = uploading,
                 expanded = configExpanded,
                 selectedPayloadName = selectedPayloadName,
+                savedScripts = savedScripts,
+                onUseSavedScript = onUseSavedScript,
                 mscMode = mscMode,
                 onToggle = { configExpanded = !configExpanded },
                 onChoosePayload = onChoosePayload,
@@ -151,6 +156,8 @@ private fun ConfigZone(
     uploading: Boolean,
     expanded: Boolean,
     selectedPayloadName: String?,
+    savedScripts: Map<String, String>,
+    onUseSavedScript: (String) -> Unit,
     mscMode: Boolean,
     onToggle: () -> Unit,
     onChoosePayload: () -> Unit,
@@ -207,6 +214,14 @@ private fun ConfigZone(
                         text = selectedPayloadName ?: "No payload selected",
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = NrOnSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    SavedScriptPicker(
+                        names = savedScripts.keys.toList(),
+                        selectedName = selectedPayloadName?.takeIf { it in savedScripts },
+                        onSelect = onUseSavedScript,
+                        onDelete = {},
+                        enabled = !uploading,
                     )
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

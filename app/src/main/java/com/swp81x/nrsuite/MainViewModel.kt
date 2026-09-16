@@ -143,6 +143,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _portalEventLog = MutableStateFlow<List<String>>(emptyList())
     val portalEventLog: StateFlow<List<String>> = _portalEventLog.asStateFlow()
 
+    private val _portalHandshake = MutableStateFlow(EapolHandshake())
+    val portalHandshake: StateFlow<EapolHandshake> = _portalHandshake.asStateFlow()
+
+    private val _evilTwinPasswords = MutableStateFlow<List<String>>(emptyList())
+    val evilTwinPasswords: StateFlow<List<String>> = _evilTwinPasswords.asStateFlow()
+
+    private var portalPcapJob: Job? = null
+
     private var portalStatusJob: Job? = null
 
     private val _storageFiles = MutableStateFlow<List<StorageFile>>(emptyList())
@@ -165,6 +173,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _badUsbPayloadName = MutableStateFlow<String?>(null)
     val badUsbPayloadName: StateFlow<String?> = _badUsbPayloadName.asStateFlow()
+
+    private val _badUsbSavedScriptText = MutableStateFlow<String?>(null)
+
+    private val _bleSavedScriptText = MutableStateFlow<String?>(null)
+
+    private val _duckyScriptMap = MutableStateFlow<Map<String, String>>(emptyMap())
+    val duckyScriptMap: StateFlow<Map<String, String>> = _duckyScriptMap.asStateFlow()
 
     private val _badUsbUploading = MutableStateFlow(false)
     val badUsbUploading: StateFlow<Boolean> = _badUsbUploading.asStateFlow()
@@ -197,6 +212,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         loadExportDirectory()
         loadBeaconLists()
+        loadDuckyScripts()
         refreshDevices()
     }
 
@@ -358,8 +374,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun clearBadUsbPayload() {
         _badUsbPayloadUri.value = null
         _badUsbPayloadName.value = null
+        _badUsbSavedScriptText.value = null
         _badUsbProgress.value = 0
         appendLog("BadUSB payload cleared.")
+    }
+
+    fun saveDuckyScript(name: String, script: String) {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return
+        _duckyScriptMap.update { it + (cleanName to script) }
+        persistDuckyScripts()
+        appendLog("Saved DuckyScript '$cleanName'.")
+    }
+
+    fun deleteDuckyScript(name: String) {
+        _duckyScriptMap.update { it - name }
+        persistDuckyScripts()
+        appendLog("Deleted DuckyScript '$name'.")
+    }
+
+    fun useBadUsbSavedScript(name: String) {
+        val script = _duckyScriptMap.value[name] ?: return
+        _badUsbPayloadUri.value = null
+        _badUsbPayloadName.value = name
+        _badUsbSavedScriptText.value = script
+        appendLog("BadUSB script selected: $name")
+    }
+
+    fun useBleSavedScript(name: String) {
+        val script = _duckyScriptMap.value[name] ?: return
+        _blePayloadUri.value = null
+        _blePayloadName.value = name
+        _bleSavedScriptText.value = script
+        appendLog("BLE script selected: $name")
+    }
+
+    private fun loadDuckyScripts() {
+        val raw = preferences.getString(PREF_DUCKY_SCRIPTS, null) ?: return
+        runCatching {
+            val json = JSONObject(raw)
+            val map = mutableMapOf<String, String>()
+            json.keys().forEach { key -> map[key] = json.optString(key, "") }
+            _duckyScriptMap.value = map
+        }
+    }
+
+    private fun persistDuckyScripts() {
+        val json = JSONObject()
+        _duckyScriptMap.value.forEach { (name, script) -> json.put(name, script) }
+        preferences.edit().putString(PREF_DUCKY_SCRIPTS, json.toString()).apply()
     }
 
     fun armBadUsb(mscMode: Boolean) {
@@ -377,7 +440,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val payloadUri = _badUsbPayloadUri.value
-        if (payloadUri == null) {
+        val savedScript = _badUsbSavedScriptText.value
+        if (payloadUri == null && savedScript == null) {
             appendLog("Choose a DuckyScript payload first.")
             return
         }
@@ -386,13 +450,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _badUsbUploading.value = true
             _badUsbProgress.value = 0
             try {
-                val bytes = withContext(Dispatchers.IO) {
-                    runCatching {
-                        getApplication<Application>().contentResolver
-                            .openInputStream(payloadUri)
-                            ?.use { it.readBytes() }
-                    }.getOrNull()
-                }
+                val bytes = savedScript?.toByteArray(Charsets.UTF_8)
+                    ?: withContext(Dispatchers.IO) {
+                        runCatching {
+                            payloadUri?.let {
+                                getApplication<Application>().contentResolver
+                                    .openInputStream(it)
+                                    ?.use { stream -> stream.readBytes() }
+                            }
+                        }.getOrNull()
+                    }
                 if (bytes == null) {
                     appendLog("Could not read the selected BadUSB payload.")
                     return@launch
@@ -602,6 +669,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _portalRunning.value = true
             updateForegroundService()
             _portalHtmlSize.value = 0
+            _portalHandshake.value = EapolHandshake()
+
+            if (cleanBssid.isNotBlank()) {
+                portalPcapJob?.cancel()
+                val captureHandshake = EapolHandshake()
+                portalPcapJob = viewModelScope.launch(Dispatchers.IO) {
+                    activeSession.pcap.collect { frame ->
+                        EapolParser.parse(frame, captureHandshake)
+                        _portalHandshake.value = captureHandshake.copy()
+                    }
+                }
+            }
             _portalHtmlComplete.value = false
 
             val htmlUri = _portalHtmlUri.value
@@ -670,6 +749,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
+    fun clearEvilTwinPasswords() {
+        _evilTwinPasswords.value = emptyList()
+    }
+
     fun clearPortalEventLog() {
         _portalEventLog.value = emptyList()
     }
@@ -684,6 +767,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (!_portalRunning.value) return
         portalStatusJob?.cancel()
         portalStatusJob = null
+        portalPcapJob?.cancel()
+        portalPcapJob = null
         _portalRunning.value = false
         updateForegroundService()
 
@@ -722,6 +807,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun clearBlePayload() {
         _blePayloadUri.value = null
         _blePayloadName.value = null
+        _bleSavedScriptText.value = null
         appendLog("BLE payload cleared.")
     }
 
@@ -774,22 +860,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun runBlePayload() {
         val activeSession = session
         val payloadUri = _blePayloadUri.value
+        val savedScript = _bleSavedScriptText.value
         if (activeSession == null) {
             appendLog("Connect to a device before running a BLE payload.")
             return
         }
-        if (payloadUri == null) {
+        if (payloadUri == null && savedScript == null) {
             appendLog("Choose a DuckyScript payload first.")
             return
         }
         viewModelScope.launch {
-            val script = withContext(Dispatchers.IO) {
-                runCatching {
-                    getApplication<Application>().contentResolver
-                        .openInputStream(payloadUri)
-                        ?.use { it.readBytes().toString(Charsets.UTF_8) }
-                }.getOrNull()
-            }
+            val script = savedScript
+                ?: withContext(Dispatchers.IO) {
+                    runCatching {
+                        payloadUri?.let {
+                            getApplication<Application>().contentResolver
+                                .openInputStream(it)
+                                ?.use { stream -> stream.readBytes().toString(Charsets.UTF_8) }
+                        }
+                    }.getOrNull()
+                }
             if (script.isNullOrBlank()) {
                 appendLog("Could not read the selected BLE payload.")
                 return@launch
@@ -1268,6 +1358,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             } ?: ""
                             appendLog("Captive data received from $ip.")
                             portalLog("POST /login from $ip | UA: $userAgent | data: $fields")
+                            val submittedPassword = data?.optString("password").orEmpty().ifBlank {
+                                data?.optString("pass").orEmpty()
+                            }
+                            if (submittedPassword.isNotBlank()) {
+                                _evilTwinPasswords.update { (it + submittedPassword).takeLast(50) }
+                            }
                         }
                         "client_associated" -> {
                             _portalClients.update { it + 1 }
@@ -1367,6 +1463,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val PREFERENCES_NAME = "nrsuite"
         private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
         private const val PREF_BEACON_LISTS = "beacon_lists"
+        private const val PREF_DUCKY_SCRIPTS = "ducky_scripts"
         private val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
         private const val HTML_RAW_CHUNK_SIZE = 640
         private const val BADUSB_RAW_CHUNK_SIZE = 693

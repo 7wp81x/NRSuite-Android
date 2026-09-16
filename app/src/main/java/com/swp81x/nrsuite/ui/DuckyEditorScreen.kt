@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import com.swp81x.nrsuite.ui.components.SavedScriptPicker
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -38,9 +41,17 @@ ENTER
 """
 
 @Composable
-fun DuckyEditorScreen(modifier: Modifier = Modifier) {
+fun DuckyEditorScreen(
+    savedScripts: Map<String, String>,
+    onSaveScript: (String, String) -> Unit,
+    onDeleteScript: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     var script by remember { mutableStateOf(SAMPLE_DUCKY) }
+    var selectedName by remember { mutableStateOf<String?>(null) }
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var saveName by remember { mutableStateOf("") }
 
     val importPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -89,6 +100,27 @@ fun DuckyEditorScreen(modifier: Modifier = Modifier) {
                     color = NrOnSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    SavedScriptPicker(
+                        names = savedScripts.keys.toList(),
+                        selectedName = selectedName,
+                        onSelect = { name ->
+                            selectedName = name
+                            script = savedScripts[name].orEmpty()
+                        },
+                        onDelete = { name ->
+                            onDeleteScript(name)
+                            if (selectedName == name) selectedName = null
+                        },
+                    )
+                    OutlinedButton(onClick = { showSaveDialog = true }) {
+                        Text("Save")
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { importPicker.launch(arrayOf("text/plain", "*/*")) }) {
                         Text("Import .txt")
@@ -114,6 +146,38 @@ fun DuckyEditorScreen(modifier: Modifier = Modifier) {
                 .weight(1f),
             label = { Text("DuckyScript") },
             textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        )
+    }
+
+    if (showSaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveDialog = false },
+            title = { Text("Save DuckyScript") },
+            text = {
+                OutlinedTextField(
+                    value = saveName,
+                    onValueChange = { saveName = it },
+                    label = { Text("Script name") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onSaveScript(saveName, script)
+                        selectedName = saveName.trim()
+                        saveName = ""
+                        showSaveDialog = false
+                    },
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveDialog = false }) {
+                    Text("Cancel")
+                }
+            },
         )
     }
 }

@@ -246,15 +246,10 @@ private fun ConfigZone(
             if (expanded) {
                 Column {
                     Spacer(Modifier.height(10.dp))
-                    OutlinedTextField(
-                        value = bssid,
-                        onValueChange = onBssidChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !running,
-                        label = { Text("Target BSSID") },
-                        placeholder = { Text("AA:BB:CC:DD:EE:FF") },
-                        isError = bssid.isNotBlank() && !validBssid,
-                        singleLine = true,
+                    Text(
+                        text = "Target: ${bssid.ifBlank { "none selected — scan below" }}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = if (validBssid) NrOnSurfaceVariant else StatusAmber,
                     )
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(

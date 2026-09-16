@@ -90,10 +90,10 @@ fun ModuleCard(
                         fontWeight = FontWeight.SemiBold,
                         style = MaterialTheme.typography.titleMedium,
                     )
-                    if (!module.available) {
+                    if (!module.available && module.statusLabel != null) {
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = module.statusLabel ?: "Coming soon",
+                            text = module.statusLabel,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier
