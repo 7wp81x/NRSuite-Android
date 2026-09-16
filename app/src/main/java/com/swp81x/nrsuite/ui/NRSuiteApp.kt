@@ -235,6 +235,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val sniffHandshake by viewModel.sniffHandshake.collectAsState()
     val capturePath by viewModel.capturePath.collectAsState()
     val exportDirectoryName by viewModel.exportDirectoryName.collectAsState()
+    val requiresRootDirectory by viewModel.requiresRootDirectory.collectAsState()
     val beaconRunning by viewModel.beaconRunning.collectAsState()
     val beaconSent by viewModel.beaconSent.collectAsState()
     val beaconSsidCount by viewModel.beaconSsidCount.collectAsState()
@@ -271,20 +272,41 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val blePeer by viewModel.blePeer.collectAsState()
     val blePayloadName by viewModel.blePayloadName.collectAsState()
 
-    val connectedChip = (connectionState as? ConnectionState.Connected)?.chip
-    val isDeviceConnected = connectionState is ConnectionState.Connected
+    val connected = connectionState as? ConnectionState.Connected
+    val connectedChip = connected?.chip
+    val isDeviceConnected = connected != null
+    val deviceFeatures = connected?.features.orEmpty()
     val liveModules = modules.map { module ->
         val runsWithoutDevice = module.id == "ducky"
+        val featureKey = when (module.id) {
+            "wifi" -> "wifi"
+            "sniff" -> "sniff"
+            "beacon" -> "beacon"
+            "deauth" -> "deauth"
+            "portal" -> "portal"
+            "evil_twin" -> "portal"
+            "storage" -> "storage"
+            "ble" -> "ble_hid"
+            "badusb" -> "badusb"
+            else -> null
+        }
         val chipSupported = when (module.id) {
             "ble" -> connectedChip in setOf("ESP32-C3", "ESP32-S3", "ESP32")
             "badusb" -> connectedChip in setOf("ESP32-S2", "ESP32-S3")
             else -> true
         }
-        val available = module.available && (runsWithoutDevice || (isDeviceConnected && chipSupported))
+        val featureSupported = if (deviceFeatures.isEmpty() || featureKey == null) {
+            chipSupported
+        } else {
+            featureKey in deviceFeatures
+        }
+        val supported = featureSupported
+        val available = module.available && (runsWithoutDevice || (isDeviceConnected && supported))
         val supportLabel = when {
             !isDeviceConnected && !runsWithoutDevice -> null
-            isDeviceConnected && !chipSupported && module.id == "ble" -> "No BLE radio on this chip"
-            isDeviceConnected && !chipSupported && module.id == "badusb" -> "Requires ESP32-S2/S3"
+            isDeviceConnected && !supported && module.id == "ble" -> "No BLE radio on this chip"
+            isDeviceConnected && !supported && module.id == "badusb" -> "Requires S2/S3 or matching firmware"
+            isDeviceConnected && !supported && module.id == "evil_twin" -> "Firmware portal support required"
             else -> module.statusLabel
         }
         module.copy(
@@ -396,6 +418,13 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     ) { uri: Uri? ->
         if (uri != null) {
             viewModel.setExportDirectory(uri)
+        }
+    }
+
+    LaunchedEffect(requiresRootDirectory) {
+        if (requiresRootDirectory) {
+            folderPicker.launch(null)
+            viewModel.onRootDirectoryPromptShown()
         }
     }
 
@@ -1291,7 +1320,7 @@ private fun SettingsScreen(
         border = BorderStroke(0.5.dp, NrOutline),
         ) {
             Column(Modifier.padding(14.dp)) {
-                Text("Capture export folder", fontWeight = FontWeight.SemiBold)
+                Text("NRSuite root directory", fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = exportDirectoryName,
@@ -1300,11 +1329,11 @@ private fun SettingsScreen(
                 )
                 Spacer(Modifier.height(10.dp))
                 Button(onClick = onChooseExportDirectory) {
-                    Text("Choose folder")
+                    Text("Choose root folder")
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "Captures are written here when selected. Otherwise they stay in app-private storage.",
+                    text = "Captures are stored under Pcap/ inside this directory. Choose it once; the app creates the structure.",
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )

@@ -8,6 +8,7 @@ import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.core.content.ContextCompat
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
@@ -51,8 +52,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _exportDirectory = MutableStateFlow<Uri?>(null)
     val exportDirectory: StateFlow<Uri?> = _exportDirectory.asStateFlow()
 
-    private val _exportDirectoryName = MutableStateFlow("App-private storage")
+    private val _exportDirectoryName = MutableStateFlow("Not configured")
     val exportDirectoryName: StateFlow<String> = _exportDirectoryName.asStateFlow()
+
+    private val _requiresRootDirectory = MutableStateFlow(false)
+    val requiresRootDirectory: StateFlow<Boolean> = _requiresRootDirectory.asStateFlow()
 
     private val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()
@@ -267,6 +271,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             json.put(name, array)
         }
         preferences.edit().putString(PREF_BEACON_LISTS, json.toString()).apply()
+    }
+
+    fun onRootDirectoryPromptShown() {
+        _requiresRootDirectory.value = false
     }
 
     fun setExportDirectory(uri: Uri) {
@@ -1142,19 +1150,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val captureName = "capture_${System.currentTimeMillis()}.pcap"
         val exportUri = _exportDirectory.value
+        if (exportUri == null) {
+            _requiresRootDirectory.value = true
+            appendLog("Choose an NRSuite root directory before starting a capture.")
+            return
+        }
         val writerResult = runCatching {
-            if (exportUri != null) {
-                val documentUri = createPcapDocument(exportUri, captureName)
-                val outputStream = getApplication<Application>().contentResolver
-                    .openOutputStream(documentUri, "wt")
-                    ?: throw IOException("Could not open export file")
-                val displayName = displayNameForTreeUri(exportUri)
-                PcapWriter(outputStream, closeOutput = true) to "$displayName/$captureName"
-            } else {
-                val capturesDir = File(getApplication<Application>().filesDir, "captures").apply { mkdirs() }
-                val captureFile = File(capturesDir, captureName)
-                PcapWriter(captureFile) to captureFile.absolutePath
-            }
+            val pcapDir = ensureChildDirectory(exportUri, "Pcap")
+            val pcapDirUri = pcapDir?.uri ?: exportUri
+            val documentUri = createPcapDocumentInDirectory(pcapDirUri, captureName)
+            val outputStream = getApplication<Application>().contentResolver
+                .openOutputStream(documentUri, "wt")
+                ?: throw IOException("Could not open export file")
+            val displayName = displayNameForTreeUri(exportUri)
+            PcapWriter(outputStream, closeOutput = true) to "$displayName/Pcap/$captureName"
         }
         val (writer, captureDisplayPath) = writerResult.getOrElse { error ->
             appendLog("Could not create capture output: ${error.message}")
@@ -1423,6 +1432,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         session = null
         _connectionState.value = ConnectionState.Disconnected
+    }
+
+    private fun ensureChildDirectory(rootUri: Uri, name: String): DocumentFile? {
+        val root = DocumentFile.fromTreeUri(getApplication(), rootUri) ?: return null
+        return root.findFile(name) ?: root.createDirectory(name)
+    }
+
+    private fun createPcapDocumentInDirectory(directoryUri: Uri, displayName: String): Uri {
+        return DocumentsContract.createDocument(
+            getApplication<Application>().contentResolver,
+            directoryUri,
+            "application/vnd.tcpdump.pcap",
+            displayName,
+        ) ?: throw IOException("Storage provider did not create a document")
     }
 
     private fun createPcapDocument(treeUri: Uri, displayName: String): Uri {
