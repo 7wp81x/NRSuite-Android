@@ -84,6 +84,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var beaconStatusJob: Job? = null
 
+    private val _deauthRunning = MutableStateFlow(false)
+    val deauthRunning: StateFlow<Boolean> = _deauthRunning.asStateFlow()
+
+    private val _deauthSent = MutableStateFlow(0)
+    val deauthSent: StateFlow<Int> = _deauthSent.asStateFlow()
+
+    private val _deauthTarget = MutableStateFlow("")
+    val deauthTarget: StateFlow<String> = _deauthTarget.asStateFlow()
+
+    private val _deauthChannel = MutableStateFlow(0)
+    val deauthChannel: StateFlow<Int> = _deauthChannel.asStateFlow()
+
     private var session: NrSession? = null
     private var sessionObservers: List<Job> = emptyList()
     private var pcapWriter: PcapWriter? = null
@@ -177,6 +189,76 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 count == null -> appendLog("WiFi scan timed out.")
                 count < 0 -> appendLog("WiFi scan failed.")
                 else -> appendLog("WiFi scan complete: $count network(s).")
+            }
+        }
+    }
+
+    fun startDeauth(
+        bssid: String,
+        channel: Int,
+        client: String,
+        count: Int,
+        duration: Int,
+        intervalMs: Int,
+    ) {
+        val activeSession = session
+        if (activeSession == null) {
+            appendLog("Connect to a device before sending deauth frames.")
+            return
+        }
+        if (_deauthRunning.value) return
+
+        val cleanBssid = bssid.trim().uppercase()
+        val cleanClient = client.trim().ifBlank { "FF:FF:FF:FF:FF:FF" }.uppercase()
+        if (!MAC_PATTERN.matches(cleanBssid)) {
+            appendLog("Invalid target BSSID: $cleanBssid")
+            return
+        }
+        if (!MAC_PATTERN.matches(cleanClient)) {
+            appendLog("Invalid client MAC: $cleanClient")
+            return
+        }
+
+        // The firmware's DEAUTH handler calls radioIdle(), so stop local
+        // companion tasks before issuing the burst.
+        beaconStatusJob?.cancel()
+        beaconStatusJob = null
+        _beaconRunning.value = false
+        if (_sniffing.value) {
+            _sniffing.value = false
+            pcapJob?.cancel()
+            pcapJob = null
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching { pcapWriter?.close() }
+                pcapWriter = null
+            }
+        }
+
+        _deauthSent.value = 0
+        _deauthTarget.value = cleanBssid
+        _deauthChannel.value = channel.coerceIn(1, 13)
+        _deauthRunning.value = true
+
+        viewModelScope.launch {
+            appendLog(
+                "Starting deauth burst: $cleanBssid on channel $channel " +
+                    "(client=$cleanClient, count=${if (count <= 0) "firmware default" else count})."
+            )
+            val args = JSONObject().apply {
+                put("bssid", cleanBssid)
+                put("client", cleanClient)
+                put("channel", channel.coerceIn(1, 13))
+                put("count", count.coerceAtLeast(0))
+                put("duration", duration.coerceAtLeast(0))
+                put("deauth_interval_ms", intervalMs.coerceIn(10, 10_000))
+                put("reason", 7)
+            }
+            val response = activeSession.sendCommand("DEAUTH", args, timeoutMs = 60_000)
+            _deauthRunning.value = false
+            if (response?.optBoolean("ok") == true) {
+                appendLog("Deauth burst completed.")
+            } else {
+                appendLog("Deauth request failed: ${response?.optString("msg") ?: "timeout"}")
             }
         }
     }
@@ -401,6 +483,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     event.optString("security")
                             )
                         }
+                        "deauth_stats" -> {
+                            _deauthSent.value = event.optInt("sent_frames", _deauthSent.value)
+                            appendLog("Deauth stats: ${_deauthSent.value} frame(s) sent.")
+                        }
                         "heartbeat" -> Unit
                     }
                 }
@@ -451,5 +537,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val PREFERENCES_NAME = "nrsuite"
         private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
+        private val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
     }
 }

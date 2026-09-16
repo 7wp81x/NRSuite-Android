@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -119,6 +120,14 @@ private val modules = listOf(
         available = true,
     ),
     ModuleCardSpec(
+        id = "deauth",
+        title = "Deauthentication",
+        description = "Send a targeted deauth burst to a BSSID.",
+        icon = Icons.Default.Warning,
+        category = "Wireless",
+        available = true,
+    ),
+    ModuleCardSpec(
         id = "portal",
         title = "Captive Portal",
         description = "Start an AP and serve a custom HTML page.",
@@ -177,6 +186,10 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
     val beaconSent by viewModel.beaconSent.collectAsState()
     val beaconSsidCount by viewModel.beaconSsidCount.collectAsState()
     val beaconChannel by viewModel.beaconChannel.collectAsState()
+    val deauthRunning by viewModel.deauthRunning.collectAsState()
+    val deauthSent by viewModel.deauthSent.collectAsState()
+    val deauthTarget by viewModel.deauthTarget.collectAsState()
+    val deauthChannel by viewModel.deauthChannel.collectAsState()
 
     var selectedTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var activeModuleId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -324,6 +337,18 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
                     activeChannel = beaconChannel,
                     onStart = viewModel::startBeacon,
                     onStop = viewModel::stopBeacon,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "deauth" -> {
+                DeauthScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    running = deauthRunning,
+                    sentFrames = deauthSent,
+                    targetBssid = deauthTarget,
+                    activeChannel = deauthChannel,
+                    onStart = viewModel::startDeauth,
                     modifier = contentModifier,
                 )
             }
