@@ -57,7 +57,9 @@ fun EvilTwinScreen(
     networks: List<JSONObject>,
     handshake: EapolHandshake,
     results: List<EvilTwinResult>,
+    eventLog: List<String>,
     selectedHtmlName: String?,
+    onClearEventLog: () -> Unit,
     onScanWifi: () -> Unit,
     onChooseHtml: () -> Unit,
     onStart: (ssid: String, channel: Int, targetBssid: String) -> Unit,
@@ -173,19 +175,11 @@ fun EvilTwinScreen(
                     singleLine = true,
                 )
                 Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Channel: $channel",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f),
-                    )
-                    IconButton(onClick = { channel = (channel - 1).coerceIn(1, 13) }, enabled = !running) {
-                        Text("-", style = MaterialTheme.typography.titleLarge)
-                    }
-                    IconButton(onClick = { channel = (channel + 1).coerceIn(1, 13) }, enabled = !running) {
-                        Text("+", style = MaterialTheme.typography.titleLarge)
-                    }
-                }
+                Text(
+                    text = "Channel follows selected target: $channel",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                )
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = selectedHtmlName ?: "No custom HTML selected (placeholder page)",
@@ -270,6 +264,49 @@ fun EvilTwinScreen(
                     color = StatusAmber,
                 )
             }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Evil Twin logs (${eventLog.size})",
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(
+                        onClick = {
+                            clipboard.setText(AnnotatedString(eventLog.joinToString("\n")))
+                        },
+                        enabled = eventLog.isNotEmpty(),
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy logs")
+                    }
+                    IconButton(onClick = onClearEventLog, enabled = eventLog.isNotEmpty()) {
+                        Icon(Icons.Default.Delete, contentDescription = "Clear logs")
+                    }
+                }
+                if (eventLog.isEmpty()) {
+                    Text(
+                        text = "Portal page views, client associations, and POST data will appear here.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                } else {
+                    eventLog.reversed().forEach { line ->
+                        Text(
+                            text = line,
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = NrOnSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 2.dp),
+                        )
+                    }
+                }
+            }
+        }
         }
     }
 }

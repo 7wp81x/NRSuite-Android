@@ -334,6 +334,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     var selectedTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var activeModuleId by rememberSaveable { mutableStateOf<String?>(null) }
     var firmwareFileName by rememberSaveable { mutableStateOf<String?>(null) }
+    var rootPromptShown by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(enabled = activeModuleId != null) {
         activeModuleId = null
@@ -432,6 +433,13 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
         if (requiresRootDirectory) {
             folderPicker.launch(null)
             viewModel.onRootDirectoryPromptShown()
+        }
+    }
+
+    LaunchedEffect(exportDirectoryName) {
+        if (!rootPromptShown && exportDirectoryName == "Not configured") {
+            rootPromptShown = true
+            folderPicker.launch(null)
         }
     }
 
@@ -630,12 +638,14 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                     networks = networks,
                     handshake = portalHandshake,
                     results = evilTwinResults,
+                    eventLog = portalEventLog,
                     selectedHtmlName = portalHtmlName,
                     onScanWifi = viewModel::scanWifi,
                     onChooseHtml = { htmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
                     onStart = viewModel::startPortal,
                     onStop = viewModel::stopPortal,
                     onClearPasswords = viewModel::clearEvilTwinPasswords,
+                    onClearEventLog = viewModel::clearPortalEventLog,
                     modifier = contentModifier,
                 )
             }

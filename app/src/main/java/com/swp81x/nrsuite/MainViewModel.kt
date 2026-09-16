@@ -373,14 +373,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun autoConnectLastDevice() {
-        val savedName = preferences.getString(PREF_LAST_DEVICE_NAME, null) ?: return
-        val entry = _devices.value.firstOrNull { it.device.deviceName == savedName } ?: return
+        val savedFingerprint = preferences.getString(PREF_LAST_DEVICE_FINGERPRINT, null) ?: return
+        val entry = _devices.value.firstOrNull {
+            deviceFingerprint(it.device) == savedFingerprint
+        } ?: return
         if (usbManager.hasPermission(entry.device)) {
             appendLog("Auto-reconnecting to ${entry.displayName}...")
             connect(entry.device)
         } else {
             appendLog("Last device attached; tap Connect to grant USB permission.")
         }
+    }
+
+    private fun deviceFingerprint(device: UsbDevice): String {
+        val serial = runCatching { device.serialNumber }.getOrNull().orEmpty()
+        return listOf(
+            serial,
+            device.vendorId.toString(),
+            device.productId.toString(),
+            device.manufacturerName.orEmpty(),
+            device.productName.orEmpty(),
+        ).joinToString("|")
     }
 
     fun onUsbDeviceDetached(device: UsbDevice) {
@@ -396,15 +409,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun hasPermission(device: UsbDevice): Boolean = usbManager.hasPermission(device)
 
     fun onPermissionResult(device: UsbDevice, granted: Boolean) {
-        appendLog(
-            if (granted) {
-                "USB permission granted for ${device.deviceName}."
-            } else {
-                "USB permission denied for ${device.deviceName}."
+        appendLog("USB permission response for ${device.deviceName}: $granted")
+        viewModelScope.launch {
+            repeat(6) { attempt ->
+                if (usbManager.hasPermission(device)) {
+                    appendLog("USB permission confirmed; connecting...")
+                    connect(device)
+                    return@launch
+                }
+                if (attempt == 5) {
+                    appendLog("USB permission not granted for ${device.deviceName}.")
+                } else {
+                    delay(250)
+                }
             }
-        )
-        if (granted) {
-            connect(device)
         }
     }
 
@@ -429,7 +447,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
         session = newSession
         _activeDeviceName.value = entry.displayName
-        preferences.edit().putString(PREF_LAST_DEVICE_NAME, entry.device.deviceName).apply()
+        preferences.edit()
+            .putString(PREF_LAST_DEVICE_FINGERPRINT, deviceFingerprint(entry.device))
+            .apply()
         observe(newSession)
         viewModelScope.launch {
             appendLog("Opening ${entry.displayName}...")
@@ -812,17 +832,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun uploadPortalHtml(session: NrSession, bytes: ByteArray): Boolean {
+        val maxHtmlSize = 24 * 1024
+        if (bytes.size > maxHtmlSize) {
+            appendLog("HTML upload rejected: ${bytes.size} bytes exceeds firmware limit of $maxHtmlSize bytes.")
+            return false
+        }
+
+        appendLog("Uploading HTML: ${bytes.size} bytes in ${(bytes.size + HTML_RAW_CHUNK_SIZE - 1) / HTML_RAW_CHUNK_SIZE} chunk(s).")
         val reset = session.sendCommand(
             "RESET_HTML",
             JSONObject().put("size", bytes.size),
             timeoutMs = 10_000,
         )
         if (reset?.optBoolean("ok") != true) {
-            appendLog("Device rejected the HTML upload size.")
+            appendLog("Device rejected RESET_HTML (size=${bytes.size}).")
             return false
         }
 
+        delay(250)
         var offset = 0
+        var chunkIndex = 0
         while (offset < bytes.size) {
             val end = minOf(offset + HTML_RAW_CHUNK_SIZE, bytes.size)
             val chunk = bytes.copyOfRange(offset, end)
@@ -843,14 +872,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     success = true
                     break
                 }
-                appendLog("HTML chunk attempt $attempt failed; retrying...")
-                delay(300)
+                appendLog("HTML chunk $chunkIndex attempt $attempt failed: ${response ?: "timeout"}")
+                delay(400)
             }
-            if (!success) return false
+            if (!success) {
+                appendLog("HTML upload aborted at chunk $chunkIndex (offset $offset).")
+                return false
+            }
 
             offset = end
+            chunkIndex++
             _portalHtmlSize.value = offset
+            if (isLast) appendLog("HTML final chunk sent (${bytes.size} bytes).")
+            delay(80)
         }
+
+        delay(350)
+        val status = session.sendCommand("PORTAL_STATUS", timeoutMs = 5_000)
+        val complete = status?.optBoolean("html_complete") == true
+        val deviceSize = status?.optInt("html_size", 0) ?: 0
+        if (!complete) {
+            appendLog("HTML upload did not complete on device (device reports size=$deviceSize).")
+            return false
+        }
+        appendLog("HTML upload complete; device reports $deviceSize bytes.")
+        _portalHtmlComplete.value = true
         return true
     }
 
@@ -1609,9 +1655,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val PREF_BEACON_LISTS = "beacon_lists"
         private const val PREF_DUCKY_SCRIPTS = "ducky_scripts"
         private const val PREF_HISTORY = "session_history"
-        private const val PREF_LAST_DEVICE_NAME = "last_device_name"
+        private const val PREF_LAST_DEVICE_FINGERPRINT = "last_device_fingerprint"
         private val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
-        private const val HTML_RAW_CHUNK_SIZE = 640
+        private const val HTML_RAW_CHUNK_SIZE = 512
         private const val BADUSB_RAW_CHUNK_SIZE = 693
     }
 }
