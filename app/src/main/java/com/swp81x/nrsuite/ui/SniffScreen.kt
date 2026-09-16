@@ -26,7 +26,9 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.core.sniff.SniffRequest
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -45,6 +48,8 @@ import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
+
+private val SNIFF_MAC_REGEX = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 
 @Composable
 fun SniffScreen(
@@ -54,7 +59,7 @@ fun SniffScreen(
     capturePath: String?,
     exportDirectoryName: String,
     onChooseExportDirectory: () -> Unit,
-    onStart: (fixedMode: Boolean, channel: Int, intervalMs: Int) -> Unit,
+    onStart: (SniffRequest) -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -62,6 +67,14 @@ fun SniffScreen(
     var fixedMode by remember { mutableStateOf(true) }
     var channel by remember { mutableStateOf(6) }
     var intervalMs by remember { mutableStateOf(300) }
+    var deauthBeforeCapture by remember { mutableStateOf(false) }
+    var targetBssid by remember { mutableStateOf("") }
+    var client by remember { mutableStateOf("FF:FF:FF:FF:FF:FF") }
+    var deauthCount by remember { mutableStateOf(0) }
+    var deauthIntervalMs by remember { mutableStateOf(80) }
+
+    val validDeauthTarget = !deauthBeforeCapture || SNIFF_MAC_REGEX.matches(targetBssid.trim())
+    val validDeauthClient = SNIFF_MAC_REGEX.matches(client.trim())
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -78,10 +91,22 @@ fun SniffScreen(
                 intervalMs = intervalMs,
                 exportDirectoryName = exportDirectoryName,
                 onChooseExportDirectory = onChooseExportDirectory,
+                deauthBeforeCapture = deauthBeforeCapture,
+                targetBssid = targetBssid,
+                client = client,
+                deauthCount = deauthCount,
+                deauthIntervalMs = deauthIntervalMs,
+                validDeauthTarget = validDeauthTarget,
+                validDeauthClient = validDeauthClient,
                 onToggle = { configExpanded = !configExpanded },
                 onModeChange = { fixedMode = it },
                 onChannelChange = { channel = it.coerceIn(1, 13) },
                 onIntervalChange = { intervalMs = it.coerceIn(50, 1000) },
+                onDeauthBeforeCaptureChange = { deauthBeforeCapture = it },
+                onTargetBssidChange = { targetBssid = it },
+                onClientChange = { client = it },
+                onDeauthCountChange = { deauthCount = it.coerceAtLeast(0) },
+                onDeauthIntervalChange = { deauthIntervalMs = it.coerceIn(10, 10_000) },
             )
 
             Spacer(Modifier.height(10.dp))
@@ -97,7 +122,24 @@ fun SniffScreen(
 
         if (connected) {
             FloatingActionButton(
-                onClick = { if (sniffing) onStop() else onStart(fixedMode, channel, intervalMs) },
+                onClick = {
+                    if (sniffing) {
+                        onStop()
+                    } else if (validDeauthTarget && validDeauthClient) {
+                        onStart(
+                            SniffRequest(
+                                fixedMode = fixedMode,
+                                channel = channel,
+                                intervalMs = intervalMs,
+                                deauthBeforeCapture = deauthBeforeCapture,
+                                targetBssid = targetBssid.trim(),
+                                client = client.trim(),
+                                deauthCount = deauthCount,
+                                deauthIntervalMs = deauthIntervalMs,
+                            )
+                        )
+                    }
+                },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
@@ -123,10 +165,22 @@ private fun ConfigZone(
     intervalMs: Int,
     exportDirectoryName: String,
     onChooseExportDirectory: () -> Unit,
+    deauthBeforeCapture: Boolean,
+    targetBssid: String,
+    client: String,
+    deauthCount: Int,
+    deauthIntervalMs: Int,
+    validDeauthTarget: Boolean,
+    validDeauthClient: Boolean,
     onToggle: () -> Unit,
     onModeChange: (Boolean) -> Unit,
     onChannelChange: (Int) -> Unit,
     onIntervalChange: (Int) -> Unit,
+    onDeauthBeforeCaptureChange: (Boolean) -> Unit,
+    onTargetBssidChange: (String) -> Unit,
+    onClientChange: (String) -> Unit,
+    onDeauthCountChange: (Int) -> Unit,
+    onDeauthIntervalChange: (Int) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -239,6 +293,88 @@ private fun ConfigZone(
                             ) {
                                 Text("+", style = MaterialTheme.typography.titleLarge)
                             }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Send deauth before capture",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(
+                            checked = deauthBeforeCapture,
+                            onCheckedChange = onDeauthBeforeCaptureChange,
+                            enabled = !sniffing,
+                        )
+                    }
+
+                    if (deauthBeforeCapture) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = targetBssid,
+                            onValueChange = onTargetBssidChange,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !sniffing,
+                            label = { Text("Target BSSID") },
+                            placeholder = { Text("AA:BB:CC:DD:EE:FF") },
+                            isError = targetBssid.isNotBlank() && !validDeauthTarget,
+                            singleLine = true,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = client,
+                            onValueChange = onClientChange,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !sniffing,
+                            label = { Text("Client MAC") },
+                            isError = !validDeauthClient,
+                            singleLine = true,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Count",
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = { onDeauthCountChange(deauthCount - 5) },
+                                enabled = !sniffing && deauthCount > 0,
+                            ) { Text("-", style = MaterialTheme.typography.titleLarge) }
+                            Text(
+                                text = if (deauthCount <= 0) "default" else deauthCount.toString(),
+                                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                            )
+                            IconButton(
+                                onClick = { onDeauthCountChange(deauthCount + 5) },
+                                enabled = !sniffing,
+                            ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Interval",
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = { onDeauthIntervalChange(deauthIntervalMs - 10) },
+                                enabled = !sniffing && deauthIntervalMs > 10,
+                            ) { Text("-", style = MaterialTheme.typography.titleLarge) }
+                            Text(
+                                text = "$deauthIntervalMs ms",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                            )
+                            IconButton(
+                                onClick = { onDeauthIntervalChange(deauthIntervalMs + 10) },
+                                enabled = !sniffing && deauthIntervalMs < 10_000,
+                            ) { Text("+", style = MaterialTheme.typography.titleLarge) }
                         }
                     }
 

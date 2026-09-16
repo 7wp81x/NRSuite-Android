@@ -158,8 +158,7 @@ private val modules = listOf(
         description = "Native USB HID payloads.",
         icon = Icons.Default.Keyboard,
         category = "HID",
-        available = false,
-        statusLabel = "Planned",
+        available = true,
     ),
 )
 
@@ -202,6 +201,9 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
     val storageUsed by viewModel.storageUsed.collectAsState()
     val storageFree by viewModel.storageFree.collectAsState()
     val storageLoading by viewModel.storageLoading.collectAsState()
+    val badUsbPayloadName by viewModel.badUsbPayloadName.collectAsState()
+    val badUsbUploading by viewModel.badUsbUploading.collectAsState()
+    val badUsbProgress by viewModel.badUsbProgress.collectAsState()
 
     var selectedTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var activeModuleId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -256,6 +258,20 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
                 )
             }
             viewModel.setPortalHtmlFile(uri, null)
+        }
+    }
+
+    val badUsbPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            viewModel.setBadUsbPayload(uri, null)
         }
     }
 
@@ -410,6 +426,19 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
                     onRefresh = viewModel::refreshStorage,
                     onDelete = viewModel::deleteStorageFile,
                     onStartMassStorage = viewModel::startMassStorage,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "badusb" -> {
+                BadUsbScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    uploading = badUsbUploading,
+                    progress = badUsbProgress,
+                    selectedPayloadName = badUsbPayloadName,
+                    onChoosePayload = { badUsbPicker.launch(arrayOf("text/plain", "*/*")) },
+                    onClearPayload = viewModel::clearBadUsbPayload,
+                    onArm = viewModel::armBadUsb,
                     modifier = contentModifier,
                 )
             }

@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import com.swp81x.nrsuite.core.pcap.PcapWriter
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
+import com.swp81x.nrsuite.core.sniff.SniffRequest
 import com.swp81x.nrsuite.core.storage.StorageFile
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
@@ -144,6 +145,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _storageLoading = MutableStateFlow(false)
     val storageLoading: StateFlow<Boolean> = _storageLoading.asStateFlow()
 
+    private val _badUsbPayloadUri = MutableStateFlow<Uri?>(null)
+    val badUsbPayloadUri: StateFlow<Uri?> = _badUsbPayloadUri.asStateFlow()
+
+    private val _badUsbPayloadName = MutableStateFlow<String?>(null)
+    val badUsbPayloadName: StateFlow<String?> = _badUsbPayloadName.asStateFlow()
+
+    private val _badUsbUploading = MutableStateFlow(false)
+    val badUsbUploading: StateFlow<Boolean> = _badUsbUploading.asStateFlow()
+
+    private val _badUsbProgress = MutableStateFlow(0)
+    val badUsbProgress: StateFlow<Int> = _badUsbProgress.asStateFlow()
+
     private var session: NrSession? = null
     private var sessionObservers: List<Job> = emptyList()
     private var pcapWriter: PcapWriter? = null
@@ -237,6 +250,114 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 count == null -> appendLog("WiFi scan timed out.")
                 count < 0 -> appendLog("WiFi scan failed.")
                 else -> appendLog("WiFi scan complete: $count network(s).")
+            }
+        }
+    }
+
+    fun setBadUsbPayload(uri: Uri, name: String?) {
+        _badUsbPayloadUri.value = uri
+        _badUsbPayloadName.value = name ?: uri.lastPathSegment ?: "payload.txt"
+        _badUsbProgress.value = 0
+        appendLog("BadUSB payload selected: ${_badUsbPayloadName.value}")
+    }
+
+    fun clearBadUsbPayload() {
+        _badUsbPayloadUri.value = null
+        _badUsbPayloadName.value = null
+        _badUsbProgress.value = 0
+        appendLog("BadUSB payload cleared.")
+    }
+
+    fun armBadUsb(mscMode: Boolean) {
+        val activeSession = session
+        if (activeSession == null) {
+            appendLog("Connect to a device before arming a BadUSB payload.")
+            return
+        }
+        if (_badUsbUploading.value) return
+
+        val chip = (_connectionState.value as? ConnectionState.Connected)?.chip
+        if (chip !in setOf("ESP32-S2", "ESP32-S3")) {
+            appendLog("BadUSB requires ESP32-S2 or ESP32-S3 (connected chip: ${chip ?: "unknown"}).")
+            return
+        }
+
+        val payloadUri = _badUsbPayloadUri.value
+        if (payloadUri == null) {
+            appendLog("Choose a DuckyScript payload first.")
+            return
+        }
+
+        viewModelScope.launch {
+            _badUsbUploading.value = true
+            _badUsbProgress.value = 0
+            try {
+                val bytes = withContext(Dispatchers.IO) {
+                    runCatching {
+                        getApplication<Application>().contentResolver
+                            .openInputStream(payloadUri)
+                            ?.use { it.readBytes() }
+                    }.getOrNull()
+                }
+                if (bytes == null) {
+                    appendLog("Could not read the selected BadUSB payload.")
+                    return@launch
+                }
+                if (bytes.isEmpty()) {
+                    appendLog("BadUSB payload is empty.")
+                    return@launch
+                }
+
+                val remoteFilename = "ducky.txt"
+                var offset = 0
+                while (offset < bytes.size) {
+                    val end = minOf(offset + BADUSB_RAW_CHUNK_SIZE, bytes.size)
+                    val chunk = bytes.copyOfRange(offset, end)
+                    val encoded = android.util.Base64.encodeToString(chunk, android.util.Base64.NO_WRAP)
+                    val isLast = end == bytes.size
+
+                    var success = false
+                    for (attempt in 1..3) {
+                        val response = activeSession.sendCommand(
+                            "SET_FILE_CHUNK",
+                            JSONObject().apply {
+                                put("filename", remoteFilename)
+                                put("data", encoded)
+                                put("last", isLast)
+                            },
+                            timeoutMs = 6_000,
+                        )
+                        if (response?.optBoolean("ok") == true) {
+                            success = true
+                            break
+                        }
+                        appendLog("BadUSB chunk attempt $attempt failed; retrying...")
+                        delay(300)
+                    }
+                    if (!success) {
+                        appendLog("BadUSB upload failed at byte $offset.")
+                        return@launch
+                    }
+
+                    offset = end
+                    _badUsbProgress.value = ((offset * 100) / bytes.size)
+                }
+
+                val response = activeSession.sendCommand(
+                    "START_BADUSB",
+                    JSONObject().apply {
+                        put("filename", remoteFilename)
+                        put("msc", mscMode)
+                    },
+                    timeoutMs = 10_000,
+                )
+                if (response?.optBoolean("ok") == true) {
+                    appendLog("BadUSB payload armed. Unplug and re-plug the device to execute it once.")
+                } else {
+                    appendLog("Failed to arm BadUSB payload: ${response?.optString("msg") ?: "timeout"}")
+                }
+            } finally {
+                _badUsbUploading.value = false
             }
         }
     }
@@ -640,7 +761,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun startSniff(fixedMode: Boolean, channel: Int, intervalMs: Int) {
+    fun startSniff(request: SniffRequest) {
         val activeSession = session
         if (activeSession == null) {
             appendLog("Connect to a device before sniffing.")
@@ -692,14 +813,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
+            if (request.deauthBeforeCapture) {
+                val cleanBssid = request.targetBssid.trim().uppercase()
+                if (MAC_PATTERN.matches(cleanBssid)) {
+                    val cleanClient = request.client.trim()
+                        .ifBlank { "FF:FF:FF:FF:FF:FF" }
+                        .uppercase()
+                    appendLog("Sending deauth burst before capture...")
+                    val deauthResponse = activeSession.sendCommand(
+                        "DEAUTH",
+                        JSONObject().apply {
+                            put("bssid", cleanBssid)
+                            put("client", cleanClient)
+                            put("channel", request.channel.coerceIn(1, 13))
+                            put("count", request.deauthCount.coerceAtLeast(0))
+                            put("deauth_interval_ms", request.deauthIntervalMs.coerceIn(10, 10_000))
+                            put("reason", 7)
+                        },
+                        timeoutMs = 20_000,
+                    )
+                    if (deauthResponse?.optBoolean("ok") != true) {
+                        appendLog("Deauth burst failed or timed out; continuing with capture.")
+                    }
+                } else {
+                    appendLog("Skipping deauth trigger: invalid target BSSID.")
+                }
+            }
+
             val args = JSONObject().apply {
-                put("mode", if (fixedMode) "fixed" else "hop")
-                put("channel", channel)
-                put("interval_ms", intervalMs)
+                put("mode", if (request.fixedMode) "fixed" else "hop")
+                put("channel", request.channel.coerceIn(1, 13))
+                put("interval_ms", request.intervalMs.coerceIn(50, 2_000))
             }
             val response = activeSession.sendCommand("START_SNIFF", args, timeoutMs = 12_000)
             if (response?.optBoolean("ok") == true) {
-                appendLog(if (fixedMode) "Sniffing started on channel $channel." else "Channel-hopping sniffing started.")
+                appendLog(
+                    if (request.fixedMode) {
+                        "Sniffing started on channel ${request.channel.coerceIn(1, 13)}."
+                    } else {
+                        "Channel-hopping sniffing started."
+                    }
+                )
             } else {
                 appendLog("Failed to start sniffing: ${response?.optString("msg") ?: "timeout"}")
                 stopSniff()
@@ -874,5 +1028,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
         private val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
         private const val HTML_RAW_CHUNK_SIZE = 640
+        private const val BADUSB_RAW_CHUNK_SIZE = 693
     }
 }
