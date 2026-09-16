@@ -7,6 +7,7 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.provider.DocumentsContract
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.swp81x.nrsuite.core.pcap.PcapWriter
@@ -17,6 +18,7 @@ import com.swp81x.nrsuite.core.storage.StorageFile
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
 import com.swp81x.nrsuite.core.usb.UsbSerialTransport
+import com.swp81x.nrsuite.service.NrSuiteForegroundService
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -506,6 +508,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             _portalRunning.value = true
+            updateForegroundService()
             _portalHtmlSize.value = 0
             _portalHtmlComplete.value = false
 
@@ -580,6 +583,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         portalStatusJob?.cancel()
         portalStatusJob = null
         _portalRunning.value = false
+        updateForegroundService()
 
         val activeSession = session
         viewModelScope.launch {
@@ -653,6 +657,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _deauthTarget.value = cleanBssid
         _deauthChannel.value = channel.coerceIn(1, 13)
         _deauthRunning.value = true
+        updateForegroundService()
 
         viewModelScope.launch {
             appendLog(
@@ -670,6 +675,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             val response = activeSession.sendCommand("DEAUTH", args, timeoutMs = 60_000)
             _deauthRunning.value = false
+            updateForegroundService()
             if (response?.optBoolean("ok") == true) {
                 appendLog("Deauth burst completed.")
             } else {
@@ -715,6 +721,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val response = activeSession.sendCommand("START_BEACON", args, timeoutMs = 10_000)
             if (response?.optBoolean("ok") == true) {
                 _beaconRunning.value = true
+                updateForegroundService()
                 _beaconSent.value = 0
                 _beaconSsidCount.value = response.optInt("ssids", cleanSsids.size)
                 _beaconChannel.value = response.optInt("channel", channel)
@@ -731,6 +738,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         beaconStatusJob?.cancel()
         beaconStatusJob = null
         _beaconRunning.value = false
+        updateForegroundService()
 
         val activeSession = session
         viewModelScope.launch {
@@ -798,6 +806,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _capturePath.value = captureDisplayPath
         _sniffPacketCount.value = 0
         _sniffing.value = true
+        updateForegroundService()
 
         appendLog("Capture file: $captureDisplayPath")
 
@@ -871,6 +880,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun stopSniff() {
         if (!_sniffing.value) return
         _sniffing.value = false
+        updateForegroundService()
 
         pcapJob?.cancel()
         pcapJob = null
@@ -889,6 +899,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             pcapWriter = null
             _capturePath.value?.let { appendLog("Capture saved: $it") }
+        }
+    }
+
+    private fun updateForegroundService() {
+        val context = getApplication<Application>()
+        val activeText = when {
+            _sniffing.value -> "Packet capture active"
+            _beaconRunning.value -> "Beacon broadcast active"
+            _portalRunning.value -> "Captive portal active"
+            _deauthRunning.value -> "Deauth burst active"
+            else -> null
+        }
+        val intent = Intent(context, NrSuiteForegroundService::class.java)
+        if (activeText != null) {
+            intent.action = NrSuiteForegroundService.ACTION_START
+            intent.putExtra(NrSuiteForegroundService.EXTRA_TEXT, activeText)
+            ContextCompat.startForegroundService(context, intent)
+        } else {
+            context.stopService(intent)
         }
     }
 
@@ -929,11 +958,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         portalStatusJob?.cancel()
         portalStatusJob = null
         session = null
+        updateForegroundService()
         viewModelScope.launch {
             if (_portalRunning.value) {
                 _portalRunning.value = false
                 runCatching { current?.sendCommand("STOP_PORTAL", timeoutMs = 4_000) }
             }
+            updateForegroundService()
             current?.disconnect()
             disconnectInternal()
         }
