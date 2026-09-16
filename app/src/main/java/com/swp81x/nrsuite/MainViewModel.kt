@@ -84,7 +84,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         runCatching { resolver.takePersistableUriPermission(uri, flags) }
         _exportDirectory.value = uri
         preferences.edit().putString(PREF_EXPORT_DIRECTORY, uri.toString()).apply()
-        _exportDirectoryName.value = queryDisplayName(uri) ?: uri.lastPathSegment ?: "Selected folder"
+        _exportDirectoryName.value = displayNameForTreeUri(uri)
         appendLog("Capture export folder: ${_exportDirectoryName.value}")
     }
 
@@ -92,7 +92,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val stored = preferences.getString(PREF_EXPORT_DIRECTORY, null) ?: return
         val uri = runCatching { Uri.parse(stored) }.getOrNull() ?: return
         _exportDirectory.value = uri
-        _exportDirectoryName.value = queryDisplayName(uri) ?: uri.lastPathSegment ?: "Selected folder"
+        _exportDirectoryName.value = displayNameForTreeUri(uri)
     }
 
     fun refreshDevices() {
@@ -181,9 +181,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val outputStream = getApplication<Application>().contentResolver
                     .openOutputStream(documentUri, "wt")
                     ?: throw IOException("Could not open export file")
-                val displayName = queryDisplayName(exportUri)
-                    ?: exportUri.lastPathSegment
-                    ?: "Selected folder"
+                val displayName = displayNameForTreeUri(exportUri)
                 PcapWriter(outputStream, closeOutput = true) to "$displayName/$captureName"
             } else {
                 val capturesDir = File(getApplication<Application>().filesDir, "captures").apply { mkdirs() }
@@ -326,13 +324,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ) ?: throw IOException("Storage provider did not create a document")
     }
 
-    private fun queryDisplayName(uri: Uri): String? {
-        val projection = arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-        return getApplication<Application>().contentResolver
-            .query(uri, projection, null, null, null)
-            ?.use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) else null
-            }
+    private fun displayNameForTreeUri(uri: Uri): String {
+        val documentId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+        val fromDocumentId = documentId
+            ?.substringAfterLast('/')
+            ?.substringAfterLast(':')
+            ?.trim()
+        if (!fromDocumentId.isNullOrBlank()) {
+            return fromDocumentId
+        }
+        return uri.lastPathSegment?.substringAfterLast(':')?.substringAfterLast('/')?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: "Selected folder"
     }
 
     private fun appendLog(message: String) {
