@@ -4,7 +4,7 @@ import java.io.BufferedOutputStream
 import java.io.Closeable
 import java.io.File
 import java.io.FileOutputStream
-import java.io.IOException
+import java.io.OutputStream
 
 /**
  * Minimal libpcap writer for IEEE 802.11 + radiotap frames.
@@ -13,11 +13,19 @@ import java.io.IOException
  * frame. This writer wraps each payload in a libpcap packet record.
  */
 class PcapWriter(
-    file: File,
+    private val output: OutputStream,
+    private val closeOutput: Boolean = true,
     private val snaplen: Int = DEFAULT_SNAPLEN,
 ) : Closeable {
 
-    private val output = BufferedOutputStream(FileOutputStream(file), BUFFER_SIZE)
+    /**
+     * Convenience constructor for app-private capture files.
+     */
+    constructor(file: File, snaplen: Int = DEFAULT_SNAPLEN) : this(
+        output = BufferedOutputStream(FileOutputStream(file), BUFFER_SIZE),
+        closeOutput = true,
+        snaplen = snaplen,
+    )
 
     init {
         writeGlobalHeader()
@@ -45,7 +53,9 @@ class PcapWriter(
         try {
             output.flush()
         } finally {
-            output.close()
+            if (closeOutput) {
+                output.close()
+            }
         }
     }
 

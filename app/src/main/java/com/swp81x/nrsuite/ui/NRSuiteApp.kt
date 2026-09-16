@@ -7,7 +7,10 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -170,6 +173,7 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
     val sniffing by viewModel.sniffing.collectAsState()
     val sniffPacketCount by viewModel.sniffPacketCount.collectAsState()
     val capturePath by viewModel.capturePath.collectAsState()
+    val exportDirectoryName by viewModel.exportDirectoryName.collectAsState()
 
     var selectedTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var activeModuleId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -202,6 +206,14 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
         )
         onDispose {
             runCatching { context.unregisterReceiver(permissionReceiver) }
+        }
+    }
+
+    val folderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.setExportDirectory(uri)
         }
     }
 
@@ -333,7 +345,11 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
                 modifier = contentModifier,
             )
 
-            selectedTab == AppTab.SETTINGS -> SettingsScreen(modifier = contentModifier)
+            selectedTab == AppTab.SETTINGS -> SettingsScreen(
+                exportDirectoryName = exportDirectoryName,
+                onChooseExportDirectory = { folderPicker.launch(null) },
+                modifier = contentModifier,
+            )
         }
     }
 }
@@ -788,7 +804,11 @@ private fun HardwareInfoCard(state: ConnectionState.Connected) {
 }
 
 @Composable
-private fun SettingsScreen(modifier: Modifier = Modifier) {
+private fun SettingsScreen(
+    exportDirectoryName: String,
+    onChooseExportDirectory: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -800,6 +820,30 @@ private fun SettingsScreen(modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text("Capture export folder", fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = exportDirectoryName,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(onClick = onChooseExportDirectory) {
+                    Text("Choose folder")
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Captures are written here when selected. Otherwise they stay in app-private storage.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                )
+            }
+        }
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),

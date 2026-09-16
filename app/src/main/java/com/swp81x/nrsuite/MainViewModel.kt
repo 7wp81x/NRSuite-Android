@@ -2,8 +2,11 @@ package com.swp81x.nrsuite
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
+import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.swp81x.nrsuite.core.pcap.PcapWriter
@@ -13,6 +16,7 @@ import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
 import com.swp81x.nrsuite.core.usb.UsbSerialTransport
 import java.io.File
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +31,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val usbManager =
         application.getSystemService(Context.USB_SERVICE) as UsbManager
+    private val preferences =
+        application.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+
+    private val _exportDirectory = MutableStateFlow<Uri?>(null)
+    val exportDirectory: StateFlow<Uri?> = _exportDirectory.asStateFlow()
+
+    private val _exportDirectoryName = MutableStateFlow("App-private storage")
+    val exportDirectoryName: StateFlow<String> = _exportDirectoryName.asStateFlow()
 
     private val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()
@@ -62,7 +74,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var pcapJob: Job? = null
 
     init {
+        loadExportDirectory()
         refreshDevices()
+    }
+
+    fun setExportDirectory(uri: Uri) {
+        val resolver = getApplication<Application>().contentResolver
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching { resolver.takePersistableUriPermission(uri, flags) }
+        _exportDirectory.value = uri
+        preferences.edit().putString(PREF_EXPORT_DIRECTORY, uri.toString()).apply()
+        _exportDirectoryName.value = queryDisplayName(uri) ?: uri.lastPathSegment ?: "Selected folder"
+        appendLog("Capture export folder: ${_exportDirectoryName.value}")
+    }
+
+    private fun loadExportDirectory() {
+        val stored = preferences.getString(PREF_EXPORT_DIRECTORY, null) ?: return
+        val uri = runCatching { Uri.parse(stored) }.getOrNull() ?: return
+        _exportDirectory.value = uri
+        _exportDirectoryName.value = queryDisplayName(uri) ?: uri.lastPathSegment ?: "Selected folder"
     }
 
     fun refreshDevices() {
@@ -143,19 +173,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (_sniffing.value) return
 
-        val capturesDir = File(getApplication<Application>().filesDir, "captures").apply { mkdirs() }
-        val captureFile = File(capturesDir, "capture_${System.currentTimeMillis()}.pcap")
-        val writer = runCatching { PcapWriter(captureFile) }.getOrElse { error ->
-            appendLog("Could not create capture file: ${error.message}")
+        val captureName = "capture_${System.currentTimeMillis()}.pcap"
+        val exportUri = _exportDirectory.value
+        val writerResult = runCatching {
+            if (exportUri != null) {
+                val documentUri = createPcapDocument(exportUri, captureName)
+                val outputStream = getApplication<Application>().contentResolver
+                    .openOutputStream(documentUri, "wt")
+                    ?: throw IOException("Could not open export file")
+                val displayName = queryDisplayName(exportUri)
+                    ?: exportUri.lastPathSegment
+                    ?: "Selected folder"
+                PcapWriter(outputStream, closeOutput = true) to "$displayName/$captureName"
+            } else {
+                val capturesDir = File(getApplication<Application>().filesDir, "captures").apply { mkdirs() }
+                val captureFile = File(capturesDir, captureName)
+                PcapWriter(captureFile) to captureFile.absolutePath
+            }
+        }
+        val (writer, captureDisplayPath) = writerResult.getOrElse { error ->
+            appendLog("Could not create capture output: ${error.message}")
             return
         }
 
         pcapWriter = writer
-        _capturePath.value = captureFile.absolutePath
+        _capturePath.value = captureDisplayPath
         _sniffPacketCount.value = 0
         _sniffing.value = true
 
-        appendLog("Capture file: ${captureFile.absolutePath}")
+        appendLog("Capture file: $captureDisplayPath")
 
         pcapJob = viewModelScope.launch(Dispatchers.IO) {
             activeSession.pcap.collect { frame ->
@@ -268,7 +314,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _connectionState.value = ConnectionState.Disconnected
     }
 
+    private fun createPcapDocument(treeUri: Uri, displayName: String): Uri {
+        val resolver = getApplication<Application>().contentResolver
+        val parentDocumentId = DocumentsContract.getTreeDocumentId(treeUri)
+        val parentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, parentDocumentId)
+        return DocumentsContract.createDocument(
+            resolver,
+            parentUri,
+            "application/vnd.tcpdump.pcap",
+            displayName,
+        ) ?: throw IOException("Storage provider did not create a document")
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        val projection = arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+        return getApplication<Application>().contentResolver
+            .query(uri, projection, null, null, null)
+            ?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+    }
+
     private fun appendLog(message: String) {
         _logs.update { (it + message).takeLast(200) }
+    }
+
+    companion object {
+        private const val PREFERENCES_NAME = "nrsuite"
+        private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
     }
 }
