@@ -96,6 +96,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _deauthChannel = MutableStateFlow(0)
     val deauthChannel: StateFlow<Int> = _deauthChannel.asStateFlow()
 
+    private val _portalRunning = MutableStateFlow(false)
+    val portalRunning: StateFlow<Boolean> = _portalRunning.asStateFlow()
+
+    private val _portalHtmlSize = MutableStateFlow(0)
+    val portalHtmlSize: StateFlow<Int> = _portalHtmlSize.asStateFlow()
+
+    private val _portalHtmlComplete = MutableStateFlow(false)
+    val portalHtmlComplete: StateFlow<Boolean> = _portalHtmlComplete.asStateFlow()
+
+    private val _portalSsid = MutableStateFlow("")
+    val portalSsid: StateFlow<String> = _portalSsid.asStateFlow()
+
+    private val _portalChannel = MutableStateFlow(0)
+    val portalChannel: StateFlow<Int> = _portalChannel.asStateFlow()
+
+    private val _portalViews = MutableStateFlow(0)
+    val portalViews: StateFlow<Int> = _portalViews.asStateFlow()
+
+    private val _portalClients = MutableStateFlow(0)
+    val portalClients: StateFlow<Int> = _portalClients.asStateFlow()
+
+    private val _portalCapturedData = MutableStateFlow(0)
+    val portalCapturedData: StateFlow<Int> = _portalCapturedData.asStateFlow()
+
+    private val _portalHtmlUri = MutableStateFlow<Uri?>(null)
+    val portalHtmlUri: StateFlow<Uri?> = _portalHtmlUri.asStateFlow()
+
+    private val _portalHtmlName = MutableStateFlow<String?>(null)
+    val portalHtmlName: StateFlow<String?> = _portalHtmlName.asStateFlow()
+
+    private var portalStatusJob: Job? = null
+
     private var session: NrSession? = null
     private var sessionObservers: List<Job> = emptyList()
     private var pcapWriter: PcapWriter? = null
@@ -193,6 +225,168 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setPortalHtmlFile(uri: Uri, name: String?) {
+        _portalHtmlUri.value = uri
+        _portalHtmlName.value = name ?: uri.lastPathSegment ?: "HTML file"
+        appendLog("Portal HTML selected: ${_portalHtmlName.value}")
+    }
+
+    fun clearPortalHtmlFile() {
+        _portalHtmlUri.value = null
+        _portalHtmlName.value = null
+        appendLog("Portal HTML cleared; device will use its placeholder page.")
+    }
+
+    fun startPortal(ssid: String, channel: Int, targetBssid: String) {
+        val activeSession = session
+        if (activeSession == null) {
+            appendLog("Connect to a device before starting the portal.")
+            return
+        }
+        if (_portalRunning.value) return
+
+        val cleanSsid = ssid.trim().ifBlank { "Free WiFi" }
+        val cleanBssid = targetBssid.trim().uppercase()
+        if (cleanBssid.isNotBlank() && !MAC_PATTERN.matches(cleanBssid)) {
+            appendLog("Invalid target BSSID: $cleanBssid")
+            return
+        }
+
+        // Firmware radioIdle() stops other radio tasks when the portal starts.
+        beaconStatusJob?.cancel()
+        beaconStatusJob = null
+        _beaconRunning.value = false
+        if (_sniffing.value) {
+            _sniffing.value = false
+            pcapJob?.cancel()
+            pcapJob = null
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching { pcapWriter?.close() }
+                pcapWriter = null
+            }
+        }
+
+        _portalSsid.value = cleanSsid
+        _portalChannel.value = channel.coerceIn(1, 13)
+        _portalViews.value = 0
+        _portalClients.value = 0
+        _portalCapturedData.value = 0
+
+        viewModelScope.launch {
+            val args = JSONObject().apply {
+                put("ssid", cleanSsid)
+                put("channel", channel.coerceIn(1, 13))
+                put("bssid", cleanBssid.ifBlank { "" })
+            }
+            appendLog("Starting captive portal '$cleanSsid' on channel ${channel.coerceIn(1, 13)}...")
+            val response = activeSession.sendCommand("START_PORTAL", args, timeoutMs = 15_000)
+            if (response?.optBoolean("ok") != true) {
+                appendLog("Failed to start portal: ${response?.optString("msg") ?: "timeout"}")
+                return@launch
+            }
+
+            _portalRunning.value = true
+            _portalHtmlSize.value = 0
+            _portalHtmlComplete.value = false
+
+            val htmlUri = _portalHtmlUri.value
+            if (htmlUri != null) {
+                val bytes = withContext(Dispatchers.IO) {
+                    runCatching {
+                        getApplication<Application>().contentResolver
+                            .openInputStream(htmlUri)
+                            ?.use { it.readBytes() }
+                    }.getOrNull()
+                }
+                if (bytes == null) {
+                    appendLog("Could not read the selected HTML file.")
+                } else if (bytes.isEmpty()) {
+                    appendLog("Selected HTML file is empty; using device placeholder.")
+                } else if (!uploadPortalHtml(activeSession, bytes)) {
+                    appendLog("Portal HTML upload failed; device may be serving its placeholder page.")
+                }
+            }
+
+            startPortalStatusPolling(activeSession)
+            appendLog("Portal is running.")
+        }
+    }
+
+    private suspend fun uploadPortalHtml(session: NrSession, bytes: ByteArray): Boolean {
+        val reset = session.sendCommand(
+            "RESET_HTML",
+            JSONObject().put("size", bytes.size),
+            timeoutMs = 10_000,
+        )
+        if (reset?.optBoolean("ok") != true) {
+            appendLog("Device rejected the HTML upload size.")
+            return false
+        }
+
+        var offset = 0
+        while (offset < bytes.size) {
+            val end = minOf(offset + HTML_RAW_CHUNK_SIZE, bytes.size)
+            val chunk = bytes.copyOfRange(offset, end)
+            val encoded = android.util.Base64.encodeToString(chunk, android.util.Base64.NO_WRAP)
+            val isLast = end == bytes.size
+
+            var success = false
+            for (attempt in 1..3) {
+                val response = session.sendCommand(
+                    "SET_HTML_CHUNK",
+                    JSONObject().apply {
+                        put("data", encoded)
+                        put("last", isLast)
+                    },
+                    timeoutMs = 5_000,
+                )
+                if (response?.optBoolean("ok") == true) {
+                    success = true
+                    break
+                }
+                appendLog("HTML chunk attempt $attempt failed; retrying...")
+                delay(300)
+            }
+            if (!success) return false
+
+            offset = end
+            _portalHtmlSize.value = offset
+        }
+        return true
+    }
+
+    fun stopPortal() {
+        if (!_portalRunning.value) return
+        portalStatusJob?.cancel()
+        portalStatusJob = null
+        _portalRunning.value = false
+
+        val activeSession = session
+        viewModelScope.launch {
+            val response = activeSession?.sendCommand("STOP_PORTAL", timeoutMs = 8_000)
+            if (response?.optBoolean("ok") == true) {
+                appendLog("Portal stopped.")
+            } else {
+                appendLog("Portal stop request sent, but the device did not confirm.")
+            }
+        }
+    }
+
+    private fun startPortalStatusPolling(activeSession: NrSession) {
+        portalStatusJob?.cancel()
+        portalStatusJob = viewModelScope.launch {
+            while (isActive && _portalRunning.value) {
+                delay(3_000)
+                val response = activeSession.sendCommand("PORTAL_STATUS", timeoutMs = 4_000) ?: continue
+                if (response.optBoolean("ok")) {
+                    _portalRunning.value = response.optBoolean("running", _portalRunning.value)
+                    _portalHtmlSize.value = response.optInt("html_size", _portalHtmlSize.value)
+                    _portalHtmlComplete.value = response.optBoolean("html_complete", _portalHtmlComplete.value)
+                }
+            }
+        }
+    }
+
     fun startDeauth(
         bssid: String,
         channel: Int,
@@ -207,6 +401,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         if (_deauthRunning.value) return
+        stopLocalPortal()
 
         val cleanBssid = bssid.trim().uppercase()
         val cleanClient = client.trim().ifBlank { "FF:FF:FF:FF:FF:FF" }.uppercase()
@@ -276,6 +471,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         if (_beaconRunning.value) return
+        stopLocalPortal()
 
         val cleanSsids = ssids.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         if (cleanSsids.isEmpty()) {
@@ -352,6 +548,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         if (_sniffing.value) return
+        beaconStatusJob?.cancel()
+        beaconStatusJob = null
+        _beaconRunning.value = false
+        stopLocalPortal()
 
         val captureName = "capture_${System.currentTimeMillis()}.pcap"
         val exportUri = _exportDirectory.value
@@ -432,6 +632,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun stopLocalPortal(sendStop: Boolean = true) {
+        portalStatusJob?.cancel()
+        portalStatusJob = null
+        if (!_portalRunning.value) return
+        _portalRunning.value = false
+        if (sendStop) {
+            val current = session
+            if (current != null) {
+                viewModelScope.launch {
+                    runCatching { current.sendCommand("STOP_PORTAL", timeoutMs = 4_000) }
+                }
+            }
+        }
+    }
+
     fun disconnect() {
         val current = session
         beaconStatusJob?.cancel()
@@ -451,8 +666,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 pcapWriter = null
             }
         }
+        portalStatusJob?.cancel()
+        portalStatusJob = null
         session = null
         viewModelScope.launch {
+            if (_portalRunning.value) {
+                _portalRunning.value = false
+                runCatching { current?.sendCommand("STOP_PORTAL", timeoutMs = 4_000) }
+            }
             current?.disconnect()
             disconnectInternal()
         }
@@ -481,6 +702,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 "AP: $ssid  ${event.optString("bssid")}  " +
                                     "ch ${event.optInt("channel")}  ${event.optInt("rssi")} dBm  " +
                                     event.optString("security")
+                            )
+                        }
+                        "portal_viewed" -> {
+                            _portalViews.update { it + 1 }
+                            appendLog("Portal viewed from ${event.optString("client_ip", "unknown")}.")
+                        }
+                        "captive_data" -> {
+                            _portalCapturedData.update { it + 1 }
+                            appendLog("Captive data received from ${event.optString("ip", "unknown")}.")
+                        }
+                        "client_associated" -> {
+                            _portalClients.update { it + 1 }
+                            appendLog(
+                                "Client associated: ${event.optString("client")} " +
+                                    "(${event.optInt("rssi")} dBm)."
                             )
                         }
                         "deauth_stats" -> {
@@ -538,5 +774,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val PREFERENCES_NAME = "nrsuite"
         private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
         private val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
+        private const val HTML_RAW_CHUNK_SIZE = 640
     }
 }

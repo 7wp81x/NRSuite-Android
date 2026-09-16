@@ -133,8 +133,7 @@ private val modules = listOf(
         description = "Start an AP and serve a custom HTML page.",
         icon = Icons.Default.Lock,
         category = "Wireless",
-        available = false,
-        statusLabel = "Planned",
+        available = true,
     ),
     ModuleCardSpec(
         id = "ble",
@@ -190,6 +189,15 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
     val deauthSent by viewModel.deauthSent.collectAsState()
     val deauthTarget by viewModel.deauthTarget.collectAsState()
     val deauthChannel by viewModel.deauthChannel.collectAsState()
+    val portalRunning by viewModel.portalRunning.collectAsState()
+    val portalHtmlSize by viewModel.portalHtmlSize.collectAsState()
+    val portalHtmlComplete by viewModel.portalHtmlComplete.collectAsState()
+    val portalSsid by viewModel.portalSsid.collectAsState()
+    val portalChannel by viewModel.portalChannel.collectAsState()
+    val portalViews by viewModel.portalViews.collectAsState()
+    val portalClients by viewModel.portalClients.collectAsState()
+    val portalCapturedData by viewModel.portalCapturedData.collectAsState()
+    val portalHtmlName by viewModel.portalHtmlName.collectAsState()
 
     var selectedTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var activeModuleId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -230,6 +238,20 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
     ) { uri: Uri? ->
         if (uri != null) {
             viewModel.setExportDirectory(uri)
+        }
+    }
+
+    val htmlPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            viewModel.setPortalHtmlFile(uri, null)
         }
     }
 
@@ -349,6 +371,26 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
                     targetBssid = deauthTarget,
                     activeChannel = deauthChannel,
                     onStart = viewModel::startDeauth,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "portal" -> {
+                PortalScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    running = portalRunning,
+                    htmlSize = portalHtmlSize,
+                    htmlComplete = portalHtmlComplete,
+                    activeSsid = portalSsid,
+                    activeChannel = portalChannel,
+                    portalViews = portalViews,
+                    portalClients = portalClients,
+                    capturedData = portalCapturedData,
+                    selectedHtmlName = portalHtmlName,
+                    onChooseHtml = { htmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
+                    onClearHtml = viewModel::clearPortalHtmlFile,
+                    onStart = viewModel::startPortal,
+                    onStop = viewModel::stopPortal,
                     modifier = contentModifier,
                 )
             }
