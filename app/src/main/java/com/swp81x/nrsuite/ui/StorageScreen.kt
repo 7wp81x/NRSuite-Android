@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.storage.StorageFile
 import com.swp81x.nrsuite.ui.theme.NrAccent
+import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
@@ -182,6 +184,7 @@ private fun StorageSummaryCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -240,6 +243,7 @@ private fun StorageFileRow(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
         shape = RoundedCornerShape(10.dp),
     ) {
         Row(
@@ -283,6 +287,7 @@ private fun EmptyStorageState(loading: Boolean) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(

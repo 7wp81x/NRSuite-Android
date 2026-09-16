@@ -14,6 +14,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
@@ -92,6 +93,7 @@ import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
+import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
@@ -723,6 +725,7 @@ private fun DashboardDeviceCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
     ) {
         Column(Modifier.padding(16.dp)) {
             when (state) {
@@ -1003,6 +1006,7 @@ private fun DeviceScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
             ) {
                 Column(Modifier.padding(14.dp)) {
                     Text(
@@ -1029,6 +1033,7 @@ private fun DeviceConnectionCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
     ) {
         Column(Modifier.padding(14.dp)) {
             Text(
@@ -1076,6 +1081,7 @@ private fun DeviceRow(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
     ) {
         Row(
             modifier = Modifier
@@ -1107,6 +1113,7 @@ private fun HardwareInfoCard(state: ConnectionState.Connected) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
     ) {
         Column(Modifier.padding(14.dp)) {
             Text(
@@ -1152,6 +1159,7 @@ private fun SettingsScreen(
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
         ) {
             Column(Modifier.padding(14.dp)) {
                 Text("Capture export folder", fontWeight = FontWeight.SemiBold)
@@ -1177,6 +1185,7 @@ private fun SettingsScreen(
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
         ) {
             Column(Modifier.padding(14.dp)) {
                 Text("Firmware update", fontWeight = FontWeight.SemiBold)
@@ -1215,6 +1224,7 @@ private fun SettingsScreen(
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
         ) {
             Column(Modifier.padding(14.dp)) {
                 Text("Appearance", fontWeight = FontWeight.SemiBold)
@@ -1229,6 +1239,7 @@ private fun SettingsScreen(
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
         ) {
             Column(Modifier.padding(14.dp)) {
                 Text("About", fontWeight = FontWeight.SemiBold)
