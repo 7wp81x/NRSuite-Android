@@ -12,6 +12,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
 import com.swp81x.nrsuite.core.eapol.EapolParser
+import com.swp81x.nrsuite.core.log.LogEntry
+import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.pcap.PcapWriter
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
@@ -55,8 +57,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
-    private val _logs = MutableStateFlow<List<String>>(emptyList())
-    val logs: StateFlow<List<String>> = _logs.asStateFlow()
+    private val _logs = MutableStateFlow<List<LogEntry>>(emptyList())
+    val logs: StateFlow<List<LogEntry>> = _logs.asStateFlow()
 
     private val _events = MutableStateFlow<List<JSONObject>>(emptyList())
     val events: StateFlow<List<JSONObject>> = _events.asStateFlow()
@@ -161,6 +163,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _badUsbProgress = MutableStateFlow(0)
     val badUsbProgress: StateFlow<Int> = _badUsbProgress.asStateFlow()
 
+    private val _bleAdvertising = MutableStateFlow(false)
+    val bleAdvertising: StateFlow<Boolean> = _bleAdvertising.asStateFlow()
+
+    private val _bleConnected = MutableStateFlow(false)
+    val bleConnected: StateFlow<Boolean> = _bleConnected.asStateFlow()
+
+    private val _blePeer = MutableStateFlow("")
+    val blePeer: StateFlow<String> = _blePeer.asStateFlow()
+
+    private val _blePayloadUri = MutableStateFlow<Uri?>(null)
+    val blePayloadUri: StateFlow<Uri?> = _blePayloadUri.asStateFlow()
+
+    private val _blePayloadName = MutableStateFlow<String?>(null)
+    val blePayloadName: StateFlow<String?> = _blePayloadName.asStateFlow()
+
+    private var bleStatusJob: Job? = null
+
     private var session: NrSession? = null
     private var sessionObservers: List<Job> = emptyList()
     private var pcapWriter: PcapWriter? = null
@@ -192,6 +211,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val found = UsbSerialDeviceCatalog.list(usbManager)
         _devices.value = found
         appendLog("Found ${found.size} supported USB serial device(s).")
+    }
+
+    fun onUsbDeviceAttached() {
+        refreshDevices()
+        appendLog("USB device attached.", level = LogLevel.USB)
+    }
+
+    fun onUsbDeviceDetached(device: UsbDevice) {
+        refreshDevices()
+        appendLog("USB device detached: ${device.deviceName}", level = LogLevel.USB)
+        val activeDevice = session
+        if (activeDevice != null) {
+            disconnect()
+        }
     }
 
     fun hasPermission(device: UsbDevice): Boolean = usbManager.hasPermission(device)
@@ -608,6 +641,143 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _portalRunning.value = response.optBoolean("running", _portalRunning.value)
                     _portalHtmlSize.value = response.optInt("html_size", _portalHtmlSize.value)
                     _portalHtmlComplete.value = response.optBoolean("html_complete", _portalHtmlComplete.value)
+                }
+            }
+        }
+    }
+
+    fun setBlePayload(uri: Uri, name: String?) {
+        _blePayloadUri.value = uri
+        _blePayloadName.value = name ?: uri.lastPathSegment ?: "payload.txt"
+        appendLog("BLE payload selected: ${_blePayloadName.value}")
+    }
+
+    fun clearBlePayload() {
+        _blePayloadUri.value = null
+        _blePayloadName.value = null
+        appendLog("BLE payload cleared.")
+    }
+
+    fun startBle(advertiseName: String) {
+        val activeSession = session
+        if (activeSession == null) {
+            appendLog("Connect to a device before starting BLE HID.")
+            return
+        }
+        if (_bleAdvertising.value) return
+
+        viewModelScope.launch {
+            val name = advertiseName.trim().ifBlank { "NRSuite Keyboard" }
+            appendLog("Starting BLE HID advertising as '$name'...")
+            val response = activeSession.sendCommand(
+                "BLE_START",
+                JSONObject().put("name", name),
+                timeoutMs = 8_000,
+            )
+            if (response?.optBoolean("ok") == true) {
+                _bleAdvertising.value = true
+                _bleConnected.value = false
+                _blePeer.value = ""
+                startBleStatusPolling(activeSession)
+                appendLog("BLE HID advertising started.")
+            } else {
+                appendLog("Failed to start BLE HID: ${response?.optString("msg") ?: "timeout or unsupported"}")
+            }
+        }
+    }
+
+    fun stopBle() {
+        if (!_bleAdvertising.value && !_bleConnected.value) return
+        bleStatusJob?.cancel()
+        bleStatusJob = null
+        _bleAdvertising.value = false
+        _bleConnected.value = false
+        _blePeer.value = ""
+        val activeSession = session
+        viewModelScope.launch {
+            runCatching { activeSession?.sendCommand("BLE_RELEASE_ALL", timeoutMs = 3_000) }
+            val response = activeSession?.sendCommand("BLE_STOP", timeoutMs = 5_000)
+            appendLog(
+                if (response?.optBoolean("ok") == true) "BLE HID stopped."
+                else "BLE stop request sent."
+            )
+        }
+    }
+
+    fun runBlePayload() {
+        val activeSession = session
+        val payloadUri = _blePayloadUri.value
+        if (activeSession == null) {
+            appendLog("Connect to a device before running a BLE payload.")
+            return
+        }
+        if (payloadUri == null) {
+            appendLog("Choose a DuckyScript payload first.")
+            return
+        }
+        viewModelScope.launch {
+            val script = withContext(Dispatchers.IO) {
+                runCatching {
+                    getApplication<Application>().contentResolver
+                        .openInputStream(payloadUri)
+                        ?.use { it.readBytes().toString(Charsets.UTF_8) }
+                }.getOrNull()
+            }
+            if (script.isNullOrBlank()) {
+                appendLog("Could not read the selected BLE payload.")
+                return@launch
+            }
+            runBleScript(activeSession, script)
+        }
+    }
+
+    fun sendBleKeyboardText(text: String) {
+        val activeSession = session ?: run {
+            appendLog("Connect to a device before sending keyboard input.")
+            return
+        }
+        if (text.isBlank()) return
+        val script = if (text.startsWith("STRING", ignoreCase = true) ||
+            text.startsWith("DELAY", ignoreCase = true) ||
+            text.startsWith("CTRL", ignoreCase = true) ||
+            text.startsWith("ALT", ignoreCase = true) ||
+            text.startsWith("GUI", ignoreCase = true) ||
+            text.startsWith("SHIFT", ignoreCase = true)
+        ) {
+            text
+        } else {
+            "STRINGLN $text"
+        }
+        viewModelScope.launch { runBleScript(activeSession, script) }
+    }
+
+    private suspend fun runBleScript(activeSession: NrSession, script: String) {
+        if (!_bleConnected.value) {
+            appendLog("BLE host is not connected yet.")
+            return
+        }
+        val response = activeSession.sendCommand(
+            "BLE_RUN_SCRIPT",
+            JSONObject().put("script", script),
+            timeoutMs = maxOf(10_000, script.length / 20L),
+        )
+        if (response?.optBoolean("ok") == true) {
+            appendLog("BLE script finished (${response.optInt("lines")} lines).")
+        } else {
+            appendLog("BLE script failed: ${response?.optString("msg") ?: "timeout"}")
+        }
+    }
+
+    private fun startBleStatusPolling(activeSession: NrSession) {
+        bleStatusJob?.cancel()
+        bleStatusJob = viewModelScope.launch {
+            while (isActive && (_bleAdvertising.value || _bleConnected.value)) {
+                delay(2_000)
+                val response = activeSession.sendCommand("BLE_STATUS", timeoutMs = 4_000) ?: continue
+                if (response.optBoolean("ok")) {
+                    _bleAdvertising.value = response.optBoolean("advertising", _bleAdvertising.value)
+                    _bleConnected.value = response.optBoolean("connected", _bleConnected.value)
+                    _blePeer.value = response.optString("peer", "")
                 }
             }
         }
@@ -1071,8 +1241,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             ?: "Selected folder"
     }
 
-    private fun appendLog(message: String) {
-        _logs.update { (it + message).takeLast(200) }
+    private fun appendLog(
+        message: String,
+        level: LogLevel = LogLevel.INFO,
+        tag: String = "app",
+    ) {
+        val entry = LogEntry(
+            timestamp = java.time.LocalTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")),
+            level = level,
+            tag = tag,
+            message = message,
+        )
+        _logs.update { (it + entry).takeLast(300) }
     }
 
     companion object {

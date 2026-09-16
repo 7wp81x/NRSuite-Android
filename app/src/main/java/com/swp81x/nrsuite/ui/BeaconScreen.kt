@@ -1,6 +1,5 @@
 package com.swp81x.nrsuite.ui
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -215,7 +214,7 @@ private fun ConfigZone(
                 }
             }
 
-            AnimatedVisibility(visible = expanded) {
+            if (expanded) {
                 Column {
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(

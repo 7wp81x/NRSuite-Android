@@ -1,6 +1,10 @@
 package com.swp81x.nrsuite.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -206,6 +210,7 @@ private fun NetworkRow(network: JSONObject) {
     val channel = network.optInt("channel")
     val rssi = network.optInt("rssi")
     val security = network.optString("security").ifBlank { "?" }
+    val clipboardManager = LocalClipboardManager.current
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -213,16 +218,55 @@ private fun NetworkRow(network: JSONObject) {
         shape = RoundedCornerShape(10.dp),
     ) {
         Column(Modifier.padding(12.dp)) {
-            Text(
-                text = ssid,
-                fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.bodyLarge,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = ssid,
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                SignalBars(rssi = rssi)
+            }
             Spacer(Modifier.height(3.dp))
             Text(
-                text = "$bssid  •  ch $channel  •  $rssi dBm  •  $security",
+                text = bssid,
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                 color = NrOnSurfaceVariant,
+                modifier = Modifier.clickable {
+                    clipboardManager.setText(AnnotatedString(bssid))
+                },
+            )
+            Text(
+                text = "ch $channel  •  $rssi dBm  •  $security",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = NrOnSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SignalBars(rssi: Int) {
+    val bars = when {
+        rssi >= -50 -> 4
+        rssi >= -65 -> 3
+        rssi >= -75 -> 2
+        rssi >= -85 -> 1
+        else -> 0
+    }
+    Row(
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        (1..4).forEach { index ->
+            Spacer(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height((4 + index * 4).dp)
+                    .background(
+                        color = if (index <= bars) NrAccent else MaterialTheme.colorScheme.outline,
+                        shape = RoundedCornerShape(1.dp),
+                    ),
             )
         }
     }
