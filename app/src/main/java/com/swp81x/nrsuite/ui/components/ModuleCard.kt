@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,6 +36,7 @@ import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
+import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 
 data class ModuleCardSpec(
@@ -58,13 +60,19 @@ fun ModuleCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(enabled = module.available) { onClick() },
-        colors = CardDefaults.cardColors(containerColor = NrSurface),
+        colors = CardDefaults.cardColors(
+            containerColor = if (module.available) NrSurface else NrSurfaceVariant.copy(alpha = 0.55f),
+        ),
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(0.5.dp, NrOutline),
+        border = BorderStroke(
+            width = 0.5.dp,
+            color = if (module.available) NrOutline else NrOutline.copy(alpha = 0.45f),
+        ),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .alpha(if (module.available) 1f else 0.55f)
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
