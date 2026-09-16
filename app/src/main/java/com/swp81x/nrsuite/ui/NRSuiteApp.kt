@@ -150,8 +150,7 @@ private val modules = listOf(
         description = "Browse and manage files on the device.",
         icon = Icons.Default.Storage,
         category = "Storage",
-        available = false,
-        statusLabel = "Planned",
+        available = true,
     ),
     ModuleCardSpec(
         id = "badusb",
@@ -198,6 +197,11 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
     val portalClients by viewModel.portalClients.collectAsState()
     val portalCapturedData by viewModel.portalCapturedData.collectAsState()
     val portalHtmlName by viewModel.portalHtmlName.collectAsState()
+    val storageFiles by viewModel.storageFiles.collectAsState()
+    val storageTotal by viewModel.storageTotal.collectAsState()
+    val storageUsed by viewModel.storageUsed.collectAsState()
+    val storageFree by viewModel.storageFree.collectAsState()
+    val storageLoading by viewModel.storageLoading.collectAsState()
 
     var selectedTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var activeModuleId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -391,6 +395,21 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
                     onClearHtml = viewModel::clearPortalHtmlFile,
                     onStart = viewModel::startPortal,
                     onStop = viewModel::stopPortal,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "storage" -> {
+                StorageScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    loading = storageLoading,
+                    files = storageFiles,
+                    totalBytes = storageTotal,
+                    usedBytes = storageUsed,
+                    freeBytes = storageFree,
+                    onRefresh = viewModel::refreshStorage,
+                    onDelete = viewModel::deleteStorageFile,
+                    onStartMassStorage = viewModel::startMassStorage,
                     modifier = contentModifier,
                 )
             }

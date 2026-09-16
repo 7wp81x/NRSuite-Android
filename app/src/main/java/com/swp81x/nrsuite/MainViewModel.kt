@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import com.swp81x.nrsuite.core.pcap.PcapWriter
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
+import com.swp81x.nrsuite.core.storage.StorageFile
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
 import com.swp81x.nrsuite.core.usb.UsbSerialTransport
@@ -128,6 +129,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var portalStatusJob: Job? = null
 
+    private val _storageFiles = MutableStateFlow<List<StorageFile>>(emptyList())
+    val storageFiles: StateFlow<List<StorageFile>> = _storageFiles.asStateFlow()
+
+    private val _storageTotal = MutableStateFlow(0L)
+    val storageTotal: StateFlow<Long> = _storageTotal.asStateFlow()
+
+    private val _storageUsed = MutableStateFlow(0L)
+    val storageUsed: StateFlow<Long> = _storageUsed.asStateFlow()
+
+    private val _storageFree = MutableStateFlow(0L)
+    val storageFree: StateFlow<Long> = _storageFree.asStateFlow()
+
+    private val _storageLoading = MutableStateFlow(false)
+    val storageLoading: StateFlow<Boolean> = _storageLoading.asStateFlow()
+
     private var session: NrSession? = null
     private var sessionObservers: List<Job> = emptyList()
     private var pcapWriter: PcapWriter? = null
@@ -221,6 +237,89 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 count == null -> appendLog("WiFi scan timed out.")
                 count < 0 -> appendLog("WiFi scan failed.")
                 else -> appendLog("WiFi scan complete: $count network(s).")
+            }
+        }
+    }
+
+    fun refreshStorage() {
+        val activeSession = session
+        if (activeSession == null) {
+            appendLog("Connect to a device before browsing storage.")
+            return
+        }
+        if (_storageLoading.value) return
+
+        _storageLoading.value = true
+        viewModelScope.launch {
+            val response = activeSession.sendCommand("MSC_LIST", timeoutMs = 8_000)
+            _storageLoading.value = false
+            if (response?.optBoolean("ok") != true) {
+                appendLog("Failed to list storage: ${response?.optString("msg") ?: "timeout"}")
+                return@launch
+            }
+
+            _storageTotal.value = response.optLong("total", 0L)
+            _storageUsed.value = response.optLong("used", 0L)
+            _storageFree.value = response.optLong("free", 0L)
+
+            val files = mutableListOf<StorageFile>()
+            val jsonFiles = response.optJSONArray("files")
+            if (jsonFiles != null) {
+                for (index in 0 until jsonFiles.length()) {
+                    val item = jsonFiles.optJSONObject(index) ?: continue
+                    files += StorageFile(
+                        name = item.optString("name"),
+                        size = item.optInt("size", 0),
+                    )
+                }
+            }
+            _storageFiles.value = files
+            appendLog("Storage: ${files.size} file(s), ${_storageFree.value} bytes free.")
+        }
+    }
+
+    fun deleteStorageFile(name: String) {
+        val activeSession = session
+        if (activeSession == null) {
+            appendLog("Connect to a device before deleting files.")
+            return
+        }
+        viewModelScope.launch {
+            val response = activeSession.sendCommand(
+                "MSC_DELETE",
+                JSONObject().put("path", name),
+                timeoutMs = 8_000,
+            )
+            if (response?.optBoolean("ok") == true) {
+                appendLog("Deleted $name.")
+                refreshStorage()
+            } else {
+                appendLog("Failed to delete $name: ${response?.optString("msg") ?: "timeout"}")
+            }
+        }
+    }
+
+    fun startMassStorage() {
+        val activeSession = session
+        if (activeSession == null) {
+            appendLog("Connect to a device before entering mass storage mode.")
+            return
+        }
+        val chip = (_connectionState.value as? ConnectionState.Connected)?.chip
+        if (chip !in setOf("ESP32-S2", "ESP32-S3")) {
+            appendLog("Mass storage start requires ESP32-S2 or ESP32-S3 (connected chip: ${chip ?: "unknown"}).")
+            return
+        }
+
+        viewModelScope.launch {
+            appendLog("Switching device to USB mass storage mode...")
+            val response = activeSession.sendCommand("START_MSC", timeoutMs = 5_000)
+            if (response?.optBoolean("ok") == true) {
+                appendLog("Device is rebooting into mass storage mode; the USB bridge will disappear.")
+            } else if (response == null) {
+                appendLog("No response, expected: USB is re-enumerating as mass storage.")
+            } else {
+                appendLog("Device refused mass storage mode: ${response.optString("msg")}")
             }
         }
     }
