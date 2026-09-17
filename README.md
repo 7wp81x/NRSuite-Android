@@ -207,14 +207,8 @@ The app uses these feature flags to enable or disable modules.
 
 ## Data and export layout
 
-If the user selects an NRSuite root directory, captures are written under:
-
-```text
-NRSuite_root/
-  Pcap/
-```
-
-Planned/partially wired layout:
+When the user selects an NRSuite root directory, the app creates the standard
+folder layout and writes captures under `Pcap/`:
 
 ```text
 NRSuite_root/
@@ -224,7 +218,9 @@ NRSuite_root/
   Portals/
 ```
 
-If no root directory is configured, capture start prompts the user to choose one.
+Export wiring for logs/history, DuckyScripts, and portal event logs is the next
+storage milestone. If no root directory is configured, capture start prompts the
+user to choose one.
 
 ---
 

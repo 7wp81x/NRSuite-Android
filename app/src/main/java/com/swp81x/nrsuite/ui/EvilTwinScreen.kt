@@ -270,10 +270,25 @@ fun EvilTwinScreen(
                     }
                 }
                 Spacer(Modifier.height(6.dp))
+                val verificationText = when {
+                    results.any { it.status == EvilTwinResult.Status.CORRECT } ->
+                        "A submitted password matched the captured WPA2 handshake."
+                    results.any { it.status == EvilTwinResult.Status.INCORRECT } ->
+                        "Submitted passwords were checked against the captured WPA2 handshake."
+                    results.any { it.status == EvilTwinResult.Status.PENDING } ->
+                        "Waiting for a complete M1 + M2 handshake with matching BSSID/STA before verification."
+                    else ->
+                        "WPA2 verification runs automatically after a password is submitted and matching M1 + M2 material is captured."
+                }
                 Text(
-                    text = "EAPOL-based verification is not implemented yet. Captured passwords are stored for the next beta stage.",
+                    text = verificationText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = StatusAmber,
+                    color = when {
+                        results.any { it.status == EvilTwinResult.Status.CORRECT } -> StatusGreen
+                        results.any { it.status == EvilTwinResult.Status.INCORRECT } -> MaterialTheme.colorScheme.error
+                        results.any { it.status == EvilTwinResult.Status.PENDING } -> StatusAmber
+                        else -> NrOnSurfaceVariant
+                    },
                 )
             }
         }

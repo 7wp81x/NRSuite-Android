@@ -16,7 +16,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.Color
 import com.swp81x.nrsuite.ui.theme.LogColorError
 import com.swp81x.nrsuite.ui.theme.LogColorInfo
@@ -67,11 +70,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.history.HistoryEntry
@@ -236,6 +241,11 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val logs by viewModel.logs.collectAsState()
     val history by viewModel.history.collectAsState()
     val activeDeviceName by viewModel.activeDeviceName.collectAsState()
+    val firmwareFlashName by viewModel.firmwareFlashName.collectAsState()
+    val firmwareFlashing by viewModel.firmwareFlashing.collectAsState()
+    val firmwareFlashProgress by viewModel.firmwareFlashProgress.collectAsState()
+    val firmwareFlashStatus by viewModel.firmwareFlashStatus.collectAsState()
+    val firmwareTargetDevice by viewModel.firmwareTargetDevice.collectAsState()
     val scanning by viewModel.scanning.collectAsState()
     val networks by viewModel.networks.collectAsState()
     val sniffing by viewModel.sniffing.collectAsState()
@@ -338,7 +348,6 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     var selectedTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var permissionRevision by remember { mutableIntStateOf(0) }
     var activeModuleId by rememberSaveable { mutableStateOf<String?>(null) }
-    var firmwareFileName by rememberSaveable { mutableStateOf<String?>(null) }
     var rootPromptShown by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(enabled = activeModuleId != null) {
@@ -508,7 +517,15 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val firmwarePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
-        firmwareFileName = uri?.lastPathSegment?.substringAfterLast('/') ?: null
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            viewModel.setFirmwareFlashFile(uri, uri.lastPathSegment?.substringAfterLast('/'))
+        }
     }
 
     fun requestPermission(device: UsbDevice) {
@@ -753,9 +770,20 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
             activeModuleId == "settings" -> SettingsScreen(
                 connectionState = connectionState,
                 exportDirectoryName = exportDirectoryName,
-                firmwareFileName = firmwareFileName,
+                firmwareFileName = firmwareFlashName,
+                firmwareFlashing = firmwareFlashing,
+                firmwareFlashProgress = firmwareFlashProgress,
+                firmwareFlashStatus = firmwareFlashStatus,
+                devices = devices,
+                usbManager = usbManager,
+                selectedFlashTarget = firmwareTargetDevice,
                 onChooseExportDirectory = { folderPicker.launch(null) },
                 onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "*/*")) },
+                onClearFirmware = viewModel::clearFirmwareFlashFile,
+                onRefreshDevices = viewModel::refreshDevices,
+                onRequestPermission = { device -> requestPermission(device) },
+                onSelectFlashTarget = viewModel::selectFirmwareTarget,
+                onStartFirmwareFlash = viewModel::startFirmwareFlash,
                 modifier = contentModifier,
             )
 
@@ -1397,16 +1425,42 @@ private fun SettingsScreen(
     connectionState: ConnectionState,
     exportDirectoryName: String,
     firmwareFileName: String?,
+    firmwareFlashing: Boolean,
+    firmwareFlashProgress: Int,
+    firmwareFlashStatus: String?,
+    devices: List<UsbSerialDevice>,
+    usbManager: UsbManager,
+    selectedFlashTarget: UsbSerialDevice?,
     onChooseExportDirectory: () -> Unit,
     onChooseFirmware: () -> Unit,
+    onClearFirmware: () -> Unit,
+    onRefreshDevices: () -> Unit,
+    onRequestPermission: (UsbDevice) -> Unit,
+    onSelectFlashTarget: (UsbDevice) -> Unit,
+    onStartFirmwareFlash: (targetChip: String, skipReset: Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val currentFirmware = (connectionState as? ConnectionState.Connected)?.firmwareVersion
     val context = androidx.compose.ui.platform.LocalContext.current
+    val chip = (connectionState as? ConnectionState.Connected)?.chip
+    val boardName = when (chip) {
+        "ESP32-C3" -> "ESP32-C3"
+        "ESP32-S3" -> "ESP32-S3"
+        "ESP32-S2" -> "ESP32-S2"
+        "ESP32" -> "Classic ESP32 devkit"
+        else -> "Not connected / unknown"
+    }
+    var selectedTargetChip by remember { mutableStateOf(chip ?: "ESP32") }
+    val targetHasPermission = selectedFlashTarget?.let { usbManager.hasPermission(it.device) } == true
+    var manualBootloader by remember { mutableStateOf(false) }
+    LaunchedEffect(chip) {
+        if (!chip.isNullOrBlank()) selectedTargetChip = chip
+    }
 
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -1447,21 +1501,13 @@ private fun SettingsScreen(
         border = BorderStroke(0.5.dp, NrOutline),
         ) {
             Column(Modifier.padding(14.dp)) {
-                Text("Firmware update", fontWeight = FontWeight.SemiBold)
+                Text("Firmware flasher", fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = "Current version: ${currentFirmware ?: "not connected"}",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
                 )
-                val chip = (connectionState as? ConnectionState.Connected)?.chip
-                val boardName = when (chip) {
-                    "ESP32-C3" -> "ESP32-C3"
-                    "ESP32-S3" -> "ESP32-S3"
-                    "ESP32-S2" -> "ESP32-S2"
-                    "ESP32" -> "Classic ESP32 devkit"
-                    else -> "Auto-detect on connect"
-                }
                 Text(
                     text = "Detected board: $boardName",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
@@ -1474,27 +1520,154 @@ private fun SettingsScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = firmwareFileName ?: "No firmware .bin selected",
+                    text = "This writes a complete merged .bin image and replaces the whole firmware. It is not an OTA/incremental update.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusAmber,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = firmwareFileName ?: "No merged firmware .bin selected",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
                 )
                 Spacer(Modifier.height(10.dp))
-                OutlinedButton(onClick = onChooseFirmware) {
-                    Text("Choose firmware .bin")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = onChooseFirmware,
+                        enabled = !firmwareFlashing,
+                    ) {
+                        Text("Choose firmware .bin")
+                    }
+                    if (firmwareFileName != null && !firmwareFlashing) {
+                        OutlinedButton(onClick = onClearFirmware) {
+                            Text("Clear")
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "Target chip",
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf("ESP32", "ESP32-S2", "ESP32-S3", "ESP32-C3").forEach { option ->
+                        FilterChip(
+                            selected = selectedTargetChip == option,
+                            onClick = { selectedTargetChip = option },
+                            enabled = !firmwareFlashing,
+                            label = { Text(option) },
+                        )
+                    }
                 }
                 Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = { },
-                    enabled = false,
-                ) {
-                    Text("Start update (not implemented)")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Flash target",
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = onRefreshDevices, enabled = !firmwareFlashing) {
+                        Text("Refresh")
+                    }
                 }
-                Spacer(Modifier.height(6.dp))
+                if (devices.isEmpty()) {
+                    Text(
+                        text = "No supported USB serial device found. Plug in the board and tap Refresh.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusAmber,
+                    )
+                } else {
+                    devices.forEach { entry ->
+                        val hasPermission = usbManager.hasPermission(entry.device)
+                        val selected = selectedFlashTarget?.device?.deviceId == entry.device.deviceId
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = entry.displayName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                )
+                                Text(
+                                    text = if (hasPermission) "Permission granted" else "Permission required",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = NrOnSurfaceVariant,
+                                )
+                            }
+                            if (hasPermission) {
+                                OutlinedButton(
+                                    onClick = { onSelectFlashTarget(entry.device) },
+                                    enabled = !firmwareFlashing && !selected,
+                                ) {
+                                    Text(if (selected) "Selected" else "Use")
+                                }
+                            } else {
+                                OutlinedButton(
+                                    onClick = { onRequestPermission(entry.device) },
+                                    enabled = !firmwareFlashing,
+                                ) {
+                                    Text("Grant")
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = manualBootloader,
+                        onCheckedChange = { manualBootloader = it },
+                        enabled = !firmwareFlashing,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Device is already in ROM bootloader mode",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "UI only for now. The flashing/download/verify/write workflow is intentionally not wired yet.",
+                    text = "Automatic reset works on CP210x/CH340-style UART boards and some USB-JTAG boards. Otherwise hold BOOT, tap RESET, enable the switch above, then flash.",
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = { onStartFirmwareFlash(selectedTargetChip, manualBootloader) },
+                    enabled = selectedFlashTarget != null &&
+                        targetHasPermission &&
+                        firmwareFileName != null &&
+                        !firmwareFlashing,
+                ) {
+                    Text(if (firmwareFlashing) "Flashing..." else "Flash firmware")
+                }
+                if (firmwareFlashing || firmwareFlashProgress > 0) {
+                    Spacer(Modifier.height(10.dp))
+                    LinearProgressIndicator(
+                        progress = { firmwareFlashProgress / 100f },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = firmwareFlashStatus ?: "Preparing...",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = if (firmwareFlashStatus?.startsWith("Flash failed") == true) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            NrOnSurfaceVariant
+                        },
+                    )
+                }
             }
         }
 

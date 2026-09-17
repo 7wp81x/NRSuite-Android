@@ -12,6 +12,8 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
+import com.swp81x.nrsuite.core.flasher.Esp32Flasher
+import com.swp81x.nrsuite.core.flasher.UsbSerialFlasherTransport
 import com.swp81x.nrsuite.core.eapol.EapolParser
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.history.HistoryEntry
@@ -75,6 +77,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _activeDeviceName = MutableStateFlow<String?>(null)
     val activeDeviceName: StateFlow<String?> = _activeDeviceName.asStateFlow()
+
+    private val _firmwareFlashUri = MutableStateFlow<Uri?>(null)
+    val firmwareFlashUri: StateFlow<Uri?> = _firmwareFlashUri.asStateFlow()
+
+    private val _firmwareFlashName = MutableStateFlow<String?>(null)
+    val firmwareFlashName: StateFlow<String?> = _firmwareFlashName.asStateFlow()
+
+    private val _firmwareFlashing = MutableStateFlow(false)
+    val firmwareFlashing: StateFlow<Boolean> = _firmwareFlashing.asStateFlow()
+
+    private val _firmwareFlashProgress = MutableStateFlow(0)
+    val firmwareFlashProgress: StateFlow<Int> = _firmwareFlashProgress.asStateFlow()
+
+    private val _firmwareFlashStatus = MutableStateFlow<String?>(null)
+    val firmwareFlashStatus: StateFlow<String?> = _firmwareFlashStatus.asStateFlow()
+
+    private val _firmwareTargetDevice = MutableStateFlow<UsbSerialDevice?>(null)
+    val firmwareTargetDevice: StateFlow<UsbSerialDevice?> = _firmwareTargetDevice.asStateFlow()
 
     private val _events = MutableStateFlow<List<JSONObject>>(emptyList())
     val events: StateFlow<List<JSONObject>> = _events.asStateFlow()
@@ -237,6 +257,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var bleStatusJob: Job? = null
 
     private var session: NrSession? = null
+    private var activeSerialDevice: UsbSerialDevice? = null
+    private var activeDeviceFingerprint: String? = null
     private var sessionObservers: List<Job> = emptyList()
     private var pcapWriter: PcapWriter? = null
     private var pcapJob: Job? = null
@@ -304,6 +326,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         preferences.edit().putString(PREF_EXPORT_DIRECTORY, uri.toString()).apply()
         _exportDirectoryName.value = displayNameForTreeUri(uri)
         appendLog("Capture export folder: ${_exportDirectoryName.value}")
+        ensureRootStructure(uri)
     }
 
     private fun loadExportDirectory() {
@@ -311,6 +334,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val uri = runCatching { Uri.parse(stored) }.getOrNull() ?: return
         _exportDirectory.value = uri
         _exportDirectoryName.value = displayNameForTreeUri(uri)
+        ensureRootStructure(uri)
     }
 
     fun refreshDevices() {
@@ -409,9 +433,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun onUsbDeviceDetached(device: UsbDevice) {
         refreshDevices()
         appendLog("USB device detached: ${device.deviceName}", level = LogLevel.USB)
+        val detachedFingerprint = runCatching { deviceFingerprint(device) }.getOrNull()
+        if (activeDeviceFingerprint == null || detachedFingerprint == null ||
+            activeDeviceFingerprint != detachedFingerprint
+        ) {
+            appendLog(
+                "Detached device is not the active session; keeping the current connection.",
+                level = LogLevel.USB,
+            )
+            return
+        }
+        activeDeviceFingerprint = null
+        activeSerialDevice = null
+        if (_firmwareTargetDevice.value?.device?.deviceId == device.deviceId) {
+            _firmwareTargetDevice.value = null
+        }
         _activeDeviceName.value = null
-        val activeDevice = session
-        if (activeDevice != null) {
+        if (session != null) {
             disconnect()
         }
     }
@@ -448,9 +486,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             scope = viewModelScope,
         )
         session = newSession
+        activeSerialDevice = entry
+        _firmwareTargetDevice.value = entry
+        activeDeviceFingerprint = deviceFingerprint(entry.device)
         _activeDeviceName.value = entry.displayName
         preferences.edit()
-            .putString(PREF_LAST_DEVICE_FINGERPRINT, deviceFingerprint(entry.device))
+            .putString(PREF_LAST_DEVICE_FINGERPRINT, activeDeviceFingerprint)
             .apply()
         observe(newSession)
         viewModelScope.launch {
@@ -739,6 +780,153 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         appendLog("Evil Twin HTML cleared.")
     }
 
+    fun setFirmwareFlashFile(uri: Uri, name: String?) {
+        _firmwareFlashUri.value = uri
+        _firmwareFlashName.value = name ?: uri.lastPathSegment ?: "firmware.bin"
+        appendLog("Firmware image selected: ${_firmwareFlashName.value}")
+    }
+
+    fun clearFirmwareFlashFile() {
+        _firmwareFlashUri.value = null
+        _firmwareFlashName.value = null
+        _firmwareFlashProgress.value = 0
+        _firmwareFlashStatus.value = null
+    }
+
+    fun selectFirmwareTarget(device: UsbDevice) {
+        val entry = _devices.value.firstOrNull { it.device.deviceId == device.deviceId }
+            ?: UsbSerialDeviceCatalog.find(usbManager, device)
+        if (entry == null) {
+            appendLog("No supported USB serial driver for ${device.deviceName}.")
+            return
+        }
+        _firmwareTargetDevice.value = entry
+        appendLog("Firmware flash target: ${entry.displayName}")
+    }
+
+    fun startFirmwareFlash(targetChip: String, skipReset: Boolean) {
+        val uri = _firmwareFlashUri.value
+        if (uri == null) {
+            appendLog("Choose a merged firmware .bin before flashing.")
+            return
+        }
+        if (_firmwareFlashing.value) return
+
+        val entry = _firmwareTargetDevice.value ?: activeSerialDevice
+        if (entry == null) {
+            appendLog("Select a target device before flashing firmware.")
+            return
+        }
+        if (!usbManager.hasPermission(entry.device)) {
+            appendLog("USB permission is required for the selected flash target.")
+            return
+        }
+
+        _firmwareFlashing.value = true
+        _firmwareFlashProgress.value = 0
+        _firmwareFlashStatus.value = "Reading firmware image..."
+
+        viewModelScope.launch {
+            try {
+                val bytes = withContext(Dispatchers.IO) {
+                    getApplication<Application>().contentResolver
+                        .openInputStream(uri)
+                        ?.use { it.readBytes() }
+                }
+                if (bytes == null || bytes.isEmpty()) {
+                    throw IOException("Could not read the selected firmware image.")
+                }
+
+                _firmwareFlashStatus.value = "Stopping active modules..."
+                stopModulesForFlash()
+
+                val currentSession = session
+                sessionObservers.forEach { it.cancel() }
+                sessionObservers = emptyList()
+                session = null
+                activeDeviceFingerprint = null
+                _connectionState.value = ConnectionState.Disconnected
+                _activeDeviceName.value = null
+                currentSession?.disconnect()
+
+                val resetMode = when {
+                    skipReset -> Esp32Flasher.ResetMode.NONE
+                    entry.device.vendorId == 0x303A && entry.device.productId == 0x1001 ->
+                        Esp32Flasher.ResetMode.USB_JTAG
+                    else -> Esp32Flasher.ResetMode.CLASSIC
+                }
+
+                val flasher = Esp32Flasher(
+                    transport = UsbSerialFlasherTransport(usbManager, entry.driver),
+                    supportsEncryptedFlash = targetChip in setOf("ESP32-S2", "ESP32-S3", "ESP32-C3"),
+                )
+
+                _firmwareFlashStatus.value = if (skipReset) {
+                    "Connecting to ROM bootloader..."
+                } else {
+                    "Resetting into ROM bootloader..."
+                }
+
+                withContext(Dispatchers.IO) {
+                    flasher.flash(
+                        firmware = bytes,
+                        offset = 0,
+                        resetMode = resetMode,
+                    ) { percent ->
+                        _firmwareFlashProgress.value = percent
+                        _firmwareFlashStatus.value = if (percent >= 100) {
+                            "Firmware written; rebooting device..."
+                        } else {
+                            "Writing firmware... $percent%"
+                        }
+                    }
+                }
+
+                _firmwareFlashProgress.value = 100
+                _firmwareFlashStatus.value = "Flash complete. The device is rebooting; reconnect after it disappears."
+                appendLog("Firmware flash complete (${bytes.size} bytes at 0x0).", level = LogLevel.SUCCESS)
+                addHistory("firmware", "Flashed ${bytes.size} bytes at 0x0", HistoryLevel.SUCCESS)
+                delay(2_000)
+                refreshDevices()
+            } catch (t: Throwable) {
+                _firmwareFlashStatus.value = "Flash failed: ${t.message ?: t.javaClass.simpleName}"
+                appendLog(
+                    "Firmware flash failed: ${t.message ?: t.javaClass.simpleName}",
+                    level = LogLevel.ERROR,
+                )
+                addHistory("firmware", "Firmware flash failed", HistoryLevel.ERROR)
+            } finally {
+                _firmwareFlashing.value = false
+                updateForegroundService()
+            }
+        }
+    }
+
+    private fun stopModulesForFlash() {
+        beaconStatusJob?.cancel()
+        beaconStatusJob = null
+        portalStatusJob?.cancel()
+        portalStatusJob = null
+        portalPcapJob?.cancel()
+        portalPcapJob = null
+        pcapJob?.cancel()
+        pcapJob = null
+        bleStatusJob?.cancel()
+        bleStatusJob = null
+
+        _beaconRunning.value = false
+        _portalRunning.value = false
+        _sniffing.value = false
+        _deauthRunning.value = false
+        _bleAdvertising.value = false
+        _bleConnected.value = false
+        _portalMode.value = null
+
+        runCatching { pcapWriter?.close() }
+        pcapWriter = null
+        updateForegroundService()
+    }
+
     fun setPortalHtmlFile(uri: Uri, name: String?) {
         _portalHtmlUri.value = uri
         _portalHtmlName.value = name ?: uri.lastPathSegment ?: "HTML file"
@@ -866,7 +1054,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return false
         }
 
-        appendLog("Uploading HTML: ${bytes.size} bytes in ${(bytes.size + HTML_RAW_CHUNK_SIZE - 1) / HTML_RAW_CHUNK_SIZE} chunk(s).")
+        val supportsOffset = (_connectionState.value as? ConnectionState.Connected)
+            ?.features
+            ?.contains("portal_html_offset") == true
+        appendLog(
+            "Uploading HTML: ${bytes.size} bytes in " +
+                "${(bytes.size + HTML_RAW_CHUNK_SIZE - 1) / HTML_RAW_CHUNK_SIZE} chunk(s) " +
+                "(mode=${if (supportsOffset) "offset" else "legacy-append"})."
+        )
+
         val reset = session.sendCommand(
             "RESET_HTML",
             JSONObject().put("size", bytes.size),
@@ -888,19 +1084,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             var success = false
             for (attempt in 1..3) {
-                val response = session.sendCommand(
-                    "SET_HTML_CHUNK",
-                    JSONObject().apply {
-                        put("data", encoded)
-                        put("last", isLast)
-                    },
-                    timeoutMs = 5_000,
-                )
+                val args = JSONObject().apply {
+                    put("data", encoded)
+                    put("last", isLast)
+                    if (supportsOffset) {
+                        put("offset", offset)
+                    }
+                }
+                val response = session.sendCommand("SET_HTML_CHUNK", args, timeoutMs = 5_000)
                 if (response?.optBoolean("ok") == true) {
                     success = true
                     break
                 }
-                appendLog("HTML chunk $chunkIndex attempt $attempt failed: ${response ?: "timeout"}")
+                appendLog(
+                    "HTML chunk $chunkIndex offset $offset attempt $attempt failed: " +
+                        (response ?: "timeout")
+                )
                 delay(400)
             }
             if (!success) {
@@ -911,19 +1110,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             offset = end
             chunkIndex++
             _portalHtmlSize.value = offset
-            if (isLast) appendLog("HTML final chunk sent (${bytes.size} bytes).")
+            if (isLast) appendLog("HTML final chunk sent (${bytes.size} bytes at offset $end).")
             delay(80)
         }
 
         delay(350)
-        val status = session.sendCommand("PORTAL_STATUS", timeoutMs = 5_000)
-        val complete = status?.optBoolean("html_complete") == true
-        val deviceSize = status?.optInt("html_size", 0) ?: 0
+        var status = session.sendCommand("PORTAL_STATUS", timeoutMs = 5_000)
+        var complete = status?.optBoolean("html_complete") == true
         if (!complete) {
-            appendLog("HTML upload did not complete on device (device reports size=$deviceSize).")
+            delay(500)
+            status = session.sendCommand("PORTAL_STATUS", timeoutMs = 5_000) ?: status
+            complete = status?.optBoolean("html_complete") == true
+        }
+
+        val deviceSize = status?.optInt("html_size", 0) ?: 0
+        val deviceExpected = status?.optInt("html_expected", bytes.size) ?: bytes.size
+        if (!complete) {
+            appendLog(
+                "HTML upload did not complete on device " +
+                    "(device reports size=$deviceSize, expected=$deviceExpected)."
+            )
             return false
         }
-        appendLog("HTML upload complete; device reports $deviceSize bytes.")
+        if (deviceSize < bytes.size) {
+            appendLog("HTML size mismatch: sent ${bytes.size} bytes, device reports $deviceSize.")
+            return false
+        }
+        if (deviceSize > bytes.size + HTML_TAIL_ALLOWANCE) {
+            appendLog("HTML buffer looks corrupted: sent ${bytes.size} bytes, device reports $deviceSize.")
+            return false
+        }
+
+        appendLog("HTML upload complete; device reports $deviceSize bytes (expected $deviceExpected).")
         _portalHtmlComplete.value = true
         return true
     }
@@ -1605,7 +1823,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch { activeSession.disconnect() }
         }
         session = null
+        activeDeviceFingerprint = null
         _connectionState.value = ConnectionState.Disconnected
+    }
+
+    private fun ensureRootStructure(rootUri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val root = DocumentFile.fromTreeUri(getApplication(), rootUri)
+            if (root == null) {
+                appendLog("Could not open the selected NRSuite root directory.")
+                return@launch
+            }
+
+            val expectedDirectories = listOf("Pcap", "DuckyEditor", "Logs", "Portals")
+            val readyDirectories = mutableListOf<String>()
+            for (name in expectedDirectories) {
+                val existing = root.findFile(name)
+                if (existing != null) {
+                    readyDirectories += name
+                } else if (root.createDirectory(name) != null) {
+                    readyDirectories += name
+                } else {
+                    appendLog("Could not create NRSuite/$name in the selected root.")
+                }
+            }
+
+            if (readyDirectories.isNotEmpty()) {
+                appendLog("NRSuite root ready: ${readyDirectories.joinToString(", ")}.")
+            }
+        }
     }
 
     private fun ensureChildDirectory(rootUri: Uri, name: String): DocumentFile? {
@@ -1696,6 +1942,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val PREF_LAST_DEVICE_FINGERPRINT = "last_device_fingerprint"
         private val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
         private const val HTML_RAW_CHUNK_SIZE = 512
+        private const val HTML_TAIL_ALLOWANCE = 64
         private const val BADUSB_RAW_CHUNK_SIZE = 693
     }
 }

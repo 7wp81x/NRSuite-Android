@@ -64,17 +64,19 @@ object WpaHandshakeParser {
 
         return when {
             isAck && !isMic -> {
-                state.bssid = if (addr2.contentEquals(addr3)) addr2 else addr3
-                state.station = addr1
+                state.m1Bssid = if (addr2.contentEquals(addr3)) addr2 else addr3
+                state.m1Station = addr1
                 state.aNonce = nonce
+                state.m1ReplayCounter = readU64Le(frame, eapolStart + 9)
                 state
             }
 
             !isAck && isMic && !isSecure -> {
-                state.bssid = if (addr1.contentEquals(addr3)) addr1 else addr3
-                state.station = addr2
+                state.m2Bssid = if (addr1.contentEquals(addr3)) addr1 else addr3
+                state.m2Station = addr2
                 state.sNonce = nonce
                 state.mic = mic
+                state.m2ReplayCounter = readU64Le(frame, eapolStart + 9)
                 state.keyDescriptorVersion = keyDescriptorVersion
 
                 val eapolLength = ((frame[eapolStart + 2].toInt() and 0xFF) shl 8) or
@@ -86,5 +88,13 @@ object WpaHandshakeParser {
 
             else -> state
         }
+    }
+
+    private fun readU64Le(bytes: ByteArray, offset: Int): Long {
+        var value = 0L
+        for (index in 0 until 8) {
+            value = value or ((bytes[offset + index].toLong() and 0xFFL) shl (index * 8))
+        }
+        return value
     }
 }
