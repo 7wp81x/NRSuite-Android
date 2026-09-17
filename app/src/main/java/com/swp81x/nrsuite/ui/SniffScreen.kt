@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.sniff.SniffRequest
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
+import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -260,16 +260,16 @@ private fun ConfigZone(
                     )
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
+                        NrFilterChip(
                             selected = fixedMode,
                             onClick = { onModeChange(true) },
-                            label = { Text("Fixed") },
+                            label = "Fixed",
                             enabled = !sniffing,
                         )
-                        FilterChip(
+                        NrFilterChip(
                             selected = !fixedMode,
                             onClick = { onModeChange(false) },
-                            label = { Text("Channel hop") },
+                            label = "Channel hop",
                             enabled = !sniffing,
                         )
                     }
@@ -354,7 +354,7 @@ private fun ConfigZone(
                             Text(if (scanning) "Scanning..." else "Scan WiFi for targets")
                         }
                         if (networks.isNotEmpty()) {
-                            networks.take(6).forEach { network ->
+                            networks.forEach { network ->
                                 val ssid = network.optString("ssid").ifBlank { "(hidden)" }
                                 val bssidValue = network.optString("bssid")
                                 val channelValue = network.optInt("channel", 1)

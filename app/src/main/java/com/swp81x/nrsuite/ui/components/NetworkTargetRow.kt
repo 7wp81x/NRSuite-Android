@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -42,10 +43,10 @@ fun NetworkTargetRow(
             .fillMaxWidth()
             .clickable(enabled = enabled) { onClick() },
         colors = CardDefaults.cardColors(
-            containerColor = if (selected) NrSurfaceVariant else NrSurface,
+            containerColor = if (selected) NrAccent.copy(alpha = 0.12f) else NrSurfaceVariant,
         ),
         shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(if (selected) 1.dp else 0.5.dp, if (selected) MaterialTheme.colorScheme.primary else NrOutline),
+        border = BorderStroke(if (selected) 1.dp else 0.5.dp, if (selected) NrAccent else NrOutline),
     ) {
         Row(
             modifier = Modifier

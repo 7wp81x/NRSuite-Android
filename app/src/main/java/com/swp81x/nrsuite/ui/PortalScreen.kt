@@ -336,19 +336,6 @@ private fun ConfigZone(
                         singleLine = true,
                     )
                     Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = targetBssid,
-                        onValueChange = onTargetBssidChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !running,
-                        label = { Text("Target BSSID (optional)") },
-                        placeholder = { Text("AA:BB:CC:DD:EE:FF") },
-                        isError = !validTargetBssid,
-                        supportingText = { Text("Enables auto EAPOL capture and deauth against this BSSID.") },
-                        singleLine = true,
-                    )
-
-                    Spacer(Modifier.height(8.dp))
                     NumberStepper(
                         label = "Channel",
                         valueText = channel.toString(),

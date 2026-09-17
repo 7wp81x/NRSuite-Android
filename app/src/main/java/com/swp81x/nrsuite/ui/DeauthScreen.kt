@@ -265,7 +265,7 @@ private fun ConfigZone(
                             text = "Select target",
                             style = MaterialTheme.typography.labelLarge,
                         )
-                        networks.take(6).forEach { network ->
+                        networks.forEach { network ->
                             val ssid = network.optString("ssid").ifBlank { "(hidden)" }
                             val bssidValue = network.optString("bssid")
                             val channelValue = network.optInt("channel", 1)
@@ -297,13 +297,12 @@ private fun ConfigZone(
                     )
 
                     Spacer(Modifier.height(10.dp))
-                    NumberStepper(
-                        label = "Channel",
-                        valueText = channel.toString(),
-                        enabled = !running,
-                        onDecrease = { onChannelChange(channel - 1) },
-                        onIncrease = { onChannelChange(channel + 1) },
+                    Text(
+                        text = "Channel: $channel (auto from selected target)",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = NrOnSurfaceVariant,
                     )
+                    Spacer(Modifier.height(8.dp))
                     NumberStepper(
                         label = "Count",
                         valueText = if (count <= 0) "default" else count.toString(),

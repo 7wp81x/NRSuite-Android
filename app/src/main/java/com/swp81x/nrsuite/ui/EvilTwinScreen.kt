@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -48,6 +49,7 @@ import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
+import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
@@ -141,14 +143,19 @@ fun EvilTwinScreen(
                     onClick = onScanWifi,
                     enabled = connected && !running && !scanning,
                 ) {
-                    Icon(Icons.Default.Wifi, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (scanning) "Scanning..." else "Scan WiFi")
+                    Text(if (scanning) "Scanning..." else "Scan WiFi for targets")
                 }
                 if (networks.isNotEmpty()) {
                     Spacer(Modifier.height(6.dp))
                     LazyColumn(
-                        modifier = Modifier.height(180.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .background(
+                                color = NrSurfaceVariant,
+                                shape = RoundedCornerShape(10.dp),
+                            )
+                            .padding(6.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         items(networks.take(8), key = { it.optString("bssid", it.toString()) }) { network ->
@@ -178,13 +185,10 @@ fun EvilTwinScreen(
                     color = if (targetBssid.isBlank()) StatusAmber else NrOnSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = ssid,
-                    onValueChange = { ssid = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !running,
-                    label = { Text("SSID") },
-                    singleLine = true,
+                Text(
+                    text = "Cloned SSID: ${ssid.ifBlank { "(not selected)" }}",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = if (ssid.isBlank()) StatusAmber else NrOnSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(

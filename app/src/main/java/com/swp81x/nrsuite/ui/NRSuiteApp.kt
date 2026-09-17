@@ -14,6 +14,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -632,6 +633,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val activeModule = liveModules.firstOrNull { it.id == activeModuleId }
     val showBack = activeModuleId != null || selectedCategory != null
     val activeTitle = when {
+        activeModuleId == "firmware" -> "Flasher"
         activeModule != null -> activeModule.title
         activeModuleId == "settings" -> "Settings"
         selectedCategory != null -> selectedCategory!!
@@ -715,6 +717,11 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
         },
     ) { innerPadding ->
         val contentModifier = Modifier.padding(innerPadding)
+        val screenKey = when {
+            activeModuleId != null -> "module:$activeModuleId"
+            selectedCategory != null && selectedTab == AppTab.HOME -> "category:$selectedCategory"
+            else -> "tab:${selectedTab.name}"
+        }
 
         if (showRootDirectoryDialog) {
             AlertDialog(
@@ -744,6 +751,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
             )
         }
 
+        Crossfade(targetState = screenKey, label = "screen") {
         when {
             activeModuleId == "wifi" -> {
                 WifiScanScreen(
@@ -999,6 +1007,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                 modifier = contentModifier,
             )
         }
+        }
     }
 }
 
@@ -1108,11 +1117,23 @@ private fun HomeScreen(
             val recentSpecs = recentModuleIds.mapNotNull { id ->
                 modules.firstOrNull { it.id == id }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 recentSpecs.take(3).forEach { spec ->
                     AssistChip(
                         onClick = { if (spec.available) onOpenModule(spec.id) },
-                        label = { Text(spec.title, fontSize = 11.sp) },
+                        label = {
+                            Text(
+                                text = spec.title,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                        },
                         leadingIcon = {
                             Icon(
                                 imageVector = spec.icon,
@@ -1136,13 +1157,14 @@ private fun HomeScreen(
         }
 
         item {
+            val firmwareConnected = connectionState is ConnectionState.Connected
             val categories = listOf(
                 CategorySpec(
                     name = "Wireless",
                     icon = Icons.Default.Wifi,
                     iconTint = NrAccent,
                     moduleIds = listOf("wifi", "sniff", "beacon", "deauth", "evil_twin", "portal"),
-                    available = true,
+                    available = firmwareConnected,
                 ),
                 CategorySpec(
                     name = "HID",
@@ -1156,7 +1178,7 @@ private fun HomeScreen(
                     icon = Icons.Default.Folder,
                     iconTint = StatusAmber,
                     moduleIds = listOf("storage"),
-                    available = true,
+                    available = firmwareConnected,
                 ),
                 CategorySpec(
                     name = "BLE",
@@ -1200,7 +1222,6 @@ private fun HomeScreen(
             )
             CategoryGrid(
                 categories = categories,
-                enabled = connectionState is ConnectionState.Connected,
                 onOpenCategory = onOpenCategory,
             )
         }
@@ -1210,14 +1231,11 @@ private fun HomeScreen(
 @Composable
 private fun CategoryGrid(
     categories: List<CategorySpec>,
-    enabled: Boolean,
     onOpenCategory: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .alpha(if (enabled) 1f else 0.4f),
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         categories.chunked(2).forEach { row ->
@@ -1228,7 +1246,6 @@ private fun CategoryGrid(
                 row.forEach { category ->
                     CategoryCard(
                         category = category,
-                        enabled = enabled,
                         onOpenCategory = onOpenCategory,
                         modifier = Modifier.weight(1f),
                     )
@@ -1244,7 +1261,6 @@ private fun CategoryGrid(
 @Composable
 private fun CategoryCard(
     category: CategorySpec,
-    enabled: Boolean,
     onOpenCategory: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1252,7 +1268,8 @@ private fun CategoryCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(enabled = enabled && category.available) {
+            .alpha(if (category.available) 1f else 0.4f)
+            .clickable(enabled = category.available) {
                 onOpenCategory(category.name)
             },
         colors = CardDefaults.cardColors(containerColor = NrSurface),
@@ -1785,24 +1802,14 @@ private fun DeviceRow(
                 )
             }
             Spacer(Modifier.width(8.dp))
-            if (hasPermission) {
-                Button(
-                    onClick = onConnect,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = NrAccent,
-                        contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
-                    ),
-                ) {
-                    Text("Connect")
-                }
-            } else {
-                OutlinedButton(
-                    onClick = onConnect,
-                    border = BorderStroke(1.dp, NrAccent),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = NrAccent),
-                ) {
-                    Text("Request")
-                }
+            Button(
+                onClick = onConnect,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = NrAccent,
+                    contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
+                ),
+            ) {
+                Text("Connect")
             }
         }
     }
@@ -1890,7 +1897,7 @@ private fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
-            text = if (flasherOnly) "Firmware Flasher" else "Settings",
+            text = if (flasherOnly) "Flash firmware" else "Settings",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )
@@ -1922,14 +1929,14 @@ private fun SettingsScreen(
         }
         }
 
+        if (flasherOnly) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(0.5.dp, NrOutline),
         ) {
             Column(Modifier.padding(14.dp)) {
-                Text("Firmware flasher", fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(4.dp))
+
                 Text(
                     text = "Current version: ${currentFirmware ?: "not connected"}",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
@@ -2034,20 +2041,17 @@ private fun SettingsScreen(
                                     color = NrOnSurfaceVariant,
                                 )
                             }
-                            if (hasPermission) {
-                                OutlinedButton(
-                                    onClick = { onSelectFlashTarget(entry.device) },
-                                    enabled = !firmwareFlashing && !selected,
-                                ) {
-                                    Text(if (selected) "Selected" else "Use")
-                                }
-                            } else {
-                                OutlinedButton(
-                                    onClick = { onRequestPermission(entry.device) },
-                                    enabled = !firmwareFlashing,
-                                ) {
-                                    Text("Grant")
-                                }
+                            OutlinedButton(
+                                onClick = {
+                                    if (hasPermission) {
+                                        onSelectFlashTarget(entry.device)
+                                    } else {
+                                        onRequestPermission(entry.device)
+                                    }
+                                },
+                                enabled = !firmwareFlashing && !selected,
+                            ) {
+                                Text(if (selected) "Selected" else "Select")
                             }
                         }
                     }
@@ -2134,6 +2138,8 @@ private fun SettingsScreen(
         }
 
         if (!flasherOnly) {
+        }
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),

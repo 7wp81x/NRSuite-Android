@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Campaign
@@ -320,6 +321,11 @@ private fun ConfigZone(
                                 enabled = !running && savedLists.isNotEmpty(),
                             ) {
                                 Text("Load")
+                                Spacer(Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                )
                             }
                             DropdownMenu(
                                 expanded = listMenuExpanded,
