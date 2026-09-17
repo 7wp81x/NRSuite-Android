@@ -365,6 +365,7 @@ private fun ConfigZone(
                                     rssi = network.optInt("rssi", -100),
                                     security = network.optString("security", "?"),
                                     selected = targetBssid.trim().equals(bssidValue, ignoreCase = true),
+                                    enabled = !sniffing,
                                     onClick = {
                                         onTargetBssidChange(bssidValue)
                                         onChannelChange(channelValue)

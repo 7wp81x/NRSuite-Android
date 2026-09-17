@@ -36,6 +36,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -75,6 +76,8 @@ fun PortalScreen(
     portalClients: Int,
     capturedData: Int,
     selectedHtmlName: String?,
+    htmlUploading: Boolean,
+    htmlProgress: Int,
     eventLog: List<String>,
     onChooseHtml: () -> Unit,
     onClearHtml: () -> Unit,
@@ -130,6 +133,8 @@ fun PortalScreen(
                     targetBssid = targetBssid,
                     validTargetBssid = validTargetBssid,
                     selectedHtmlName = selectedHtmlName,
+                    htmlUploading = htmlUploading,
+                    htmlProgress = htmlProgress,
                     onToggle = { configExpanded = !configExpanded },
                     onSsidChange = { ssid = it },
                     onChannelChange = { channel = it.coerceIn(1, 13) },
@@ -279,6 +284,8 @@ private fun ConfigZone(
     targetBssid: String,
     validTargetBssid: Boolean,
     selectedHtmlName: String?,
+    htmlUploading: Boolean,
+    htmlProgress: Int,
     onToggle: () -> Unit,
     onSsidChange: (String) -> Unit,
     onChannelChange: (Int) -> Unit,
@@ -355,6 +362,19 @@ private fun ConfigZone(
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = NrOnSurfaceVariant,
                     )
+                    if (htmlUploading || htmlProgress > 0) {
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { htmlProgress / 100f },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = if (htmlUploading) "Uploading HTML... $htmlProgress%" else "HTML upload complete.",
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = onChooseHtml, enabled = !running) {

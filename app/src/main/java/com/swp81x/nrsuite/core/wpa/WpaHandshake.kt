@@ -66,5 +66,5 @@ data class EvilTwinResult(
     val password: String,
     val status: Status,
 ) {
-    enum class Status { CORRECT, INCORRECT, PENDING }
+    enum class Status { CORRECT, INCORRECT, PENDING, INVALID_LENGTH }
 }

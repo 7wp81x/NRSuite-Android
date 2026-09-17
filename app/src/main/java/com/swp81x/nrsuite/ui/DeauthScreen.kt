@@ -155,10 +155,10 @@ fun DeauthScreen(
             title = { Text("Send deauth frames?") },
             text = {
                 Text(
-                    "Target: $bssid\\n" +
-                        "Client: $client\\n" +
-                        "Channel: $channel\\n" +
-                        "Count: ${if (count <= 0) "firmware default" else count}\\n\\n" +
+                    "Target: $bssid\n" +
+                        "Client: $client\n" +
+                        "Channel: $channel\n" +
+                        "Count: ${if (count <= 0) "firmware default" else count}\n\n" +
                         "This disrupts connectivity for affected clients. Only use this on networks you own or are authorized to test."
                 )
             },
@@ -276,6 +276,7 @@ private fun ConfigZone(
                                 rssi = network.optInt("rssi", -100),
                                 security = network.optString("security", "?"),
                                 selected = bssid.trim().equals(bssidValue, ignoreCase = true),
+                                enabled = !running,
                                 onClick = {
                                     onBssidChange(bssidValue)
                                     onChannelChange(channelValue)

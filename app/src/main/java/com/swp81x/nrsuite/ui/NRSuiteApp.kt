@@ -339,6 +339,8 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val portalMode by viewModel.portalMode.collectAsState()
     val portalHtmlSize by viewModel.portalHtmlSize.collectAsState()
     val portalHtmlComplete by viewModel.portalHtmlComplete.collectAsState()
+    val portalHtmlUploading by viewModel.portalHtmlUploading.collectAsState()
+    val portalHtmlUploadProgress by viewModel.portalHtmlUploadProgress.collectAsState()
     val portalSsid by viewModel.portalSsid.collectAsState()
     val portalChannel by viewModel.portalChannel.collectAsState()
     val portalViews by viewModel.portalViews.collectAsState()
@@ -376,6 +378,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
         beaconRunning,
         deauthRunning,
         portalRunning,
+        portalMode,
         bleAdvertising,
     ) {
         modules.map { module ->
@@ -420,7 +423,8 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                 "sniff" -> sniffing
                 "beacon" -> beaconRunning
                 "deauth" -> deauthRunning
-                "portal" -> portalRunning
+                "portal" -> portalRunning && portalMode == "portal"
+                "evil_twin" -> portalRunning && portalMode == "evil_twin"
                 "ble" -> bleAdvertising
                 else -> false
             },
@@ -824,6 +828,8 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                     results = evilTwinResults,
                     eventLog = evilTwinEventLog,
                     selectedHtmlName = evilTwinHtmlName,
+                    htmlUploading = portalHtmlUploading,
+                    htmlProgress = portalHtmlUploadProgress,
                     onScanWifi = viewModel::scanWifi,
                     onChooseHtml = { evilTwinHtmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
                     onStart = viewModel::startEvilTwin,
@@ -846,6 +852,8 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                     portalClients = portalClients,
                     capturedData = portalCapturedData,
                     selectedHtmlName = portalHtmlName,
+                    htmlUploading = portalHtmlUploading,
+                    htmlProgress = portalHtmlUploadProgress,
                     eventLog = portalEventLog,
                     onChooseHtml = { htmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
                     onClearHtml = viewModel::clearPortalHtmlFile,

@@ -24,6 +24,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -65,6 +66,8 @@ fun EvilTwinScreen(
     results: List<EvilTwinResult>,
     eventLog: List<String>,
     selectedHtmlName: String?,
+    htmlUploading: Boolean,
+    htmlProgress: Int,
     onClearEventLog: () -> Unit,
     onScanWifi: () -> Unit,
     onChooseHtml: () -> Unit,
@@ -147,10 +150,9 @@ fun EvilTwinScreen(
                 }
                 if (networks.isNotEmpty()) {
                     Spacer(Modifier.height(6.dp))
-                    LazyColumn(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(300.dp)
                             .background(
                                 color = NrSurfaceVariant,
                                 shape = RoundedCornerShape(10.dp),
@@ -158,7 +160,7 @@ fun EvilTwinScreen(
                             .padding(6.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        items(networks.take(8), key = { it.optString("bssid", it.toString()) }) { network ->
+                        networks.forEach { network ->
                             val bssidValue = network.optString("bssid")
                             NetworkTargetRow(
                                 ssid = network.optString("ssid").ifBlank { "(hidden)" },
@@ -180,28 +182,23 @@ fun EvilTwinScreen(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "Target BSSID: ${targetBssid.ifBlank { "none selected" }}",
+                    text = selectedHtmlName ?: "No HTML file selected",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = if (targetBssid.isBlank()) StatusAmber else NrOnSurfaceVariant,
+                    color = if (selectedHtmlName == null) StatusAmber else NrOnSurfaceVariant,
                 )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "Cloned SSID: ${ssid.ifBlank { "(not selected)" }}",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = if (ssid.isBlank()) StatusAmber else NrOnSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "Channel follows selected target: $channel",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = selectedHtmlName ?: "No custom HTML selected (placeholder page)",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
-                )
+                if (htmlUploading || htmlProgress > 0) {
+                    Spacer(Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { htmlProgress / 100f },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = if (htmlUploading) "Uploading HTML... $htmlProgress%" else "HTML upload complete.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = NrOnSurfaceVariant,
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onChooseHtml, enabled = !running) {
@@ -214,7 +211,10 @@ fun EvilTwinScreen(
                     } else {
                         Button(
                             onClick = { onStart(ssid.trim(), channel, targetBssid.trim()) },
-                            enabled = connected && targetBssid.isNotBlank(),
+                            enabled = connected &&
+                                targetBssid.isNotBlank() &&
+                                selectedHtmlName != null &&
+                                !htmlUploading,
                         ) {
                             Text("Start Evil Twin")
                         }
@@ -249,7 +249,7 @@ fun EvilTwinScreen(
                 }
                 if (results.isEmpty()) {
                     Text(
-                        text = "Passwords submitted to the portal will appear here.",
+                        text = "No password captured yet.",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
@@ -259,18 +259,36 @@ fun EvilTwinScreen(
                             EvilTwinResult.Status.CORRECT -> "correct"
                             EvilTwinResult.Status.INCORRECT -> "incorrect"
                             EvilTwinResult.Status.PENDING -> "pending"
+                            EvilTwinResult.Status.INVALID_LENGTH -> "invalid length"
                         }
                         val statusColor = when (result.status) {
                             EvilTwinResult.Status.CORRECT -> StatusGreen
                             EvilTwinResult.Status.INCORRECT -> MaterialTheme.colorScheme.error
                             EvilTwinResult.Status.PENDING -> StatusAmber
+                            EvilTwinResult.Status.INVALID_LENGTH -> StatusAmber
                         }
-                        Text(
-                            text = "${result.password}  ·  $statusText",
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = statusColor,
-                            modifier = Modifier.padding(vertical = 3.dp),
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "${result.password}  ·  $statusText",
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                color = statusColor,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = { clipboard.setText(AnnotatedString(result.password)) },
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy password",
+                                    tint = NrOnSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                 }
                 Spacer(Modifier.height(6.dp))
@@ -281,6 +299,8 @@ fun EvilTwinScreen(
                         "Submitted passwords were checked against the captured WPA2 handshake."
                     results.any { it.status == EvilTwinResult.Status.PENDING } ->
                         "Waiting for a complete M1 + M2 handshake with matching BSSID/STA before verification."
+                    results.any { it.status == EvilTwinResult.Status.INVALID_LENGTH } ->
+                        "One or more submitted passwords are outside the WPA2 passphrase length range (8-63 characters)."
                     else ->
                         "WPA2 verification runs automatically after a password is submitted and matching M1 + M2 material is captured."
                 }
@@ -291,6 +311,7 @@ fun EvilTwinScreen(
                         results.any { it.status == EvilTwinResult.Status.CORRECT } -> StatusGreen
                         results.any { it.status == EvilTwinResult.Status.INCORRECT } -> MaterialTheme.colorScheme.error
                         results.any { it.status == EvilTwinResult.Status.PENDING } -> StatusAmber
+                        results.any { it.status == EvilTwinResult.Status.INVALID_LENGTH } -> StatusAmber
                         else -> NrOnSurfaceVariant
                     },
                 )

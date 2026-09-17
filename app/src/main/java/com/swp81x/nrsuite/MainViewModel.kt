@@ -168,6 +168,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _portalHtmlComplete = MutableStateFlow(false)
     val portalHtmlComplete: StateFlow<Boolean> = _portalHtmlComplete.asStateFlow()
 
+    private val _portalHtmlUploading = MutableStateFlow(false)
+    val portalHtmlUploading: StateFlow<Boolean> = _portalHtmlUploading.asStateFlow()
+
+    private val _portalHtmlUploadProgress = MutableStateFlow(0)
+    val portalHtmlUploadProgress: StateFlow<Int> = _portalHtmlUploadProgress.asStateFlow()
+
     private val _portalSsid = MutableStateFlow("")
     val portalSsid: StateFlow<String> = _portalSsid.asStateFlow()
 
@@ -476,6 +482,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         // Set clean state BEFORE disconnecting so UI never shows Failed
         _connectionState.value = ConnectionState.Disconnected
+        stopActiveOperations()
 
         val currentSession = session
         sessionObservers.forEach { it.cancel() }
@@ -544,6 +551,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         if (_scanning.value) return
+        if (!ensureRadioIdle("WiFi Scan")) return
 
         _networks.value = emptyList()
         _scanning.value = true
@@ -896,7 +904,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 _firmwareFlashStatus.value = "Stopping active modules..."
-                stopModulesForFlash()
+                stopActiveOperations()
 
                 val currentSession = session
                 sessionObservers.forEach { it.cancel() }
@@ -962,7 +970,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun stopModulesForFlash() {
+    private fun stopActiveOperations() {
         beaconStatusJob?.cancel()
         beaconStatusJob = null
         portalStatusJob?.cancel()
@@ -1004,6 +1012,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startEvilTwin(ssid: String, channel: Int, targetBssid: String) {
+        if (_evilTwinHtmlUri.value == null) {
+            appendLog("Select a custom HTML file before starting Evil Twin.", level = LogLevel.ERROR)
+            return
+        }
         startPortalInternal(ssid, channel, targetBssid, _evilTwinHtmlUri.value, "evil_twin")
     }
 
@@ -1020,6 +1032,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         if (_portalRunning.value) return
+        if (!ensureRadioIdle(if (mode == "evil_twin") "Evil Twin" else "Captive Portal")) return
         _portalMode.value = mode
 
         val cleanSsid = ssid.trim().ifBlank { "Free WiFi" }
@@ -1108,6 +1121,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun uploadPortalHtml(session: NrSession, bytes: ByteArray): Boolean {
+        _portalHtmlComplete.value = false
+        _portalHtmlUploading.value = true
+        _portalHtmlUploadProgress.value = 0
+        return try {
+            uploadPortalHtmlInternal(session, bytes)
+        } finally {
+            _portalHtmlUploading.value = false
+            if (_portalHtmlComplete.value) {
+                _portalHtmlUploadProgress.value = 100
+            }
+        }
+    }
+
+    private suspend fun uploadPortalHtmlInternal(session: NrSession, bytes: ByteArray): Boolean {
         val maxHtmlSize = 24 * 1024
         if (bytes.size > maxHtmlSize) {
             appendLog("HTML upload rejected: ${bytes.size} bytes exceeds firmware limit of $maxHtmlSize bytes.")
@@ -1170,6 +1197,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             offset = end
             chunkIndex++
             _portalHtmlSize.value = offset
+            _portalHtmlUploadProgress.value = ((offset * 100) / bytes.size).coerceIn(0, 100)
             if (isLast) appendLog("HTML final chunk sent (${bytes.size} bytes at offset $end).")
             delay(80)
         }
@@ -1217,6 +1245,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val results = _evilTwinPasswords.value.map { password ->
             val status = when {
                 !handshake.isComplete -> EvilTwinResult.Status.PENDING
+                password.length !in 8..63 -> EvilTwinResult.Status.INVALID_LENGTH
                 WpaHandshakeVerifier.verify(handshake, ssid, password) -> EvilTwinResult.Status.CORRECT
                 else -> EvilTwinResult.Status.INCORRECT
             }
@@ -1301,6 +1330,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         if (_bleAdvertising.value) return
+        val activeWifi = activeRadioLabel(includeBle = false)
+        if (activeWifi != null) {
+            appendLog(
+                "Cannot start BLE HID while $activeWifi is active. Stop $activeWifi first.",
+                level = LogLevel.ERROR,
+            )
+            return
+        }
 
         viewModelScope.launch {
             val name = advertiseName.trim().ifBlank { "NRSuite Keyboard" }
@@ -1315,6 +1352,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _bleConnected.value = false
                 _blePeer.value = ""
                 startBleStatusPolling(activeSession)
+                updateForegroundService()
                 appendLog("BLE HID advertising started.")
                 addHistory("ble", "BLE HID advertising started as '$name'", HistoryLevel.SUCCESS)
             } else {
@@ -1330,6 +1368,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _bleAdvertising.value = false
         _bleConnected.value = false
         _blePeer.value = ""
+        updateForegroundService()
         val activeSession = session
         viewModelScope.launch {
             runCatching { activeSession?.sendCommand("BLE_RELEASE_ALL", timeoutMs = 3_000) }
@@ -1438,6 +1477,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         if (_deauthRunning.value) return
+        if (!ensureRadioIdle("Deauthentication")) return
         stopLocalPortal()
 
         val cleanBssid = bssid.trim().uppercase()
@@ -1511,6 +1551,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         if (_beaconRunning.value) return
+        if (!ensureRadioIdle("Beacon Broadcast")) return
         stopLocalPortal()
 
         val cleanSsids = ssids.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
@@ -1592,6 +1633,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         if (_sniffing.value) return
+        if (!ensureRadioIdle("Packet Sniffer")) return
         beaconStatusJob?.cancel()
         beaconStatusJob = null
         _beaconRunning.value = false
@@ -1740,6 +1782,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun activeRadioLabel(includeBle: Boolean = true): String? {
+        if (includeBle && (_bleAdvertising.value || _bleConnected.value)) {
+            return "BLE HID"
+        }
+        return when {
+            _portalRunning.value -> {
+                if (_portalMode.value == "evil_twin") "Evil Twin" else "Captive Portal"
+            }
+            _sniffing.value -> "Packet Sniffer"
+            _beaconRunning.value -> "Beacon Broadcast"
+            _deauthRunning.value -> "Deauthentication"
+            _scanning.value -> "WiFi Scan"
+            else -> null
+        }
+    }
+
+    private fun ensureRadioIdle(requested: String): Boolean {
+        val active = activeRadioLabel()
+        if (active == null) return true
+        appendLog(
+            "Cannot start $requested while $active is active. Stop $active first.",
+            level = LogLevel.ERROR,
+        )
+        return false
+    }
+
     private fun updateForegroundService() {
         val context = getApplication<Application>()
         val activeText = when {
@@ -1747,6 +1815,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _beaconRunning.value -> "Beacon broadcast active"
             _portalRunning.value -> "Captive portal active"
             _deauthRunning.value -> "Deauth burst active"
+            _bleAdvertising.value || _bleConnected.value -> "BLE HID active"
             else -> null
         }
         val intent = Intent(context, NrSuiteForegroundService::class.java)
@@ -1853,6 +1922,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 data?.optString("pass").orEmpty()
                             }
                             if (submittedPassword.isNotBlank() && _portalMode.value == "evil_twin") {
+                                appendLog("Captured password candidate (${submittedPassword.length} chars).")
                                 _evilTwinPasswords.update { (it + submittedPassword).takeLast(50) }
                                 verifyEvilTwinPasswords()
                             }
