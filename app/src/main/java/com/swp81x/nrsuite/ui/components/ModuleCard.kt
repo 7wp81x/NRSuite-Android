@@ -29,7 +29,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -45,8 +44,6 @@ data class ModuleCardSpec(
     val title: String,
     val description: String,
     val icon: ImageVector,
-    val iconTint: Color,
-    val iconBg: Color,
     val category: String = "General",
     val available: Boolean = true,
     val statusLabel: String? = null,
@@ -83,7 +80,7 @@ fun ModuleCard(
                 modifier = Modifier
                     .size(36.dp)
                     .background(
-                        color = if (module.available) module.iconBg else NrSurfaceVariant,
+                        color = if (module.available) NrAccent.copy(alpha = 0.12f) else NrSurfaceVariant,
                         shape = RoundedCornerShape(8.dp),
                     ),
                 contentAlignment = Alignment.Center,
@@ -91,7 +88,7 @@ fun ModuleCard(
                 Icon(
                     imageVector = module.icon,
                     contentDescription = null,
-                    tint = if (module.available) module.iconTint else NrOnSurfaceVariant,
+                    tint = if (module.available) NrAccent else NrOnSurfaceVariant,
                     modifier = Modifier.size(18.dp),
                 )
             }
