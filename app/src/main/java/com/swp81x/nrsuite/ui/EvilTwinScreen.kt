@@ -150,7 +150,7 @@ fun EvilTwinScreen(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(180.dp)
+                            .height(300.dp)
                             .background(
                                 color = NrSurfaceVariant,
                                 shape = RoundedCornerShape(10.dp),

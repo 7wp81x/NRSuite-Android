@@ -14,7 +14,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -370,7 +369,16 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val connectedChip = connected?.chip
     val isDeviceConnected = connected != null
     val deviceFeatures = connected?.features.orEmpty()
-    val liveModules = modules.map { module ->
+    val liveModules = remember(
+        connectionState,
+        scanning,
+        sniffing,
+        beaconRunning,
+        deauthRunning,
+        portalRunning,
+        bleAdvertising,
+    ) {
+        modules.map { module ->
         val runsWithoutDevice = module.id == "ducky" || module.id == "firmware"
         val featureKey = when (module.id) {
             "wifi" -> "wifi"
@@ -417,6 +425,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                 else -> false
             },
         )
+    }
     }
 
     var selectedTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
@@ -717,11 +726,6 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
         },
     ) { innerPadding ->
         val contentModifier = Modifier.padding(innerPadding)
-        val screenKey = when {
-            activeModuleId != null -> "module:$activeModuleId"
-            selectedCategory != null && selectedTab == AppTab.HOME -> "category:$selectedCategory"
-            else -> "tab:${selectedTab.name}"
-        }
 
         if (showRootDirectoryDialog) {
             AlertDialog(
@@ -751,7 +755,6 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
             )
         }
 
-        Crossfade(targetState = screenKey, label = "screen") {
         when {
             activeModuleId == "wifi" -> {
                 WifiScanScreen(
@@ -1006,7 +1009,6 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                 onClearHistory = viewModel::clearHistory,
                 modifier = contentModifier,
             )
-        }
         }
     }
 }
@@ -1318,7 +1320,7 @@ private fun CategoryModulesScreen(
                 modifier = Modifier.padding(bottom = 4.dp),
             )
         }
-        items(modules, key = { it.id }) { module ->
+        items(modules, key = { it.id }, contentType = { "module" }) { module ->
             ModuleCard(
                 module = module,
                 onClick = { if (module.available) onOpenModule(module.id) },
@@ -1451,7 +1453,7 @@ private fun ModulesScreen(
             }
         }
 
-        items(filtered, key = { it.id }) { module ->
+        items(filtered, key = { it.id }, contentType = { "module" }) { module ->
             ModuleCard(
                 module = module,
                 onClick = { if (module.available) onOpenModule(module.id) },
@@ -1526,7 +1528,7 @@ private fun LogsScreen(
                 if (filtered.isEmpty()) {
                     item { Text("No logs yet. Connect a device or run a module.", color = NrOnSurfaceVariant) }
                 } else {
-                    items(filtered.takeLast(300).reversed()) { entry ->
+                    items(filtered.takeLast(300).reversed(), contentType = { "log" }) { entry ->
                         val textColor = when (entry.level) {
                             LogLevel.ERROR -> LogColorError
                             LogLevel.SUCCESS -> LogColorSuccess
@@ -2136,9 +2138,9 @@ private fun SettingsScreen(
                 }
             }
         }
+        }
 
         if (!flasherOnly) {
-        }
 
         Card(
             modifier = Modifier.fillMaxWidth(),
