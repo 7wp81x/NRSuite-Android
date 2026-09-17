@@ -176,7 +176,9 @@ class NrSession(
         } catch (t: Throwable) {
             if (!closed) {
                 log("Reader stopped: ${t.message ?: t.javaClass.simpleName}")
-                _state.value = ConnectionState.Failed(t.message ?: "Device disconnected")
+                // A USB unplug surfaces as a read/write exception. Treat it as
+                // a clean disconnect instead of a red "Connection problem".
+                _state.value = ConnectionState.Disconnected
             }
         }
     }

@@ -49,6 +49,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Edit
@@ -60,6 +61,7 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputAntenna
@@ -102,6 +104,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -128,6 +131,7 @@ import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
@@ -232,6 +236,23 @@ private val modules = listOf(
         available = true,
     ),
     ModuleCardSpec(
+        id = "firmware",
+        title = "Firmware Flasher",
+        description = "Flash a complete merged firmware image over the USB ROM bootloader.",
+        icon = Icons.Default.Memory,
+        category = "Firmware",
+        available = true,
+    ),
+    ModuleCardSpec(
+        id = "serial_debugger",
+        title = "Serial Debugger",
+        description = "NRSuite serial monitor and debugger (planned).",
+        icon = Icons.Default.DeveloperBoard,
+        category = "Firmware",
+        available = false,
+        statusLabel = "Planned",
+    ),
+    ModuleCardSpec(
         id = "ir",
         title = "IR",
         description = "Infrared transmit/receive module (planned).",
@@ -280,6 +301,7 @@ fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
 @Composable
 private fun NRSuiteContent(viewModel: MainViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val uiScope = rememberCoroutineScope()
     val usbManager = remember {
         context.getSystemService(Context.USB_SERVICE) as UsbManager
     }
@@ -348,7 +370,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val isDeviceConnected = connected != null
     val deviceFeatures = connected?.features.orEmpty()
     val liveModules = modules.map { module ->
-        val runsWithoutDevice = module.id == "ducky"
+        val runsWithoutDevice = module.id == "ducky" || module.id == "firmware"
         val featureKey = when (module.id) {
             "wifi" -> "wifi"
             "sniff" -> "sniff"
@@ -587,10 +609,24 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     }
 
     fun requestPermission(device: UsbDevice) {
-        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        // FLAG_MUTABLE is required so the system can attach
+        // EXTRA_DEVICE and EXTRA_PERMISSION_GRANTED to the broadcast.
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
         val intent = Intent(ACTION_USB_PERMISSION).setPackage(context.packageName)
         val pendingIntent = PendingIntent.getBroadcast(context, device.deviceId, intent, flags)
         usbManager.requestPermission(device, pendingIntent)
+
+        // Fallback for devices/OEMs that do not deliver the permission
+        // broadcast reliably: poll hasPermission() and force a recompose.
+        uiScope.launch {
+            repeat(40) {
+                kotlinx.coroutines.delay(250)
+                if (usbManager.hasPermission(device)) {
+                    permissionRevision++
+                    return@launch
+                }
+            }
+        }
     }
 
     val activeModule = liveModules.firstOrNull { it.id == activeModuleId }
@@ -867,6 +903,29 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                 )
             }
 
+            activeModuleId == "firmware" -> SettingsScreen(
+                connectionState = connectionState,
+                exportDirectoryName = exportDirectoryName,
+                firmwareFileName = firmwareFlashName,
+                firmwareFlashSize = firmwareFlashSize,
+                firmwareFlashing = firmwareFlashing,
+                firmwareFlashProgress = firmwareFlashProgress,
+                firmwareFlashStatus = firmwareFlashStatus,
+                devices = devices,
+                usbManager = usbManager,
+                permissionRevision = permissionRevision,
+                selectedFlashTarget = firmwareTargetDevice,
+                onChooseExportDirectory = { folderPicker.launch(null) },
+                onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "*/*")) },
+                onClearFirmware = viewModel::clearFirmwareFlashFile,
+                onRefreshDevices = viewModel::refreshDevices,
+                onRequestPermission = { device -> requestPermission(device) },
+                onSelectFlashTarget = viewModel::selectFirmwareTarget,
+                onStartFirmwareFlash = viewModel::startFirmwareFlash,
+                flasherOnly = true,
+                modifier = contentModifier,
+            )
+
             activeModuleId == "settings" -> SettingsScreen(
                 connectionState = connectionState,
                 exportDirectoryName = exportDirectoryName,
@@ -1106,6 +1165,13 @@ private fun HomeScreen(
                     moduleIds = emptyList(),
                     available = false,
                     statusLabel = "Planned",
+                ),
+                CategorySpec(
+                    name = "Firmware",
+                    icon = Icons.Default.Memory,
+                    iconTint = Color(0xFF34D399),
+                    moduleIds = listOf("firmware", "serial_debugger"),
+                    available = true,
                 ),
                 CategorySpec(
                     name = "IR",
@@ -1401,7 +1467,7 @@ private fun LogsScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1456,7 +1522,7 @@ private fun LogsScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(bg, RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                                    .padding(horizontal = 8.dp, vertical = 5.dp),
                                 verticalAlignment = Alignment.Top,
                             ) {
                                 Text(
@@ -1483,7 +1549,7 @@ private fun LogsScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1521,7 +1587,7 @@ private fun LogsScreen(
                         }
                         SelectionContainer {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                                 verticalAlignment = Alignment.Top,
                             ) {
                                 Text(
@@ -1788,6 +1854,7 @@ private fun SettingsScreen(
     onRequestPermission: (UsbDevice) -> Unit,
     onSelectFlashTarget: (UsbDevice) -> Unit,
     onStartFirmwareFlash: (targetChip: String, skipReset: Boolean) -> Unit,
+    flasherOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val currentFirmware = (connectionState as? ConnectionState.Connected)?.firmwareVersion
@@ -1823,10 +1890,11 @@ private fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
-            text = "Settings",
+            text = if (flasherOnly) "Firmware Flasher" else "Settings",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )
+        if (!flasherOnly) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1851,6 +1919,7 @@ private fun SettingsScreen(
                     color = NrOnSurfaceVariant,
                 )
             }
+        }
         }
 
         Card(
@@ -2064,6 +2133,7 @@ private fun SettingsScreen(
             }
         }
 
+        if (!flasherOnly) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -2118,5 +2188,7 @@ private fun SettingsScreen(
                 )
             }
         }
+        }
+
     }
 }

@@ -423,6 +423,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onUsbDeviceAttached() {
+        if (_connectionState.value is ConnectionState.Failed) {
+            _connectionState.value = ConnectionState.Disconnected
+        }
         refreshDevices()
         appendLog("USB device attached.", level = LogLevel.USB)
         autoConnectLastDevice()
