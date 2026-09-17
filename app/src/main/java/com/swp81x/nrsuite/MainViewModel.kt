@@ -7,6 +7,7 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
@@ -84,6 +85,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _firmwareFlashName = MutableStateFlow<String?>(null)
     val firmwareFlashName: StateFlow<String?> = _firmwareFlashName.asStateFlow()
 
+    private val _firmwareFlashSize = MutableStateFlow(0L)
+    val firmwareFlashSize: StateFlow<Long> = _firmwareFlashSize.asStateFlow()
+
     private val _firmwareFlashing = MutableStateFlow(false)
     val firmwareFlashing: StateFlow<Boolean> = _firmwareFlashing.asStateFlow()
 
@@ -95,6 +99,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _firmwareTargetDevice = MutableStateFlow<UsbSerialDevice?>(null)
     val firmwareTargetDevice: StateFlow<UsbSerialDevice?> = _firmwareTargetDevice.asStateFlow()
+
+    private val _recentModuleIds = MutableStateFlow(
+        preferences.getString(PREF_RECENT_MODULES, "")
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+    )
+    val recentModuleIds: StateFlow<List<String>> = _recentModuleIds.asStateFlow()
 
     private val _events = MutableStateFlow<List<JSONObject>>(emptyList())
     val events: StateFlow<List<JSONObject>> = _events.asStateFlow()
@@ -271,6 +284,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshDevices()
     }
 
+    fun onModuleOpened(moduleId: String) {
+        val current = _recentModuleIds.value.toMutableList()
+        current.remove(moduleId)
+        current.add(0, moduleId)
+        val trimmed = current.take(3)
+        _recentModuleIds.value = trimmed
+        preferences.edit().putString(PREF_RECENT_MODULES, trimmed.joinToString(",")).apply()
+    }
+
     fun saveBeaconList(name: String, ssids: List<String>) {
         val cleanName = name.trim()
         if (cleanName.isBlank()) return
@@ -433,37 +455,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun onUsbDeviceDetached(device: UsbDevice) {
         refreshDevices()
         appendLog("USB device detached: ${device.deviceName}", level = LogLevel.USB)
+
         val detachedFingerprint = runCatching { deviceFingerprint(device) }.getOrNull()
         if (activeDeviceFingerprint == null || detachedFingerprint == null ||
             activeDeviceFingerprint != detachedFingerprint
         ) {
-            appendLog(
-                "Detached device is not the active session; keeping the current connection.",
-                level = LogLevel.USB,
-            )
+            appendLog("Detached device is not the active session; keeping connection.", level = LogLevel.USB)
             return
         }
+
         activeDeviceFingerprint = null
         activeSerialDevice = null
         if (_firmwareTargetDevice.value?.device?.deviceId == device.deviceId) {
             _firmwareTargetDevice.value = null
         }
         _activeDeviceName.value = null
-        if (session != null) {
-            disconnect()
+
+        // Set clean state BEFORE disconnecting so UI never shows Failed
+        _connectionState.value = ConnectionState.Disconnected
+
+        val currentSession = session
+        sessionObservers.forEach { it.cancel() }
+        sessionObservers = emptyList()
+        session = null
+        if (currentSession != null) {
+            viewModelScope.launch {
+                runCatching { currentSession.disconnect() }
+            }
         }
     }
 
     fun hasPermission(device: UsbDevice): Boolean = usbManager.hasPermission(device)
 
     fun onPermissionResult(device: UsbDevice, granted: Boolean) {
+        val reallyGranted = granted || usbManager.hasPermission(device)
         appendLog(
-            if (granted || usbManager.hasPermission(device)) {
-                "USB permission granted for ${device.deviceName}."
-            } else {
-                "USB permission denied for ${device.deviceName}."
-            }
+            if (reallyGranted) "USB permission granted for ${device.deviceName}."
+            else "USB permission denied for ${device.deviceName}.",
+            level = LogLevel.USB,
         )
+        if (reallyGranted) {
+            refreshDevices()
+            connect(device)
+        }
     }
 
     fun connect(device: UsbDevice) {
@@ -783,12 +817,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setFirmwareFlashFile(uri: Uri, name: String?) {
         _firmwareFlashUri.value = uri
         _firmwareFlashName.value = name ?: uri.lastPathSegment ?: "firmware.bin"
+        _firmwareFlashSize.value = queryDocumentSize(uri)
         appendLog("Firmware image selected: ${_firmwareFlashName.value}")
+    }
+
+    private fun queryDocumentSize(uri: Uri): Long {
+        return runCatching {
+            getApplication<Application>().contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.SIZE),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (index >= 0 && !cursor.isNull(index)) cursor.getLong(index) else 0L
+                } else {
+                    0L
+                }
+            } ?: 0L
+        }.getOrDefault(0L)
     }
 
     fun clearFirmwareFlashFile() {
         _firmwareFlashUri.value = null
         _firmwareFlashName.value = null
+        _firmwareFlashSize.value = 0
         _firmwareFlashProgress.value = 0
         _firmwareFlashStatus.value = null
     }
@@ -812,9 +867,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (_firmwareFlashing.value) return
 
-        val entry = _firmwareTargetDevice.value ?: activeSerialDevice
+        val entry = _firmwareTargetDevice.value
         if (entry == null) {
-            appendLog("Select a target device before flashing firmware.")
+            appendLog("Select a flash target device before flashing.")
             return
         }
         if (!usbManager.hasPermission(entry.device)) {
@@ -873,11 +928,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         offset = 0,
                         resetMode = resetMode,
                     ) { percent ->
+                        val written = (bytes.size.toLong() * percent / 100L).toInt()
                         _firmwareFlashProgress.value = percent
                         _firmwareFlashStatus.value = if (percent >= 100) {
-                            "Firmware written; rebooting device..."
+                            "Firmware written — rebooting device..."
                         } else {
-                            "Writing firmware... $percent%"
+                            "Writing... $percent%  (${written / 1024} / ${bytes.size / 1024} KB)"
                         }
                     }
                 }
@@ -889,6 +945,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 delay(2_000)
                 refreshDevices()
             } catch (t: Throwable) {
+                _firmwareFlashProgress.value = 0
                 _firmwareFlashStatus.value = "Flash failed: ${t.message ?: t.javaClass.simpleName}"
                 appendLog(
                     "Firmware flash failed: ${t.message ?: t.javaClass.simpleName}",
@@ -1940,6 +1997,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val PREF_DUCKY_SCRIPTS = "ducky_scripts"
         private const val PREF_HISTORY = "session_history"
         private const val PREF_LAST_DEVICE_FINGERPRINT = "last_device_fingerprint"
+        private const val PREF_RECENT_MODULES = "recent_modules"
         private val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
         private const val HTML_RAW_CHUNK_SIZE = 512
         private const val HTML_TAIL_ALLOWANCE = 64

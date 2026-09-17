@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -44,6 +45,8 @@ data class ModuleCardSpec(
     val title: String,
     val description: String,
     val icon: ImageVector,
+    val iconTint: Color,
+    val iconBg: Color,
     val category: String = "General",
     val available: Boolean = true,
     val statusLabel: String? = null,
@@ -76,12 +79,22 @@ fun ModuleCard(
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                imageVector = module.icon,
-                contentDescription = null,
-                tint = if (module.available) NrAccent else NrOnSurfaceVariant,
-                modifier = Modifier.size(28.dp),
-            )
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(
+                        color = if (module.available) module.iconBg else NrSurfaceVariant,
+                        shape = RoundedCornerShape(8.dp),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = module.icon,
+                    contentDescription = null,
+                    tint = if (module.available) module.iconTint else NrOnSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

@@ -16,11 +16,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.swp81x.nrsuite.ui.theme.LogColorError
 import com.swp81x.nrsuite.ui.theme.LogColorInfo
 import com.swp81x.nrsuite.ui.theme.LogColorSuccess
@@ -52,21 +55,32 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FilterCenterFocus
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SettingsInputAntenna
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -110,6 +124,7 @@ import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
+import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrSurface
 import com.swp81x.nrsuite.ui.theme.StatusAmber
@@ -129,12 +144,23 @@ private enum class AppTab(val label: String) {
     LOGS("Logs"),
 }
 
+private data class CategorySpec(
+    val name: String,
+    val icon: ImageVector,
+    val iconTint: Color,
+    val moduleIds: List<String>,
+    val available: Boolean,
+    val statusLabel: String? = null,
+)
+
 private val modules = listOf(
     ModuleCardSpec(
         id = "wifi",
         title = "WiFi Scan",
         description = "Active 2.4 GHz scan with SSID, BSSID, channel, RSSI, and security.",
         icon = Icons.Default.Wifi,
+        iconTint = Color(0xFF34D399),
+        iconBg = Color(0xFF062016),
         category = "Wireless",
         available = true,
     ),
@@ -142,7 +168,9 @@ private val modules = listOf(
         id = "sniff",
         title = "Packet Sniffer",
         description = "Capture 802.11 frames and export PCAP.",
-        icon = Icons.AutoMirrored.Filled.Article,
+        icon = Icons.Default.FilterCenterFocus,
+        iconTint = Color(0xFF3D9BFF),
+        iconBg = Color(0xFF06102A),
         category = "Wireless",
         available = true,
     ),
@@ -150,7 +178,9 @@ private val modules = listOf(
         id = "beacon",
         title = "Beacon",
         description = "Broadcast custom or hidden SSIDs.",
-        icon = Icons.Default.Campaign,
+        icon = Icons.Default.SettingsInputAntenna,
+        iconTint = Color(0xFFF59E0B),
+        iconBg = Color(0xFF2A1600),
         category = "Wireless",
         available = true,
     ),
@@ -158,7 +188,9 @@ private val modules = listOf(
         id = "deauth",
         title = "Deauth",
         description = "Send a targeted deauth burst to a BSSID.",
-        icon = Icons.Default.Warning,
+        icon = Icons.Default.WifiOff,
+        iconTint = Color(0xFFEF4444),
+        iconBg = Color(0xFF2A0606),
         category = "Wireless",
         available = true,
     ),
@@ -166,7 +198,9 @@ private val modules = listOf(
         id = "evil_twin",
         title = "Evil Twin",
         description = "Portal + deauth + EAPOL capture workflow (beta).",
-        icon = Icons.Default.Lock,
+        icon = Icons.Default.ContentCopy,
+        iconTint = Color(0xFFA78BFA),
+        iconBg = Color(0xFF160620),
         category = "Wireless",
         available = true,
     ),
@@ -174,7 +208,9 @@ private val modules = listOf(
         id = "portal",
         title = "Captive Portal",
         description = "Start an AP and serve a custom HTML page.",
-        icon = Icons.Default.Lock,
+        icon = Icons.Default.Language,
+        iconTint = Color(0xFFAAB2BD),
+        iconBg = Color(0xFF1E2126),
         category = "Wireless",
         available = true,
     ),
@@ -182,7 +218,9 @@ private val modules = listOf(
         id = "ducky",
         title = "Ducky Editor",
         description = "Create, import, and export DuckyScript payloads.",
-        icon = Icons.Default.Edit,
+        icon = Icons.Default.Code,
+        iconTint = Color(0xFFAAB2BD),
+        iconBg = Color(0xFF1E2126),
         category = "HID",
         available = true,
     ),
@@ -191,6 +229,8 @@ private val modules = listOf(
         title = "BLE HID",
         description = "BadBLE payloads and realtime keyboard input.",
         icon = Icons.Default.Bluetooth,
+        iconTint = Color(0xFF3D9BFF),
+        iconBg = Color(0xFF06102A),
         category = "HID",
         available = true,
     ),
@@ -198,7 +238,9 @@ private val modules = listOf(
         id = "storage",
         title = "Mass Storage",
         description = "Browse and manage files on the device.",
-        icon = Icons.Default.Storage,
+        icon = Icons.Default.Folder,
+        iconTint = Color(0xFFF59E0B),
+        iconBg = Color(0xFF2A1600),
         category = "Storage",
         available = true,
     ),
@@ -207,6 +249,8 @@ private val modules = listOf(
         title = "BadUSB",
         description = "Native USB HID payloads.",
         icon = Icons.Default.Keyboard,
+        iconTint = Color(0xFFEF4444),
+        iconBg = Color(0xFF2A0606),
         category = "HID",
         available = true,
     ),
@@ -242,10 +286,12 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val history by viewModel.history.collectAsState()
     val activeDeviceName by viewModel.activeDeviceName.collectAsState()
     val firmwareFlashName by viewModel.firmwareFlashName.collectAsState()
+    val firmwareFlashSize by viewModel.firmwareFlashSize.collectAsState()
     val firmwareFlashing by viewModel.firmwareFlashing.collectAsState()
     val firmwareFlashProgress by viewModel.firmwareFlashProgress.collectAsState()
     val firmwareFlashStatus by viewModel.firmwareFlashStatus.collectAsState()
     val firmwareTargetDevice by viewModel.firmwareTargetDevice.collectAsState()
+    val recentModuleIds by viewModel.recentModuleIds.collectAsState()
     val scanning by viewModel.scanning.collectAsState()
     val networks by viewModel.networks.collectAsState()
     val sniffing by viewModel.sniffing.collectAsState()
@@ -348,9 +394,13 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     var selectedTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
     var permissionRevision by remember { mutableIntStateOf(0) }
     var activeModuleId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCategory by rememberSaveable { mutableStateOf<String?>(null) }
     var rootPromptShown by rememberSaveable { mutableStateOf(false) }
 
-    BackHandler(enabled = activeModuleId != null) {
+    BackHandler(enabled = firmwareFlashing) {
+        // Swallow back while a firmware flash is in progress.
+    }
+    BackHandler(enabled = activeModuleId != null && !firmwareFlashing) {
         activeModuleId = null
     }
 
@@ -578,9 +628,11 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                     AppTab.entries.forEach { tab ->
                         NavigationBarItem(
                             selected = selectedTab == tab,
+                            enabled = !firmwareFlashing,
                             onClick = {
                                 selectedTab = tab
                                 activeModuleId = null
+                                selectedCategory = null
                             },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = NrAccent,
@@ -593,8 +645,8 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                                 Icon(
                                     imageVector = when (tab) {
                                         AppTab.HOME -> Icons.Default.Home
-                                        AppTab.MODULES -> Icons.Default.Widgets
-                                        AppTab.LOGS -> Icons.AutoMirrored.Filled.Article
+                                        AppTab.MODULES -> Icons.Default.GridView
+                                        AppTab.LOGS -> Icons.Default.Terminal
                                     },
                                     contentDescription = tab.label,
                                 )
@@ -771,6 +823,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                 connectionState = connectionState,
                 exportDirectoryName = exportDirectoryName,
                 firmwareFileName = firmwareFlashName,
+                firmwareFlashSize = firmwareFlashSize,
                 firmwareFlashing = firmwareFlashing,
                 firmwareFlashProgress = firmwareFlashProgress,
                 firmwareFlashStatus = firmwareFlashStatus,
@@ -787,6 +840,19 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                 modifier = contentModifier,
             )
 
+            selectedCategory != null && selectedTab == AppTab.HOME -> {
+                CategoryModulesScreen(
+                    categoryName = selectedCategory!!,
+                    modules = liveModules.filter { it.category == selectedCategory },
+                    onOpenModule = { moduleId ->
+                        viewModel.onModuleOpened(moduleId)
+                        activeModuleId = moduleId
+                    },
+                    onBack = { selectedCategory = null },
+                    modifier = contentModifier,
+                )
+            }
+
             selectedTab == AppTab.HOME -> HomeScreen(
                 connectionState = connectionState,
                 activeDeviceName = activeDeviceName,
@@ -794,7 +860,12 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                 devices = devices,
                 usbManager = usbManager,
                 modules = liveModules,
-                onOpenModule = { activeModuleId = it },
+                onOpenModule = {
+                    viewModel.onModuleOpened(it)
+                    activeModuleId = it
+                },
+                onOpenCategory = { selectedCategory = it },
+                recentModuleIds = recentModuleIds,
                 onRefreshDevices = viewModel::refreshDevices,
                 onConnect = { device ->
                     if (usbManager.hasPermission(device)) {
@@ -848,7 +919,9 @@ private fun HomeScreen(
     devices: List<UsbSerialDevice>,
     usbManager: UsbManager,
     modules: List<ModuleCardSpec>,
+    recentModuleIds: List<String>,
     onOpenModule: (String) -> Unit,
+    onOpenCategory: (String) -> Unit,
     onRefreshDevices: () -> Unit,
     onConnect: (UsbDevice) -> Unit,
     onDisconnect: () -> Unit,
@@ -918,23 +991,160 @@ private fun HomeScreen(
 
         item {
             Text(
-                text = if (connectionState is ConnectionState.Connected) "Quick actions" else "Modules",
+                text = "Recently used",
+                style = MaterialTheme.typography.labelMedium,
+                color = NrOnSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+
+        item {
+            val recentSpecs = recentModuleIds.mapNotNull { id ->
+                modules.firstOrNull { it.id == id }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                recentSpecs.take(3).forEach { spec ->
+                    AssistChip(
+                        onClick = { if (spec.available) onOpenModule(spec.id) },
+                        label = { Text(spec.title, fontSize = 11.sp) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = spec.icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = spec.iconTint,
+                            )
+                        },
+                    )
+                }
+            }
+        }
+
+        item {
+            Text(
+                text = "Modules",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
 
-        modules.groupBy { it.category }.forEach { (category, categoryModules) ->
-            item(key = "header-$category") {
-                Text(
-                    text = category,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = NrAccent,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
+        item {
+            val categories = listOf(
+                CategorySpec(
+                    name = "Wireless",
+                    icon = Icons.Default.Wifi,
+                    iconTint = NrAccent,
+                    moduleIds = listOf("wifi", "sniff", "beacon", "deauth", "evil_twin", "portal"),
+                    available = true,
+                ),
+                CategorySpec(
+                    name = "HID",
+                    icon = Icons.Default.Keyboard,
+                    iconTint = Color(0xFFA78BFA),
+                    moduleIds = listOf("ducky", "ble", "badusb"),
+                    available = true,
+                ),
+                CategorySpec(
+                    name = "Storage",
+                    icon = Icons.Default.Folder,
+                    iconTint = StatusAmber,
+                    moduleIds = listOf("storage"),
+                    available = true,
+                ),
+                CategorySpec(
+                    name = "BLE",
+                    icon = Icons.Default.Bluetooth,
+                    iconTint = Color(0xFF3D9BFF),
+                    moduleIds = emptyList(),
+                    available = false,
+                    statusLabel = "Planned",
+                ),
+            )
+            CategoryGrid(
+                categories = categories,
+                enabled = connectionState is ConnectionState.Connected,
+                onOpenCategory = onOpenCategory,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CategoryGrid(
+    categories: List<CategorySpec>,
+    enabled: Boolean,
+    onOpenCategory: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(200.dp)
+            .alpha(if (enabled) 1f else 0.4f),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(categories, key = { it.name }) { cat ->
+            val count = cat.moduleIds.size
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = enabled && cat.available) { onOpenCategory(cat.name) },
+                colors = CardDefaults.cardColors(containerColor = NrSurface),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(0.5.dp, NrOutline),
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(
+                        imageVector = cat.icon,
+                        contentDescription = null,
+                        tint = cat.iconTint,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Text(cat.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = NrOnSurface)
+                    Text(
+                        text = if (cat.available && count > 0) "$count modules" else cat.statusLabel ?: "",
+                        fontSize = 11.sp,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
             }
-            items(categoryModules, key = { it.id }) { module ->
+        }
+    }
+}
+
+@Composable
+private fun CategoryModulesScreen(
+    categoryName: String,
+    modules: List<ModuleCardSpec>,
+    onOpenModule: (String) -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = NrAccent)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(categoryName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("${modules.size} modules", style = MaterialTheme.typography.bodySmall, color = NrOnSurfaceVariant)
+            }
+        }
+        HorizontalDivider(color = NrOutline, thickness = 0.5.dp)
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(modules, key = { it.id }) { module ->
                 ModuleCard(
                     module = module,
                     onClick = { if (module.available) onOpenModule(module.id) },
@@ -1142,11 +1352,30 @@ private fun LogsScreen(
                             LogLevel.INFO -> LogColorInfo
                         }
                         val bg = if (entry.level == LogLevel.ERROR) LogBgError else Color.Transparent
-                        Row(
-                            modifier = Modifier.fillMaxWidth().background(bg, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
-                        ) {
-                            Text(entry.timestamp, fontSize = 11.sp, color = NrOnSurfaceVariant, fontFamily = FontFamily.Monospace, modifier = Modifier.width(56.dp))
-                            Text("[${entry.tag}] ${entry.message}", fontSize = 12.sp, color = textColor, fontFamily = FontFamily.Monospace)
+                        SelectionContainer {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(bg, RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                Text(
+                                    text = entry.timestamp,
+                                    fontSize = 11.sp,
+                                    color = NrOnSurfaceVariant,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier.width(56.dp),
+                                )
+                                Text(
+                                    text = "[${entry.tag}] ${entry.message}",
+                                    fontSize = 12.sp,
+                                    color = textColor,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier.weight(1f),
+                                    softWrap = true,
+                                )
+                            }
                         }
                     }
                 }
@@ -1191,13 +1420,33 @@ private fun LogsScreen(
                             HistoryLevel.ERROR -> LogColorError
                             HistoryLevel.INFO -> LogColorInfo
                         }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        ) {
-                            Text(entry.timestamp, fontSize = 11.sp, color = NrOnSurfaceVariant, fontFamily = FontFamily.Monospace, modifier = Modifier.width(56.dp))
-                            Column {
-                                Text("[${entry.module}]", fontSize = 12.sp, color = color, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
-                                Text(entry.summary, fontSize = 12.sp, color = NrOnSurfaceVariant, fontFamily = FontFamily.Monospace)
+                        SelectionContainer {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                Text(
+                                    text = entry.timestamp,
+                                    fontSize = 11.sp,
+                                    color = NrOnSurfaceVariant,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier.width(56.dp),
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        text = "[${entry.module}]",
+                                        fontSize = 12.sp,
+                                        color = color,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Text(
+                                        text = entry.summary,
+                                        fontSize = 12.sp,
+                                        color = NrOnSurfaceVariant,
+                                        fontFamily = FontFamily.Monospace,
+                                    )
+                                }
                             }
                         }
                     }
@@ -1425,6 +1674,7 @@ private fun SettingsScreen(
     connectionState: ConnectionState,
     exportDirectoryName: String,
     firmwareFileName: String?,
+    firmwareFlashSize: Long,
     firmwareFlashing: Boolean,
     firmwareFlashProgress: Int,
     firmwareFlashStatus: String?,
@@ -1453,8 +1703,14 @@ private fun SettingsScreen(
     var selectedTargetChip by remember { mutableStateOf(chip ?: "ESP32") }
     val targetHasPermission = selectedFlashTarget?.let { usbManager.hasPermission(it.device) } == true
     var manualBootloader by remember { mutableStateOf(false) }
+    var showFlashConfirm by remember { mutableStateOf(false) }
     LaunchedEffect(chip) {
         if (!chip.isNullOrBlank()) selectedTargetChip = chip
+    }
+    LaunchedEffect(devices) {
+        if (devices.size == 1 && selectedFlashTarget == null) {
+            onSelectFlashTarget(devices[0].device)
+        }
     }
 
     Column(
@@ -1526,7 +1782,11 @@ private fun SettingsScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = firmwareFileName ?: "No merged firmware .bin selected",
+                    text = if (firmwareFileName != null && firmwareFlashSize > 0) {
+                        "$firmwareFileName  (${firmwareFlashSize / 1024} KB)"
+                    } else {
+                        firmwareFileName ?: "No merged firmware .bin selected"
+                    },
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
                 )
@@ -1643,13 +1903,44 @@ private fun SettingsScreen(
                 )
                 Spacer(Modifier.height(10.dp))
                 Button(
-                    onClick = { onStartFirmwareFlash(selectedTargetChip, manualBootloader) },
+                    onClick = { showFlashConfirm = true },
                     enabled = selectedFlashTarget != null &&
                         targetHasPermission &&
                         firmwareFileName != null &&
                         !firmwareFlashing,
                 ) {
                     Text(if (firmwareFlashing) "Flashing..." else "Flash firmware")
+                }
+                if (showFlashConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showFlashConfirm = false },
+                        title = { Text("Flash firmware?") },
+                        text = {
+                            Text(
+                                "This will overwrite the entire firmware on " +
+                                    "${selectedFlashTarget?.displayName ?: "the device"}. " +
+                                    "The device will reboot. Do not unplug during the process.",
+                                color = NrOnSurfaceVariant,
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    showFlashConfirm = false
+                                    onStartFirmwareFlash(selectedTargetChip, manualBootloader)
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = StatusAmber,
+                                    contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
+                                ),
+                            ) { Text("Flash now") }
+                        },
+                        dismissButton = {
+                            OutlinedButton(onClick = { showFlashConfirm = false }) {
+                                Text("Cancel")
+                            }
+                        },
+                    )
                 }
                 if (firmwareFlashing || firmwareFlashProgress > 0) {
                     Spacer(Modifier.height(10.dp))
