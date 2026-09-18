@@ -63,6 +63,7 @@ import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material.icons.filled.SettingsRemote
@@ -87,6 +88,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -127,6 +129,7 @@ import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrSurface
+import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
@@ -341,6 +344,8 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val portalHtmlComplete by viewModel.portalHtmlComplete.collectAsState()
     val portalHtmlUploading by viewModel.portalHtmlUploading.collectAsState()
     val portalHtmlUploadProgress by viewModel.portalHtmlUploadProgress.collectAsState()
+    val evilTwinHtmlUploading by viewModel.evilTwinHtmlUploading.collectAsState()
+    val evilTwinHtmlUploadProgress by viewModel.evilTwinHtmlUploadProgress.collectAsState()
     val portalSsid by viewModel.portalSsid.collectAsState()
     val portalChannel by viewModel.portalChannel.collectAsState()
     val portalViews by viewModel.portalViews.collectAsState()
@@ -828,8 +833,8 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                     results = evilTwinResults,
                     eventLog = evilTwinEventLog,
                     selectedHtmlName = evilTwinHtmlName,
-                    htmlUploading = portalHtmlUploading,
-                    htmlProgress = portalHtmlUploadProgress,
+                    htmlUploading = evilTwinHtmlUploading,
+                    htmlProgress = evilTwinHtmlUploadProgress,
                     onScanWifi = viewModel::scanWifi,
                     onChooseHtml = { evilTwinHtmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
                     onStart = viewModel::startEvilTwin,
@@ -1421,9 +1426,17 @@ private fun ModulesScreen(
     onOpenModule: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var selectedCategory by remember { mutableStateOf<String?>(null) }
+    var selectedCategory by rememberSaveable { mutableStateOf<String?>(null) }
+    var moduleSearchQuery by rememberSaveable { mutableStateOf("") }
     val categories = listOf(null to "All") + modules.map { it.category }.distinct().map { it to it }
-    val filtered = if (selectedCategory == null) modules else modules.filter { it.category == selectedCategory }
+    val categoryFiltered = if (selectedCategory == null) modules else modules.filter { it.category == selectedCategory }
+    val filtered = categoryFiltered.filter { module ->
+        val query = moduleSearchQuery.trim()
+        query.isBlank() ||
+            module.title.contains(query, ignoreCase = true) ||
+            module.description.contains(query, ignoreCase = true) ||
+            module.category.contains(query, ignoreCase = true)
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -1431,16 +1444,14 @@ private fun ModulesScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            Text(
-                text = "Module catalog",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = "Grouped by category. Unavailable modules show their status.",
-                style = MaterialTheme.typography.bodySmall,
-                color = NrOnSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+            OutlinedTextField(
+                value = moduleSearchQuery,
+                onValueChange = { moduleSearchQuery = it },
+                placeholder = { Text("Search modules...") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
             )
         }
 
@@ -1492,7 +1503,9 @@ private fun LogsScreen(
 
         if (selectedTab == 0) {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(NrSurfaceVariant.copy(alpha = 0.4f)),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -1522,7 +1535,12 @@ private fun LogsScreen(
                     }
                 }
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
                         val levels = listOf(null to "All", LogLevel.ERROR to "Errors", LogLevel.USB to "USB", LogLevel.SUCCESS to "Success")
                         levels.forEach { (level, label) ->
                             NrFilterChip(
@@ -1604,39 +1622,80 @@ private fun LogsScreen(
                     }
                 }
                 if (history.isEmpty()) {
-                    item { Text("No session history yet.", color = NrOnSurfaceVariant) }
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Terminal,
+                                contentDescription = null,
+                                tint = NrOnSurfaceVariant,
+                                modifier = Modifier.size(32.dp),
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text("No sessions yet", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Run a module to record your first session.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NrOnSurfaceVariant,
+                            )
+                        }
+                    }
                 } else {
-                    items(history) { entry ->
+                    items(history, contentType = { "history" }) { entry ->
                         val color = when (entry.level) {
                             HistoryLevel.SUCCESS -> LogColorSuccess
                             HistoryLevel.ERROR -> LogColorError
                             HistoryLevel.INFO -> LogColorInfo
                         }
-                        SelectionContainer {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                                verticalAlignment = Alignment.Top,
-                            ) {
-                                Text(
-                                    text = entry.timestamp,
-                                    fontSize = 11.sp,
-                                    color = NrOnSurfaceVariant,
-                                    fontFamily = FontFamily.Monospace,
-                                    modifier = Modifier.width(56.dp),
-                                )
-                                Column(Modifier.weight(1f)) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = NrSurface),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(0.5.dp, NrOutline),
+                        ) {
+                            SelectionContainer {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.Top,
+                                ) {
                                     Text(
-                                        text = "[${entry.module}]",
-                                        fontSize = 12.sp,
+                                        text = entry.timestamp,
+                                        fontSize = 11.sp,
+                                        color = NrOnSurfaceVariant,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.width(56.dp),
+                                    )
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            text = "[${entry.module.uppercase()}]",
+                                            fontSize = 12.sp,
+                                            color = color,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        Text(
+                                            text = entry.summary,
+                                            fontSize = 12.sp,
+                                            color = NrOnSurfaceVariant,
+                                            fontFamily = FontFamily.Monospace,
+                                        )
+                                    }
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = entry.level.name,
+                                        fontSize = 10.sp,
                                         color = color,
                                         fontFamily = FontFamily.Monospace,
                                         fontWeight = FontWeight.SemiBold,
-                                    )
-                                    Text(
-                                        text = entry.summary,
-                                        fontSize = 12.sp,
-                                        color = NrOnSurfaceVariant,
-                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier
+                                            .background(color.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp),
                                     )
                                 }
                             }
@@ -1906,11 +1965,6 @@ private fun SettingsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(
-            text = if (flasherOnly) "Flash firmware" else "Settings",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
         if (!flasherOnly) {
         Card(
             modifier = Modifier.fillMaxWidth(),

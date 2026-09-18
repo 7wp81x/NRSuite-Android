@@ -48,6 +48,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
 import com.swp81x.nrsuite.core.wpa.EvilTwinResult
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
@@ -149,49 +150,51 @@ fun EvilTwinScreen(
             Column(Modifier.padding(14.dp)) {
                 Text("Target network", fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
-                OutlinedButton(
-                    onClick = onScanWifi,
-                    enabled = connected && !running && !scanning,
-                ) {
-                    Text(if (scanning) "Scanning..." else "Scan WiFi for targets")
-                }
-                if (networks.isEmpty() && !scanning) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "Tap \"Scan WiFi for targets\" to find nearby access points.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                }
-                if (networks.isNotEmpty()) {
-                    Spacer(Modifier.height(6.dp))
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                color = NrSurfaceVariant,
-                                shape = RoundedCornerShape(10.dp),
-                            )
-                            .padding(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                if (!running) {
+                    OutlinedButton(
+                        onClick = onScanWifi,
+                        enabled = connected && !scanning,
                     ) {
-                        networks.forEach { network ->
-                            val bssidValue = network.optString("bssid")
-                            NetworkTargetRow(
-                                ssid = network.optString("ssid").ifBlank { "(hidden)" },
-                                bssid = bssidValue,
-                                channel = network.optInt("channel", 1),
-                                rssi = network.optInt("rssi", -100),
-                                security = network.optString("security", "?"),
-                                selected = targetBssid.equals(bssidValue, ignoreCase = true),
-                                enabled = !running,
-                                onClick = {
-                                    targetBssid = bssidValue
-                                    channel = network.optInt("channel", channel)
-                                    val apSsid = network.optString("ssid")
-                                    if (apSsid.isNotBlank()) ssid = apSsid
-                                },
-                            )
+                        Text(if (scanning) "Scanning..." else "Scan WiFi for targets")
+                    }
+                    if (networks.isEmpty() && !scanning) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Tap \"Scan WiFi for targets\" to find nearby access points.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                    if (networks.isNotEmpty()) {
+                        Spacer(Modifier.height(6.dp))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    color = NrSurfaceVariant,
+                                    shape = RoundedCornerShape(10.dp),
+                                )
+                                .padding(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            networks.forEach { network ->
+                                val bssidValue = network.optString("bssid")
+                                NetworkTargetRow(
+                                    ssid = network.optString("ssid").ifBlank { "(hidden)" },
+                                    bssid = bssidValue,
+                                    channel = network.optInt("channel", 1),
+                                    rssi = network.optInt("rssi", -100),
+                                    security = network.optString("security", "?"),
+                                    selected = targetBssid.equals(bssidValue, ignoreCase = true),
+                                    enabled = true,
+                                    onClick = {
+                                        targetBssid = bssidValue
+                                        channel = network.optInt("channel", channel)
+                                        val apSsid = network.optString("ssid")
+                                        if (apSsid.isNotBlank()) ssid = apSsid
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -277,10 +280,10 @@ fun EvilTwinScreen(
                 } else {
                     results.reversed().forEach { result ->
                         val statusText = when (result.status) {
-                            EvilTwinResult.Status.CORRECT -> "correct"
-                            EvilTwinResult.Status.INCORRECT -> "incorrect"
-                            EvilTwinResult.Status.PENDING -> "pending"
-                            EvilTwinResult.Status.INVALID_LENGTH -> "invalid length"
+                            EvilTwinResult.Status.CORRECT -> "✓ Match confirmed"
+                            EvilTwinResult.Status.INCORRECT -> "✗ Incorrect (WPA2 checked)"
+                            EvilTwinResult.Status.PENDING -> "… Pending handshake"
+                            EvilTwinResult.Status.INVALID_LENGTH -> "! Invalid length (8–63 chars)"
                         }
                         val statusColor = when (result.status) {
                             EvilTwinResult.Status.CORRECT -> StatusGreen
@@ -291,15 +294,29 @@ fun EvilTwinScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.Top,
                         ) {
                             Text(
-                                text = "${result.password}  ·  $statusText",
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                color = statusColor,
-                                modifier = Modifier.weight(1f),
+                                text = result.timestamp,
+                                fontSize = 11.sp,
+                                color = NrOnSurfaceVariant,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.width(56.dp),
                             )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = result.password,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Text(
+                                    text = statusText,
+                                    fontSize = 12.sp,
+                                    color = statusColor,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
                             IconButton(
                                 onClick = { clipboard.setText(AnnotatedString(result.password)) },
                             ) {

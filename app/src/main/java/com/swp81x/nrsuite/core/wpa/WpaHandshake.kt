@@ -65,6 +65,7 @@ data class WpaHandshake(
 data class EvilTwinResult(
     val password: String,
     val status: Status,
+    val timestamp: String = "",
 ) {
     enum class Status { CORRECT, INCORRECT, PENDING, INVALID_LENGTH }
 }

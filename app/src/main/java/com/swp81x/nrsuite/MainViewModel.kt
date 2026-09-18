@@ -47,6 +47,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
+data class CapturedPassword(
+    val value: String,
+    val capturedAt: String,
+)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val usbManager =
@@ -174,6 +179,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _portalHtmlUploadProgress = MutableStateFlow(0)
     val portalHtmlUploadProgress: StateFlow<Int> = _portalHtmlUploadProgress.asStateFlow()
 
+    private val _evilTwinHtmlUploading = MutableStateFlow(false)
+    val evilTwinHtmlUploading: StateFlow<Boolean> = _evilTwinHtmlUploading.asStateFlow()
+
+    private val _evilTwinHtmlUploadProgress = MutableStateFlow(0)
+    val evilTwinHtmlUploadProgress: StateFlow<Int> = _evilTwinHtmlUploadProgress.asStateFlow()
+
     private val _portalSsid = MutableStateFlow("")
     val portalSsid: StateFlow<String> = _portalSsid.asStateFlow()
 
@@ -211,8 +222,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _portalHandshake = MutableStateFlow(EapolHandshake())
     val portalHandshake: StateFlow<EapolHandshake> = _portalHandshake.asStateFlow()
 
-    private val _evilTwinPasswords = MutableStateFlow<List<String>>(emptyList())
-    val evilTwinPasswords: StateFlow<List<String>> = _evilTwinPasswords.asStateFlow()
+    private val _evilTwinPasswords = MutableStateFlow<List<CapturedPassword>>(emptyList())
+    val evilTwinPasswords: StateFlow<List<CapturedPassword>> = _evilTwinPasswords.asStateFlow()
 
     private val _portalWpaHandshake = MutableStateFlow(WpaHandshake())
     val portalWpaHandshake: StateFlow<WpaHandshake> = _portalWpaHandshake.asStateFlow()
@@ -816,12 +827,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setEvilTwinHtmlFile(uri: Uri, name: String?) {
         _evilTwinHtmlUri.value = uri
         _evilTwinHtmlName.value = name ?: uri.lastPathSegment ?: "evil_twin.html"
+        _evilTwinHtmlUploading.value = false
+        _evilTwinHtmlUploadProgress.value = 0
         appendLog("Evil Twin HTML selected: ${_evilTwinHtmlName.value}")
     }
 
     fun clearEvilTwinHtmlFile() {
         _evilTwinHtmlUri.value = null
         _evilTwinHtmlName.value = null
+        _evilTwinHtmlUploading.value = false
+        _evilTwinHtmlUploadProgress.value = 0
         appendLog("Evil Twin HTML cleared.")
     }
 
@@ -998,12 +1013,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setPortalHtmlFile(uri: Uri, name: String?) {
         _portalHtmlUri.value = uri
         _portalHtmlName.value = name ?: uri.lastPathSegment ?: "HTML file"
+        _portalHtmlUploading.value = false
+        _portalHtmlUploadProgress.value = 0
         appendLog("Portal HTML selected: ${_portalHtmlName.value}")
     }
 
     fun clearPortalHtmlFile() {
         _portalHtmlUri.value = null
         _portalHtmlName.value = null
+        _portalHtmlUploading.value = false
+        _portalHtmlUploadProgress.value = 0
         appendLog("Portal HTML cleared; device will use its placeholder page.")
     }
 
@@ -1078,6 +1097,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _portalRunning.value = true
             updateForegroundService()
             _portalHtmlSize.value = 0
+            if (mode == "evil_twin") {
+                _evilTwinHtmlUploading.value = false
+                _evilTwinHtmlUploadProgress.value = 0
+            } else {
+                _portalHtmlUploading.value = false
+                _portalHtmlUploadProgress.value = 0
+            }
             _portalHandshake.value = EapolHandshake()
             _portalWpaHandshake.value = WpaHandshake()
 
@@ -1120,16 +1146,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun htmlUploadingFlow(): MutableStateFlow<Boolean> {
+        return if (_portalMode.value == "evil_twin") _evilTwinHtmlUploading else _portalHtmlUploading
+    }
+
+    private fun htmlUploadProgressFlow(): MutableStateFlow<Int> {
+        return if (_portalMode.value == "evil_twin") _evilTwinHtmlUploadProgress else _portalHtmlUploadProgress
+    }
+
     private suspend fun uploadPortalHtml(session: NrSession, bytes: ByteArray): Boolean {
         _portalHtmlComplete.value = false
-        _portalHtmlUploading.value = true
-        _portalHtmlUploadProgress.value = 0
+        val uploading = htmlUploadingFlow()
+        val progress = htmlUploadProgressFlow()
+        uploading.value = true
+        progress.value = 0
         return try {
             uploadPortalHtmlInternal(session, bytes)
         } finally {
-            _portalHtmlUploading.value = false
+            uploading.value = false
             if (_portalHtmlComplete.value) {
-                _portalHtmlUploadProgress.value = 100
+                progress.value = 100
             }
         }
     }
@@ -1197,7 +1233,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             offset = end
             chunkIndex++
             _portalHtmlSize.value = offset
-            _portalHtmlUploadProgress.value = ((offset * 100) / bytes.size).coerceIn(0, 100)
+            htmlUploadProgressFlow().value = ((offset * 100) / bytes.size).coerceIn(0, 100)
             if (isLast) appendLog("HTML final chunk sent (${bytes.size} bytes at offset $end).")
             delay(80)
         }
@@ -1242,14 +1278,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun verifyEvilTwinPasswords() {
         val handshake = _portalWpaHandshake.value
         val ssid = _portalSsid.value
-        val results = _evilTwinPasswords.value.map { password ->
+        val results = _evilTwinPasswords.value.map { captured ->
+            val password = captured.value
             val status = when {
                 !handshake.isComplete -> EvilTwinResult.Status.PENDING
                 password.length !in 8..63 -> EvilTwinResult.Status.INVALID_LENGTH
                 WpaHandshakeVerifier.verify(handshake, ssid, password) -> EvilTwinResult.Status.CORRECT
                 else -> EvilTwinResult.Status.INCORRECT
             }
-            EvilTwinResult(password, status)
+            EvilTwinResult(
+                password = password,
+                status = status,
+                timestamp = captured.capturedAt,
+            )
         }
         _evilTwinResults.value = results
     }
@@ -1923,7 +1964,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             }
                             if (submittedPassword.isNotBlank() && _portalMode.value == "evil_twin") {
                                 appendLog("Captured password candidate (${submittedPassword.length} chars).")
-                                _evilTwinPasswords.update { (it + submittedPassword).takeLast(50) }
+                                val capturedAt = java.time.LocalTime.now()
+                                    .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
+                                _evilTwinPasswords.update {
+                                    (it + CapturedPassword(submittedPassword, capturedAt)).takeLast(50)
+                                }
                                 verifyEvilTwinPasswords()
                             }
                         }
