@@ -231,7 +231,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _evilTwinResults = MutableStateFlow<List<EvilTwinResult>>(emptyList())
     val evilTwinResults: StateFlow<List<EvilTwinResult>> = _evilTwinResults.asStateFlow()
 
+    private val _evilTwinCapturePath = MutableStateFlow<String?>(null)
+    val evilTwinCapturePath: StateFlow<String?> = _evilTwinCapturePath.asStateFlow()
+
     private var portalPcapJob: Job? = null
+    private var portalPcapWriter: PcapWriter? = null
+    private var portalPcapFile: File? = null
 
     private var portalStatusJob: Job? = null
 
@@ -1005,8 +1010,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _bleConnected.value = false
         _portalMode.value = null
 
+        runCatching { portalPcapWriter?.close() }
+        portalPcapWriter = null
+        portalPcapFile = null
         runCatching { pcapWriter?.close() }
         pcapWriter = null
+        _evilTwinCapturePath.value = null
         updateForegroundService()
     }
 
@@ -1109,15 +1118,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             if (cleanBssid.isNotBlank()) {
                 portalPcapJob?.cancel()
+                runCatching { portalPcapWriter?.close() }
+                portalPcapWriter = null
+                portalPcapFile = null
+                _evilTwinCapturePath.value = null
+
+                val captureDir = File(getApplication<Application>().filesDir, "EvilTwin")
+                if (captureDir.exists() || captureDir.mkdirs()) {
+                    val macName = cleanBssid.replace(":", "").uppercase()
+                    val captureFile = File(captureDir, "${macName}_eviltwin_${System.currentTimeMillis()}.pcap")
+                    portalPcapWriter = runCatching { PcapWriter(captureFile) }.getOrNull()
+                    portalPcapFile = captureFile
+                    _evilTwinCapturePath.value = captureFile.absolutePath
+                    if (portalPcapWriter != null) {
+                        appendLog("Evil Twin capture: ${captureFile.absolutePath}")
+                    } else {
+                        appendLog("Could not create Evil Twin PCAP capture file.")
+                    }
+                }
+
                 val captureHandshake = EapolHandshake()
                 val wpaHandshake = WpaHandshake()
+                var handshakeWasComplete = false
                 portalPcapJob = viewModelScope.launch(Dispatchers.IO) {
-                    activeSession.pcap.collect { frame ->
-                        EapolParser.parse(frame, captureHandshake)
-                        _portalHandshake.value = captureHandshake.copy()
-                        WpaHandshakeParser.parse(frame, wpaHandshake)
-                        _portalWpaHandshake.value = wpaHandshake.copyHandshake()
-                        verifyEvilTwinPasswords()
+                    try {
+                        activeSession.pcap.collect { frame ->
+                            runCatching {
+                                portalPcapWriter?.writePacket(frame)
+                                EapolParser.parse(frame, captureHandshake)
+                                _portalHandshake.value = captureHandshake.copy()
+                                WpaHandshakeParser.parse(frame, wpaHandshake)
+                                _portalWpaHandshake.value = wpaHandshake.copyHandshake()
+
+                                val completeNow = wpaHandshake.isComplete
+                                if (completeNow != handshakeWasComplete) {
+                                    handshakeWasComplete = completeNow
+                                    verifyEvilTwinPasswords()
+                                }
+                            }.onFailure { error ->
+                                appendLog("Evil Twin capture parse/write error: ${error.message}")
+                            }
+                        }
+                    } catch (_: Throwable) {
+                        // USB unplug can end the flow abruptly; cleanup handles state.
                     }
                 }
             }
@@ -1278,9 +1321,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun verifyEvilTwinPasswords() {
         val handshake = _portalWpaHandshake.value
         val ssid = _portalSsid.value
-        val results = _evilTwinPasswords.value.map { captured ->
+        val finalStatuses = setOf(
+            EvilTwinResult.Status.CORRECT,
+            EvilTwinResult.Status.INCORRECT,
+            EvilTwinResult.Status.INVALID_LENGTH,
+        )
+        val previousByPassword = _evilTwinResults.value.associateBy { it.password }
+
+        val mapped = _evilTwinPasswords.value.map { captured ->
             val password = captured.value
+            val existing = previousByPassword[password]?.status
             val status = when {
+                existing in finalStatuses -> existing!!
                 !handshake.isComplete -> EvilTwinResult.Status.PENDING
                 password.length !in 8..63 -> EvilTwinResult.Status.INVALID_LENGTH
                 WpaHandshakeVerifier.verify(handshake, ssid, password) -> EvilTwinResult.Status.CORRECT
@@ -1292,7 +1344,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 timestamp = captured.capturedAt,
             )
         }
-        _evilTwinResults.value = results
+
+        val correctResults = mapped.filter { it.status == EvilTwinResult.Status.CORRECT }
+        _evilTwinResults.value = if (correctResults.isNotEmpty()) correctResults else mapped
     }
 
     fun clearEvilTwinEventLog() {
@@ -1320,15 +1374,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         portalStatusJob = null
         portalPcapJob?.cancel()
         portalPcapJob = null
+        val savedCapture = portalPcapFile
+        runCatching { portalPcapWriter?.close() }
+        portalPcapWriter = null
+        portalPcapFile = null
         _portalRunning.value = false
         _portalMode.value = null
         updateForegroundService()
 
         val activeSession = session
         viewModelScope.launch {
-            val response = activeSession?.sendCommand("STOP_PORTAL", timeoutMs = 8_000)
+            val response = runCatching {
+                activeSession?.sendCommand("STOP_PORTAL", timeoutMs = 8_000)
+            }.getOrNull()
             if (response?.optBoolean("ok") == true) {
                 appendLog("Portal stopped.")
+                savedCapture?.let { appendLog("Evil Twin capture saved: ${it.absolutePath}") }
                 addHistory("portal", "Portal stopped", HistoryLevel.SUCCESS)
             } else {
                 appendLog("Portal stop request sent, but the device did not confirm.")
@@ -1341,7 +1402,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         portalStatusJob = viewModelScope.launch {
             while (isActive && _portalRunning.value) {
                 delay(3_000)
-                val response = activeSession.sendCommand("PORTAL_STATUS", timeoutMs = 4_000) ?: continue
+                if (_connectionState.value !is ConnectionState.Connected) break
+                val response = runCatching {
+                    activeSession.sendCommand("PORTAL_STATUS", timeoutMs = 4_000)
+                }.getOrNull() ?: continue
                 if (response.optBoolean("ok")) {
                     _portalRunning.value = response.optBoolean("running", _portalRunning.value)
                     _portalHtmlSize.value = response.optInt("html_size", _portalHtmlSize.value)

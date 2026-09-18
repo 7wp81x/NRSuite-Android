@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -18,6 +19,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
@@ -36,6 +39,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Tab
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -43,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -87,8 +92,13 @@ fun EvilTwinScreen(
     var targetBssid by rememberSaveable { mutableStateOf("") }
     var confirmStart by rememberSaveable { mutableStateOf(false) }
     var confirmStop by rememberSaveable { mutableStateOf(false) }
+    var targetExpanded by rememberSaveable { mutableStateOf(true) }
     val clipboard = LocalClipboardManager.current
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+
+    LaunchedEffect(running) {
+        if (running) targetExpanded = false
+    }
 
     Column(
         modifier = modifier
@@ -148,9 +158,33 @@ fun EvilTwinScreen(
             shape = RoundedCornerShape(12.dp),
         ) {
             Column(Modifier.padding(14.dp)) {
-                Text("Target network", fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
-                if (!running) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Wifi,
+                        contentDescription = null,
+                        tint = NrAccent,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Target network", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            text = targetBssid.ifBlank { "Scan and select an access point" },
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                    IconButton(onClick = { targetExpanded = !targetExpanded }) {
+                        Icon(
+                            imageVector = if (targetExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = if (targetExpanded) "Collapse target selection" else "Expand target selection",
+                        )
+                    }
+                }
+                if (targetExpanded && !running) {
                     OutlinedButton(
                         onClick = onScanWifi,
                         enabled = connected && !scanning,
@@ -279,44 +313,30 @@ fun EvilTwinScreen(
                     )
                 } else {
                     results.reversed().forEach { result ->
-                        val statusText = when (result.status) {
-                            EvilTwinResult.Status.CORRECT -> "✓ Match confirmed"
-                            EvilTwinResult.Status.INCORRECT -> "✗ Incorrect (WPA2 checked)"
-                            EvilTwinResult.Status.PENDING -> "… Pending handshake"
-                            EvilTwinResult.Status.INVALID_LENGTH -> "! Invalid length (8–63 chars)"
+                        val statusSymbol = when (result.status) {
+                            EvilTwinResult.Status.CORRECT -> "✓"
+                            EvilTwinResult.Status.INCORRECT -> "✗"
+                            EvilTwinResult.Status.PENDING -> "–"
+                            EvilTwinResult.Status.INVALID_LENGTH -> "!"
                         }
                         val statusColor = when (result.status) {
                             EvilTwinResult.Status.CORRECT -> StatusGreen
                             EvilTwinResult.Status.INCORRECT -> MaterialTheme.colorScheme.error
-                            EvilTwinResult.Status.PENDING -> StatusAmber
+                            EvilTwinResult.Status.PENDING -> Color(0xFF3D9BFF)
                             EvilTwinResult.Status.INVALID_LENGTH -> StatusAmber
                         }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.Top,
+                                .padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                text = result.timestamp,
-                                fontSize = 11.sp,
-                                color = NrOnSurfaceVariant,
-                                fontFamily = FontFamily.Monospace,
-                                modifier = Modifier.width(56.dp),
+                                text = "[${result.timestamp}] ${result.password}  :  $statusSymbol",
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                color = statusColor,
+                                modifier = Modifier.weight(1f),
                             )
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    text = result.password,
-                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                    fontWeight = FontWeight.Medium,
-                                )
-                                Text(
-                                    text = statusText,
-                                    fontSize = 12.sp,
-                                    color = statusColor,
-                                    fontFamily = FontFamily.Monospace,
-                                )
-                            }
                             IconButton(
                                 onClick = { clipboard.setText(AnnotatedString(result.password)) },
                             ) {
