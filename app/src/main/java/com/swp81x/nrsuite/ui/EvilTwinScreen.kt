@@ -1,8 +1,10 @@
 package com.swp81x.nrsuite.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +22,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Wifi
@@ -27,6 +31,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -48,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -56,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
 import com.swp81x.nrsuite.core.wpa.EvilTwinResult
+import com.swp81x.nrsuite.ui.components.HtmlUploadSection
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
@@ -64,6 +71,7 @@ import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
+import com.swp81x.nrsuite.ui.theme.StatusRed
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import org.json.JSONObject
 
@@ -79,9 +87,11 @@ fun EvilTwinScreen(
     selectedHtmlName: String?,
     htmlUploading: Boolean,
     htmlProgress: Int,
+    htmlComplete: Boolean,
     onClearEventLog: () -> Unit,
     onScanWifi: () -> Unit,
     onChooseHtml: () -> Unit,
+    onClearHtml: () -> Unit,
     onStart: (ssid: String, channel: Int, targetBssid: String) -> Unit,
     onStop: () -> Unit,
     onClearPasswords: () -> Unit,
@@ -94,19 +104,21 @@ fun EvilTwinScreen(
     var confirmStop by rememberSaveable { mutableStateOf(false) }
     var targetExpanded by rememberSaveable { mutableStateOf(true) }
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
     LaunchedEffect(running) {
         if (running) targetExpanded = false
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
         TabRow(selectedTabIndex = selectedTab) {
             Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Overview") })
             Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Logs (${eventLog.size})") })
@@ -232,51 +244,18 @@ fun EvilTwinScreen(
                         }
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = selectedHtmlName ?: "No HTML file selected",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = if (selectedHtmlName == null) StatusAmber else NrOnSurfaceVariant,
-                )
-                if (htmlUploading || htmlProgress > 0) {
+                if (targetExpanded) {
                     Spacer(Modifier.height(8.dp))
-                    LinearProgressIndicator(
-                        progress = { htmlProgress / 100f },
-                        modifier = Modifier.fillMaxWidth(),
+                    HtmlUploadSection(
+                        selectedName = selectedHtmlName,
+                        uploading = htmlUploading,
+                        progress = htmlProgress,
+                        completed = htmlComplete,
+                        required = true,
+                        enabled = !running,
+                        onChoose = onChooseHtml,
+                        onClear = onClearHtml,
                     )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = if (htmlUploading) "Uploading HTML... $htmlProgress%" else "HTML upload complete.",
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = NrOnSurfaceVariant,
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = onChooseHtml,
-                    enabled = !running && !htmlUploading,
-                ) {
-                    Text(if (selectedHtmlName == null) "Choose HTML" else "Change HTML")
-                }
-                Spacer(Modifier.height(8.dp))
-                if (running) {
-                    Button(
-                        onClick = { confirmStop = true },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Stop Evil Twin")
-                    }
-                } else {
-                    Button(
-                        onClick = { confirmStart = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = connected &&
-                            targetBssid.isNotBlank() &&
-                            selectedHtmlName != null &&
-                            !htmlUploading,
-                    ) {
-                        Text("Start Evil Twin")
-                    }
                 }
             }
         }
@@ -465,6 +444,45 @@ fun EvilTwinScreen(
                     TextButton(onClick = { confirmStop = false }) { Text("Cancel") }
                 },
             )
+        }
+
+        Spacer(Modifier.height(80.dp))
+        }
+
+        if (connected) {
+            FloatingActionButton(
+                onClick = {
+                    when {
+                        running -> confirmStop = true
+                        targetBssid.isBlank() -> Toast.makeText(
+                            context,
+                            "Select a target network first.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        selectedHtmlName == null -> Toast.makeText(
+                            context,
+                            "Choose an HTML file first.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        htmlUploading -> Toast.makeText(
+                            context,
+                            "Wait for the HTML upload to finish.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        else -> confirmStart = true
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp),
+                containerColor = if (running) StatusRed else NrAccent,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                Icon(
+                    imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                    contentDescription = if (running) "Stop Evil Twin" else "Start Evil Twin",
+                )
+            }
         }
     }
 }

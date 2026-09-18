@@ -346,6 +346,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val portalHtmlUploadProgress by viewModel.portalHtmlUploadProgress.collectAsState()
     val evilTwinHtmlUploading by viewModel.evilTwinHtmlUploading.collectAsState()
     val evilTwinHtmlUploadProgress by viewModel.evilTwinHtmlUploadProgress.collectAsState()
+    val evilTwinHtmlComplete by viewModel.evilTwinHtmlComplete.collectAsState()
     val portalSsid by viewModel.portalSsid.collectAsState()
     val portalChannel by viewModel.portalChannel.collectAsState()
     val portalViews by viewModel.portalViews.collectAsState()
@@ -835,8 +836,10 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                     selectedHtmlName = evilTwinHtmlName,
                     htmlUploading = evilTwinHtmlUploading,
                     htmlProgress = evilTwinHtmlUploadProgress,
+                    htmlComplete = evilTwinHtmlComplete,
                     onScanWifi = viewModel::scanWifi,
                     onChooseHtml = { evilTwinHtmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
+                    onClearHtml = viewModel::clearEvilTwinHtmlFile,
                     onStart = viewModel::startEvilTwin,
                     onStop = viewModel::stopPortal,
                     onClearPasswords = viewModel::clearEvilTwinPasswords,

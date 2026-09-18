@@ -57,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.ui.components.HtmlUploadSection
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -143,6 +144,7 @@ fun PortalScreen(
                     selectedHtmlName = selectedHtmlName,
                     htmlUploading = htmlUploading,
                     htmlProgress = htmlProgress,
+                    htmlComplete = htmlComplete,
                     onToggle = { configExpanded = !configExpanded },
                     onSsidChange = { ssid = it },
                     onChannelChange = { channel = it.coerceIn(1, 13) },
@@ -294,6 +296,7 @@ private fun ConfigZone(
     selectedHtmlName: String?,
     htmlUploading: Boolean,
     htmlProgress: Int,
+    htmlComplete: Boolean,
     onToggle: () -> Unit,
     onSsidChange: (String) -> Unit,
     onChannelChange: (Int) -> Unit,
@@ -360,38 +363,16 @@ private fun ConfigZone(
                     )
 
                     Spacer(Modifier.height(12.dp))
-                    Text(
-                        text = "Custom HTML",
-                        style = MaterialTheme.typography.labelLarge,
+                    HtmlUploadSection(
+                        selectedName = selectedHtmlName,
+                        uploading = htmlUploading,
+                        progress = htmlProgress,
+                        completed = htmlComplete,
+                        required = false,
+                        enabled = !running,
+                        onChoose = onChooseHtml,
+                        onClear = onClearHtml,
                     )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = selectedHtmlName ?: "No file selected (device placeholder page)",
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = NrOnSurfaceVariant,
-                    )
-                    if (htmlUploading || htmlProgress > 0) {
-                        Spacer(Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            progress = { htmlProgress / 100f },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = if (htmlUploading) "Uploading HTML... $htmlProgress%" else "HTML upload complete.",
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = NrOnSurfaceVariant,
-                        )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onChooseHtml, enabled = !running) {
-                            Text("Choose HTML")
-                        }
-                        OutlinedButton(onClick = onClearHtml, enabled = !running && selectedHtmlName != null) {
-                            Text("Clear")
-                        }
-                    }
 
                     if (!connected) {
                         Spacer(Modifier.height(10.dp))

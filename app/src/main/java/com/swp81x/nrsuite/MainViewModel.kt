@@ -185,6 +185,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _evilTwinHtmlUploadProgress = MutableStateFlow(0)
     val evilTwinHtmlUploadProgress: StateFlow<Int> = _evilTwinHtmlUploadProgress.asStateFlow()
 
+    private val _evilTwinHtmlComplete = MutableStateFlow(false)
+    val evilTwinHtmlComplete: StateFlow<Boolean> = _evilTwinHtmlComplete.asStateFlow()
+
     private val _portalSsid = MutableStateFlow("")
     val portalSsid: StateFlow<String> = _portalSsid.asStateFlow()
 
@@ -834,6 +837,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _evilTwinHtmlName.value = name ?: uri.lastPathSegment ?: "evil_twin.html"
         _evilTwinHtmlUploading.value = false
         _evilTwinHtmlUploadProgress.value = 0
+        _evilTwinHtmlComplete.value = false
         appendLog("Evil Twin HTML selected: ${_evilTwinHtmlName.value}")
     }
 
@@ -842,6 +846,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _evilTwinHtmlName.value = null
         _evilTwinHtmlUploading.value = false
         _evilTwinHtmlUploadProgress.value = 0
+        _evilTwinHtmlComplete.value = false
         appendLog("Evil Twin HTML cleared.")
     }
 
@@ -1024,6 +1029,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _portalHtmlName.value = name ?: uri.lastPathSegment ?: "HTML file"
         _portalHtmlUploading.value = false
         _portalHtmlUploadProgress.value = 0
+        _portalHtmlComplete.value = false
         appendLog("Portal HTML selected: ${_portalHtmlName.value}")
     }
 
@@ -1032,6 +1038,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _portalHtmlName.value = null
         _portalHtmlUploading.value = false
         _portalHtmlUploadProgress.value = 0
+        _portalHtmlComplete.value = false
         appendLog("Portal HTML cleared; device will use its placeholder page.")
     }
 
@@ -1164,7 +1171,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
-            _portalHtmlComplete.value = false
+            htmlCompleteFlow().value = false
 
             if (htmlUri != null) {
                 val bytes = withContext(Dispatchers.IO) {
@@ -1197,8 +1204,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return if (_portalMode.value == "evil_twin") _evilTwinHtmlUploadProgress else _portalHtmlUploadProgress
     }
 
+    private fun htmlCompleteFlow(): MutableStateFlow<Boolean> {
+        return if (_portalMode.value == "evil_twin") _evilTwinHtmlComplete else _portalHtmlComplete
+    }
+
     private suspend fun uploadPortalHtml(session: NrSession, bytes: ByteArray): Boolean {
-        _portalHtmlComplete.value = false
+        val complete = htmlCompleteFlow()
+        complete.value = false
         val uploading = htmlUploadingFlow()
         val progress = htmlUploadProgressFlow()
         uploading.value = true
@@ -1207,7 +1219,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             uploadPortalHtmlInternal(session, bytes)
         } finally {
             uploading.value = false
-            if (_portalHtmlComplete.value) {
+            if (complete.value) {
                 progress.value = 100
             }
         }
@@ -1309,7 +1321,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         appendLog("HTML upload complete; device reports $deviceSize bytes (expected $deviceExpected).")
-        _portalHtmlComplete.value = true
+        htmlCompleteFlow().value = true
         return true
     }
 
@@ -1409,7 +1421,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (response.optBoolean("ok")) {
                     _portalRunning.value = response.optBoolean("running", _portalRunning.value)
                     _portalHtmlSize.value = response.optInt("html_size", _portalHtmlSize.value)
-                    _portalHtmlComplete.value = response.optBoolean("html_complete", _portalHtmlComplete.value)
+                    htmlCompleteFlow().value = response.optBoolean("html_complete", htmlCompleteFlow().value)
                 }
             }
         }
