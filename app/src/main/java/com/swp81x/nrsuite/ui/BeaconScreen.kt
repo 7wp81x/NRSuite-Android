@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileUpload
@@ -434,7 +436,10 @@ private fun NumberStepper(
             modifier = Modifier.weight(1f),
         )
         IconButton(onClick = onDecrease, enabled = enabled) {
-            Text("-", style = MaterialTheme.typography.titleLarge)
+            Icon(
+                imageVector = Icons.Default.Remove,
+                contentDescription = "Decrease $label",
+            )
         }
         Text(
             text = valueText,
@@ -442,7 +447,10 @@ private fun NumberStepper(
             modifier = Modifier.padding(horizontal = 8.dp),
         )
         IconButton(onClick = onIncrease, enabled = enabled) {
-            Text("+", style = MaterialTheme.typography.titleLarge)
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Increase $label",
+            )
         }
     }
 }

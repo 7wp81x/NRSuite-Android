@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,6 +30,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material3.TabRow
@@ -35,6 +38,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -50,6 +54,7 @@ import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
+import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
@@ -76,11 +81,13 @@ fun EvilTwinScreen(
     onClearPasswords: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var ssid by remember { mutableStateOf("Free WiFi") }
-    var channel by remember { mutableStateOf(6) }
-    var targetBssid by remember { mutableStateOf("") }
+    var ssid by rememberSaveable { mutableStateOf("Free WiFi") }
+    var channel by rememberSaveable { mutableStateOf(6) }
+    var targetBssid by rememberSaveable { mutableStateOf("") }
+    var confirmStart by rememberSaveable { mutableStateOf(false) }
+    var confirmStop by rememberSaveable { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
     Column(
         modifier = modifier
@@ -125,12 +132,12 @@ fun EvilTwinScreen(
                     },
                 )
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "EAPOL: M1 ${if (handshake.m1) "✓" else "—"}  M2 ${if (handshake.m2) "✓" else "—"}  " +
-                        "M3 ${if (handshake.m3) "✓" else "—"}  M4 ${if (handshake.m4) "✓" else "—"}",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = if (handshake.isComplete) StatusGreen else NrOnSurfaceVariant,
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    EapolBadge("M1", handshake.m1)
+                    EapolBadge("M2", handshake.m2)
+                    EapolBadge("M3", handshake.m3)
+                    EapolBadge("M4", handshake.m4)
+                }
             }
         }
 
@@ -147,6 +154,14 @@ fun EvilTwinScreen(
                     enabled = connected && !running && !scanning,
                 ) {
                     Text(if (scanning) "Scanning..." else "Scan WiFi for targets")
+                }
+                if (networks.isEmpty() && !scanning) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Tap \"Scan WiFi for targets\" to find nearby access points.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
                 }
                 if (networks.isNotEmpty()) {
                     Spacer(Modifier.height(6.dp))
@@ -200,24 +215,30 @@ fun EvilTwinScreen(
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onChooseHtml, enabled = !running) {
-                        Text("Choose HTML")
+                OutlinedButton(
+                    onClick = onChooseHtml,
+                    enabled = !running && !htmlUploading,
+                ) {
+                    Text(if (selectedHtmlName == null) "Choose HTML" else "Change HTML")
+                }
+                Spacer(Modifier.height(8.dp))
+                if (running) {
+                    Button(
+                        onClick = { confirmStop = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Stop Evil Twin")
                     }
-                    if (running) {
-                        Button(onClick = onStop) {
-                            Text("Stop")
-                        }
-                    } else {
-                        Button(
-                            onClick = { onStart(ssid.trim(), channel, targetBssid.trim()) },
-                            enabled = connected &&
-                                targetBssid.isNotBlank() &&
-                                selectedHtmlName != null &&
-                                !htmlUploading,
-                        ) {
-                            Text("Start Evil Twin")
-                        }
+                } else {
+                    Button(
+                        onClick = { confirmStart = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = connected &&
+                            targetBssid.isNotBlank() &&
+                            selectedHtmlName != null &&
+                            !htmlUploading,
+                    ) {
+                        Text("Start Evil Twin")
                     }
                 }
             }
@@ -361,5 +382,71 @@ fun EvilTwinScreen(
             }
         }
         }
+
+        if (confirmStart) {
+            AlertDialog(
+                onDismissRequest = { confirmStart = false },
+                title = { Text("Start Evil Twin?") },
+                text = {
+                    Text(
+                        "This starts an AP, optionally deauths the selected target, " +
+                            "and captures EAPOL/password attempts.\n\n" +
+                            "SSID: $ssid\n" +
+                            "Channel: $channel\n" +
+                            "Target: ${targetBssid.ifBlank { "none selected" }}\n\n" +
+                            "Only use this on networks you own or are authorized to test.",
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            confirmStart = false
+                            onStart(ssid.trim(), channel, targetBssid.trim())
+                        },
+                    ) { Text("Start") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmStart = false }) { Text("Cancel") }
+                },
+            )
+        }
+
+        if (confirmStop) {
+            AlertDialog(
+                onDismissRequest = { confirmStop = false },
+                title = { Text("Stop Evil Twin?") },
+                text = { Text("This stops the portal, deauth workflow, and EAPOL capture.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            confirmStop = false
+                            onStop()
+                        },
+                    ) { Text("Stop") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmStop = false }) { Text("Cancel") }
+                },
+            )
+        }
+    }
+}
+
+
+@Composable
+private fun EapolBadge(label: String, captured: Boolean) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (captured) NrAccent.copy(alpha = 0.16f) else NrSurfaceVariant,
+        ),
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(0.5.dp, if (captured) NrAccent else NrOutline),
+    ) {
+        Text(
+            text = if (captured) "$label ✓" else label,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            color = if (captured) NrAccent else NrOnSurfaceVariant,
+        )
     }
 }

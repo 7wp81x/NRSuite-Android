@@ -55,18 +55,20 @@ fun WifiScanScreen(
     onScan: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var configExpanded by remember { mutableStateOf(true) }
-
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(12.dp),
         ) {
-            ConfigZone(
-                expanded = configExpanded,
-                scanning = scanning,
-                onToggle = { configExpanded = !configExpanded },
+            Text(
+                text = if (scanning) {
+                    "Scanning all 2.4 GHz channels..."
+                } else {
+                    "Results arrive as asynchronous scan_ap events and are sorted by RSSI."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = NrOnSurfaceVariant,
             )
 
             Spacer(Modifier.height(10.dp))

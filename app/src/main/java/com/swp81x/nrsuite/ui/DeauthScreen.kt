@@ -16,12 +16,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import android.widget.Toast
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -34,12 +38,14 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -77,6 +83,11 @@ fun DeauthScreen(
     var duration by remember { mutableStateOf(0) }
     var intervalMs by remember { mutableStateOf(100) }
     var confirmStart by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    LaunchedEffect(running) {
+        if (running) configExpanded = false
+    }
 
     val validBssid = MAC_REGEX.matches(bssid.trim())
     val validClient = MAC_REGEX.matches(client.trim())
@@ -101,6 +112,7 @@ fun DeauthScreen(
                 validBssid = validBssid,
                 validClient = validClient,
                 scanning = scanning,
+                sentFrames = sentFrames,
                 networks = networks,
                 onScanWifi = onScanWifi,
                 onToggle = { configExpanded = !configExpanded },
@@ -126,8 +138,19 @@ fun DeauthScreen(
         if (connected) {
             FloatingActionButton(
                 onClick = {
-                    if (!running && validBssid && validClient) {
-                        confirmStart = true
+                    when {
+                        running -> Unit
+                        !validBssid -> Toast.makeText(
+                            context,
+                            "Select a valid target BSSID first.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        !validClient -> Toast.makeText(
+                            context,
+                            "Enter a valid client MAC or use FF:FF:FF:FF:FF:FF.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        else -> confirmStart = true
                     }
                 },
                 modifier = Modifier
@@ -195,6 +218,7 @@ private fun ConfigZone(
     validBssid: Boolean,
     validClient: Boolean,
     scanning: Boolean,
+    sentFrames: Int,
     networks: List<JSONObject>,
     onScanWifi: () -> Unit,
     onToggle: () -> Unit,
@@ -217,9 +241,9 @@ private fun ConfigZone(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    imageVector = Icons.Default.Warning,
+                    imageVector = Icons.Default.Wifi,
                     contentDescription = null,
-                    tint = StatusRed,
+                    tint = NrAccent,
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.width(10.dp))
@@ -230,7 +254,11 @@ private fun ConfigZone(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = if (running) "Burst running" else "Targeted deauthentication burst",
+                        text = when {
+                            running -> "Burst running"
+                            sentFrames > 0 -> "$sentFrames frame(s) sent"
+                            else -> "Targeted deauthentication burst"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
@@ -246,12 +274,6 @@ private fun ConfigZone(
             if (expanded) {
                 Column {
                     Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = "Target: ${bssid.ifBlank { "none selected — scan below" }}",
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = if (validBssid) NrOnSurfaceVariant else StatusAmber,
-                    )
-                    Spacer(Modifier.height(8.dp))
                     OutlinedButton(
                         onClick = onScanWifi,
                         enabled = connected && !scanning && !running,
@@ -365,7 +387,10 @@ private fun NumberStepper(
             modifier = Modifier.weight(1f),
         )
         IconButton(onClick = onDecrease, enabled = enabled) {
-            Text("-", style = MaterialTheme.typography.titleLarge)
+            Icon(
+                imageVector = Icons.Default.Remove,
+                contentDescription = "Decrease $label",
+            )
         }
         Text(
             text = valueText,
@@ -373,7 +398,10 @@ private fun NumberStepper(
             modifier = Modifier.padding(horizontal = 8.dp),
         )
         IconButton(onClick = onIncrease, enabled = enabled) {
-            Text("+", style = MaterialTheme.typography.titleLarge)
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Increase $label",
+            )
         }
     }
 }

@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Lock
@@ -43,10 +45,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -86,15 +90,19 @@ fun PortalScreen(
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var configExpanded by remember { mutableStateOf(true) }
-    var ssid by remember { mutableStateOf("Free WiFi") }
-    var channel by remember { mutableStateOf(6) }
-    var targetBssid by remember { mutableStateOf("") }
-    var confirmStart by remember { mutableStateOf(false) }
+    var configExpanded by rememberSaveable { mutableStateOf(true) }
+    var ssid by rememberSaveable { mutableStateOf("Free WiFi") }
+    var channel by rememberSaveable { mutableStateOf(6) }
+    var targetBssid by rememberSaveable { mutableStateOf("") }
+    var confirmStart by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(running) {
+        if (running) configExpanded = false
+    }
 
     val validTargetBssid = targetBssid.isBlank() || MAC_REGEX.matches(targetBssid.trim())
 
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     val clipboardManager = LocalClipboardManager.current
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -198,11 +206,11 @@ fun PortalScreen(
                                 color = NrOnSurfaceVariant,
                             )
                         } else {
-                            Column(
-                                modifier = Modifier.verticalScroll(rememberScrollState()),
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
-                                eventLog.reversed().forEach { line ->
+                                items(eventLog.reversed()) { line ->
                                     Text(
                                         text = line,
                                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
@@ -245,14 +253,14 @@ fun PortalScreen(
             title = { Text("Start captive portal?") },
             text = {
                 Text(
-                    "SSID: $ssid\\n" +
-                        "Channel: $channel\\n" +
+                    "SSID: $ssid\n" +
+                        "Channel: $channel\n" +
                         if (targetBssid.isBlank()) {
                             "No auto-EAPOL target selected."
                         } else {
                             "Auto-EAPOL/deauth target: $targetBssid"
                         } +
-                        "\\n\\nOnly deploy this on networks and devices you own or are authorized to test."
+                        "\n\nOnly deploy this on networks and devices you own or are authorized to test."
                 )
             },
             confirmButton = {
@@ -344,7 +352,7 @@ private fun ConfigZone(
                     )
                     Spacer(Modifier.height(8.dp))
                     NumberStepper(
-                        label = "Channel",
+                        label = "Channel (1–13)",
                         valueText = channel.toString(),
                         enabled = !running,
                         onDecrease = { onChannelChange(channel - 1) },
@@ -417,7 +425,10 @@ private fun NumberStepper(
             modifier = Modifier.weight(1f),
         )
         IconButton(onClick = onDecrease, enabled = enabled) {
-            Text("-", style = MaterialTheme.typography.titleLarge)
+            Icon(
+                imageVector = Icons.Default.Remove,
+                contentDescription = "Decrease $label",
+            )
         }
         Text(
             text = valueText,
@@ -425,7 +436,10 @@ private fun NumberStepper(
             modifier = Modifier.padding(horizontal = 8.dp),
         )
         IconButton(onClick = onIncrease, enabled = enabled) {
-            Text("+", style = MaterialTheme.typography.titleLarge)
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Increase $label",
+            )
         }
     }
 }
@@ -491,12 +505,12 @@ private fun ResultZone(
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
-            MetricRow("HTML size", "$htmlSize bytes")
-            MetricRow("HTML complete", if (htmlComplete) "yes" else "no")
-            MetricRow("Page views", portalViews.toString())
-            MetricRow("Clients associated", portalClients.toString())
-            MetricRow("Captured form posts", capturedData.toString())
+            if (running || activeSsid.isNotBlank()) {
+                Spacer(Modifier.height(16.dp))
+                MetricRow("Page views", portalViews.toString())
+                MetricRow("Clients associated", portalClients.toString())
+                MetricRow("Captured form posts", capturedData.toString())
+            }
 
             if (!connected) {
                 Spacer(Modifier.height(24.dp))

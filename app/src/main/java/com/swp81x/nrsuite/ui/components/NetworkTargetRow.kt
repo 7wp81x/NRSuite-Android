@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -60,16 +61,23 @@ fun NetworkTargetRow(
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                Spacer(Modifier.width(2.dp))
+                Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "$bssid  ·  ch $channel  ·  $rssi dBm  ·  $security",
+                    text = bssid,
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
+                    maxLines = 1,
+                )
+                Text(
+                    text = "ch $channel  ·  $rssi dBm  ·  $security",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                    maxLines = 1,
                 )
             }
             RadioButton(
                 selected = selected,
-                onClick = onClick,
+                onClick = null,
                 enabled = enabled,
             )
         }

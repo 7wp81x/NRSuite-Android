@@ -13,6 +13,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -31,7 +33,8 @@ fun StatusIndicator(
             modifier = Modifier
                 .size(10.dp)
                 .background(color, CircleShape)
-                .border(1.dp, color.copy(alpha = 0.35f), CircleShape),
+                .border(1.dp, color.copy(alpha = 0.35f), CircleShape)
+                .semantics { contentDescription = "$label status indicator" },
         )
         Spacer(Modifier.width(8.dp))
         Text(
