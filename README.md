@@ -95,7 +95,7 @@ chip-name detection for older firmware.
   - portal logs with page views, clients, form posts
   - copy/clear logs
 
-- **Evil Twin (beta)**
+- **Evil Twin**
   - scan and select target network
   - custom HTML
   - portal + deauth + EAPOL capture workflow

@@ -195,7 +195,7 @@ private val modules = listOf(
     ModuleCardSpec(
         id = "evil_twin",
         title = "Evil Twin",
-        description = "Portal + deauth + EAPOL capture workflow (beta).",
+        description = "Portal + deauth + EAPOL capture workflow.",
         icon = Icons.Default.ContentCopy,
         category = "Wireless",
         available = true,

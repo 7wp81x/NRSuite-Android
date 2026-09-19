@@ -137,7 +137,7 @@ fun EvilTwinScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "Portal + deauth + EAPOL capture workflow (beta)",
+                    text = "Portal + deauth + EAPOL capture workflow",
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
