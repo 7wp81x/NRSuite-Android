@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FilterCenterFocus
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Nfc
@@ -114,10 +115,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.swp81x.nrsuite.MainViewModel
+import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
@@ -196,6 +198,22 @@ private val modules = listOf(
         description = "Portal + deauth + EAPOL capture workflow (beta).",
         icon = Icons.Default.ContentCopy,
         category = "Wireless",
+        available = true,
+    ),
+    ModuleCardSpec(
+        id = "credential_manager",
+        title = "Credential Manager",
+        description = "Review Evil Twin captures, offline crack results, and saved credentials.",
+        icon = Icons.Default.Lock,
+        category = "Credentials",
+        available = true,
+    ),
+    ModuleCardSpec(
+        id = "wpa_cracker",
+        title = "WPA/WPA2 Cracker",
+        description = "Offline handshake verification against a wordlist.",
+        icon = Icons.Default.Key,
+        category = "Credentials",
         available = true,
     ),
     ModuleCardSpec(
@@ -286,7 +304,11 @@ private val modules = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NRSuiteApp(viewModel: MainViewModel = viewModel()) {
+fun NRSuiteApp() {
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val viewModel = remember(appContext) {
+        (appContext as NrSuiteApplication).controller
+    }
     var showStartup by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(900)
@@ -329,6 +351,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val capturePath by viewModel.capturePath.collectAsState()
     val exportDirectoryName by viewModel.exportDirectoryName.collectAsState()
     val requiresRootDirectory by viewModel.requiresRootDirectory.collectAsState()
+    val actionError by viewModel.actionError.collectAsState()
     val beaconRunning by viewModel.beaconRunning.collectAsState()
     val beaconSent by viewModel.beaconSent.collectAsState()
     val beaconSsidCount by viewModel.beaconSsidCount.collectAsState()
@@ -352,6 +375,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val portalViews by viewModel.portalViews.collectAsState()
     val portalClients by viewModel.portalClients.collectAsState()
     val portalCapturedData by viewModel.portalCapturedData.collectAsState()
+    val portalCredentials by viewModel.portalCredentials.collectAsState()
     val portalHtmlName by viewModel.portalHtmlName.collectAsState()
     val portalEventLog by viewModel.portalEventLog.collectAsState()
     val evilTwinEventLog by viewModel.evilTwinEventLog.collectAsState()
@@ -359,6 +383,22 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val portalHandshake by viewModel.portalHandshake.collectAsState()
     val evilTwinPasswords by viewModel.evilTwinPasswords.collectAsState()
     val evilTwinResults by viewModel.evilTwinResults.collectAsState()
+    val credentialSessions by viewModel.credentialSessions.collectAsState()
+    val crackerSelectedSession by viewModel.crackerSelectedSession.collectAsState()
+    val crackerWordlistName by viewModel.crackerWordlistName.collectAsState()
+    val crackerCustomPcapName by viewModel.crackerCustomPcapName.collectAsState()
+    val crackerCustomPcapValid by viewModel.crackerCustomPcapValid.collectAsState()
+    val crackerCustomPcapValidating by viewModel.crackerCustomPcapValidating.collectAsState()
+    val crackerCustomPcapMessage by viewModel.crackerCustomPcapMessage.collectAsState()
+    val crackerCustomSsidOptions by viewModel.crackerCustomSsidOptions.collectAsState()
+    val crackerCustomSsidSelected by viewModel.crackerCustomSsidSelected.collectAsState()
+    val crackerCustomSsidManual by viewModel.crackerCustomSsidManual.collectAsState()
+    val crackerCustomSsid by viewModel.crackerCustomSsid.collectAsState()
+    val crackerRunning by viewModel.crackerRunning.collectAsState()
+    val crackerTested by viewModel.crackerTested.collectAsState()
+    val crackerSpeed by viewModel.crackerSpeed.collectAsState()
+    val crackerResult by viewModel.crackerResult.collectAsState()
+    val crackerStatus by viewModel.crackerStatus.collectAsState()
     val storageFiles by viewModel.storageFiles.collectAsState()
     val storageTotal by viewModel.storageTotal.collectAsState()
     val storageUsed by viewModel.storageUsed.collectAsState()
@@ -372,6 +412,9 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val bleConnected by viewModel.bleConnected.collectAsState()
     val blePeer by viewModel.blePeer.collectAsState()
     val blePayloadName by viewModel.blePayloadName.collectAsState()
+    val bleModifiers by viewModel.bleModifiers.collectAsState()
+    val bleModifierHold by viewModel.bleModifierHold.collectAsState()
+    val bleScriptRunning by viewModel.bleScriptRunning.collectAsState()
 
     val connected = connectionState as? ConnectionState.Connected
     val connectedChip = connected?.chip
@@ -388,7 +431,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
         bleAdvertising,
     ) {
         modules.map { module ->
-        val runsWithoutDevice = module.id == "ducky" || module.id == "firmware"
+        val runsWithoutDevice = module.id == "ducky" || module.id == "firmware" || module.id == "credential_manager" || module.id == "wpa_cracker"
         val featureKey = when (module.id) {
             "wifi" -> "wifi"
             "sniff" -> "sniff"
@@ -484,48 +527,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    val attachReceiver = remember {
-        object : BroadcastReceiver() {
-            override fun onReceive(receiverContext: Context?, intent: Intent?) {
-                if (intent?.action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
-                    viewModel.onUsbDeviceAttached()
-                }
-            }
-        }
-    }
-
-    val detachReceiver = remember {
-        object : BroadcastReceiver() {
-            override fun onReceive(receiverContext: Context?, intent: Intent?) {
-                if (intent?.action == UsbManager.ACTION_USB_DEVICE_DETACHED) {
-                    @Suppress("DEPRECATION")
-                    val device = intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE)
-                    if (device != null) viewModel.onUsbDeviceDetached(device)
-                }
-            }
-        }
-    }
-
-    DisposableEffect(context, attachReceiver, detachReceiver) {
-        ContextCompat.registerReceiver(
-            context,
-            attachReceiver,
-            IntentFilter(UsbManager.ACTION_USB_DEVICE_ATTACHED),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
-        ContextCompat.registerReceiver(
-            context,
-            detachReceiver,
-            IntentFilter(UsbManager.ACTION_USB_DEVICE_DETACHED),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
-        onDispose {
-            runCatching { context.unregisterReceiver(attachReceiver) }
-            runCatching { context.unregisterReceiver(detachReceiver) }
-        }
-    }
-
-    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || portalRunning || bleAdvertising
+    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || portalRunning || bleAdvertising || crackerRunning
     val view = LocalView.current
     DisposableEffect(anyModuleRunning) {
         val window = (view.context as? Activity)?.window
@@ -583,6 +585,34 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                 )
             }
             viewModel.setEvilTwinHtmlFile(uri, null)
+        }
+    }
+
+    val crackerWordlistPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            viewModel.setCrackerWordlist(uri, null)
+        }
+    }
+
+    val crackerPcapPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            viewModel.setCrackerCustomPcap(uri, null)
         }
     }
 
@@ -653,6 +683,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
     val showBack = activeModuleId != null || selectedCategory != null
     val activeTitle = when {
         activeModuleId == "firmware" -> "Flasher"
+        activeModuleId == "wpa_cracker" -> "WPA Cracker"
         activeModule != null -> activeModule.title
         activeModuleId == "settings" -> "Settings"
         selectedCategory != null -> selectedCategory!!
@@ -666,6 +697,8 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                     Text(
                         text = activeTitle,
                         fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 },
                 navigationIcon = {
@@ -765,6 +798,24 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
             )
         }
 
+        actionError?.let { message ->
+            AlertDialog(
+                onDismissRequest = viewModel::consumeActionError,
+                title = { Text("Action blocked") },
+                text = {
+                    Text(
+                        text = message,
+                        color = NrOnSurfaceVariant,
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = viewModel::consumeActionError) {
+                        Text("OK")
+                    }
+                },
+            )
+        }
+
         when {
             activeModuleId == "wifi" -> {
                 WifiScanScreen(
@@ -848,6 +899,55 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                 )
             }
 
+            activeModuleId == "credential_manager" -> {
+                CredentialManagerScreen(
+                    sessions = credentialSessions,
+                    onDeleteSession = viewModel::deleteCredentialSession,
+                    onClearAll = viewModel::clearCredentialSessions,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "wpa_cracker" -> {
+                WpaCrackerScreen(
+                    sessions = credentialSessions,
+                    selectedSession = crackerSelectedSession,
+                    customPcapName = crackerCustomPcapName,
+                    customPcapValid = crackerCustomPcapValid,
+                    customPcapValidating = crackerCustomPcapValidating,
+                    customPcapMessage = crackerCustomPcapMessage,
+                    customSsidOptions = crackerCustomSsidOptions,
+                    customSsidSelected = crackerCustomSsidSelected,
+                    customSsidManualEnabled = crackerCustomSsidManual,
+                    customSsid = crackerCustomSsid,
+                    wordlistName = crackerWordlistName,
+                    running = crackerRunning,
+                    tested = crackerTested,
+                    speed = crackerSpeed,
+                    result = crackerResult,
+                    status = crackerStatus,
+                    onSelectSession = viewModel::selectCrackerSession,
+                    onChooseCustomPcap = {
+                        crackerPcapPicker.launch(
+                            arrayOf(
+                                "application/vnd.tcpdump.pcap",
+                                "application/octet-stream",
+                                "*/*",
+                            ),
+                        )
+                    },
+                    onClearCustomPcap = viewModel::clearCrackerCustomPcap,
+                    onSelectCustomSsid = viewModel::selectCrackerCustomSsid,
+                    onUseManualCustomSsid = viewModel::useManualCrackerSsid,
+                    onCustomSsidChange = viewModel::setCrackerCustomSsid,
+                    onChooseWordlist = { crackerWordlistPicker.launch(arrayOf("text/plain", "*/*")) },
+                    onClearWordlist = viewModel::clearCrackerWordlist,
+                    onStart = viewModel::startCracker,
+                    onStop = viewModel::stopCracker,
+                    modifier = contentModifier,
+                )
+            }
+
             activeModuleId == "portal" -> {
                 PortalScreen(
                     connected = connectionState is ConnectionState.Connected,
@@ -859,6 +959,7 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                     portalViews = portalViews,
                     portalClients = portalClients,
                     capturedData = portalCapturedData,
+                    credentials = portalCredentials,
                     selectedHtmlName = portalHtmlName,
                     htmlUploading = portalHtmlUploading,
                     htmlProgress = portalHtmlUploadProgress,
@@ -919,6 +1020,9 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                     peer = blePeer,
                     selectedPayloadName = blePayloadName,
                     savedScripts = duckyScripts,
+                    modifiers = bleModifiers,
+                    modifierHold = bleModifierHold,
+                    bleScriptRunning = bleScriptRunning,
                     onUseSavedScript = viewModel::useBleSavedScript,
                     onChoosePayload = { blePicker.launch(arrayOf("text/plain", "*/*")) },
                     onClearPayload = viewModel::clearBlePayload,
@@ -926,6 +1030,13 @@ private fun NRSuiteContent(viewModel: MainViewModel) {
                     onStop = viewModel::stopBle,
                     onRunPayload = viewModel::runBlePayload,
                     onSendText = viewModel::sendBleKeyboardText,
+                    onRealtimeInput = viewModel::sendBleRealtimeInput,
+                    onSpecialKey = viewModel::sendBleSpecialKey,
+                    onModifierChange = viewModel::setBleModifier,
+                    onModifierHoldChange = viewModel::setBleModifierHold,
+                    onMouseMove = viewModel::sendBleMouseMove,
+                    onMouseScroll = viewModel::sendBleMouseScroll,
+                    onMouseButton = viewModel::sendBleMouseButton,
                     modifier = contentModifier,
                 )
             }
@@ -1185,6 +1296,13 @@ private fun HomeScreen(
                     available = firmwareConnected,
                 ),
                 CategorySpec(
+                    name = "Credentials",
+                    icon = Icons.Default.Key,
+                    iconTint = StatusAmber,
+                    moduleIds = listOf("credential_manager", "wpa_cracker"),
+                    available = true,
+                ),
+                CategorySpec(
                     name = "HID",
                     icon = Icons.Default.Keyboard,
                     iconTint = Color(0xFFA78BFA),
@@ -1283,6 +1401,16 @@ private fun CategoryCard(
     modifier: Modifier = Modifier,
 ) {
     val count = category.moduleIds.size
+    val countLabel = when {
+        count == 1 -> "1 module"
+        count > 1 -> "$count modules"
+        else -> "No modules"
+    }
+    val availabilityLabel = if (!category.available) {
+        category.statusLabel ?: "Unavailable"
+    } else {
+        null
+    }
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -1308,8 +1436,7 @@ private fun CategoryCard(
                 color = NrOnSurface,
             )
             Text(
-                text = if (category.available && count > 0) "$count modules"
-                else category.statusLabel ?: "",
+                text = if (availabilityLabel != null) "$countLabel · $availabilityLabel" else countLabel,
                 fontSize = 11.sp,
                 color = NrOnSurfaceVariant,
             )

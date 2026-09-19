@@ -10,8 +10,11 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
+import com.swp81x.nrsuite.core.credentials.CapturedCredential
+import com.swp81x.nrsuite.core.credentials.CredentialSession
+import com.swp81x.nrsuite.core.credentials.CredentialSource
+import com.swp81x.nrsuite.core.credentials.CredentialStatus
+import com.swp81x.nrsuite.core.credentials.CredentialStore
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
 import com.swp81x.nrsuite.core.flasher.Esp32Flasher
 import com.swp81x.nrsuite.core.flasher.UsbSerialFlasherTransport
@@ -20,9 +23,13 @@ import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.history.HistoryEntry
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
+import com.swp81x.nrsuite.core.pcap.PcapReader
 import com.swp81x.nrsuite.core.pcap.PcapWriter
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
+import com.swp81x.nrsuite.core.wifi.DetectedSsid
+import com.swp81x.nrsuite.core.wifi.PcapSsidParser
+import com.swp81x.nrsuite.core.wpa.WpaCracker
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeVerifier
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeParser
 import com.swp81x.nrsuite.core.wpa.WpaHandshake
@@ -35,7 +42,13 @@ import com.swp81x.nrsuite.core.usb.UsbSerialTransport
 import com.swp81x.nrsuite.service.NrSuiteForegroundService
 import java.io.File
 import java.io.IOException
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,12 +65,30 @@ data class CapturedPassword(
     val capturedAt: String,
 )
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
+/**
+ * Application-scoped NRSuite controller.
+ *
+ * Despite its historical name, this class intentionally does not extend
+ * ViewModel. It is owned by [NrSuiteApplication] so the USB bridge, event
+ * stream, PCAP collectors, and operation state survive Activity destruction
+ * while the foreground service keeps the process alive.
+ */
+class MainViewModel(private val app: Application) {
+    private val scope = CoroutineScope(
+        SupervisorJob() +
+            Dispatchers.Main.immediate +
+            CoroutineExceptionHandler { _, error ->
+                appendLog(
+                    "Unhandled bridge error: ${error.message ?: error.javaClass.simpleName}",
+                    level = LogLevel.ERROR,
+                )
+            },
+    )
 
     private val usbManager =
-        application.getSystemService(Context.USB_SERVICE) as UsbManager
+        app.getSystemService(Context.USB_SERVICE) as UsbManager
     private val preferences =
-        application.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        app.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     private val _exportDirectory = MutableStateFlow<Uri?>(null)
     val exportDirectory: StateFlow<Uri?> = _exportDirectory.asStateFlow()
@@ -67,6 +98,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _requiresRootDirectory = MutableStateFlow(false)
     val requiresRootDirectory: StateFlow<Boolean> = _requiresRootDirectory.asStateFlow()
+
+    private val _actionError = MutableStateFlow<String?>(null)
+    val actionError: StateFlow<String?> = _actionError.asStateFlow()
 
     private val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()
@@ -203,6 +237,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _portalCapturedData = MutableStateFlow(0)
     val portalCapturedData: StateFlow<Int> = _portalCapturedData.asStateFlow()
 
+    private val _portalCredentials = MutableStateFlow<List<CapturedCredential>>(emptyList())
+    val portalCredentials: StateFlow<List<CapturedCredential>> = _portalCredentials.asStateFlow()
+
     private val _portalHtmlUri = MutableStateFlow<Uri?>(null)
     val portalHtmlUri: StateFlow<Uri?> = _portalHtmlUri.asStateFlow()
 
@@ -234,12 +271,74 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _evilTwinResults = MutableStateFlow<List<EvilTwinResult>>(emptyList())
     val evilTwinResults: StateFlow<List<EvilTwinResult>> = _evilTwinResults.asStateFlow()
 
+    private val credentialStore = CredentialStore(File(app.filesDir, "Credentials"))
+    private val _credentialSessions = MutableStateFlow<List<CredentialSession>>(emptyList())
+    val credentialSessions: StateFlow<List<CredentialSession>> = _credentialSessions.asStateFlow()
+    private val credentialLock = Any()
+    private var activeCredentialSession: CredentialSession? = null
+    private var evilTwinAutoStopIssued = false
+    private var activePortalTargetBssid: String = ""
+
+    private val _crackerSelectedSession = MutableStateFlow<CredentialSession?>(null)
+    val crackerSelectedSession: StateFlow<CredentialSession?> = _crackerSelectedSession.asStateFlow()
+
+    private val _crackerWordlistUri = MutableStateFlow<Uri?>(null)
+    val crackerWordlistUri: StateFlow<Uri?> = _crackerWordlistUri.asStateFlow()
+
+    private val _crackerWordlistName = MutableStateFlow<String?>(null)
+    val crackerWordlistName: StateFlow<String?> = _crackerWordlistName.asStateFlow()
+
+    private val _crackerRunning = MutableStateFlow(false)
+    val crackerRunning: StateFlow<Boolean> = _crackerRunning.asStateFlow()
+
+    private val _crackerTested = MutableStateFlow(0L)
+    val crackerTested: StateFlow<Long> = _crackerTested.asStateFlow()
+
+    private val _crackerSpeed = MutableStateFlow(0.0)
+    val crackerSpeed: StateFlow<Double> = _crackerSpeed.asStateFlow()
+
+    private val _crackerResult = MutableStateFlow<String?>(null)
+    val crackerResult: StateFlow<String?> = _crackerResult.asStateFlow()
+
+    private val _crackerStatus = MutableStateFlow("Select a saved handshake and a wordlist.")
+    val crackerStatus: StateFlow<String> = _crackerStatus.asStateFlow()
+
+    private val _crackerCustomPcapUri = MutableStateFlow<Uri?>(null)
+    val crackerCustomPcapUri: StateFlow<Uri?> = _crackerCustomPcapUri.asStateFlow()
+
+    private val _crackerCustomPcapName = MutableStateFlow<String?>(null)
+    val crackerCustomPcapName: StateFlow<String?> = _crackerCustomPcapName.asStateFlow()
+
+    private val _crackerCustomSsid = MutableStateFlow("")
+    val crackerCustomSsid: StateFlow<String> = _crackerCustomSsid.asStateFlow()
+
+    private val _crackerCustomPcapValid = MutableStateFlow(false)
+    val crackerCustomPcapValid: StateFlow<Boolean> = _crackerCustomPcapValid.asStateFlow()
+
+    private val _crackerCustomPcapValidating = MutableStateFlow(false)
+    val crackerCustomPcapValidating: StateFlow<Boolean> = _crackerCustomPcapValidating.asStateFlow()
+
+    private val _crackerCustomPcapMessage = MutableStateFlow("No custom PCAP selected.")
+    val crackerCustomPcapMessage: StateFlow<String> = _crackerCustomPcapMessage.asStateFlow()
+
+    private val _crackerCustomSsidOptions = MutableStateFlow<List<DetectedSsid>>(emptyList())
+    val crackerCustomSsidOptions: StateFlow<List<DetectedSsid>> = _crackerCustomSsidOptions.asStateFlow()
+
+    private val _crackerCustomSsidSelected = MutableStateFlow<String?>(null)
+    val crackerCustomSsidSelected: StateFlow<String?> = _crackerCustomSsidSelected.asStateFlow()
+
+    private val _crackerCustomSsidManual = MutableStateFlow(true)
+    val crackerCustomSsidManual: StateFlow<Boolean> = _crackerCustomSsidManual.asStateFlow()
+
+    private var crackerJob: Job? = null
+
     private val _evilTwinCapturePath = MutableStateFlow<String?>(null)
     val evilTwinCapturePath: StateFlow<String?> = _evilTwinCapturePath.asStateFlow()
 
     private var portalPcapJob: Job? = null
     private var portalPcapWriter: PcapWriter? = null
     private var portalPcapFile: File? = null
+    private val exportedCapturePaths = mutableSetOf<String>()
 
     private var portalStatusJob: Job? = null
 
@@ -292,6 +391,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _blePayloadName = MutableStateFlow<String?>(null)
     val blePayloadName: StateFlow<String?> = _blePayloadName.asStateFlow()
 
+    private val _bleModifiers = MutableStateFlow<Set<String>>(emptySet())
+    val bleModifiers: StateFlow<Set<String>> = _bleModifiers.asStateFlow()
+
+    private val _bleModifierHold = MutableStateFlow(false)
+    val bleModifierHold: StateFlow<Boolean> = _bleModifierHold.asStateFlow()
+
+    private val _bleScriptRunning = MutableStateFlow(false)
+    val bleScriptRunning: StateFlow<Boolean> = _bleScriptRunning.asStateFlow()
+
+    private val bleTypeBuffer = StringBuilder()
+    private var bleTypeJob: Job? = null
+
     private var bleStatusJob: Job? = null
 
     private var session: NrSession? = null
@@ -306,6 +417,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         loadBeaconLists()
         loadDuckyScripts()
         loadHistory()
+        loadCredentialSessions()
         refreshDevices()
     }
 
@@ -366,7 +478,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setExportDirectory(uri: Uri) {
-        val resolver = getApplication<Application>().contentResolver
+        val resolver = app.contentResolver
         val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
         runCatching { resolver.takePersistableUriPermission(uri, flags) }
         _exportDirectory.value = uri
@@ -453,20 +565,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         refreshDevices()
         appendLog("USB device attached.", level = LogLevel.USB)
-        autoConnectLastDevice()
-    }
-
-    private fun autoConnectLastDevice() {
-        val savedFingerprint = preferences.getString(PREF_LAST_DEVICE_FINGERPRINT, null) ?: return
-        val entry = _devices.value.firstOrNull {
-            deviceFingerprint(it.device) == savedFingerprint
-        } ?: return
-        if (usbManager.hasPermission(entry.device)) {
-            appendLog("Auto-reconnecting to ${entry.displayName}...")
-            connect(entry.device)
-        } else {
-            appendLog("Last device attached; tap Connect to grant USB permission.")
-        }
+        appendLog("Tap Connect to reconnect when ready.", level = LogLevel.USB)
     }
 
     private fun deviceFingerprint(device: UsbDevice): String {
@@ -508,7 +607,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         sessionObservers = emptyList()
         session = null
         if (currentSession != null) {
-            viewModelScope.launch {
+            scope.launch {
                 runCatching { currentSession.disconnect() }
             }
         }
@@ -542,11 +641,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
+        // Replacing the session must also clear any stale active operation.
         disconnectInternal()
 
         val newSession = NrSession(
             transport = UsbSerialTransport(usbManager, entry.driver),
-            scope = viewModelScope,
+            scope = scope,
         )
         session = newSession
         activeSerialDevice = entry
@@ -557,7 +657,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             .putString(PREF_LAST_DEVICE_FINGERPRINT, activeDeviceFingerprint)
             .apply()
         observe(newSession)
-        viewModelScope.launch {
+        scope.launch {
             appendLog("Opening ${entry.displayName}...")
             newSession.connect()
         }
@@ -574,7 +674,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         _networks.value = emptyList()
         _scanning.value = true
-        viewModelScope.launch {
+        scope.launch {
             appendLog("Starting WiFi scan...")
             val count = activeSession.scanWifi()
             _scanning.value = false
@@ -671,7 +771,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        viewModelScope.launch {
+        scope.launch {
             _badUsbUploading.value = true
             _badUsbProgress.value = 0
             try {
@@ -679,7 +779,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     ?: withContext(Dispatchers.IO) {
                         runCatching {
                             payloadUri?.let {
-                                getApplication<Application>().contentResolver
+                                app.contentResolver
                                     .openInputStream(it)
                                     ?.use { stream -> stream.readBytes() }
                             }
@@ -758,7 +858,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_storageLoading.value) return
 
         _storageLoading.value = true
-        viewModelScope.launch {
+        scope.launch {
             val response = activeSession.sendCommand("MSC_LIST", timeoutMs = 8_000)
             _storageLoading.value = false
             if (response?.optBoolean("ok") != true) {
@@ -792,7 +892,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             appendLog("Connect to a device before deleting files.")
             return
         }
-        viewModelScope.launch {
+        scope.launch {
             val response = activeSession.sendCommand(
                 "MSC_DELETE",
                 JSONObject().put("path", name),
@@ -819,7 +919,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        viewModelScope.launch {
+        scope.launch {
             appendLog("Switching device to USB mass storage mode...")
             val response = activeSession.sendCommand("START_MSC", timeoutMs = 5_000)
             if (response?.optBoolean("ok") == true) {
@@ -859,7 +959,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun queryDocumentSize(uri: Uri): Long {
         return runCatching {
-            getApplication<Application>().contentResolver.query(
+            app.contentResolver.query(
                 uri,
                 arrayOf(OpenableColumns.SIZE),
                 null,
@@ -917,10 +1017,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _firmwareFlashProgress.value = 0
         _firmwareFlashStatus.value = "Reading firmware image..."
 
-        viewModelScope.launch {
+        scope.launch {
             try {
                 val bytes = withContext(Dispatchers.IO) {
-                    getApplication<Application>().contentResolver
+                    app.contentResolver
                         .openInputStream(uri)
                         ?.use { it.readBytes() }
                 }
@@ -996,6 +1096,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun stopActiveOperations() {
+        finishActiveCredentialSession()
         beaconStatusJob?.cancel()
         beaconStatusJob = null
         portalStatusJob?.cancel()
@@ -1013,11 +1114,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _deauthRunning.value = false
         _bleAdvertising.value = false
         _bleConnected.value = false
+        _bleScriptRunning.value = false
+        clearBleRealtimeState()
         _portalMode.value = null
 
+        val captureToExport = portalPcapFile
         runCatching { portalPcapWriter?.close() }
         portalPcapWriter = null
         portalPcapFile = null
+        exportPcapToRootIfConfigured(captureToExport)
         runCatching { pcapWriter?.close() }
         pcapWriter = null
         _evilTwinCapturePath.value = null
@@ -1085,7 +1190,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _sniffing.value = false
             pcapJob?.cancel()
             pcapJob = null
-            viewModelScope.launch(Dispatchers.IO) {
+            scope.launch(Dispatchers.IO) {
                 runCatching { pcapWriter?.close() }
                 pcapWriter = null
             }
@@ -1096,8 +1201,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _portalViews.value = 0
         _portalClients.value = 0
         _portalCapturedData.value = 0
+        _portalCredentials.value = emptyList()
 
-        viewModelScope.launch {
+        scope.launch {
             val args = JSONObject().apply {
                 put("ssid", cleanSsid)
                 put("channel", channel.coerceIn(1, 13))
@@ -1123,6 +1229,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _portalHandshake.value = EapolHandshake()
             _portalWpaHandshake.value = WpaHandshake()
 
+            activePortalTargetBssid = cleanBssid
+            if (mode == "evil_twin") {
+                _evilTwinPasswords.value = emptyList()
+                _evilTwinResults.value = emptyList()
+                _evilTwinEventLog.value = emptyList()
+            }
+            synchronized(credentialLock) {
+                activeCredentialSession = CredentialSession(
+                    id = System.currentTimeMillis().toString(),
+                    source = if (mode == "evil_twin") {
+                        CredentialSource.EVIL_TWIN
+                    } else {
+                        CredentialSource.PORTAL
+                    },
+                    ssid = cleanSsid,
+                    bssid = cleanBssid,
+                    channel = channel.coerceIn(1, 13),
+                    startedAt = timestampNow(),
+                    endedAt = null,
+                    pcapPath = null,
+                    credentials = emptyList(),
+                )
+                evilTwinAutoStopIssued = false
+            }
+
             if (cleanBssid.isNotBlank()) {
                 portalPcapJob?.cancel()
                 runCatching { portalPcapWriter?.close() }
@@ -1130,13 +1261,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 portalPcapFile = null
                 _evilTwinCapturePath.value = null
 
-                val captureDir = File(getApplication<Application>().filesDir, "EvilTwin")
+                val captureDir = File(app.filesDir, "EvilTwin")
                 if (captureDir.exists() || captureDir.mkdirs()) {
                     val macName = cleanBssid.replace(":", "").uppercase()
                     val captureFile = File(captureDir, "${macName}_eviltwin_${System.currentTimeMillis()}.pcap")
                     portalPcapWriter = runCatching { PcapWriter(captureFile) }.getOrNull()
                     portalPcapFile = captureFile
                     _evilTwinCapturePath.value = captureFile.absolutePath
+                    synchronized(credentialLock) {
+                        activeCredentialSession = activeCredentialSession?.copy(
+                            pcapPath = captureFile.absolutePath,
+                        )
+                    }
                     if (portalPcapWriter != null) {
                         appendLog("Evil Twin capture: ${captureFile.absolutePath}")
                     } else {
@@ -1147,7 +1283,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val captureHandshake = EapolHandshake()
                 val wpaHandshake = WpaHandshake()
                 var handshakeWasComplete = false
-                portalPcapJob = viewModelScope.launch(Dispatchers.IO) {
+                portalPcapJob = scope.launch(Dispatchers.IO) {
                     try {
                         activeSession.pcap.collect { frame ->
                             runCatching {
@@ -1176,7 +1312,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (htmlUri != null) {
                 val bytes = withContext(Dispatchers.IO) {
                     runCatching {
-                        getApplication<Application>().contentResolver
+                        app.contentResolver
                             .openInputStream(htmlUri)
                             ?.use { it.readBytes() }
                     }.getOrNull()
@@ -1359,6 +1495,535 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val correctResults = mapped.filter { it.status == EvilTwinResult.Status.CORRECT }
         _evilTwinResults.value = if (correctResults.isNotEmpty()) correctResults else mapped
+
+        val correct = correctResults.firstOrNull() ?: return
+        val shouldStop = synchronized(credentialLock) {
+            if (evilTwinAutoStopIssued) {
+                false
+            } else {
+                evilTwinAutoStopIssued = true
+                val credential = CapturedCredential(
+                    value = correct.password,
+                    capturedAt = correct.timestamp,
+                    status = CredentialStatus.CORRECT,
+                    source = CredentialSource.EVIL_TWIN,
+                )
+                val current = activeCredentialSession
+                val finished = (current ?: CredentialSession(
+                    id = System.currentTimeMillis().toString(),
+                    source = CredentialSource.EVIL_TWIN,
+                    ssid = ssid.ifBlank { "(hidden)" },
+                    bssid = activePortalTargetBssid,
+                    channel = _portalChannel.value.takeIf { it > 0 },
+                    startedAt = timestampNow(),
+                    endedAt = null,
+                    pcapPath = portalPcapFile?.absolutePath,
+                    credentials = emptyList(),
+                )).copy(
+                    endedAt = timestampNow(),
+                    pcapPath = current?.pcapPath ?: portalPcapFile?.absolutePath,
+                    credentials = listOf(credential),
+                )
+                activeCredentialSession = null
+                upsertCredentialSessionLocked(finished)
+                appendLog("Correct password captured; stopping Evil Twin...")
+                addHistory(
+                    "evil_twin",
+                    "Correct password captured for ${ssid.ifBlank { "target" }}",
+                    HistoryLevel.SUCCESS,
+                )
+                true
+            }
+        }
+        if (shouldStop) {
+            stopPortal()
+        }
+    }
+
+    private fun loadCredentialSessions() {
+        scope.launch(Dispatchers.IO) {
+            val loaded = runCatching { credentialStore.loadSessions() }
+                .getOrDefault(emptyList())
+                .sortedByDescending { it.startedAt }
+            _credentialSessions.value = loaded
+        }
+    }
+
+    private fun timestampNow(): String =
+        LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+
+    private fun timeHmNow(): String =
+        java.time.LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"))
+
+    private fun persistCrackedCredential(sessionId: String, password: String) {
+        synchronized(credentialLock) {
+            val session = _credentialSessions.value.firstOrNull { it.id == sessionId } ?: return
+            if (session.source != CredentialSource.EVIL_TWIN) return
+            if (session.credentials.any { it.status == CredentialStatus.CORRECT }) return
+
+            val updated = session.copy(
+                credentials = listOf(
+                    CapturedCredential(
+                        value = password,
+                        capturedAt = timeHmNow(),
+                        status = CredentialStatus.CORRECT,
+                        source = CredentialSource.EVIL_TWIN,
+                    ),
+                ),
+            )
+            if (_crackerSelectedSession.value?.id == sessionId) {
+                _crackerSelectedSession.value = updated
+            }
+            upsertCredentialSessionLocked(updated)
+        }
+    }
+
+    private suspend fun saveCrackedCustomSession(
+        sourceUri: Uri,
+        displayName: String,
+        ssid: String,
+        bssid: ByteArray?,
+        password: String,
+    ) {
+        val copiedFile = withContext(Dispatchers.IO) {
+            runCatching {
+                val directory = File(app.filesDir, "Credentials")
+                if (!directory.exists() && !directory.mkdirs()) {
+                    throw IOException("Could not create credential capture directory")
+                }
+                val destination = File(directory, "wpa_cracker_${System.currentTimeMillis()}.pcap")
+                val input = app.contentResolver.openInputStream(sourceUri)
+                    ?: throw IOException("Could not open custom PCAP")
+                input.use { source ->
+                    destination.outputStream().use { sink ->
+                        source.copyTo(sink)
+                    }
+                }
+                destination
+            }.onFailure { error ->
+                appendLog("Could not save cracked custom PCAP: ${error.message}", level = LogLevel.ERROR)
+            }.getOrNull()
+        }
+
+        val session = CredentialSession(
+            id = System.currentTimeMillis().toString(),
+            source = CredentialSource.WPA_CRACKER,
+            ssid = ssid.ifBlank { "(hidden)" },
+            bssid = bssid?.toMacString().orEmpty(),
+            channel = null,
+            startedAt = timestampNow(),
+            endedAt = timestampNow(),
+            pcapPath = copiedFile?.absolutePath,
+            credentials = listOf(
+                CapturedCredential(
+                    value = password,
+                    capturedAt = timeHmNow(),
+                    status = CredentialStatus.CORRECT,
+                    source = CredentialSource.WPA_CRACKER,
+                ),
+            ),
+        )
+        synchronized(credentialLock) {
+            upsertCredentialSessionLocked(session)
+        }
+        appendLog("Saved WPA Cracker result for ${ssid.ifBlank { displayName }}.")
+    }
+
+    private fun upsertCredentialSessionLocked(session: CredentialSession) {
+        val updated = (_credentialSessions.value.filterNot { it.id == session.id } + session)
+            .sortedByDescending { it.startedAt }
+        _credentialSessions.value = updated
+        scope.launch(Dispatchers.IO) {
+            runCatching { credentialStore.saveSessions(updated) }
+        }
+    }
+
+    private fun finishActiveCredentialSessionLocked() {
+        val session = activeCredentialSession ?: return
+        activeCredentialSession = null
+
+        // Portal/rogue-AP sessions can capture a lot of data, so only persist
+        // them when at least one submission was actually captured.
+        if (session.source == CredentialSource.PORTAL && session.credentials.isEmpty()) {
+            return
+        }
+
+        val finished = session.copy(
+            endedAt = session.endedAt ?: timestampNow(),
+            pcapPath = session.pcapPath ?: portalPcapFile?.absolutePath,
+        )
+        upsertCredentialSessionLocked(finished)
+    }
+
+    private fun finishActiveCredentialSession() {
+        synchronized(credentialLock) {
+            finishActiveCredentialSessionLocked()
+        }
+    }
+
+    fun deleteCredentialSession(id: String) {
+        val removed = synchronized(credentialLock) {
+            val session = _credentialSessions.value.firstOrNull { it.id == id } ?: return@synchronized null
+            _credentialSessions.value = _credentialSessions.value.filterNot { it.id == id }
+            session
+        } ?: return
+
+        if (_crackerSelectedSession.value?.id == removed.id) {
+            _crackerSelectedSession.value = null
+        }
+
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                credentialStore.deleteCaptureFile(removed)
+                credentialStore.saveSessions(_credentialSessions.value)
+            }
+        }
+    }
+
+    fun clearCredentialSessions() {
+        val removed = synchronized(credentialLock) {
+            val current = _credentialSessions.value
+            _credentialSessions.value = emptyList()
+            current
+        }
+        _crackerSelectedSession.value = null
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                removed.forEach { credentialStore.deleteCaptureFile(it) }
+                credentialStore.saveSessions(emptyList())
+            }
+        }
+    }
+
+    fun selectCrackerSession(session: CredentialSession?) {
+        if (_crackerRunning.value) return
+        if (session != null) {
+            resetCrackerCustomPcapState()
+        }
+        _crackerSelectedSession.value = session
+        _crackerResult.value = null
+        _crackerTested.value = 0
+        _crackerSpeed.value = 0.0
+        _crackerStatus.value = when {
+            session == null -> "Select a saved handshake, or choose a custom PCAP."
+            session.pcapPath.isNullOrBlank() -> "Selected session has no PCAP capture."
+            else -> "Ready: ${session.ssid.ifBlank { "target" }}"
+        }
+    }
+
+    fun setCrackerCustomPcap(uri: Uri, name: String?) {
+        if (_crackerRunning.value) return
+        _crackerSelectedSession.value = null
+        _crackerCustomPcapUri.value = uri
+        _crackerCustomPcapName.value = name ?: uri.lastPathSegment ?: "capture.pcap"
+        resetCrackerCustomPcapState()
+        _crackerCustomPcapUri.value = uri
+        _crackerCustomPcapName.value = name ?: uri.lastPathSegment ?: "capture.pcap"
+        _crackerCustomPcapMessage.value = "Validating EAPOL handshake..."
+        _crackerResult.value = null
+        _crackerTested.value = 0
+        _crackerSpeed.value = 0.0
+        _crackerStatus.value = "Validating custom PCAP..."
+
+        scope.launch(Dispatchers.IO) {
+            _crackerCustomPcapValidating.value = true
+            try {
+                val analysis = analyzeCustomPcap(uri)
+                val parsed = analysis.handshake
+                val sawM1 = parsed.m1Bssid != null || parsed.aNonce != null
+                val sawM2 = parsed.m2Bssid != null || parsed.mic != null
+                val detected = analysis.detectedSsids
+                val preferred = detected.firstOrNull {
+                    parsed.bssid?.let { bytes -> it.bssid.equals(bytes.toMacString(), ignoreCase = true) } == true
+                } ?: detected.singleOrNull()
+
+                _crackerCustomSsidOptions.value = detected
+                if (preferred != null) {
+                    _crackerCustomSsidSelected.value = preferred.ssid
+                    _crackerCustomSsid.value = preferred.ssid
+                    _crackerCustomSsidManual.value = false
+                } else {
+                    _crackerCustomSsidSelected.value = null
+                    _crackerCustomSsid.value = ""
+                    _crackerCustomSsidManual.value = true
+                }
+
+                _crackerCustomPcapValid.value = parsed.isComplete
+                _crackerCustomPcapMessage.value = when {
+                    parsed.isComplete && detected.isNotEmpty() ->
+                        "Valid M1/M2 EAPOL handshake detected. ${detected.size} SSID(s) found in PCAP."
+                    parsed.isComplete ->
+                        "Valid M1/M2 EAPOL handshake detected. No SSID found; enter it manually."
+                    sawM1 || sawM2 ->
+                        "EAPOL frames found, but the M1+M2 handshake is incomplete."
+                    else ->
+                        "No EAPOL handshake found in this PCAP."
+                }
+                _crackerStatus.value = when {
+                    !parsed.isComplete -> _crackerCustomPcapMessage.value
+                    detected.isNotEmpty() -> "Custom PCAP validated. Select the target SSID and choose a wordlist."
+                    else -> "Custom PCAP validated. Enter the target SSID and choose a wordlist."
+                }
+            } catch (t: Throwable) {
+                _crackerCustomPcapValid.value = false
+                _crackerCustomPcapValidating.value = false
+                _crackerCustomPcapMessage.value = "PCAP invalid: ${t.message ?: t.javaClass.simpleName}"
+                _crackerStatus.value = _crackerCustomPcapMessage.value
+            } finally {
+                _crackerCustomPcapValidating.value = false
+            }
+        }
+    }
+
+    fun selectCrackerCustomSsid(ssid: String) {
+        if (_crackerRunning.value) return
+        _crackerCustomSsidSelected.value = ssid
+        _crackerCustomSsid.value = ssid.take(32)
+        _crackerCustomSsidManual.value = false
+    }
+
+    fun useManualCrackerSsid() {
+        if (_crackerRunning.value) return
+        _crackerCustomSsidSelected.value = null
+        _crackerCustomSsidManual.value = true
+    }
+
+    fun setCrackerCustomSsid(value: String) {
+        if (!_crackerCustomSsidManual.value) return
+        _crackerCustomSsid.value = value.take(32)
+    }
+
+    fun clearCrackerCustomPcap() {
+        if (_crackerRunning.value) return
+        resetCrackerCustomPcapState()
+        _crackerResult.value = null
+        _crackerStatus.value = "Select a saved handshake, or choose a custom PCAP."
+    }
+
+    private fun resetCrackerCustomPcapState() {
+        _crackerCustomPcapUri.value = null
+        _crackerCustomPcapName.value = null
+        _crackerCustomSsid.value = ""
+        _crackerCustomSsidOptions.value = emptyList()
+        _crackerCustomSsidSelected.value = null
+        _crackerCustomSsidManual.value = true
+        _crackerCustomPcapValid.value = false
+        _crackerCustomPcapValidating.value = false
+        _crackerCustomPcapMessage.value = "No custom PCAP selected."
+    }
+
+    private data class CustomPcapAnalysis(
+        val handshake: WpaHandshake,
+        val detectedSsids: List<DetectedSsid>,
+    )
+
+    private suspend fun analyzeCustomPcap(uri: Uri): CustomPcapAnalysis =
+        withContext(Dispatchers.IO) {
+            val input = app.contentResolver.openInputStream(uri)
+                ?: throw IOException("Could not open the selected PCAP.")
+            val parsed = WpaHandshake()
+            val detected = LinkedHashMap<String, DetectedSsid>()
+            PcapReader(input).forEachPacket { frame ->
+                WpaHandshakeParser.parse(frame, parsed)
+                PcapSsidParser.parse(frame)?.let { ssid ->
+                    detected["${ssid.ssid}|${ssid.bssid}"] = ssid
+                }
+                true
+            }
+            CustomPcapAnalysis(
+                handshake = parsed.copyHandshake(),
+                detectedSsids = detected.values.toList(),
+            )
+        }
+
+    private suspend fun parseHandshakeFromUri(uri: Uri): WpaHandshake =
+        withContext(Dispatchers.IO) {
+            val input = app.contentResolver.openInputStream(uri)
+                ?: throw IOException("Could not open the selected PCAP.")
+            val parsed = WpaHandshake()
+            PcapReader(input).forEachPacket { frame ->
+                WpaHandshakeParser.parse(frame, parsed)
+                !parsed.isComplete
+            }
+            parsed.copyHandshake()
+        }
+
+    private fun ByteArray.toMacString(): String =
+        joinToString(":") { value -> String.format("%02X", value.toInt() and 0xFF) }
+
+    fun setCrackerWordlist(uri: Uri, name: String?) {
+        if (_crackerRunning.value) return
+        _crackerWordlistUri.value = uri
+        _crackerWordlistName.value = name ?: uri.lastPathSegment ?: "wordlist.txt"
+        _crackerResult.value = null
+        _crackerStatus.value = "Wordlist selected: ${_crackerWordlistName.value}"
+    }
+
+    fun clearCrackerWordlist() {
+        if (_crackerRunning.value) return
+        _crackerWordlistUri.value = null
+        _crackerWordlistName.value = null
+        _crackerResult.value = null
+        _crackerStatus.value = "Select a saved handshake and a wordlist."
+    }
+
+    fun startCracker() {
+        if (_crackerRunning.value) return
+
+        val wordlistUri = _crackerWordlistUri.value
+        if (wordlistUri == null) {
+            appendLog("WPA cracker: select a wordlist first.", level = LogLevel.ERROR)
+            return
+        }
+
+        val customUri = _crackerCustomPcapUri.value
+        val session = _crackerSelectedSession.value
+        val ssid: String
+        val pcapLabel: String
+        val savedSessionId: String?
+        val parseHandshake: suspend () -> WpaHandshake
+
+        when {
+            customUri != null -> {
+                if (_crackerCustomPcapValidating.value) {
+                    appendLog("WPA cracker: custom PCAP is still being validated.", level = LogLevel.ERROR)
+                    return
+                }
+                val customSsid = _crackerCustomSsid.value.trim()
+                if (!_crackerCustomPcapValid.value) {
+                    appendLog("WPA cracker: custom PCAP has no validated M1/M2 EAPOL handshake.", level = LogLevel.ERROR)
+                    return
+                }
+                if (customSsid.isBlank() || customSsid.length > 32) {
+                    appendLog("WPA cracker: enter the target SSID (1-32 characters) for the custom PCAP.", level = LogLevel.ERROR)
+                    return
+                }
+                ssid = customSsid
+                pcapLabel = _crackerCustomPcapName.value ?: "custom PCAP"
+                savedSessionId = null
+                parseHandshake = { parseHandshakeFromUri(customUri) }
+            }
+
+            session != null -> {
+                val pcapPath = session.pcapPath
+                if (pcapPath.isNullOrBlank()) {
+                    appendLog("WPA cracker: selected session has no PCAP capture.", level = LogLevel.ERROR)
+                    return
+                }
+                val pcapFile = File(pcapPath)
+                if (!pcapFile.exists()) {
+                    appendLog("WPA cracker: PCAP file no longer exists.", level = LogLevel.ERROR)
+                    return
+                }
+                if (session.ssid.isBlank() || session.ssid == "(hidden)") {
+                    appendLog("WPA cracker: the saved session has no usable SSID.", level = LogLevel.ERROR)
+                    return
+                }
+                ssid = session.ssid
+                pcapLabel = pcapFile.name
+                savedSessionId = session.id
+                parseHandshake = {
+                    withContext(Dispatchers.IO) {
+                        val parsed = WpaHandshake()
+                        PcapReader(pcapFile).forEachPacket { frame ->
+                            WpaHandshakeParser.parse(frame, parsed)
+                            !parsed.isComplete
+                        }
+                        parsed.copyHandshake()
+                    }
+                }
+            }
+
+            else -> {
+                appendLog("WPA cracker: select a saved session or choose a custom PCAP.", level = LogLevel.ERROR)
+                return
+            }
+        }
+
+        _crackerRunning.value = true
+        _crackerResult.value = null
+        _crackerTested.value = 0
+        _crackerSpeed.value = 0.0
+        _crackerStatus.value = "Parsing handshake..."
+        appendLog("WPA cracker: parsing $pcapLabel...")
+
+        crackerJob = scope.launch(Dispatchers.Default) {
+            try {
+                val handshake = parseHandshake()
+                if (!handshake.isComplete) {
+                    _crackerStatus.value = "No complete M1/M2 WPA2 handshake found in the capture."
+                    appendLog("WPA cracker: no complete M1/M2 handshake found.", level = LogLevel.ERROR)
+                    return@launch
+                }
+
+                _crackerStatus.value = "Testing wordlist..."
+                appendLog("WPA cracker: handshake ready; testing wordlist...")
+
+                val reader = withContext(Dispatchers.IO) {
+                    app.contentResolver.openInputStream(wordlistUri)?.bufferedReader()
+                } ?: throw IOException("Could not open the selected wordlist.")
+
+                val runningJob = coroutineContext[Job]
+                val found = WpaCracker.crack(
+                    handshake = handshake,
+                    ssid = ssid,
+                    wordlist = reader,
+                    shouldStop = { runningJob?.isActive != true },
+                    onProgress = { progress ->
+                        _crackerTested.update { maxOf(it, progress.tested) }
+                        _crackerSpeed.value = progress.candidatesPerSecond
+                    },
+                )
+
+                if (runningJob?.isActive != true) {
+                    _crackerStatus.value = "Cracker stopped."
+                    return@launch
+                }
+
+                if (found != null) {
+                    _crackerResult.value = found
+                    _crackerStatus.value = "Password found: $found"
+                    if (savedSessionId != null) {
+                        persistCrackedCredential(savedSessionId, found)
+                    } else if (customUri != null) {
+                        saveCrackedCustomSession(
+                            sourceUri = customUri,
+                            displayName = pcapLabel,
+                            ssid = ssid,
+                            bssid = handshake.bssid,
+                            password = found,
+                        )
+                    }
+                    appendLog("WPA cracker: password found.")
+                    addHistory(
+                        "wpa_cracker",
+                        "WPA2 password recovered for ${ssid.ifBlank { pcapLabel }}",
+                        HistoryLevel.SUCCESS,
+                    )
+                } else {
+                    _crackerStatus.value = "Password not found in the selected wordlist."
+                    appendLog("WPA cracker: password not found.")
+                }
+            } catch (e: CancellationException) {
+                _crackerStatus.value = "Cracker stopped."
+                throw e
+            } catch (t: Throwable) {
+                _crackerStatus.value = "Cracker failed: ${t.message ?: t.javaClass.simpleName}"
+                appendLog(
+                    "WPA cracker failed: ${t.message ?: t.javaClass.simpleName}",
+                    level = LogLevel.ERROR,
+                )
+            } finally {
+                _crackerRunning.value = false
+                crackerJob = null
+            }
+        }
+    }
+
+    fun stopCracker() {
+        if (!_crackerRunning.value) return
+        _crackerStatus.value = "Stopping..."
+        crackerJob?.cancel()
     }
 
     fun clearEvilTwinEventLog() {
@@ -1381,6 +2046,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopPortal() {
+        finishActiveCredentialSession()
         if (!_portalRunning.value) return
         portalStatusJob?.cancel()
         portalStatusJob = null
@@ -1390,12 +2056,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         runCatching { portalPcapWriter?.close() }
         portalPcapWriter = null
         portalPcapFile = null
+        exportPcapToRootIfConfigured(savedCapture)
         _portalRunning.value = false
         _portalMode.value = null
         updateForegroundService()
 
         val activeSession = session
-        viewModelScope.launch {
+        scope.launch {
             val response = runCatching {
                 activeSession?.sendCommand("STOP_PORTAL", timeoutMs = 8_000)
             }.getOrNull()
@@ -1411,7 +2078,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startPortalStatusPolling(activeSession: NrSession) {
         portalStatusJob?.cancel()
-        portalStatusJob = viewModelScope.launch {
+        portalStatusJob = scope.launch {
             while (isActive && _portalRunning.value) {
                 delay(3_000)
                 if (_connectionState.value !is ConnectionState.Connected) break
@@ -1456,7 +2123,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        viewModelScope.launch {
+        scope.launch {
             val name = advertiseName.trim().ifBlank { "NRSuite Keyboard" }
             appendLog("Starting BLE HID advertising as '$name'...")
             val response = activeSession.sendCommand(
@@ -1468,6 +2135,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _bleAdvertising.value = true
                 _bleConnected.value = false
                 _blePeer.value = ""
+                clearBleRealtimeState()
                 startBleStatusPolling(activeSession)
                 updateForegroundService()
                 appendLog("BLE HID advertising started.")
@@ -1485,10 +2153,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _bleAdvertising.value = false
         _bleConnected.value = false
         _blePeer.value = ""
+        clearBleRealtimeState()
         updateForegroundService()
         val activeSession = session
-        viewModelScope.launch {
+        scope.launch {
             runCatching { activeSession?.sendCommand("BLE_RELEASE_ALL", timeoutMs = 3_000) }
+            runCatching { activeSession?.sendCommand("BLE_MOUSE_RELEASE", timeoutMs = 3_000) }
             val response = activeSession?.sendCommand("BLE_STOP", timeoutMs = 5_000)
             appendLog(
                 if (response?.optBoolean("ok") == true) "BLE HID stopped."
@@ -1505,16 +2175,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             appendLog("Connect to a device before running a BLE payload.")
             return
         }
+        if (!_bleConnected.value) {
+            appendLog("BLE host is not connected yet.")
+            return
+        }
+        if (_bleScriptRunning.value) {
+            appendLog("A BLE payload is already running.")
+            return
+        }
         if (payloadUri == null && savedScript == null) {
             appendLog("Choose a DuckyScript payload first.")
             return
         }
-        viewModelScope.launch {
+        scope.launch {
             val script = savedScript
                 ?: withContext(Dispatchers.IO) {
                     runCatching {
                         payloadUri?.let {
-                            getApplication<Application>().contentResolver
+                            app.contentResolver
                                 .openInputStream(it)
                                 ?.use { stream -> stream.readBytes().toString(Charsets.UTF_8) }
                         }
@@ -1545,7 +2223,157 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             "STRINGLN $text"
         }
-        viewModelScope.launch { runBleScript(activeSession, script) }
+        scope.launch { runBleScript(activeSession, script) }
+    }
+
+    /**
+     * Realtime keyboard stream. [backspaces] are emitted first, then [inserted]
+     * text. Firmware's Print::write handles '\b' as backspace and '\n' as Enter.
+     */
+    fun sendBleRealtimeInput(inserted: String, backspaces: Int) {
+        if (!_bleConnected.value || session == null) return
+        if (inserted.isEmpty() && backspaces <= 0) return
+
+        synchronized(bleTypeBuffer) {
+            repeat(backspaces.coerceAtLeast(0)) { bleTypeBuffer.append('\b') }
+            if (inserted.isNotEmpty()) bleTypeBuffer.append(inserted)
+        }
+        scheduleBleTypeFlush()
+    }
+
+    fun sendBleSpecialKey(key: String) {
+        val activeSession = session ?: return
+        if (!_bleConnected.value || key.isBlank()) return
+        scope.launch {
+            runCatching {
+                activeSession.sendCommandNoWait(
+                    "BLE_KEY_TAP",
+                    JSONObject().put("key", key),
+                )
+            }
+            releaseMomentaryModifiers(activeSession)
+        }
+    }
+
+    fun setBleModifierHold(enabled: Boolean) {
+        _bleModifierHold.value = enabled
+    }
+
+    fun sendBleMouseMove(dx: Int, dy: Int) {
+        val activeSession = session ?: return
+        if (!_bleConnected.value || (dx == 0 && dy == 0)) return
+        scope.launch {
+            runCatching {
+                activeSession.sendCommandNoWait(
+                    "BLE_MOUSE_MOVE",
+                    JSONObject().put("dx", dx).put("dy", dy),
+                )
+            }
+        }
+    }
+
+    fun sendBleMouseScroll(wheel: Int) {
+        val activeSession = session ?: return
+        if (!_bleConnected.value || wheel == 0) return
+        scope.launch {
+            runCatching {
+                activeSession.sendCommandNoWait(
+                    "BLE_MOUSE_SCROLL",
+                    JSONObject().put("wheel", wheel),
+                )
+            }
+        }
+    }
+
+    fun sendBleMouseButton(button: String, down: Boolean) {
+        val activeSession = session ?: return
+        if (!_bleConnected.value || button.isBlank()) return
+        scope.launch {
+            runCatching {
+                activeSession.sendCommandNoWait(
+                    "BLE_MOUSE_BUTTON",
+                    JSONObject().put("button", button).put("down", down),
+                )
+            }
+        }
+    }
+
+    fun releaseBleMouseButtons() {
+        val activeSession = session ?: return
+        if (!_bleConnected.value) return
+        scope.launch {
+            runCatching { activeSession.sendCommandNoWait("BLE_MOUSE_RELEASE") }
+        }
+    }
+
+    private suspend fun releaseMomentaryModifiers(activeSession: NrSession?) {
+        if (_bleModifierHold.value) return
+        val active = _bleModifiers.value
+        if (active.isEmpty()) return
+        _bleModifiers.value = emptySet()
+        active.forEach { key ->
+            runCatching {
+                activeSession?.sendCommandNoWait(
+                    "BLE_KEY_UP",
+                    JSONObject().put("key", key),
+                )
+            }
+        }
+    }
+
+    fun setBleModifier(key: String, down: Boolean) {
+        val activeSession = session ?: return
+        if (!_bleConnected.value || key.isBlank()) return
+
+        _bleModifiers.update { current ->
+            if (down) current + key else current - key
+        }
+        val cmd = if (down) "BLE_KEY_DOWN" else "BLE_KEY_UP"
+        scope.launch {
+            runCatching {
+                activeSession.sendCommandNoWait(cmd, JSONObject().put("key", key))
+            }
+        }
+    }
+
+    private fun scheduleBleTypeFlush() {
+        if (bleTypeJob?.isActive == true) return
+        bleTypeJob = scope.launch {
+            try {
+                while (true) {
+                    delay(25L)
+                    val payload: String? = synchronized(bleTypeBuffer) {
+                        if (bleTypeBuffer.isEmpty()) {
+                            null
+                        } else {
+                            bleTypeBuffer.toString().also { bleTypeBuffer.setLength(0) }
+                        }
+                    }
+                    if (payload == null) return@launch
+
+                    val activeSession = session ?: return@launch
+                    if (!_bleConnected.value) return@launch
+                    runCatching {
+                        activeSession.sendCommandNoWait(
+                            "BLE_TYPE_TEXT",
+                            JSONObject().put("text", payload),
+                        )
+                    }
+                    releaseMomentaryModifiers(activeSession)
+                }
+            } finally {
+                bleTypeJob = null
+            }
+        }
+    }
+
+    private fun clearBleRealtimeState() {
+        _bleModifiers.value = emptySet()
+        synchronized(bleTypeBuffer) {
+            bleTypeBuffer.setLength(0)
+        }
+        bleTypeJob?.cancel()
+        bleTypeJob = null
     }
 
     private suspend fun runBleScript(activeSession: NrSession, script: String) {
@@ -1553,24 +2381,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             appendLog("BLE host is not connected yet.")
             return
         }
-        val response = activeSession.sendCommand(
-            "BLE_RUN_SCRIPT",
-            JSONObject().put("script", script),
-            timeoutMs = maxOf(10_000, script.length / 20L),
-        )
-        if (response?.optBoolean("ok") == true) {
-            appendLog("BLE script finished (${response.optInt("lines")} lines).")
-        } else {
-            appendLog("BLE script failed: ${response?.optString("msg") ?: "timeout"}")
+        if (_bleScriptRunning.value) {
+            appendLog("A BLE payload is already running.")
+            return
+        }
+
+        _bleScriptRunning.value = true
+        try {
+            val response = runCatching {
+                activeSession.sendCommand(
+                    "BLE_RUN_SCRIPT",
+                    JSONObject().put("script", script),
+                    timeoutMs = maxOf(10_000, script.length / 20L),
+                )
+            }.getOrNull()
+            if (response?.optBoolean("ok") == true) {
+                appendLog("BLE script finished (${response.optInt("lines")} lines).")
+            } else {
+                appendLog("BLE script failed: ${response?.optString("msg") ?: "timeout or disconnected"}")
+            }
+        } finally {
+            _bleScriptRunning.value = false
         }
     }
 
     private fun startBleStatusPolling(activeSession: NrSession) {
         bleStatusJob?.cancel()
-        bleStatusJob = viewModelScope.launch {
+        bleStatusJob = scope.launch {
             while (isActive && (_bleAdvertising.value || _bleConnected.value)) {
                 delay(2_000)
-                val response = activeSession.sendCommand("BLE_STATUS", timeoutMs = 4_000) ?: continue
+                val response = runCatching {
+                    activeSession.sendCommand("BLE_STATUS", timeoutMs = 4_000)
+                }.getOrNull() ?: continue
                 if (response.optBoolean("ok")) {
                     _bleAdvertising.value = response.optBoolean("advertising", _bleAdvertising.value)
                     _bleConnected.value = response.optBoolean("connected", _bleConnected.value)
@@ -1617,7 +2459,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _sniffing.value = false
             pcapJob?.cancel()
             pcapJob = null
-            viewModelScope.launch(Dispatchers.IO) {
+            scope.launch(Dispatchers.IO) {
                 runCatching { pcapWriter?.close() }
                 pcapWriter = null
             }
@@ -1629,7 +2471,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _deauthRunning.value = true
         updateForegroundService()
 
-        viewModelScope.launch {
+        scope.launch {
             appendLog(
                 "Starting deauth burst: $cleanBssid on channel $channel " +
                     "(client=$cleanClient, count=${if (count <= 0) "firmware default" else count})."
@@ -1681,7 +2523,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        viewModelScope.launch {
+        scope.launch {
             appendLog("Starting beacon broadcast (${cleanSsids.size} SSID(s), channel $channel)...")
             val args = JSONObject().apply {
                 put("ssids", cleanSsids.joinToString("\n"))
@@ -1714,7 +2556,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         updateForegroundService()
 
         val activeSession = session
-        viewModelScope.launch {
+        scope.launch {
             val response = activeSession?.sendCommand("STOP_BEACON", timeoutMs = 6_000)
             if (response?.optBoolean("ok") == true) {
                 _beaconSent.value = response.optInt("sent", _beaconSent.value)
@@ -1729,7 +2571,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startBeaconStatusPolling(activeSession: NrSession) {
         beaconStatusJob?.cancel()
-        beaconStatusJob = viewModelScope.launch {
+        beaconStatusJob = scope.launch {
             while (isActive && _beaconRunning.value) {
                 delay(2_000)
                 val response = activeSession.sendCommand("BEACON_STATUS", timeoutMs = 4_000) ?: continue
@@ -1767,7 +2609,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val pcapDir = ensureChildDirectory(exportUri, "Pcap")
             val pcapDirUri = pcapDir?.uri ?: exportUri
             val documentUri = createPcapDocumentInDirectory(pcapDirUri, captureName)
-            val outputStream = getApplication<Application>().contentResolver
+            val outputStream = app.contentResolver
                 .openOutputStream(documentUri, "wt")
                 ?: throw IOException("Could not open export file")
             val displayName = displayNameForTreeUri(exportUri)
@@ -1789,7 +2631,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val eapolState = EapolHandshake()
         var eapolStopRequested = false
-        pcapJob = viewModelScope.launch(Dispatchers.IO) {
+        pcapJob = scope.launch(Dispatchers.IO) {
             activeSession.pcap.collect { frame ->
                 val matchesTarget = !request.targetNetworkOnly ||
                     frameMatchesBssid(frame, request.targetBssid)
@@ -1815,7 +2657,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        viewModelScope.launch {
+        scope.launch {
             if (request.deauthBeforeCapture) {
                 val cleanBssid = request.targetBssid.trim().uppercase()
                 if (MAC_PATTERN.matches(cleanBssid)) {
@@ -1880,7 +2722,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         pcapJob = null
 
         val activeSession = session
-        viewModelScope.launch {
+        scope.launch {
             val response = activeSession?.sendCommand("STOP_SNIFF", timeoutMs = 6_000)
             if (response != null) {
                 appendLog(
@@ -1918,15 +2760,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun ensureRadioIdle(requested: String): Boolean {
         val active = activeRadioLabel()
         if (active == null) return true
-        appendLog(
-            "Cannot start $requested while $active is active. Stop $active first.",
-            level = LogLevel.ERROR,
-        )
+        val message = "Cannot start $requested while $active is active. Stop $active first."
+        appendLog(message, level = LogLevel.ERROR)
+        _actionError.value = message
         return false
     }
 
+    fun consumeActionError() {
+        _actionError.value = null
+    }
+
     private fun updateForegroundService() {
-        val context = getApplication<Application>()
+        val context = app
         val activeText = when {
             _sniffing.value -> "Packet capture active"
             _beaconRunning.value -> "Beacon broadcast active"
@@ -1953,7 +2798,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (sendStop) {
             val current = session
             if (current != null) {
-                viewModelScope.launch {
+                scope.launch {
                     runCatching { current.sendCommand("STOP_PORTAL", timeoutMs = 4_000) }
                 }
             }
@@ -1966,7 +2811,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         beaconStatusJob = null
         if (_beaconRunning.value) {
             _beaconRunning.value = false
-            viewModelScope.launch {
+            scope.launch {
                 runCatching { current?.sendCommand("STOP_BEACON", timeoutMs = 4_000) }
             }
         }
@@ -1974,7 +2819,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _sniffing.value = false
             pcapJob?.cancel()
             pcapJob = null
-            viewModelScope.launch(Dispatchers.IO) {
+            scope.launch(Dispatchers.IO) {
                 runCatching { pcapWriter?.close() }
                 pcapWriter = null
             }
@@ -1983,7 +2828,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         portalStatusJob = null
         session = null
         updateForegroundService()
-        viewModelScope.launch {
+        scope.launch {
             if (_portalRunning.value) {
                 _portalRunning.value = false
                 runCatching { current?.sendCommand("STOP_PORTAL", timeoutMs = 4_000) }
@@ -1996,13 +2841,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun observe(session: NrSession) {
         sessionObservers = listOf(
-            viewModelScope.launch {
+            scope.launch {
                 session.state.collect { _connectionState.value = it }
             },
-            viewModelScope.launch {
+            scope.launch {
                 session.logs.collect { appendLog(it) }
             },
-            viewModelScope.launch {
+            scope.launch {
                 session.events.collect { event ->
                     _events.update { (it + event).takeLast(100) }
                     when (event.optString("type")) {
@@ -2035,6 +2880,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             } ?: ""
                             appendLog("Captive data received from $ip.")
                             portalLog("POST /login from $ip | UA: $userAgent | data: $fields")
+                            val details = linkedMapOf<String, String>()
+                            data?.keys()?.forEach { key ->
+                                details[key] = data.optString(key)
+                            }
+
                             val submittedPassword = data?.optString("password").orEmpty().ifBlank {
                                 data?.optString("pass").orEmpty()
                             }
@@ -2046,6 +2896,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     (it + CapturedPassword(submittedPassword, capturedAt)).takeLast(50)
                                 }
                                 verifyEvilTwinPasswords()
+                            } else if (_portalMode.value == "portal" && details.isNotEmpty()) {
+                                val capturedAt = java.time.LocalTime.now()
+                                    .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
+                                val value = submittedPassword.ifBlank {
+                                    details.values.firstOrNull().orEmpty()
+                                }
+                                val credential = CapturedCredential(
+                                    value = value,
+                                    capturedAt = capturedAt,
+                                    status = CredentialStatus.UNVERIFIED,
+                                    source = CredentialSource.PORTAL,
+                                    details = details,
+                                )
+                                synchronized(credentialLock) {
+                                    activeCredentialSession = activeCredentialSession
+                                        ?.takeIf { it.source == CredentialSource.PORTAL }
+                                        ?.let { it.copy(credentials = it.credentials + credential) }
+                                }
+                                _portalCredentials.update { (it + credential).takeLast(100) }
+                                appendLog("Portal credential captured (${details.size} field(s)).")
                             }
                         }
                         "client_associated" -> {
@@ -2068,10 +2938,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun disconnectInternal() {
+        stopActiveOperations()
         sessionObservers.forEach { it.cancel() }
         sessionObservers = emptyList()
         session?.let { activeSession ->
-            viewModelScope.launch { activeSession.disconnect() }
+            scope.launch { activeSession.disconnect() }
         }
         session = null
         activeDeviceFingerprint = null
@@ -2079,8 +2950,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun ensureRootStructure(rootUri: Uri) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val root = DocumentFile.fromTreeUri(getApplication(), rootUri)
+        scope.launch(Dispatchers.IO) {
+            val root = DocumentFile.fromTreeUri(app, rootUri)
             if (root == null) {
                 appendLog("Could not open the selected NRSuite root directory.")
                 return@launch
@@ -2106,13 +2977,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun ensureChildDirectory(rootUri: Uri, name: String): DocumentFile? {
-        val root = DocumentFile.fromTreeUri(getApplication(), rootUri) ?: return null
+        val root = DocumentFile.fromTreeUri(app, rootUri) ?: return null
         return root.findFile(name) ?: root.createDirectory(name)
     }
 
     private fun createPcapDocumentInDirectory(directoryUri: Uri, displayName: String): Uri {
         return DocumentsContract.createDocument(
-            getApplication<Application>().contentResolver,
+            app.contentResolver,
             directoryUri,
             "application/vnd.tcpdump.pcap",
             displayName,
@@ -2120,7 +2991,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun createPcapDocument(treeUri: Uri, displayName: String): Uri {
-        val resolver = getApplication<Application>().contentResolver
+        val resolver = app.contentResolver
         val parentDocumentId = DocumentsContract.getTreeDocumentId(treeUri)
         val parentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, parentDocumentId)
         return DocumentsContract.createDocument(
@@ -2143,6 +3014,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return uri.lastPathSegment?.substringAfterLast(':')?.substringAfterLast('/')?.trim()
             ?.takeIf { it.isNotBlank() }
             ?: "Selected folder"
+    }
+
+    private fun exportPcapToRootIfConfigured(sourceFile: File?) {
+        val rootUri = _exportDirectory.value ?: return
+        if (sourceFile == null || !sourceFile.exists() || sourceFile.length() == 0L) return
+
+        val key = sourceFile.absolutePath
+        synchronized(exportedCapturePaths) {
+            if (!exportedCapturePaths.add(key)) return
+        }
+
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val pcapDirUri = ensureChildDirectory(rootUri, "Pcap")?.uri ?: rootUri
+                val displayName = sourceFile.name
+                val documentUri = createPcapDocumentInDirectory(pcapDirUri, displayName)
+                app.contentResolver.openOutputStream(documentUri, "wt")?.use { output ->
+                    sourceFile.inputStream().use { input ->
+                        input.copyTo(output)
+                    }
+                } ?: throw IOException("Could not open export file")
+
+                appendLog(
+                    "Evil Twin PCAP exported to " +
+                        "${displayNameForTreeUri(rootUri)}/Pcap/$displayName",
+                )
+            }.onFailure { error ->
+                synchronized(exportedCapturePaths) {
+                    exportedCapturePaths.remove(key)
+                }
+                appendLog("Could not export Evil Twin PCAP: ${error.message}", level = LogLevel.ERROR)
+            }
+        }
     }
 
     private fun frameMatchesBssid(frame: ByteArray, bssid: String): Boolean {

@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.service
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -8,6 +9,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.PowerManager
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.swp81x.nrsuite.MainActivity
@@ -15,19 +17,50 @@ import com.swp81x.nrsuite.R
 
 class NrSuiteForegroundService : Service() {
 
+    private var wakeLock: PowerManager.WakeLock? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
+        if (intent?.action != ACTION_START) {
             stopForegroundCompat()
             stopSelf()
             return START_NOT_STICKY
         }
 
+        acquireWakeLock()
         createNotificationChannel()
-        val text = intent?.getStringExtra(EXTRA_TEXT) ?: "NRSuite operation active"
+        val text = intent.getStringExtra(EXTRA_TEXT) ?: "NRSuite operation active"
         startForeground(NOTIFICATION_ID, buildNotification(text))
-        return START_STICKY
+        return START_NOT_STICKY
+    }
+
+    override fun onDestroy() {
+        releaseWakeLock()
+        super.onDestroy()
+    }
+
+    @SuppressLint("WakelockTimeout")
+    private fun acquireWakeLock() {
+        if (wakeLock == null) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "NRSuite:bridge",
+            ).apply {
+                setReferenceCounted(false)
+            }
+        }
+        if (wakeLock?.isHeld != true) {
+            runCatching { wakeLock?.acquire() }
+        }
+    }
+
+    private fun releaseWakeLock() {
+        runCatching {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        }
+        wakeLock = null
     }
 
     private fun buildNotification(text: String): Notification {

@@ -142,6 +142,25 @@ class NrSession(
         }
     }
 
+    /**
+     * Fire-and-forget command used for latency-sensitive realtime HID input.
+     * The firmware still sends a response, but this side does not wait for it.
+     */
+    suspend fun sendCommandNoWait(
+        cmd: String,
+        args: JSONObject? = null,
+    ): Boolean {
+        val id = allocateFrameId()
+        val payload = JSONObject().apply {
+            put("cmd", cmd)
+            put("args", args ?: JSONObject())
+        }.toString().toByteArray(Charsets.UTF_8)
+
+        return runCatching {
+            sendFrame(FrameType.COMMAND, id, payload)
+        }.isSuccess
+    }
+
     private fun allocateFrameId(): Int = synchronized(nextFrameId) {
         if (nextFrameId.get() >= 0xFF) {
             nextFrameId.set(1)
