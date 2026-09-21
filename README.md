@@ -4,7 +4,7 @@
 
 NRSuite Android connects to an ESP32 over USB-OTG (serial) and provides a full UI for launching Wi-Fi/BLE offense and defense modules, capturing pcap data, managing credentials, flashing firmware, and (in upcoming releases) coordinating a multi-node ESP-NOW mesh.
 
-> **Authorized use only.** This tool is for security research and testing on networks/devices you own or are explicitly authorized to test. See [LEGAL.md](./LEGAL.md).
+> **Authorized use only.** This tool is for security research and testing networks/devices you own or are explicitly authorized to test. See [LEGAL.md](./LEGAL.md).
 
 ---
 
@@ -28,7 +28,7 @@ NRSuite Android connects to an ESP32 over USB-OTG (serial) and provides a full U
 
 ## Features
 
-### Current (v1.0.0-beta)
+### Current (v1.0.0-beta.1)
 
 | Module | Description |
 |---|---|
@@ -189,7 +189,7 @@ Short version:
 
 | App version | Firmware version | Protocol spec |
 |---|---|---|
-| v1.0.0-beta | v1.0.0-beta | v1.0 |
+| v1.0.0-beta.1 | v1.0.0-beta.1 | v1.0 |
 
 This table is updated with each release. Always check compatibility before mixing app and firmware versions.
 
