@@ -11,20 +11,22 @@ NRSuite Android connects to an ESP32 over USB-OTG (serial) and provides a full U
 ## Screenshots
 
 > Screenshots will be added when the beta build is released. If you want to contribute screenshots from your own device, see [CONTRIBUTING.md](./CONTRIBUTING.md).
+check [screenshots](./Screenshots/) for more screenshots.
 
-| Home / Module Select | Wi-Fi Scan | Deauth |
+| Home | Modules | session logs |
 |---|---|---|
-| ![Home](screenshots/home.png) | ![Wi-Fi Scan](screenshots/wifi-scan.png) | ![Deauth](screenshots/deauth.png) |
+| ![Home](screenshots/home.jpg) | ![Modules](screenshots/module-catalog.jpg) | ![Logs](screenshots/logs-screen.jpg) |
 
-| Evil Twin | Sniffer | WPA Cracker |
+| Wireless Modules | HID Modules | Creds Modules |
 |---|---|---|
-| ![Evil Twin](screenshots/evil-twin.png) | ![Sniffer](screenshots/sniffer.png) | ![WPA Cracker](screenshots/wpa-cracker.png) |
+| ![Wireless](screenshots/wireles.jpg) | ![HID](screenshots/hid-modules.jpg) | ![Credentials Modules](screenshots/credentials-module.jpg) |
 
-| BadUSB / Ducky Editor | Credential Manager | Storage |
+| Storage Modules | Firmware Modules | Settings |
 |---|---|---|
-| ![BadUSB](screenshots/badusby.png) | ![Credential Manager](screenshots/credentials.png) | ![Storage](screenshots/storage.png) |
+| ![Storage](screenshots/storage-modules.jpg) | ![Firmware Modules](screenshots/firmware-modules.jpg) | ![Settings](screenshots/settings.jpg) |
 
 ---
+
 
 ## Features
 
