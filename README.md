@@ -1,288 +1,208 @@
-# NRSuite Android App
+# NRSuite Android
 
-Android companion app for the **NRSuite** ESP32 wireless research toolkit.
+**The Android companion app for the NRSuite security research toolkit.**
 
-> **Authorized testing and educational use only.**
->
-> This application is intended only for security research, education, and
-> authorized penetration testing on networks and devices that you own or have
-> explicit written permission to test.
->
-> Do not use this app on public networks, other people's networks, or any
-> device/network without proper authorization. Unauthorized interception,
-> disruption, or credential capture is illegal in many jurisdictions.
->
-> The authors and contributors are not responsible for misuse, damage, or
-> legal consequences caused by this software.
+NRSuite Android connects to an ESP32 over USB-OTG (serial) and provides a full UI for launching Wi-Fi/BLE offense and defense modules, capturing pcap data, managing credentials, flashing firmware, and (in upcoming releases) coordinating a multi-node ESP-NOW mesh.
+
+> **Authorized use only.** This tool is for security research and testing on networks/devices you own or are explicitly authorized to test. See [LEGAL.md](./LEGAL.md).
 
 ---
 
-## Overview
+## Screenshots
 
-NRSuite moves low-level radio work to an ESP32 companion board and drives it
-from an Android phone over USB OTG.
+> Screenshots will be added when the beta build is released. If you want to contribute screenshots from your own device, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-The Android app is responsible for:
+| Home / Module Select | Wi-Fi Scan | Deauth |
+|---|---|---|
+| ![Home](screenshots/home.png) | ![Wi-Fi Scan](screenshots/wifi-scan.png) | ![Deauth](screenshots/deauth.png) |
 
-- USB device discovery and permission handling
-- the NRSuite framed binary bridge protocol
-- module UI and session state
-- PCAP capture and export
-- portal HTML upload
-- DuckyScript management
-- EAPOL handshake parsing and WPA2 verification
-- history/logs/export
+| Evil Twin | Sniffer | WPA Cracker |
+|---|---|---|
+| ![Evil Twin](screenshots/evil-twin.png) | ![Sniffer](screenshots/sniffer.png) | ![WPA Cracker](screenshots/wpa-cracker.png) |
 
-The ESP32 firmware is responsible for:
-
-- WiFi scanning
-- promiscuous packet capture
-- raw 802.11 frame injection
-- deauthentication frames
-- beacon broadcast
-- captive portal AP + DNS + HTTP server
-- EAPOL capture
-- USB mass storage
-- native USB HID / BadUSB
-- BLE HID (on supported chips)
-
----
-
-## Supported boards
-
-| Board | WiFi scan/sniff/deauth/beacon/portal | BLE HID | Mass storage / BadUSB |
-|---|---:|---:|---:|
-| ESP32-C3 | ✅ | ✅ | ❌ |
-| ESP32-S3 | ✅ | ✅ | ✅ |
-| ESP32-S2 | ✅ | ❌ (no BLE radio) | ✅ |
-| Classic ESP32 devkit | ✅ | ✅ | ❌ |
-
-The app uses firmware feature negotiation when available and falls back to
-chip-name detection for older firmware.
+| BadUSB / Ducky Editor | Credential Manager | Storage |
+|---|---|---|
+| ![BadUSB](screenshots/badusby.png) | ![Credential Manager](screenshots/credentials.png) | ![Storage](screenshots/storage.png) |
 
 ---
 
 ## Features
 
-- **WiFi Scan**
-  - SSID, BSSID, channel, RSSI, security
-  - sorted signal-strength list
+### Current (v1.0.0-beta)
 
-- **Packet Sniffer**
-  - fixed channel or channel hopping
-  - all-packet mode
-  - target-network mode
-  - EAPOL-only mode
-  - optional deauth-before-capture
-  - EAPOL M1–M4 handshake status
-  - PCAP output to `NRSuite_root/Pcap/`
+| Module | Description |
+|---|---|
+| Wi-Fi Scan | Passive AP and client discovery |
+| Beacon Injection | Broadcast fake SSIDs |
+| Deauthentication | Send deauth frames to targets |
+| Evil Twin | Rogue AP with captive portal |
+| Captive Portal | Custom HTML portal for credential capture |
+| Packet Sniffer | Monitor-mode pcap capture and export |
+| WPA Handshake Capture | Capture and crack WPA/WPA2 handshakes |
+| BLE Scan | Bluetooth LE device discovery and interaction |
+| BadUSB | HID injection via Ducky Script editor |
+| Credential Manager | Local storage and management of captured credentials |
+| ESP32 Flasher | Flash NRSuite firmware directly from the app over USB |
 
-- **Beacon Broadcast**
-  - custom SSIDs
-  - saved SSID lists
-  - import from `.txt`
-  - channel, interval, hidden SSID, stable BSSID options
-
-- **Deauthentication**
-  - target network selection via WiFi scan
-  - client MAC, channel, count, duration, interval
-  - confirmation before sending
-
-- **Captive Portal**
-  - custom SSID/channel
-  - optional target BSSID
-  - custom HTML upload
-  - portal logs with page views, clients, form posts
-  - copy/clear logs
-
-- **Evil Twin**
-  - scan and select target network
-  - custom HTML
-  - portal + deauth + EAPOL capture workflow
-  - captured `password` / `pass` fields
-  - WPA2 EAPOL verification:
-    - `correct`
-    - `incorrect`
-    - `pending`
-
-- **Mass Storage**
-  - list files
-  - delete files
-  - free/used/total space
-  - start USB mass storage mode on supported boards
-
-- **BadUSB**
-  - upload DuckyScript payload
-  - optional mass storage companion mode
-  - arm for execution on next boot/re-plug
-
-- **BLE HID**
-  - BadBLE DuckyScript payloads
-  - realtime keyboard input
-  - saved DuckyScript selection
-  - only on BLE-capable boards
-
-- **DuckyScript Editor**
-  - create/edit scripts
-  - save to internal library
-  - load/delete from library
-  - import/export `.txt`
-
-- **Logs and History**
-  - runtime session logs
-  - persistent session history
-  - filter/copy/export/clear
+### Planned (see [FEATURES.md](./FEATURES.md))
+- Defense modules: rogue AP detector, deauth detector, AirTag/tracker detector
+- ESP-NOW mesh: multi-node coordination, distributed sensing, triangulation
+- Mesh chat: encrypted offline team messaging
+- Remote camera node support (ESP32-CAM)
+- Sub-GHz, nRF24, RFID/NFC, IR peripheral modules
+- LoRa long-range relay node support
 
 ---
 
 ## Requirements
 
-### Android
+### Device
+- Android 8.0 (API 26) or higher
+- USB-OTG support (required, the app uses USB host mode to communicate with the ESP32)
+- USB-OTG cable or adapter
 
-- Android 8.0+ (`minSdk 26`)
-- USB OTG support
-- USB debugging only for development/install; not required for normal app use
-
-### ESP32
-
-- Stock NRSuite firmware, or compatible firmware exposing the NRSuite bridge protocol
-- One of the supported ESP32 boards
-- USB OTG cable/adapter
+### Hardware
+- Any ESP32 development board flashed with NRSuite firmware
+- See [nrsuite-firmware](https://github.com/7wp81x/nrsuite-firmware) for supported boards and flashing instructions
 
 ---
 
-## Build
+## Installation
 
-The project is a standard Android Studio / Gradle project.
+### Option A: Install prebuilt APK (recommended for beta)
+
+1. Download the latest `nrsuite-vX.X.X-beta.apk` from [Releases](../../releases)
+2. Verify the SHA256 checksum listed in the release notes before installing:
+   ```
+   # Linux/macOS
+   sha256sum nrsuite-vX.X.X-beta.apk
+
+   # Windows (PowerShell)
+   certutil -hashfile nrsuite-vX.X.X-beta.apk SHA256
+   ```
+3. Enable "Install from unknown sources" on your device if needed (Settings -> Security)
+4. Install the APK
+
+### Option B: Build from source
+
+See [Building](#building) below.
+
+---
+
+## Getting Started
+
+1. Flash NRSuite firmware to your ESP32 (you can do this from inside the app via the built-in flasher, or via PlatformIO from [nrsuite-firmware](https://github.com/7wp81x/nrsuite-firmware))
+2. Connect your ESP32 to your phone using a USB-OTG cable
+3. Open NRSuite (it will auto-detect the connected device)
+4. Grant USB host permission when prompted (one-time per device)
+5. Select a module from the home screen
+
+---
+
+## Building
+
+### Prerequisites
+- Android Studio Ladybug or newer (latest stable recommended)
+- JDK 11 (bundled with Android Studio)
+- Android SDK with API 36 (compileSdk) and API 26 (minSdk) installed
+
+### Steps
 
 ```bash
-./gradlew :app:assembleDebug
+git clone https://github.com/7wp81x/nrsuite-android.git
+cd nrsuite-android
 ```
 
-Debug APK:
-
-```text
-app/build/outputs/apk/debug/app-debug.apk
-```
-
-Install with ADB:
+Open in Android Studio and sync Gradle, or build via CLI:
 
 ```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+# Debug build
+./gradlew assembleDebug
+
+# Output: app/build/outputs/apk/debug/app-debug.apk
 ```
+
+Signed release APKs are published by the maintainer. If you just want to test your changes, the debug build is all you need.
 
 ---
 
-## Firmware compatibility
+## Project Structure
 
-The app expects the NRSuite bridge protocol:
-
-```text
-[0xAD 0xDE][TYPE 1B][ID 1B][LENGTH 4B LE][PAYLOAD NB]
 ```
-
-Firmware `STATUS` may report:
-
-```json
-{
-  "proto": 1,
-  "fw": "1.3.0-dev",
-  "features": [
-    "wifi",
-    "sniff",
-    "deauth",
-    "beacon",
-    "portal",
-    "storage",
-    "ble_hid",
-    "msc",
-    "badusb"
-  ]
-}
-```
-
-The app uses these feature flags to enable or disable modules.
-
----
-
-## Data and export layout
-
-When the user selects an NRSuite root directory, the app creates the standard
-folder layout and writes captures under `Pcap/`:
-
-```text
-NRSuite_root/
-  Pcap/
-  DuckyEditor/
-  Logs/
-  Portals/
-```
-
-Export wiring for logs/history, DuckyScripts, and portal event logs is the next
-storage milestone. If no root directory is configured, capture start prompts the
-user to choose one.
-
----
-
-## Evil Twin testing
-
-A simple test HTML fixture is included at:
-
-```text
-test-artifacts/evil_twin_test.html
-```
-
-It posts a `password` field to `/login`, matching the firmware portal handler.
-
-Use only on an isolated test network and a device you own or are authorized to
-test.
-
----
-
-## Security and privacy notes
-
-- The app does not root the phone.
-- The app does not require Android Bluetooth permissions; BLE is handled by the ESP32.
-- Captive Portal and Evil Twin can capture data submitted by a client.
-- Only collect data with explicit authorization.
-- The WPA2 verification engine processes captured handshakes locally on the phone.
-- PCAP files may contain sensitive network data. Store and share them responsibly.
-
----
-
-## Project structure
-
-```text
 app/src/main/java/com/swp81x/nrsuite/
   core/
-    eapol/       EAPOL handshake parsing
-    history/     session history model
-    log/         typed log model
-    pcap/        PCAP writer
-    protocol/    NRSuite bridge frame codec
-    session/     command/response/event session layer
-    sniff/       sniff request model
-    storage/     storage models
-    usb/         USB serial transport
-    wpa/         WPA2 handshake parsing + verification
-  service/       foreground service
-  ui/            Compose screens and components
+    credentials/      # Credential storage models and store
+    eapol/            # EAPOL frame parser (for WPA handshake capture)
+    flasher/          # ESP32 in-app flasher (SLIP codec, USB serial transport)
+    history/          # Session history entries
+    pcap/             # Pcap file reader and writer
+    protocol/         # Frame codec and NrJson wire protocol (shared with firmware)
+    session/          # Connection state and NrSession manager
+    sniff/            # Sniff request model
+    usb/              # USB serial transport, device catalog, NrTransport
+    wifi/             # Pcap SSID parser
+    wpa/              # WPA handshake parser, verifier, and cracker
+  service/
+    NrSuiteForegroundService.kt   # Foreground service keeping USB session alive
+  ui/
+    components/       # Reusable Compose components
+    theme/            # Color, typography, theme
+    *Screen.kt        # One file per module screen
+  MainActivity.kt
+  MainViewModel.kt
+  NrSuiteApplication.kt
 ```
+
+---
+
+## Wire Protocol
+
+NRSuite uses a custom framing protocol (`FrameCodec` / `NrJson`) over USB serial to communicate between the app and the ESP32 firmware. The protocol spec is versioned separately in [nrsuite-protocol](https://github.com/7wp81x/nrsuite-protocol) so the app and firmware can evolve independently without silent breaking changes.
+
+If your contribution touches any app <-> firmware communication, update the protocol spec first and reference the spec version in your PR.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide: branching model, PR process, testing expectations, and legal/ethical scope boundaries.
+
+Short version:
+- Open an issue before starting any nontrivial feature
+- Branch from `develop`, not `main`
+- One feature or fix per PR
+- Test on real hardware for anything touching USB serial, the flasher, or module screens
+- Jamming features (RF/Wi-Fi/BLE denial-of-service transmission) will not be merged, see CONTRIBUTING.md
+
+---
+
+## Related Repos
+
+| Repo | Contents |
+|---|---|
+| [nrsuite-firmware](https://github.com/7wp81x/nrsuite-firmware) | ESP32 firmware (PlatformIO/ESP-IDF) |
+| [nrsuite-protocol](https://github.com/7wp81x/nrsuite-protocol) | Wire protocol specification |
+
+---
+
+## Versioning and Compatibility
+
+| App version | Firmware version | Protocol spec |
+|---|---|---|
+| v1.0.0-beta | v1.0.0-beta | v1.0 |
+
+This table is updated with each release. Always check compatibility before mixing app and firmware versions.
+
+---
+
+## Security
+
+If you find a vulnerability in NRSuite itself (for example, a flaw in the mesh encryption scheme, credential storage, or the USB flasher), please report it privately rather than opening a public issue. See [SECURITY.md](./SECURITY.md).
 
 ---
 
 ## License
 
-This Android app is part of the NRSuite project. See the parent project
-`LICENSE` file for the project license.
+[MIT](./LICENSE)
 
----
-
-## Disclaimer
-
-**This software is provided for authorized testing and educational purposes only.**
-
-You are solely responsible for how you use it. The authors and contributors
-assume no liability and are not responsible for any misuse, damage, legal
-action, or other consequences resulting from the use of this app or its
-firmware.
+This license covers redistribution of the code. It does not authorize use of the tool against systems you do not own or lack permission to test. See [LEGAL.md](./LEGAL.md).
