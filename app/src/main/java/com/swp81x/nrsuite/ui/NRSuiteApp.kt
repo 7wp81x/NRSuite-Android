@@ -1407,7 +1407,7 @@ private fun CategoryCard(
         else -> "No modules"
     }
     val availabilityLabel = if (!category.available) {
-        category.statusLabel ?: "Unavailable"
+        category.statusLabel
     } else {
         null
     }
