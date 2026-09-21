@@ -19,3 +19,6 @@ local.properties
 *.log
 .home/
 .tools/
+
+# Release signing config
+keystore.properties
