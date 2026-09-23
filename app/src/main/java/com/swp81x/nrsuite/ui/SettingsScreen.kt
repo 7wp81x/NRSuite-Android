@@ -250,7 +250,7 @@ internal fun SettingsScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "This writes a complete merged .bin image and replaces the whole firmware. It is not an OTA/incremental update.",
+                    text = "This erases the target flash first, then writes the complete merged .bin image. It is not an OTA/incremental update.",
                     style = MaterialTheme.typography.bodySmall,
                     color = StatusAmber,
                 )
@@ -347,7 +347,13 @@ internal fun SettingsScreen(
                                 },
                                 enabled = !firmwareFlashing && !selected,
                             ) {
-                                Text(if (selected) "Selected" else "Select")
+                                Text(
+                                    when {
+                                        selected -> "Selected"
+                                        !hasPermission -> "Grant permission"
+                                        else -> "Select"
+                                    }
+                                )
                             }
                         }
                     }
@@ -388,7 +394,7 @@ internal fun SettingsScreen(
                         title = { Text("Flash firmware?") },
                         text = {
                             Text(
-                                "This will overwrite the entire firmware on " +
+                                "This will erase the entire flash and write the firmware on " +
                                     "${selectedFlashTarget?.displayName ?: "the device"}. " +
                                     "The device will reboot. Do not unplug during the process.",
                                 color = NrOnSurfaceVariant,

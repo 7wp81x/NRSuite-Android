@@ -22,9 +22,27 @@ class Esp32FlasherTest {
         val ops = transport.writtenPackets.map { encoded ->
             SlipDecoder().feed(encoded).first()[1].toInt() and 0xFF
         }
-        assertEquals(listOf(0x08, 0x0D, 0x02, 0x03, 0x04), ops)
+        assertEquals(listOf(0x08, 0x0D, 0xD0, 0x02, 0x03, 0x04), ops)
         assertTrue(progress.isNotEmpty())
         assertEquals(100, progress.last())
+    }
+
+    @Test
+    fun `can skip erase when requested`() {
+        val transport = FakeFlasherTransport()
+        val flasher = Esp32Flasher(transport, supportsEncryptedFlash = false)
+
+        flasher.flash(
+            firmware = ByteArray(8) { it.toByte() },
+            offset = 0,
+            resetMode = Esp32Flasher.ResetMode.NONE,
+            eraseBeforeFlash = false,
+        )
+
+        val ops = transport.writtenPackets.map { encoded ->
+            SlipDecoder().feed(encoded).first()[1].toInt() and 0xFF
+        }
+        assertEquals(listOf(0x08, 0x0D, 0x02, 0x03, 0x04), ops)
     }
 
     private class FakeFlasherTransport : FlasherTransport {
