@@ -73,8 +73,8 @@ data class CapturedPassword(
  * stream, PCAP collectors, and operation state survive Activity destruction
  * while the foreground service keeps the process alive.
  */
-class MainViewModel(private val app: Application) {
-    private val scope = CoroutineScope(
+class MainViewModel(internal val app: Application) {
+    internal val scope = CoroutineScope(
         SupervisorJob() +
             Dispatchers.Main.immediate +
             CoroutineExceptionHandler { _, error ->
@@ -85,9 +85,9 @@ class MainViewModel(private val app: Application) {
             },
     )
 
-    private val usbManager =
+    internal val usbManager =
         app.getSystemService(Context.USB_SERVICE) as UsbManager
-    private val preferences =
+    internal val preferences =
         app.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     private val _exportDirectory = MutableStateFlow<Uri?>(null)
@@ -102,10 +102,10 @@ class MainViewModel(private val app: Application) {
     private val _actionError = MutableStateFlow<String?>(null)
     val actionError: StateFlow<String?> = _actionError.asStateFlow()
 
-    private val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
+    internal val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()
 
-    private val _connectionState =
+    internal val _connectionState =
         MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
@@ -115,28 +115,28 @@ class MainViewModel(private val app: Application) {
     private val _history = MutableStateFlow<List<HistoryEntry>>(emptyList())
     val history: StateFlow<List<HistoryEntry>> = _history.asStateFlow()
 
-    private val _activeDeviceName = MutableStateFlow<String?>(null)
+    internal val _activeDeviceName = MutableStateFlow<String?>(null)
     val activeDeviceName: StateFlow<String?> = _activeDeviceName.asStateFlow()
 
-    private val _firmwareFlashUri = MutableStateFlow<Uri?>(null)
+    internal val _firmwareFlashUri = MutableStateFlow<Uri?>(null)
     val firmwareFlashUri: StateFlow<Uri?> = _firmwareFlashUri.asStateFlow()
 
-    private val _firmwareFlashName = MutableStateFlow<String?>(null)
+    internal val _firmwareFlashName = MutableStateFlow<String?>(null)
     val firmwareFlashName: StateFlow<String?> = _firmwareFlashName.asStateFlow()
 
-    private val _firmwareFlashSize = MutableStateFlow(0L)
+    internal val _firmwareFlashSize = MutableStateFlow(0L)
     val firmwareFlashSize: StateFlow<Long> = _firmwareFlashSize.asStateFlow()
 
-    private val _firmwareFlashing = MutableStateFlow(false)
+    internal val _firmwareFlashing = MutableStateFlow(false)
     val firmwareFlashing: StateFlow<Boolean> = _firmwareFlashing.asStateFlow()
 
-    private val _firmwareFlashProgress = MutableStateFlow(0)
+    internal val _firmwareFlashProgress = MutableStateFlow(0)
     val firmwareFlashProgress: StateFlow<Int> = _firmwareFlashProgress.asStateFlow()
 
-    private val _firmwareFlashStatus = MutableStateFlow<String?>(null)
+    internal val _firmwareFlashStatus = MutableStateFlow<String?>(null)
     val firmwareFlashStatus: StateFlow<String?> = _firmwareFlashStatus.asStateFlow()
 
-    private val _firmwareTargetDevice = MutableStateFlow<UsbSerialDevice?>(null)
+    internal val _firmwareTargetDevice = MutableStateFlow<UsbSerialDevice?>(null)
     val firmwareTargetDevice: StateFlow<UsbSerialDevice?> = _firmwareTargetDevice.asStateFlow()
 
     private val _recentModuleIds = MutableStateFlow(
@@ -405,10 +405,10 @@ class MainViewModel(private val app: Application) {
 
     private var bleStatusJob: Job? = null
 
-    private var session: NrSession? = null
-    private var activeSerialDevice: UsbSerialDevice? = null
-    private var activeDeviceFingerprint: String? = null
-    private var sessionObservers: List<Job> = emptyList()
+    internal var session: NrSession? = null
+    internal var activeSerialDevice: UsbSerialDevice? = null
+    internal var activeDeviceFingerprint: String? = null
+    internal var sessionObservers: List<Job> = emptyList()
     private var pcapWriter: PcapWriter? = null
     private var pcapJob: Job? = null
 
@@ -496,11 +496,7 @@ class MainViewModel(private val app: Application) {
         ensureRootStructure(uri)
     }
 
-    fun refreshDevices() {
-        val found = UsbSerialDeviceCatalog.list(usbManager)
-        _devices.value = found
-        appendLog("Found ${found.size} supported USB serial device(s).")
-    }
+    fun refreshDevices() = this.refreshDevicesImpl()
 
     fun clearLogs() {
         _logs.value = emptyList()
@@ -559,109 +555,16 @@ class MainViewModel(private val app: Application) {
         preferences.edit().putString(PREF_HISTORY, array.toString()).apply()
     }
 
-    fun onUsbDeviceAttached() {
-        if (_connectionState.value is ConnectionState.Failed) {
-            _connectionState.value = ConnectionState.Disconnected
-        }
-        refreshDevices()
-        appendLog("USB device attached.", level = LogLevel.USB)
-        appendLog("Tap Connect to reconnect when ready.", level = LogLevel.USB)
-    }
+    fun onUsbDeviceAttached() = this.onUsbDeviceAttachedImpl()
 
-    private fun deviceFingerprint(device: UsbDevice): String {
-        val serial = runCatching { device.serialNumber }.getOrNull().orEmpty()
-        return listOf(
-            serial,
-            device.vendorId.toString(),
-            device.productId.toString(),
-            device.manufacturerName.orEmpty(),
-            device.productName.orEmpty(),
-        ).joinToString("|")
-    }
 
-    fun onUsbDeviceDetached(device: UsbDevice) {
-        refreshDevices()
-        appendLog("USB device detached: ${device.deviceName}", level = LogLevel.USB)
+    fun onUsbDeviceDetached(device: UsbDevice) = this.onUsbDeviceDetachedImpl(device)
 
-        val detachedFingerprint = runCatching { deviceFingerprint(device) }.getOrNull()
-        if (activeDeviceFingerprint == null || detachedFingerprint == null ||
-            activeDeviceFingerprint != detachedFingerprint
-        ) {
-            appendLog("Detached device is not the active session; keeping connection.", level = LogLevel.USB)
-            return
-        }
+    fun hasPermission(device: UsbDevice): Boolean = this.hasPermissionImpl(device)
 
-        activeDeviceFingerprint = null
-        activeSerialDevice = null
-        if (_firmwareTargetDevice.value?.device?.deviceId == device.deviceId) {
-            _firmwareTargetDevice.value = null
-        }
-        _activeDeviceName.value = null
+    fun onPermissionResult(device: UsbDevice, granted: Boolean) = this.onPermissionResultImpl(device, granted)
 
-        // Set clean state BEFORE disconnecting so UI never shows Failed
-        _connectionState.value = ConnectionState.Disconnected
-        stopActiveOperations()
-
-        val currentSession = session
-        sessionObservers.forEach { it.cancel() }
-        sessionObservers = emptyList()
-        session = null
-        if (currentSession != null) {
-            scope.launch {
-                runCatching { currentSession.disconnect() }
-            }
-        }
-    }
-
-    fun hasPermission(device: UsbDevice): Boolean = usbManager.hasPermission(device)
-
-    fun onPermissionResult(device: UsbDevice, granted: Boolean) {
-        val reallyGranted = granted || usbManager.hasPermission(device)
-        appendLog(
-            if (reallyGranted) "USB permission granted for ${device.deviceName}."
-            else "USB permission denied for ${device.deviceName}.",
-            level = LogLevel.USB,
-        )
-        if (reallyGranted) {
-            refreshDevices()
-            connect(device)
-        }
-    }
-
-    fun connect(device: UsbDevice) {
-        if (!usbManager.hasPermission(device)) {
-            appendLog("USB permission is required before connecting.")
-            return
-        }
-
-        val entry = _devices.value.firstOrNull { it.device.deviceId == device.deviceId }
-            ?: UsbSerialDeviceCatalog.find(usbManager, device)
-        if (entry == null) {
-            appendLog("No supported USB serial driver for ${device.deviceName}.")
-            return
-        }
-
-        // Replacing the session must also clear any stale active operation.
-        disconnectInternal()
-
-        val newSession = NrSession(
-            transport = UsbSerialTransport(usbManager, entry.driver),
-            scope = scope,
-        )
-        session = newSession
-        activeSerialDevice = entry
-        _firmwareTargetDevice.value = entry
-        activeDeviceFingerprint = deviceFingerprint(entry.device)
-        _activeDeviceName.value = entry.displayName
-        preferences.edit()
-            .putString(PREF_LAST_DEVICE_FINGERPRINT, activeDeviceFingerprint)
-            .apply()
-        observe(newSession)
-        scope.launch {
-            appendLog("Opening ${entry.displayName}...")
-            newSession.connect()
-        }
-    }
+    fun connect(device: UsbDevice) = this.connectImpl(device)
 
     fun scanWifi() {
         val activeSession = session
@@ -950,152 +853,16 @@ class MainViewModel(private val app: Application) {
         appendLog("Evil Twin HTML cleared.")
     }
 
-    fun setFirmwareFlashFile(uri: Uri, name: String?) {
-        _firmwareFlashUri.value = uri
-        _firmwareFlashName.value = name ?: uri.lastPathSegment ?: "firmware.bin"
-        _firmwareFlashSize.value = queryDocumentSize(uri)
-        appendLog("Firmware image selected: ${_firmwareFlashName.value}")
-    }
+    fun setFirmwareFlashFile(uri: Uri, name: String?) = this.setFirmwareFlashFileImpl(uri, name)
 
-    private fun queryDocumentSize(uri: Uri): Long {
-        return runCatching {
-            app.contentResolver.query(
-                uri,
-                arrayOf(OpenableColumns.SIZE),
-                null,
-                null,
-                null,
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val index = cursor.getColumnIndex(OpenableColumns.SIZE)
-                    if (index >= 0 && !cursor.isNull(index)) cursor.getLong(index) else 0L
-                } else {
-                    0L
-                }
-            } ?: 0L
-        }.getOrDefault(0L)
-    }
 
-    fun clearFirmwareFlashFile() {
-        _firmwareFlashUri.value = null
-        _firmwareFlashName.value = null
-        _firmwareFlashSize.value = 0
-        _firmwareFlashProgress.value = 0
-        _firmwareFlashStatus.value = null
-    }
+    fun clearFirmwareFlashFile() = this.clearFirmwareFlashFileImpl()
 
-    fun selectFirmwareTarget(device: UsbDevice) {
-        val entry = _devices.value.firstOrNull { it.device.deviceId == device.deviceId }
-            ?: UsbSerialDeviceCatalog.find(usbManager, device)
-        if (entry == null) {
-            appendLog("No supported USB serial driver for ${device.deviceName}.")
-            return
-        }
-        _firmwareTargetDevice.value = entry
-        appendLog("Firmware flash target: ${entry.displayName}")
-    }
+    fun selectFirmwareTarget(device: UsbDevice) = this.selectFirmwareTargetImpl(device)
 
-    fun startFirmwareFlash(targetChip: String, skipReset: Boolean) {
-        val uri = _firmwareFlashUri.value
-        if (uri == null) {
-            appendLog("Choose a merged firmware .bin before flashing.")
-            return
-        }
-        if (_firmwareFlashing.value) return
+    fun startFirmwareFlash(targetChip: String, skipReset: Boolean) = this.startFirmwareFlashImpl(targetChip, skipReset)
 
-        val entry = _firmwareTargetDevice.value
-        if (entry == null) {
-            appendLog("Select a flash target device before flashing.")
-            return
-        }
-        if (!usbManager.hasPermission(entry.device)) {
-            appendLog("USB permission is required for the selected flash target.")
-            return
-        }
-
-        _firmwareFlashing.value = true
-        _firmwareFlashProgress.value = 0
-        _firmwareFlashStatus.value = "Reading firmware image..."
-
-        scope.launch {
-            try {
-                val bytes = withContext(Dispatchers.IO) {
-                    app.contentResolver
-                        .openInputStream(uri)
-                        ?.use { it.readBytes() }
-                }
-                if (bytes == null || bytes.isEmpty()) {
-                    throw IOException("Could not read the selected firmware image.")
-                }
-
-                _firmwareFlashStatus.value = "Stopping active modules..."
-                stopActiveOperations()
-
-                val currentSession = session
-                sessionObservers.forEach { it.cancel() }
-                sessionObservers = emptyList()
-                session = null
-                activeDeviceFingerprint = null
-                _connectionState.value = ConnectionState.Disconnected
-                _activeDeviceName.value = null
-                currentSession?.disconnect()
-
-                val resetMode = when {
-                    skipReset -> Esp32Flasher.ResetMode.NONE
-                    entry.device.vendorId == 0x303A && entry.device.productId == 0x1001 ->
-                        Esp32Flasher.ResetMode.USB_JTAG
-                    else -> Esp32Flasher.ResetMode.CLASSIC
-                }
-
-                val flasher = Esp32Flasher(
-                    transport = UsbSerialFlasherTransport(usbManager, entry.driver),
-                    supportsEncryptedFlash = targetChip in setOf("ESP32-S2", "ESP32-S3", "ESP32-C3"),
-                )
-
-                _firmwareFlashStatus.value = if (skipReset) {
-                    "Connecting to ROM bootloader..."
-                } else {
-                    "Resetting into ROM bootloader..."
-                }
-
-                withContext(Dispatchers.IO) {
-                    flasher.flash(
-                        firmware = bytes,
-                        offset = 0,
-                        resetMode = resetMode,
-                    ) { percent ->
-                        val written = (bytes.size.toLong() * percent / 100L).toInt()
-                        _firmwareFlashProgress.value = percent
-                        _firmwareFlashStatus.value = if (percent >= 100) {
-                            "Firmware written — rebooting device..."
-                        } else {
-                            "Writing... $percent%  (${written / 1024} / ${bytes.size / 1024} KB)"
-                        }
-                    }
-                }
-
-                _firmwareFlashProgress.value = 100
-                _firmwareFlashStatus.value = "Flash complete. The device is rebooting; reconnect after it disappears."
-                appendLog("Firmware flash complete (${bytes.size} bytes at 0x0).", level = LogLevel.SUCCESS)
-                addHistory("firmware", "Flashed ${bytes.size} bytes at 0x0", HistoryLevel.SUCCESS)
-                delay(2_000)
-                refreshDevices()
-            } catch (t: Throwable) {
-                _firmwareFlashProgress.value = 0
-                _firmwareFlashStatus.value = "Flash failed: ${t.message ?: t.javaClass.simpleName}"
-                appendLog(
-                    "Firmware flash failed: ${t.message ?: t.javaClass.simpleName}",
-                    level = LogLevel.ERROR,
-                )
-                addHistory("firmware", "Firmware flash failed", HistoryLevel.ERROR)
-            } finally {
-                _firmwareFlashing.value = false
-                updateForegroundService()
-            }
-        }
-    }
-
-    private fun stopActiveOperations() {
+    internal fun stopActiveOperations() {
         finishActiveCredentialSession()
         beaconStatusJob?.cancel()
         beaconStatusJob = null
@@ -2770,7 +2537,7 @@ class MainViewModel(private val app: Application) {
         _actionError.value = null
     }
 
-    private fun updateForegroundService() {
+    internal fun updateForegroundService() {
         val context = app
         val activeText = when {
             _sniffing.value -> "Packet capture active"
@@ -2839,7 +2606,7 @@ class MainViewModel(private val app: Application) {
         }
     }
 
-    private fun observe(session: NrSession) {
+    internal fun observe(session: NrSession) {
         sessionObservers = listOf(
             scope.launch {
                 session.state.collect { _connectionState.value = it }
@@ -2937,7 +2704,7 @@ class MainViewModel(private val app: Application) {
         )
     }
 
-    private fun disconnectInternal() {
+    internal fun disconnectInternal() {
         stopActiveOperations()
         sessionObservers.forEach { it.cancel() }
         sessionObservers = emptyList()
@@ -3073,7 +2840,7 @@ class MainViewModel(private val app: Application) {
         return false
     }
 
-    private fun appendLog(
+    internal fun appendLog(
         message: String,
         level: LogLevel = LogLevel.INFO,
         tag: String = "app",
@@ -3094,7 +2861,7 @@ class MainViewModel(private val app: Application) {
         private const val PREF_BEACON_LISTS = "beacon_lists"
         private const val PREF_DUCKY_SCRIPTS = "ducky_scripts"
         private const val PREF_HISTORY = "session_history"
-        private const val PREF_LAST_DEVICE_FINGERPRINT = "last_device_fingerprint"
+        internal const val PREF_LAST_DEVICE_FINGERPRINT = "last_device_fingerprint"
         private const val PREF_RECENT_MODULES = "recent_modules"
         private val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
         private const val HTML_RAW_CHUNK_SIZE = 512
