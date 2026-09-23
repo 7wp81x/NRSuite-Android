@@ -149,9 +149,22 @@ app/src/main/java/com/swp81x/nrsuite/
   ui/
     components/       # Reusable Compose components
     theme/            # Color, typography, theme
-    *Screen.kt        # One file per module screen
+    NRSuiteApp.kt     # App entry point and module catalog
+    NRSuiteContent.kt # Shell navigation, permission flow, screen dispatch
+    HomeScreen.kt     # Dashboard, categories, module list
+    LogsScreen.kt     # Logs and session history
+    DeviceScreen.kt   # USB device selection and connection state
+    SettingsScreen.kt # Settings and firmware flasher
+    *Screen.kt        # Feature module screens
   MainActivity.kt
-  MainViewModel.kt
+  MainViewModel.kt             # Application-scoped controller
+  MainViewModelUsb.kt          # USB discovery, permission, connection lifecycle
+  MainViewModelFlasher.kt      # Firmware image selection and flashing
+  MainViewModelWifi.kt         # Scan, deauth, beacon, sniff
+  MainViewModelPortal.kt       # Captive Portal and Evil Twin
+  MainViewModelBle.kt          # BLE HID
+  MainViewModelStorage.kt      # Mass storage, BadUSB, DuckyScript
+  MainViewModelCredentials.kt  # Credential sessions and WPA cracking
   NrSuiteApplication.kt
 ```
 
