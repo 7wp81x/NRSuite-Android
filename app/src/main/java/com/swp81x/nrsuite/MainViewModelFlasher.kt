@@ -76,6 +76,12 @@ internal fun MainViewModel.clearFirmwareFlashFileImpl() {
 }
 
 internal fun MainViewModel.selectFirmwareTargetImpl(device: UsbDevice) {
+    if (!usbManager.hasPermission(device)) {
+        _firmwareTargetDevice.value = null
+        appendLog("USB permission is required before selecting a flash target.")
+        return
+    }
+
     val entry = _devices.value.firstOrNull { it.device.deviceId == device.deviceId }
         ?: UsbSerialDeviceCatalog.find(usbManager, device)
     if (entry == null) {
@@ -128,7 +134,6 @@ internal fun MainViewModel.startFirmwareFlashImpl(targetChip: String, skipReset:
             session = null
             activeDeviceFingerprint = null
             _connectionState.value = ConnectionState.Disconnected
-            _activeDeviceName.value = null
             currentSession?.disconnect()
 
             val resetMode = when {

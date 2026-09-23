@@ -115,9 +115,6 @@ class MainViewModel(internal val app: Application) {
     private val _history = MutableStateFlow<List<HistoryEntry>>(emptyList())
     val history: StateFlow<List<HistoryEntry>> = _history.asStateFlow()
 
-    internal val _activeDeviceName = MutableStateFlow<String?>(null)
-    val activeDeviceName: StateFlow<String?> = _activeDeviceName.asStateFlow()
-
     internal val _firmwareFlashUri = MutableStateFlow<Uri?>(null)
     val firmwareFlashUri: StateFlow<Uri?> = _firmwareFlashUri.asStateFlow()
 
@@ -418,7 +415,7 @@ class MainViewModel(internal val app: Application) {
         this.loadDuckyScriptsImpl()
         loadHistory()
         this.loadCredentialSessionsImpl()
-        refreshDevices()
+        this.refreshDevicesImpl()
     }
 
     fun onModuleOpened(moduleId: String) {
@@ -1053,7 +1050,6 @@ class MainViewModel(internal val app: Application) {
         private const val PREFERENCES_NAME = "nrsuite"
         private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
         private const val PREF_HISTORY = "session_history"
-        internal const val PREF_LAST_DEVICE_FINGERPRINT = "last_device_fingerprint"
         private const val PREF_RECENT_MODULES = "recent_modules"
         internal val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
     }
