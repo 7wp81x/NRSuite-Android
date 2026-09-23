@@ -90,13 +90,13 @@ class MainViewModel(internal val app: Application) {
     internal val preferences =
         app.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
-    private val _exportDirectory = MutableStateFlow<Uri?>(null)
+    internal val _exportDirectory = MutableStateFlow<Uri?>(null)
     val exportDirectory: StateFlow<Uri?> = _exportDirectory.asStateFlow()
 
     private val _exportDirectoryName = MutableStateFlow("Not configured")
     val exportDirectoryName: StateFlow<String> = _exportDirectoryName.asStateFlow()
 
-    private val _requiresRootDirectory = MutableStateFlow(false)
+    internal val _requiresRootDirectory = MutableStateFlow(false)
     val requiresRootDirectory: StateFlow<Boolean> = _requiresRootDirectory.asStateFlow()
 
     private val _actionError = MutableStateFlow<String?>(null)
@@ -151,51 +151,51 @@ class MainViewModel(internal val app: Application) {
     private val _events = MutableStateFlow<List<JSONObject>>(emptyList())
     val events: StateFlow<List<JSONObject>> = _events.asStateFlow()
 
-    private val _networks = MutableStateFlow<List<JSONObject>>(emptyList())
+    internal val _networks = MutableStateFlow<List<JSONObject>>(emptyList())
     val networks: StateFlow<List<JSONObject>> = _networks.asStateFlow()
 
-    private val _scanning = MutableStateFlow(false)
+    internal val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
 
     internal val _sniffing = MutableStateFlow(false)
     val sniffing: StateFlow<Boolean> = _sniffing.asStateFlow()
 
-    private val _sniffPacketCount = MutableStateFlow(0L)
+    internal val _sniffPacketCount = MutableStateFlow(0L)
     val sniffPacketCount: StateFlow<Long> = _sniffPacketCount.asStateFlow()
 
-    private val _sniffHandshake = MutableStateFlow(EapolHandshake())
+    internal val _sniffHandshake = MutableStateFlow(EapolHandshake())
     val sniffHandshake: StateFlow<EapolHandshake> = _sniffHandshake.asStateFlow()
 
-    private val _capturePath = MutableStateFlow<String?>(null)
+    internal val _capturePath = MutableStateFlow<String?>(null)
     val capturePath: StateFlow<String?> = _capturePath.asStateFlow()
 
     internal val _beaconRunning = MutableStateFlow(false)
     val beaconRunning: StateFlow<Boolean> = _beaconRunning.asStateFlow()
 
-    private val _beaconSent = MutableStateFlow(0)
+    internal val _beaconSent = MutableStateFlow(0)
     val beaconSent: StateFlow<Int> = _beaconSent.asStateFlow()
 
-    private val _beaconSsidCount = MutableStateFlow(0)
+    internal val _beaconSsidCount = MutableStateFlow(0)
     val beaconSsidCount: StateFlow<Int> = _beaconSsidCount.asStateFlow()
 
-    private val _beaconChannel = MutableStateFlow(0)
+    internal val _beaconChannel = MutableStateFlow(0)
     val beaconChannel: StateFlow<Int> = _beaconChannel.asStateFlow()
 
-    private val _beaconListMap = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    internal val _beaconListMap = MutableStateFlow<Map<String, List<String>>>(emptyMap())
     val beaconListMap: StateFlow<Map<String, List<String>>> = _beaconListMap.asStateFlow()
 
     internal var beaconStatusJob: Job? = null
 
-    private val _deauthRunning = MutableStateFlow(false)
+    internal val _deauthRunning = MutableStateFlow(false)
     val deauthRunning: StateFlow<Boolean> = _deauthRunning.asStateFlow()
 
-    private val _deauthSent = MutableStateFlow(0)
+    internal val _deauthSent = MutableStateFlow(0)
     val deauthSent: StateFlow<Int> = _deauthSent.asStateFlow()
 
-    private val _deauthTarget = MutableStateFlow("")
+    internal val _deauthTarget = MutableStateFlow("")
     val deauthTarget: StateFlow<String> = _deauthTarget.asStateFlow()
 
-    private val _deauthChannel = MutableStateFlow(0)
+    internal val _deauthChannel = MutableStateFlow(0)
     val deauthChannel: StateFlow<Int> = _deauthChannel.asStateFlow()
 
     internal val _portalRunning = MutableStateFlow(false)
@@ -414,7 +414,7 @@ class MainViewModel(internal val app: Application) {
 
     init {
         loadExportDirectory()
-        loadBeaconLists()
+        this.loadBeaconListsImpl()
         this.loadDuckyScriptsImpl()
         loadHistory()
         loadCredentialSessions()
@@ -430,48 +430,11 @@ class MainViewModel(internal val app: Application) {
         preferences.edit().putString(PREF_RECENT_MODULES, trimmed.joinToString(",")).apply()
     }
 
-    fun saveBeaconList(name: String, ssids: List<String>) {
-        val cleanName = name.trim()
-        if (cleanName.isBlank()) return
-        val cleanSsids = ssids.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        _beaconListMap.update { it + (cleanName to cleanSsids) }
-        persistBeaconLists()
-        appendLog("Saved beacon SSID list '$cleanName' (${cleanSsids.size} SSIDs).")
-    }
+    fun saveBeaconList(name: String, ssids: List<String>) = this.saveBeaconListImpl(name, ssids)
 
-    fun deleteBeaconList(name: String) {
-        _beaconListMap.update { it - name }
-        persistBeaconLists()
-        appendLog("Deleted beacon SSID list '$name'.")
-    }
+    fun deleteBeaconList(name: String) = this.deleteBeaconListImpl(name)
 
-    private fun loadBeaconLists() {
-        val raw = preferences.getString(PREF_BEACON_LISTS, null) ?: return
-        runCatching {
-            val json = JSONObject(raw)
-            val map = mutableMapOf<String, List<String>>()
-            json.keys().forEach { key ->
-                val array = json.optJSONArray(key) ?: return@forEach
-                val list = mutableListOf<String>()
-                for (i in 0 until array.length()) {
-                    val value = array.optString(i)
-                    if (value.isNotBlank()) list += value
-                }
-                map[key] = list
-            }
-            _beaconListMap.value = map
-        }
-    }
 
-    private fun persistBeaconLists() {
-        val json = JSONObject()
-        _beaconListMap.value.forEach { (name, ssids) ->
-            val array = org.json.JSONArray()
-            ssids.forEach { array.put(it) }
-            json.put(name, array)
-        }
-        preferences.edit().putString(PREF_BEACON_LISTS, json.toString()).apply()
-    }
 
     fun onRootDirectoryPromptShown() {
         _requiresRootDirectory.value = false
@@ -566,31 +529,7 @@ class MainViewModel(internal val app: Application) {
 
     fun connect(device: UsbDevice) = this.connectImpl(device)
 
-    fun scanWifi() {
-        val activeSession = session
-        if (activeSession == null) {
-            appendLog("Connect to a device before scanning.")
-            return
-        }
-        if (_scanning.value) return
-        if (!ensureRadioIdle("WiFi Scan")) return
-
-        _networks.value = emptyList()
-        _scanning.value = true
-        scope.launch {
-            appendLog("Starting WiFi scan...")
-            val count = activeSession.scanWifi()
-            _scanning.value = false
-            when {
-                count == null -> appendLog("WiFi scan timed out.")
-                count < 0 -> appendLog("WiFi scan failed.")
-                else -> {
-                    appendLog("WiFi scan complete: $count network(s).")
-                    addHistory("scan", "WiFi scan complete: $count network(s)", HistoryLevel.SUCCESS)
-                }
-            }
-        }
-    }
+    fun scanWifi() = this.scanWifiImpl()
 
     fun setBadUsbPayload(uri: Uri, name: String?) = this.setBadUsbPayloadImpl(uri, name)
 
@@ -1209,324 +1148,16 @@ class MainViewModel(internal val app: Application) {
 
 
 
-    fun startDeauth(
-        bssid: String,
-        channel: Int,
-        client: String,
-        count: Int,
-        duration: Int,
-        intervalMs: Int,
-    ) {
-        val activeSession = session
-        if (activeSession == null) {
-            appendLog("Connect to a device before sending deauth frames.")
-            return
-        }
-        if (_deauthRunning.value) return
-        if (!ensureRadioIdle("Deauthentication")) return
-        this.stopLocalPortalImpl()
+    fun startDeauth(bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int) = this.startDeauthImpl(bssid, channel, client, count, duration, intervalMs)
 
-        val cleanBssid = bssid.trim().uppercase()
-        val cleanClient = client.trim().ifBlank { "FF:FF:FF:FF:FF:FF" }.uppercase()
-        if (!MAC_PATTERN.matches(cleanBssid)) {
-            appendLog("Invalid target BSSID: $cleanBssid")
-            return
-        }
-        if (!MAC_PATTERN.matches(cleanClient)) {
-            appendLog("Invalid client MAC: $cleanClient")
-            return
-        }
+    fun startBeacon(ssids: List<String>, channel: Int, intervalMs: Int, hidden: Boolean, randomBssid: Boolean) = this.startBeaconImpl(ssids, channel, intervalMs, hidden, randomBssid)
 
-        // The firmware's DEAUTH handler calls radioIdle(), so stop local
-        // companion tasks before issuing the burst.
-        beaconStatusJob?.cancel()
-        beaconStatusJob = null
-        _beaconRunning.value = false
-        if (_sniffing.value) {
-            _sniffing.value = false
-            pcapJob?.cancel()
-            pcapJob = null
-            scope.launch(Dispatchers.IO) {
-                runCatching { pcapWriter?.close() }
-                pcapWriter = null
-            }
-        }
+    fun stopBeacon() = this.stopBeaconImpl()
 
-        _deauthSent.value = 0
-        _deauthTarget.value = cleanBssid
-        _deauthChannel.value = channel.coerceIn(1, 13)
-        _deauthRunning.value = true
-        updateForegroundService()
 
-        scope.launch {
-            appendLog(
-                "Starting deauth burst: $cleanBssid on channel $channel " +
-                    "(client=$cleanClient, count=${if (count <= 0) "firmware default" else count})."
-            )
-            val args = JSONObject().apply {
-                put("bssid", cleanBssid)
-                put("client", cleanClient)
-                put("channel", channel.coerceIn(1, 13))
-                put("count", count.coerceAtLeast(0))
-                put("duration", duration.coerceAtLeast(0))
-                put("deauth_interval_ms", intervalMs.coerceIn(10, 10_000))
-                put("reason", 7)
-            }
-            val response = activeSession.sendCommand("DEAUTH", args, timeoutMs = 60_000)
-            _deauthRunning.value = false
-            updateForegroundService()
-            if (response?.optBoolean("ok") == true) {
-                appendLog("Deauth burst completed.")
-                addHistory("deauth", "Deauth burst completed on $cleanBssid", HistoryLevel.SUCCESS)
-            } else {
-                appendLog("Deauth request failed: ${response?.optString("msg") ?: "timeout"}")
-            }
-        }
-    }
+    fun startSniff(request: SniffRequest) = this.startSniffImpl(request)
 
-    fun startBeacon(
-        ssids: List<String>,
-        channel: Int,
-        intervalMs: Int,
-        hidden: Boolean,
-        randomBssid: Boolean,
-    ) {
-        val activeSession = session
-        if (activeSession == null) {
-            appendLog("Connect to a device before starting beacon broadcast.")
-            return
-        }
-        if (_beaconRunning.value) return
-        if (!ensureRadioIdle("Beacon Broadcast")) return
-        this.stopLocalPortalImpl()
-
-        val cleanSsids = ssids.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        if (cleanSsids.isEmpty()) {
-            appendLog("At least one SSID is required.")
-            return
-        }
-        if (cleanSsids.size > 32) {
-            appendLog("Firmware supports at most 32 SSIDs.")
-            return
-        }
-
-        scope.launch {
-            appendLog("Starting beacon broadcast (${cleanSsids.size} SSID(s), channel $channel)...")
-            val args = JSONObject().apply {
-                put("ssids", cleanSsids.joinToString("\n"))
-                put("channel", channel.coerceIn(1, 13))
-                put("interval_ms", intervalMs.coerceIn(10, 2000))
-                put("hidden", hidden)
-                put("random_bssid", randomBssid)
-            }
-            val response = activeSession.sendCommand("START_BEACON", args, timeoutMs = 10_000)
-            if (response?.optBoolean("ok") == true) {
-                _beaconRunning.value = true
-                updateForegroundService()
-                _beaconSent.value = 0
-                _beaconSsidCount.value = response.optInt("ssids", cleanSsids.size)
-                _beaconChannel.value = response.optInt("channel", channel)
-                appendLog("Beacon broadcast started.")
-                addHistory("beacon", "Beacon broadcast started (${cleanSsids.size} SSIDs)", HistoryLevel.SUCCESS)
-                startBeaconStatusPolling(activeSession)
-            } else {
-                appendLog("Failed to start beacon broadcast: ${response?.optString("msg") ?: "timeout"}")
-            }
-        }
-    }
-
-    fun stopBeacon() {
-        if (!_beaconRunning.value) return
-        beaconStatusJob?.cancel()
-        beaconStatusJob = null
-        _beaconRunning.value = false
-        updateForegroundService()
-
-        val activeSession = session
-        scope.launch {
-            val response = activeSession?.sendCommand("STOP_BEACON", timeoutMs = 6_000)
-            if (response?.optBoolean("ok") == true) {
-                _beaconSent.value = response.optInt("sent", _beaconSent.value)
-                _beaconSsidCount.value = response.optInt("ssids", _beaconSsidCount.value)
-                appendLog("Beacon stopped. Frames sent: ${_beaconSent.value}.")
-                addHistory("beacon", "Beacon stopped; ${_beaconSent.value} frames sent", HistoryLevel.SUCCESS)
-            } else {
-                appendLog("Beacon stop request sent, but the device did not confirm.")
-            }
-        }
-    }
-
-    private fun startBeaconStatusPolling(activeSession: NrSession) {
-        beaconStatusJob?.cancel()
-        beaconStatusJob = scope.launch {
-            while (isActive && _beaconRunning.value) {
-                delay(2_000)
-                val response = activeSession.sendCommand("BEACON_STATUS", timeoutMs = 4_000) ?: continue
-                if (response.optBoolean("ok")) {
-                    _beaconRunning.value = response.optBoolean("active", _beaconRunning.value)
-                    _beaconSent.value = response.optInt("sent", _beaconSent.value)
-                    _beaconSsidCount.value = response.optInt("ssids", _beaconSsidCount.value)
-                    _beaconChannel.value = response.optInt("channel", _beaconChannel.value)
-                }
-            }
-        }
-    }
-
-    fun startSniff(request: SniffRequest) {
-        val activeSession = session
-        if (activeSession == null) {
-            appendLog("Connect to a device before sniffing.")
-            return
-        }
-        if (_sniffing.value) return
-        if (!ensureRadioIdle("Packet Sniffer")) return
-        beaconStatusJob?.cancel()
-        beaconStatusJob = null
-        _beaconRunning.value = false
-        this.stopLocalPortalImpl()
-
-        val captureName = "capture_${System.currentTimeMillis()}.pcap"
-        val exportUri = _exportDirectory.value
-        if (exportUri == null) {
-            _requiresRootDirectory.value = true
-            appendLog("Choose an NRSuite root directory before starting a capture.")
-            return
-        }
-        val writerResult = runCatching {
-            val pcapDir = ensureChildDirectory(exportUri, "Pcap")
-            val pcapDirUri = pcapDir?.uri ?: exportUri
-            val documentUri = createPcapDocumentInDirectory(pcapDirUri, captureName)
-            val outputStream = app.contentResolver
-                .openOutputStream(documentUri, "wt")
-                ?: throw IOException("Could not open export file")
-            val displayName = displayNameForTreeUri(exportUri)
-            PcapWriter(outputStream, closeOutput = true) to "$displayName/Pcap/$captureName"
-        }
-        val (writer, captureDisplayPath) = writerResult.getOrElse { error ->
-            appendLog("Could not create capture output: ${error.message}")
-            return
-        }
-
-        pcapWriter = writer
-        _capturePath.value = captureDisplayPath
-        _sniffPacketCount.value = 0
-        _sniffHandshake.value = EapolHandshake()
-        _sniffing.value = true
-        updateForegroundService()
-
-        appendLog("Capture file: $captureDisplayPath")
-
-        val eapolState = EapolHandshake()
-        var eapolStopRequested = false
-        pcapJob = scope.launch(Dispatchers.IO) {
-            activeSession.pcap.collect { frame ->
-                val matchesTarget = !request.targetNetworkOnly ||
-                    frameMatchesBssid(frame, request.targetBssid)
-                if (matchesTarget) {
-                    try {
-                        writer.writePacket(frame)
-                        _sniffPacketCount.update { it + 1 }
-                    } catch (t: Throwable) {
-                        appendLog("PCAP write error: ${t.message}")
-                    }
-                }
-
-                if (request.eapolOnly) {
-                    EapolParser.parse(frame, eapolState)
-                    _sniffHandshake.value = eapolState.copy()
-                    val targetMatches = MAC_PATTERN.matches(request.targetBssid.trim().uppercase())
-                    if (!eapolStopRequested && targetMatches && eapolState.isComplete) {
-                        eapolStopRequested = true
-                        appendLog("[+] Valid 4-Way Handshake captured!")
-                        stopSniff()
-                    }
-                }
-            }
-        }
-
-        scope.launch {
-            if (request.deauthBeforeCapture) {
-                val cleanBssid = request.targetBssid.trim().uppercase()
-                if (MAC_PATTERN.matches(cleanBssid)) {
-                    val cleanClient = request.client.trim()
-                        .ifBlank { "FF:FF:FF:FF:FF:FF" }
-                        .uppercase()
-                    appendLog("Sending deauth burst before capture...")
-                    val deauthResponse = activeSession.sendCommand(
-                        "DEAUTH",
-                        JSONObject().apply {
-                            put("bssid", cleanBssid)
-                            put("client", cleanClient)
-                            put("channel", request.channel.coerceIn(1, 13))
-                            put("count", request.deauthCount.coerceAtLeast(0))
-                            put("deauth_interval_ms", request.deauthIntervalMs.coerceIn(10, 10_000))
-                            put("reason", 7)
-                        },
-                        timeoutMs = 20_000,
-                    )
-                    if (deauthResponse?.optBoolean("ok") != true) {
-                        appendLog("Deauth burst failed or timed out; continuing with capture.")
-                    }
-                } else {
-                    appendLog("Skipping deauth trigger: invalid target BSSID.")
-                }
-            }
-
-            val cleanFilterBssid = request.targetBssid.trim().uppercase()
-            val args = JSONObject().apply {
-                put("mode", if (request.fixedMode) "fixed" else "hop")
-                put("channel", request.channel.coerceIn(1, 13))
-                put("interval_ms", request.intervalMs.coerceIn(50, 2_000))
-                if (request.eapolOnly) {
-                    put("eapol_only", true)
-                }
-                if (MAC_PATTERN.matches(cleanFilterBssid)) {
-                    put("bssid", cleanFilterBssid)
-                }
-            }
-            val response = activeSession.sendCommand("START_SNIFF", args, timeoutMs = 12_000)
-            if (response?.optBoolean("ok") == true) {
-                val message = if (request.fixedMode) {
-                    "Sniffing started on channel ${request.channel.coerceIn(1, 13)}."
-                } else {
-                    "Channel-hopping sniffing started."
-                }
-                appendLog(message)
-                addHistory("sniff", message, HistoryLevel.SUCCESS)
-            } else {
-                appendLog("Failed to start sniffing: ${response?.optString("msg") ?: "timeout"}")
-                stopSniff()
-            }
-        }
-    }
-
-    fun stopSniff() {
-        if (!_sniffing.value) return
-        _sniffing.value = false
-        updateForegroundService()
-
-        pcapJob?.cancel()
-        pcapJob = null
-
-        val activeSession = session
-        scope.launch {
-            val response = activeSession?.sendCommand("STOP_SNIFF", timeoutMs = 6_000)
-            if (response != null) {
-                appendLog(
-                    "Capture stopped: captured=${response.optInt("captured")}, " +
-                        "sent=${response.optInt("sent")}, dropped=${response.optInt("dropped")}"
-                )
-            }
-            withContext(Dispatchers.IO) {
-                runCatching { pcapWriter?.close() }
-            }
-            pcapWriter = null
-            _capturePath.value?.let {
-                appendLog("Capture saved: $it")
-                addHistory("sniff", "Capture saved: $it", HistoryLevel.SUCCESS)
-            }
-        }
-    }
+    fun stopSniff() = this.stopSniffImpl()
 
     internal fun activeRadioLabel(includeBle: Boolean = true): String? {
         if (includeBle && (_bleAdvertising.value || _bleConnected.value)) {
@@ -1749,12 +1380,12 @@ class MainViewModel(internal val app: Application) {
         }
     }
 
-    private fun ensureChildDirectory(rootUri: Uri, name: String): DocumentFile? {
+    internal fun ensureChildDirectory(rootUri: Uri, name: String): DocumentFile? {
         val root = DocumentFile.fromTreeUri(app, rootUri) ?: return null
         return root.findFile(name) ?: root.createDirectory(name)
     }
 
-    private fun createPcapDocumentInDirectory(directoryUri: Uri, displayName: String): Uri {
+    internal fun createPcapDocumentInDirectory(directoryUri: Uri, displayName: String): Uri {
         return DocumentsContract.createDocument(
             app.contentResolver,
             directoryUri,
@@ -1775,7 +1406,7 @@ class MainViewModel(internal val app: Application) {
         ) ?: throw IOException("Storage provider did not create a document")
     }
 
-    private fun displayNameForTreeUri(uri: Uri): String {
+    internal fun displayNameForTreeUri(uri: Uri): String {
         val documentId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
         val fromDocumentId = documentId
             ?.substringAfterLast('/')
@@ -1822,29 +1453,6 @@ class MainViewModel(internal val app: Application) {
         }
     }
 
-    private fun frameMatchesBssid(frame: ByteArray, bssid: String): Boolean {
-        val parts = bssid.trim().uppercase().split(":")
-        if (parts.size != 6) return false
-        val target = ByteArray(6) { index ->
-            parts[index].toIntOrNull(16)?.toByte() ?: return false
-        }
-        if (frame.size < 8) return false
-        val radiotapLength = (frame[2].toInt() and 0xFF) or
-            ((frame[3].toInt() and 0xFF) shl 8)
-        val macBase = radiotapLength
-        if (frame.size < macBase + 22) return false
-        for (offset in intArrayOf(4, 10, 16)) {
-            var matches = true
-            for (i in 0 until 6) {
-                if (frame[macBase + offset + i] != target[i]) {
-                    matches = false
-                    break
-                }
-            }
-            if (matches) return true
-        }
-        return false
-    }
 
     internal fun appendLog(
         message: String,
@@ -1864,7 +1472,6 @@ class MainViewModel(internal val app: Application) {
     companion object {
         private const val PREFERENCES_NAME = "nrsuite"
         private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
-        private const val PREF_BEACON_LISTS = "beacon_lists"
         private const val PREF_HISTORY = "session_history"
         internal const val PREF_LAST_DEVICE_FINGERPRINT = "last_device_fingerprint"
         private const val PREF_RECENT_MODULES = "recent_modules"
