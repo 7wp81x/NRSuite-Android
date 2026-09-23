@@ -185,7 +185,10 @@ internal fun SettingsScreen(
         if (!chip.isNullOrBlank()) selectedTargetChip = chip
     }
     LaunchedEffect(devices) {
-        if (devices.size == 1 && selectedFlashTarget == null) {
+        if (devices.size == 1 &&
+            selectedFlashTarget == null &&
+            usbManager.hasPermission(devices[0].device)
+        ) {
             onSelectFlashTarget(devices[0].device)
         }
     }
@@ -318,7 +321,8 @@ internal fun SettingsScreen(
                 } else {
                     devices.forEach { entry ->
                         val hasPermission = usbManager.hasPermission(entry.device)
-                        val selected = selectedFlashTarget?.device?.deviceId == entry.device.deviceId
+                        val selected = hasPermission &&
+                            selectedFlashTarget?.device?.deviceId == entry.device.deviceId
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

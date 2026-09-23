@@ -160,7 +160,6 @@ internal fun ConnectionStatusIndicator(state: ConnectionState) {
 @Composable
 internal fun HomeScreen(
     connectionState: ConnectionState,
-    activeDeviceName: String?,
     permissionRevision: Int,
     devices: List<UsbSerialDevice>,
     usbManager: UsbManager,
@@ -188,16 +187,6 @@ internal fun HomeScreen(
         }
 
         if (connectionState !is ConnectionState.Connected) {
-            activeDeviceName?.let { name ->
-                item {
-                    Text(
-                        text = "Last used: $name",
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = NrOnSurfaceVariant,
-                    )
-                }
-            }
-
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
