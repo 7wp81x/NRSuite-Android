@@ -36,6 +36,8 @@ class Esp32Flasher(
         firmware: ByteArray,
         offset: Int = 0,
         resetMode: ResetMode = ResetMode.CLASSIC,
+        eraseBeforeFlash: Boolean = true,
+        onStage: (String) -> Unit = {},
         onProgress: (Int) -> Unit = {},
     ) {
         require(firmware.isNotEmpty()) { "Firmware image is empty" }
@@ -47,6 +49,12 @@ class Esp32Flasher(
             resetInput()
             sync()
             flashSpiAttach()
+
+            if (eraseBeforeFlash) {
+                onStage("Erasing flash...")
+                eraseFlash()
+            }
+            onStage("Writing firmware...")
             flashBegin(firmware.size, offset)
 
             var written = 0
@@ -135,6 +143,15 @@ class Esp32Flasher(
             description = "enable SPI flash",
             op = OP_SPI_ATTACH,
             data = ByteArray(8),
+        )
+    }
+
+    private fun eraseFlash() {
+        checkCommand(
+            description = "erase flash",
+            op = OP_ERASE_FLASH,
+            data = ByteArray(0),
+            timeoutMs = ERASE_TIMEOUT_MS,
         )
     }
 
@@ -324,6 +341,7 @@ class Esp32Flasher(
         private const val OP_FLASH_END = 0x04
         private const val OP_SYNC = 0x08
         private const val OP_SPI_ATTACH = 0x0D
+        private const val OP_ERASE_FLASH = 0xD0
 
         private const val RESPONSE_DIRECTION = 0x01
         private const val HEADER_LENGTH = 8
@@ -336,6 +354,7 @@ class Esp32Flasher(
         private const val DEFAULT_COMMAND_TIMEOUT_MS = 5_000
         private const val DEFAULT_BEGIN_TIMEOUT_MS = 40_000
         private const val FLASH_BLOCK_TIMEOUT_MS = 10_000
+        private const val ERASE_TIMEOUT_MS = 120_000
         private const val READ_BUFFER_SIZE = 4096
         private const val MAX_READ_TIMEOUT_MS = 250
 
