@@ -157,7 +157,7 @@ class MainViewModel(internal val app: Application) {
     private val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
 
-    private val _sniffing = MutableStateFlow(false)
+    internal val _sniffing = MutableStateFlow(false)
     val sniffing: StateFlow<Boolean> = _sniffing.asStateFlow()
 
     private val _sniffPacketCount = MutableStateFlow(0L)
@@ -169,7 +169,7 @@ class MainViewModel(internal val app: Application) {
     private val _capturePath = MutableStateFlow<String?>(null)
     val capturePath: StateFlow<String?> = _capturePath.asStateFlow()
 
-    private val _beaconRunning = MutableStateFlow(false)
+    internal val _beaconRunning = MutableStateFlow(false)
     val beaconRunning: StateFlow<Boolean> = _beaconRunning.asStateFlow()
 
     private val _beaconSent = MutableStateFlow(0)
@@ -184,7 +184,7 @@ class MainViewModel(internal val app: Application) {
     private val _beaconListMap = MutableStateFlow<Map<String, List<String>>>(emptyMap())
     val beaconListMap: StateFlow<Map<String, List<String>>> = _beaconListMap.asStateFlow()
 
-    private var beaconStatusJob: Job? = null
+    internal var beaconStatusJob: Job? = null
 
     private val _deauthRunning = MutableStateFlow(false)
     val deauthRunning: StateFlow<Boolean> = _deauthRunning.asStateFlow()
@@ -198,86 +198,86 @@ class MainViewModel(internal val app: Application) {
     private val _deauthChannel = MutableStateFlow(0)
     val deauthChannel: StateFlow<Int> = _deauthChannel.asStateFlow()
 
-    private val _portalRunning = MutableStateFlow(false)
+    internal val _portalRunning = MutableStateFlow(false)
     val portalRunning: StateFlow<Boolean> = _portalRunning.asStateFlow()
 
-    private val _portalHtmlSize = MutableStateFlow(0)
+    internal val _portalHtmlSize = MutableStateFlow(0)
     val portalHtmlSize: StateFlow<Int> = _portalHtmlSize.asStateFlow()
 
-    private val _portalHtmlComplete = MutableStateFlow(false)
+    internal val _portalHtmlComplete = MutableStateFlow(false)
     val portalHtmlComplete: StateFlow<Boolean> = _portalHtmlComplete.asStateFlow()
 
-    private val _portalHtmlUploading = MutableStateFlow(false)
+    internal val _portalHtmlUploading = MutableStateFlow(false)
     val portalHtmlUploading: StateFlow<Boolean> = _portalHtmlUploading.asStateFlow()
 
-    private val _portalHtmlUploadProgress = MutableStateFlow(0)
+    internal val _portalHtmlUploadProgress = MutableStateFlow(0)
     val portalHtmlUploadProgress: StateFlow<Int> = _portalHtmlUploadProgress.asStateFlow()
 
-    private val _evilTwinHtmlUploading = MutableStateFlow(false)
+    internal val _evilTwinHtmlUploading = MutableStateFlow(false)
     val evilTwinHtmlUploading: StateFlow<Boolean> = _evilTwinHtmlUploading.asStateFlow()
 
-    private val _evilTwinHtmlUploadProgress = MutableStateFlow(0)
+    internal val _evilTwinHtmlUploadProgress = MutableStateFlow(0)
     val evilTwinHtmlUploadProgress: StateFlow<Int> = _evilTwinHtmlUploadProgress.asStateFlow()
 
-    private val _evilTwinHtmlComplete = MutableStateFlow(false)
+    internal val _evilTwinHtmlComplete = MutableStateFlow(false)
     val evilTwinHtmlComplete: StateFlow<Boolean> = _evilTwinHtmlComplete.asStateFlow()
 
-    private val _portalSsid = MutableStateFlow("")
+    internal val _portalSsid = MutableStateFlow("")
     val portalSsid: StateFlow<String> = _portalSsid.asStateFlow()
 
-    private val _portalChannel = MutableStateFlow(0)
+    internal val _portalChannel = MutableStateFlow(0)
     val portalChannel: StateFlow<Int> = _portalChannel.asStateFlow()
 
-    private val _portalViews = MutableStateFlow(0)
+    internal val _portalViews = MutableStateFlow(0)
     val portalViews: StateFlow<Int> = _portalViews.asStateFlow()
 
-    private val _portalClients = MutableStateFlow(0)
+    internal val _portalClients = MutableStateFlow(0)
     val portalClients: StateFlow<Int> = _portalClients.asStateFlow()
 
-    private val _portalCapturedData = MutableStateFlow(0)
+    internal val _portalCapturedData = MutableStateFlow(0)
     val portalCapturedData: StateFlow<Int> = _portalCapturedData.asStateFlow()
 
-    private val _portalCredentials = MutableStateFlow<List<CapturedCredential>>(emptyList())
+    internal val _portalCredentials = MutableStateFlow<List<CapturedCredential>>(emptyList())
     val portalCredentials: StateFlow<List<CapturedCredential>> = _portalCredentials.asStateFlow()
 
-    private val _portalHtmlUri = MutableStateFlow<Uri?>(null)
+    internal val _portalHtmlUri = MutableStateFlow<Uri?>(null)
     val portalHtmlUri: StateFlow<Uri?> = _portalHtmlUri.asStateFlow()
 
-    private val _portalHtmlName = MutableStateFlow<String?>(null)
+    internal val _portalHtmlName = MutableStateFlow<String?>(null)
     val portalHtmlName: StateFlow<String?> = _portalHtmlName.asStateFlow()
 
-    private val _portalMode = MutableStateFlow<String?>(null)
+    internal val _portalMode = MutableStateFlow<String?>(null)
     val portalMode: StateFlow<String?> = _portalMode.asStateFlow()
 
-    private val _portalEventLog = MutableStateFlow<List<String>>(emptyList())
+    internal val _portalEventLog = MutableStateFlow<List<String>>(emptyList())
     val portalEventLog: StateFlow<List<String>> = _portalEventLog.asStateFlow()
 
-    private val _evilTwinEventLog = MutableStateFlow<List<String>>(emptyList())
+    internal val _evilTwinEventLog = MutableStateFlow<List<String>>(emptyList())
     val evilTwinEventLog: StateFlow<List<String>> = _evilTwinEventLog.asStateFlow()
 
-    private val _evilTwinHtmlUri = MutableStateFlow<Uri?>(null)
-    private val _evilTwinHtmlName = MutableStateFlow<String?>(null)
+    internal val _evilTwinHtmlUri = MutableStateFlow<Uri?>(null)
+    internal val _evilTwinHtmlName = MutableStateFlow<String?>(null)
     val evilTwinHtmlName: StateFlow<String?> = _evilTwinHtmlName.asStateFlow()
 
-    private val _portalHandshake = MutableStateFlow(EapolHandshake())
+    internal val _portalHandshake = MutableStateFlow(EapolHandshake())
     val portalHandshake: StateFlow<EapolHandshake> = _portalHandshake.asStateFlow()
 
-    private val _evilTwinPasswords = MutableStateFlow<List<CapturedPassword>>(emptyList())
+    internal val _evilTwinPasswords = MutableStateFlow<List<CapturedPassword>>(emptyList())
     val evilTwinPasswords: StateFlow<List<CapturedPassword>> = _evilTwinPasswords.asStateFlow()
 
-    private val _portalWpaHandshake = MutableStateFlow(WpaHandshake())
+    internal val _portalWpaHandshake = MutableStateFlow(WpaHandshake())
     val portalWpaHandshake: StateFlow<WpaHandshake> = _portalWpaHandshake.asStateFlow()
 
-    private val _evilTwinResults = MutableStateFlow<List<EvilTwinResult>>(emptyList())
+    internal val _evilTwinResults = MutableStateFlow<List<EvilTwinResult>>(emptyList())
     val evilTwinResults: StateFlow<List<EvilTwinResult>> = _evilTwinResults.asStateFlow()
 
     private val credentialStore = CredentialStore(File(app.filesDir, "Credentials"))
     private val _credentialSessions = MutableStateFlow<List<CredentialSession>>(emptyList())
     val credentialSessions: StateFlow<List<CredentialSession>> = _credentialSessions.asStateFlow()
-    private val credentialLock = Any()
-    private var activeCredentialSession: CredentialSession? = null
-    private var evilTwinAutoStopIssued = false
-    private var activePortalTargetBssid: String = ""
+    internal val credentialLock = Any()
+    internal var activeCredentialSession: CredentialSession? = null
+    internal var evilTwinAutoStopIssued = false
+    internal var activePortalTargetBssid: String = ""
 
     private val _crackerSelectedSession = MutableStateFlow<CredentialSession?>(null)
     val crackerSelectedSession: StateFlow<CredentialSession?> = _crackerSelectedSession.asStateFlow()
@@ -332,15 +332,15 @@ class MainViewModel(internal val app: Application) {
 
     private var crackerJob: Job? = null
 
-    private val _evilTwinCapturePath = MutableStateFlow<String?>(null)
+    internal val _evilTwinCapturePath = MutableStateFlow<String?>(null)
     val evilTwinCapturePath: StateFlow<String?> = _evilTwinCapturePath.asStateFlow()
 
-    private var portalPcapJob: Job? = null
-    private var portalPcapWriter: PcapWriter? = null
-    private var portalPcapFile: File? = null
+    internal var portalPcapJob: Job? = null
+    internal var portalPcapWriter: PcapWriter? = null
+    internal var portalPcapFile: File? = null
     private val exportedCapturePaths = mutableSetOf<String>()
 
-    private var portalStatusJob: Job? = null
+    internal var portalStatusJob: Job? = null
 
     internal val _storageFiles = MutableStateFlow<List<StorageFile>>(emptyList())
     val storageFiles: StateFlow<List<StorageFile>> = _storageFiles.asStateFlow()
@@ -409,8 +409,8 @@ class MainViewModel(internal val app: Application) {
     internal var activeSerialDevice: UsbSerialDevice? = null
     internal var activeDeviceFingerprint: String? = null
     internal var sessionObservers: List<Job> = emptyList()
-    private var pcapWriter: PcapWriter? = null
-    private var pcapJob: Job? = null
+    internal var pcapWriter: PcapWriter? = null
+    internal var pcapJob: Job? = null
 
     init {
         loadExportDirectory()
@@ -614,23 +614,9 @@ class MainViewModel(internal val app: Application) {
 
     fun startMassStorage() = this.startMassStorageImpl()
 
-    fun setEvilTwinHtmlFile(uri: Uri, name: String?) {
-        _evilTwinHtmlUri.value = uri
-        _evilTwinHtmlName.value = name ?: uri.lastPathSegment ?: "evil_twin.html"
-        _evilTwinHtmlUploading.value = false
-        _evilTwinHtmlUploadProgress.value = 0
-        _evilTwinHtmlComplete.value = false
-        appendLog("Evil Twin HTML selected: ${_evilTwinHtmlName.value}")
-    }
+    fun setEvilTwinHtmlFile(uri: Uri, name: String?) = this.setEvilTwinHtmlFileImpl(uri, name)
 
-    fun clearEvilTwinHtmlFile() {
-        _evilTwinHtmlUri.value = null
-        _evilTwinHtmlName.value = null
-        _evilTwinHtmlUploading.value = false
-        _evilTwinHtmlUploadProgress.value = 0
-        _evilTwinHtmlComplete.value = false
-        appendLog("Evil Twin HTML cleared.")
-    }
+    fun clearEvilTwinHtmlFile() = this.clearEvilTwinHtmlFileImpl()
 
     fun setFirmwareFlashFile(uri: Uri, name: String?) = this.setFirmwareFlashFileImpl(uri, name)
 
@@ -675,416 +661,22 @@ class MainViewModel(internal val app: Application) {
         updateForegroundService()
     }
 
-    fun setPortalHtmlFile(uri: Uri, name: String?) {
-        _portalHtmlUri.value = uri
-        _portalHtmlName.value = name ?: uri.lastPathSegment ?: "HTML file"
-        _portalHtmlUploading.value = false
-        _portalHtmlUploadProgress.value = 0
-        _portalHtmlComplete.value = false
-        appendLog("Portal HTML selected: ${_portalHtmlName.value}")
-    }
+    fun setPortalHtmlFile(uri: Uri, name: String?) = this.setPortalHtmlFileImpl(uri, name)
 
-    fun clearPortalHtmlFile() {
-        _portalHtmlUri.value = null
-        _portalHtmlName.value = null
-        _portalHtmlUploading.value = false
-        _portalHtmlUploadProgress.value = 0
-        _portalHtmlComplete.value = false
-        appendLog("Portal HTML cleared; device will use its placeholder page.")
-    }
+    fun clearPortalHtmlFile() = this.clearPortalHtmlFileImpl()
 
-    fun startPortal(ssid: String, channel: Int, targetBssid: String) {
-        startPortalInternal(ssid, channel, targetBssid, _portalHtmlUri.value, "portal")
-    }
+    fun startPortal(ssid: String, channel: Int, targetBssid: String) = this.startPortalImpl(ssid, channel, targetBssid)
 
-    fun startEvilTwin(ssid: String, channel: Int, targetBssid: String) {
-        if (_evilTwinHtmlUri.value == null) {
-            appendLog("Select a custom HTML file before starting Evil Twin.", level = LogLevel.ERROR)
-            return
-        }
-        startPortalInternal(ssid, channel, targetBssid, _evilTwinHtmlUri.value, "evil_twin")
-    }
+    fun startEvilTwin(ssid: String, channel: Int, targetBssid: String) = this.startEvilTwinImpl(ssid, channel, targetBssid)
 
-    private fun startPortalInternal(
-        ssid: String,
-        channel: Int,
-        targetBssid: String,
-        htmlUri: Uri?,
-        mode: String,
-    ) {
-        val activeSession = session
-        if (activeSession == null) {
-            appendLog("Connect to a device before starting the portal.")
-            return
-        }
-        if (_portalRunning.value) return
-        if (!ensureRadioIdle(if (mode == "evil_twin") "Evil Twin" else "Captive Portal")) return
-        _portalMode.value = mode
 
-        val cleanSsid = ssid.trim().ifBlank { "Free WiFi" }
-        val cleanBssid = targetBssid.trim().uppercase()
-        if (cleanBssid.isNotBlank() && !MAC_PATTERN.matches(cleanBssid)) {
-            appendLog("Invalid target BSSID: $cleanBssid")
-            return
-        }
 
-        // Firmware radioIdle() stops other radio tasks when the portal starts.
-        beaconStatusJob?.cancel()
-        beaconStatusJob = null
-        _beaconRunning.value = false
-        if (_sniffing.value) {
-            _sniffing.value = false
-            pcapJob?.cancel()
-            pcapJob = null
-            scope.launch(Dispatchers.IO) {
-                runCatching { pcapWriter?.close() }
-                pcapWriter = null
-            }
-        }
 
-        _portalSsid.value = cleanSsid
-        _portalChannel.value = channel.coerceIn(1, 13)
-        _portalViews.value = 0
-        _portalClients.value = 0
-        _portalCapturedData.value = 0
-        _portalCredentials.value = emptyList()
 
-        scope.launch {
-            val args = JSONObject().apply {
-                put("ssid", cleanSsid)
-                put("channel", channel.coerceIn(1, 13))
-                put("bssid", cleanBssid.ifBlank { "" })
-            }
-            appendLog("Starting captive portal '$cleanSsid' on channel ${channel.coerceIn(1, 13)}...")
-            val response = activeSession.sendCommand("START_PORTAL", args, timeoutMs = 15_000)
-            if (response?.optBoolean("ok") != true) {
-                appendLog("Failed to start portal: ${response?.optString("msg") ?: "timeout"}")
-                return@launch
-            }
 
-            _portalRunning.value = true
-            updateForegroundService()
-            _portalHtmlSize.value = 0
-            if (mode == "evil_twin") {
-                _evilTwinHtmlUploading.value = false
-                _evilTwinHtmlUploadProgress.value = 0
-            } else {
-                _portalHtmlUploading.value = false
-                _portalHtmlUploadProgress.value = 0
-            }
-            _portalHandshake.value = EapolHandshake()
-            _portalWpaHandshake.value = WpaHandshake()
 
-            activePortalTargetBssid = cleanBssid
-            if (mode == "evil_twin") {
-                _evilTwinPasswords.value = emptyList()
-                _evilTwinResults.value = emptyList()
-                _evilTwinEventLog.value = emptyList()
-            }
-            synchronized(credentialLock) {
-                activeCredentialSession = CredentialSession(
-                    id = System.currentTimeMillis().toString(),
-                    source = if (mode == "evil_twin") {
-                        CredentialSource.EVIL_TWIN
-                    } else {
-                        CredentialSource.PORTAL
-                    },
-                    ssid = cleanSsid,
-                    bssid = cleanBssid,
-                    channel = channel.coerceIn(1, 13),
-                    startedAt = timestampNow(),
-                    endedAt = null,
-                    pcapPath = null,
-                    credentials = emptyList(),
-                )
-                evilTwinAutoStopIssued = false
-            }
+    fun clearEvilTwinPasswords() = this.clearEvilTwinPasswordsImpl()
 
-            if (cleanBssid.isNotBlank()) {
-                portalPcapJob?.cancel()
-                runCatching { portalPcapWriter?.close() }
-                portalPcapWriter = null
-                portalPcapFile = null
-                _evilTwinCapturePath.value = null
-
-                val captureDir = File(app.filesDir, "EvilTwin")
-                if (captureDir.exists() || captureDir.mkdirs()) {
-                    val macName = cleanBssid.replace(":", "").uppercase()
-                    val captureFile = File(captureDir, "${macName}_eviltwin_${System.currentTimeMillis()}.pcap")
-                    portalPcapWriter = runCatching { PcapWriter(captureFile) }.getOrNull()
-                    portalPcapFile = captureFile
-                    _evilTwinCapturePath.value = captureFile.absolutePath
-                    synchronized(credentialLock) {
-                        activeCredentialSession = activeCredentialSession?.copy(
-                            pcapPath = captureFile.absolutePath,
-                        )
-                    }
-                    if (portalPcapWriter != null) {
-                        appendLog("Evil Twin capture: ${captureFile.absolutePath}")
-                    } else {
-                        appendLog("Could not create Evil Twin PCAP capture file.")
-                    }
-                }
-
-                val captureHandshake = EapolHandshake()
-                val wpaHandshake = WpaHandshake()
-                var handshakeWasComplete = false
-                portalPcapJob = scope.launch(Dispatchers.IO) {
-                    try {
-                        activeSession.pcap.collect { frame ->
-                            runCatching {
-                                portalPcapWriter?.writePacket(frame)
-                                EapolParser.parse(frame, captureHandshake)
-                                _portalHandshake.value = captureHandshake.copy()
-                                WpaHandshakeParser.parse(frame, wpaHandshake)
-                                _portalWpaHandshake.value = wpaHandshake.copyHandshake()
-
-                                val completeNow = wpaHandshake.isComplete
-                                if (completeNow != handshakeWasComplete) {
-                                    handshakeWasComplete = completeNow
-                                    verifyEvilTwinPasswords()
-                                }
-                            }.onFailure { error ->
-                                appendLog("Evil Twin capture parse/write error: ${error.message}")
-                            }
-                        }
-                    } catch (_: Throwable) {
-                        // USB unplug can end the flow abruptly; cleanup handles state.
-                    }
-                }
-            }
-            htmlCompleteFlow().value = false
-
-            if (htmlUri != null) {
-                val bytes = withContext(Dispatchers.IO) {
-                    runCatching {
-                        app.contentResolver
-                            .openInputStream(htmlUri)
-                            ?.use { it.readBytes() }
-                    }.getOrNull()
-                }
-                if (bytes == null) {
-                    appendLog("Could not read the selected HTML file.")
-                } else if (bytes.isEmpty()) {
-                    appendLog("Selected HTML file is empty; using device placeholder.")
-                } else if (!uploadPortalHtml(activeSession, bytes)) {
-                    appendLog("Portal HTML upload failed; device may be serving its placeholder page.")
-                }
-            }
-
-            startPortalStatusPolling(activeSession)
-            appendLog("Portal is running.")
-            addHistory("portal", "Portal started: $cleanSsid", HistoryLevel.SUCCESS)
-        }
-    }
-
-    private fun htmlUploadingFlow(): MutableStateFlow<Boolean> {
-        return if (_portalMode.value == "evil_twin") _evilTwinHtmlUploading else _portalHtmlUploading
-    }
-
-    private fun htmlUploadProgressFlow(): MutableStateFlow<Int> {
-        return if (_portalMode.value == "evil_twin") _evilTwinHtmlUploadProgress else _portalHtmlUploadProgress
-    }
-
-    private fun htmlCompleteFlow(): MutableStateFlow<Boolean> {
-        return if (_portalMode.value == "evil_twin") _evilTwinHtmlComplete else _portalHtmlComplete
-    }
-
-    private suspend fun uploadPortalHtml(session: NrSession, bytes: ByteArray): Boolean {
-        val complete = htmlCompleteFlow()
-        complete.value = false
-        val uploading = htmlUploadingFlow()
-        val progress = htmlUploadProgressFlow()
-        uploading.value = true
-        progress.value = 0
-        return try {
-            uploadPortalHtmlInternal(session, bytes)
-        } finally {
-            uploading.value = false
-            if (complete.value) {
-                progress.value = 100
-            }
-        }
-    }
-
-    private suspend fun uploadPortalHtmlInternal(session: NrSession, bytes: ByteArray): Boolean {
-        val maxHtmlSize = 24 * 1024
-        if (bytes.size > maxHtmlSize) {
-            appendLog("HTML upload rejected: ${bytes.size} bytes exceeds firmware limit of $maxHtmlSize bytes.")
-            return false
-        }
-
-        val supportsOffset = (_connectionState.value as? ConnectionState.Connected)
-            ?.features
-            ?.contains("portal_html_offset") == true
-        appendLog(
-            "Uploading HTML: ${bytes.size} bytes in " +
-                "${(bytes.size + HTML_RAW_CHUNK_SIZE - 1) / HTML_RAW_CHUNK_SIZE} chunk(s) " +
-                "(mode=${if (supportsOffset) "offset" else "legacy-append"})."
-        )
-
-        val reset = session.sendCommand(
-            "RESET_HTML",
-            JSONObject().put("size", bytes.size),
-            timeoutMs = 10_000,
-        )
-        if (reset?.optBoolean("ok") != true) {
-            appendLog("Device rejected RESET_HTML (size=${bytes.size}).")
-            return false
-        }
-
-        delay(250)
-        var offset = 0
-        var chunkIndex = 0
-        while (offset < bytes.size) {
-            val end = minOf(offset + HTML_RAW_CHUNK_SIZE, bytes.size)
-            val chunk = bytes.copyOfRange(offset, end)
-            val encoded = android.util.Base64.encodeToString(chunk, android.util.Base64.NO_WRAP)
-            val isLast = end == bytes.size
-
-            var success = false
-            for (attempt in 1..3) {
-                val args = JSONObject().apply {
-                    put("data", encoded)
-                    put("last", isLast)
-                    if (supportsOffset) {
-                        put("offset", offset)
-                    }
-                }
-                val response = session.sendCommand("SET_HTML_CHUNK", args, timeoutMs = 5_000)
-                if (response?.optBoolean("ok") == true) {
-                    success = true
-                    break
-                }
-                appendLog(
-                    "HTML chunk $chunkIndex offset $offset attempt $attempt failed: " +
-                        (response ?: "timeout")
-                )
-                delay(400)
-            }
-            if (!success) {
-                appendLog("HTML upload aborted at chunk $chunkIndex (offset $offset).")
-                return false
-            }
-
-            offset = end
-            chunkIndex++
-            _portalHtmlSize.value = offset
-            htmlUploadProgressFlow().value = ((offset * 100) / bytes.size).coerceIn(0, 100)
-            if (isLast) appendLog("HTML final chunk sent (${bytes.size} bytes at offset $end).")
-            delay(80)
-        }
-
-        delay(350)
-        var status = session.sendCommand("PORTAL_STATUS", timeoutMs = 5_000)
-        var complete = status?.optBoolean("html_complete") == true
-        if (!complete) {
-            delay(500)
-            status = session.sendCommand("PORTAL_STATUS", timeoutMs = 5_000) ?: status
-            complete = status?.optBoolean("html_complete") == true
-        }
-
-        val deviceSize = status?.optInt("html_size", 0) ?: 0
-        val deviceExpected = status?.optInt("html_expected", bytes.size) ?: bytes.size
-        if (!complete) {
-            appendLog(
-                "HTML upload did not complete on device " +
-                    "(device reports size=$deviceSize, expected=$deviceExpected)."
-            )
-            return false
-        }
-        if (deviceSize < bytes.size) {
-            appendLog("HTML size mismatch: sent ${bytes.size} bytes, device reports $deviceSize.")
-            return false
-        }
-        if (deviceSize > bytes.size + HTML_TAIL_ALLOWANCE) {
-            appendLog("HTML buffer looks corrupted: sent ${bytes.size} bytes, device reports $deviceSize.")
-            return false
-        }
-
-        appendLog("HTML upload complete; device reports $deviceSize bytes (expected $deviceExpected).")
-        htmlCompleteFlow().value = true
-        return true
-    }
-
-    fun clearEvilTwinPasswords() {
-        _evilTwinPasswords.value = emptyList()
-        _evilTwinResults.value = emptyList()
-    }
-
-    private fun verifyEvilTwinPasswords() {
-        val handshake = _portalWpaHandshake.value
-        val ssid = _portalSsid.value
-        val finalStatuses = setOf(
-            EvilTwinResult.Status.CORRECT,
-            EvilTwinResult.Status.INCORRECT,
-            EvilTwinResult.Status.INVALID_LENGTH,
-        )
-        val previousByPassword = _evilTwinResults.value.associateBy { it.password }
-
-        val mapped = _evilTwinPasswords.value.map { captured ->
-            val password = captured.value
-            val existing = previousByPassword[password]?.status
-            val status = when {
-                existing in finalStatuses -> existing!!
-                !handshake.isComplete -> EvilTwinResult.Status.PENDING
-                password.length !in 8..63 -> EvilTwinResult.Status.INVALID_LENGTH
-                WpaHandshakeVerifier.verify(handshake, ssid, password) -> EvilTwinResult.Status.CORRECT
-                else -> EvilTwinResult.Status.INCORRECT
-            }
-            EvilTwinResult(
-                password = password,
-                status = status,
-                timestamp = captured.capturedAt,
-            )
-        }
-
-        val correctResults = mapped.filter { it.status == EvilTwinResult.Status.CORRECT }
-        _evilTwinResults.value = if (correctResults.isNotEmpty()) correctResults else mapped
-
-        val correct = correctResults.firstOrNull() ?: return
-        val shouldStop = synchronized(credentialLock) {
-            if (evilTwinAutoStopIssued) {
-                false
-            } else {
-                evilTwinAutoStopIssued = true
-                val credential = CapturedCredential(
-                    value = correct.password,
-                    capturedAt = correct.timestamp,
-                    status = CredentialStatus.CORRECT,
-                    source = CredentialSource.EVIL_TWIN,
-                )
-                val current = activeCredentialSession
-                val finished = (current ?: CredentialSession(
-                    id = System.currentTimeMillis().toString(),
-                    source = CredentialSource.EVIL_TWIN,
-                    ssid = ssid.ifBlank { "(hidden)" },
-                    bssid = activePortalTargetBssid,
-                    channel = _portalChannel.value.takeIf { it > 0 },
-                    startedAt = timestampNow(),
-                    endedAt = null,
-                    pcapPath = portalPcapFile?.absolutePath,
-                    credentials = emptyList(),
-                )).copy(
-                    endedAt = timestampNow(),
-                    pcapPath = current?.pcapPath ?: portalPcapFile?.absolutePath,
-                    credentials = listOf(credential),
-                )
-                activeCredentialSession = null
-                upsertCredentialSessionLocked(finished)
-                appendLog("Correct password captured; stopping Evil Twin...")
-                addHistory(
-                    "evil_twin",
-                    "Correct password captured for ${ssid.ifBlank { "target" }}",
-                    HistoryLevel.SUCCESS,
-                )
-                true
-            }
-        }
-        if (shouldStop) {
-            stopPortal()
-        }
-    }
 
     private fun loadCredentialSessions() {
         scope.launch(Dispatchers.IO) {
@@ -1095,7 +687,7 @@ class MainViewModel(internal val app: Application) {
         }
     }
 
-    private fun timestampNow(): String =
+    internal fun timestampNow(): String =
         LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 
     private fun timeHmNow(): String =
@@ -1175,7 +767,7 @@ class MainViewModel(internal val app: Application) {
         appendLog("Saved WPA Cracker result for ${ssid.ifBlank { displayName }}.")
     }
 
-    private fun upsertCredentialSessionLocked(session: CredentialSession) {
+    internal fun upsertCredentialSessionLocked(session: CredentialSession) {
         val updated = (_credentialSessions.value.filterNot { it.id == session.id } + session)
             .sortedByDescending { it.startedAt }
         _credentialSessions.value = updated
@@ -1201,7 +793,7 @@ class MainViewModel(internal val app: Application) {
         upsertCredentialSessionLocked(finished)
     }
 
-    private fun finishActiveCredentialSession() {
+    internal fun finishActiveCredentialSession() {
         synchronized(credentialLock) {
             finishActiveCredentialSessionLocked()
         }
@@ -1572,73 +1164,13 @@ class MainViewModel(internal val app: Application) {
         crackerJob?.cancel()
     }
 
-    fun clearEvilTwinEventLog() {
-        _evilTwinEventLog.value = emptyList()
-    }
+    fun clearEvilTwinEventLog() = this.clearEvilTwinEventLogImpl()
 
-    fun clearPortalEventLog() {
-        _portalEventLog.value = emptyList()
-    }
+    fun clearPortalEventLog() = this.clearPortalEventLogImpl()
 
-    private fun portalLog(message: String) {
-        val timestamp = java.time.LocalTime.now()
-            .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
-        val line = "[$timestamp] $message"
-        if (_portalMode.value == "evil_twin") {
-            _evilTwinEventLog.update { (it + line).takeLast(300) }
-        } else {
-            _portalEventLog.update { (it + line).takeLast(300) }
-        }
-    }
 
-    fun stopPortal() {
-        finishActiveCredentialSession()
-        if (!_portalRunning.value) return
-        portalStatusJob?.cancel()
-        portalStatusJob = null
-        portalPcapJob?.cancel()
-        portalPcapJob = null
-        val savedCapture = portalPcapFile
-        runCatching { portalPcapWriter?.close() }
-        portalPcapWriter = null
-        portalPcapFile = null
-        exportPcapToRootIfConfigured(savedCapture)
-        _portalRunning.value = false
-        _portalMode.value = null
-        updateForegroundService()
+    fun stopPortal() = this.stopPortalImpl()
 
-        val activeSession = session
-        scope.launch {
-            val response = runCatching {
-                activeSession?.sendCommand("STOP_PORTAL", timeoutMs = 8_000)
-            }.getOrNull()
-            if (response?.optBoolean("ok") == true) {
-                appendLog("Portal stopped.")
-                savedCapture?.let { appendLog("Evil Twin capture saved: ${it.absolutePath}") }
-                addHistory("portal", "Portal stopped", HistoryLevel.SUCCESS)
-            } else {
-                appendLog("Portal stop request sent, but the device did not confirm.")
-            }
-        }
-    }
-
-    private fun startPortalStatusPolling(activeSession: NrSession) {
-        portalStatusJob?.cancel()
-        portalStatusJob = scope.launch {
-            while (isActive && _portalRunning.value) {
-                delay(3_000)
-                if (_connectionState.value !is ConnectionState.Connected) break
-                val response = runCatching {
-                    activeSession.sendCommand("PORTAL_STATUS", timeoutMs = 4_000)
-                }.getOrNull() ?: continue
-                if (response.optBoolean("ok")) {
-                    _portalRunning.value = response.optBoolean("running", _portalRunning.value)
-                    _portalHtmlSize.value = response.optInt("html_size", _portalHtmlSize.value)
-                    htmlCompleteFlow().value = response.optBoolean("html_complete", htmlCompleteFlow().value)
-                }
-            }
-        }
-    }
 
     fun setBlePayload(uri: Uri, name: String?) = this.setBlePayloadImpl(uri, name)
 
@@ -1692,7 +1224,7 @@ class MainViewModel(internal val app: Application) {
         }
         if (_deauthRunning.value) return
         if (!ensureRadioIdle("Deauthentication")) return
-        stopLocalPortal()
+        this.stopLocalPortalImpl()
 
         val cleanBssid = bssid.trim().uppercase()
         val cleanClient = client.trim().ifBlank { "FF:FF:FF:FF:FF:FF" }.uppercase()
@@ -1766,7 +1298,7 @@ class MainViewModel(internal val app: Application) {
         }
         if (_beaconRunning.value) return
         if (!ensureRadioIdle("Beacon Broadcast")) return
-        stopLocalPortal()
+        this.stopLocalPortalImpl()
 
         val cleanSsids = ssids.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         if (cleanSsids.isEmpty()) {
@@ -1851,7 +1383,7 @@ class MainViewModel(internal val app: Application) {
         beaconStatusJob?.cancel()
         beaconStatusJob = null
         _beaconRunning.value = false
-        stopLocalPortal()
+        this.stopLocalPortalImpl()
 
         val captureName = "capture_${System.currentTimeMillis()}.pcap"
         val exportUri = _exportDirectory.value
@@ -2012,7 +1544,7 @@ class MainViewModel(internal val app: Application) {
         }
     }
 
-    private fun ensureRadioIdle(requested: String): Boolean {
+    internal fun ensureRadioIdle(requested: String): Boolean {
         val active = activeRadioLabel()
         if (active == null) return true
         val message = "Cannot start $requested while $active is active. Stop $active first."
@@ -2045,20 +1577,6 @@ class MainViewModel(internal val app: Application) {
         }
     }
 
-    private fun stopLocalPortal(sendStop: Boolean = true) {
-        portalStatusJob?.cancel()
-        portalStatusJob = null
-        if (!_portalRunning.value) return
-        _portalRunning.value = false
-        if (sendStop) {
-            val current = session
-            if (current != null) {
-                scope.launch {
-                    runCatching { current.sendCommand("STOP_PORTAL", timeoutMs = 4_000) }
-                }
-            }
-        }
-    }
 
     fun disconnect() {
         val current = session
@@ -2123,7 +1641,7 @@ class MainViewModel(internal val app: Application) {
                             _portalViews.update { it + 1 }
                             val ip = event.optString("client_ip", "unknown")
                             appendLog("Portal viewed from $ip.")
-                            portalLog("GET / from $ip")
+                            this@MainViewModel.portalLogImpl("GET / from $ip")
                         }
                         "captive_data" -> {
                             _portalCapturedData.update { it + 1 }
@@ -2134,7 +1652,7 @@ class MainViewModel(internal val app: Application) {
                                 "$key=${data.optString(key)}"
                             } ?: ""
                             appendLog("Captive data received from $ip.")
-                            portalLog("POST /login from $ip | UA: $userAgent | data: $fields")
+                            this@MainViewModel.portalLogImpl("POST /login from $ip | UA: $userAgent | data: $fields")
                             val details = linkedMapOf<String, String>()
                             data?.keys()?.forEach { key ->
                                 details[key] = data.optString(key)
@@ -2150,7 +1668,7 @@ class MainViewModel(internal val app: Application) {
                                 _evilTwinPasswords.update {
                                     (it + CapturedPassword(submittedPassword, capturedAt)).takeLast(50)
                                 }
-                                verifyEvilTwinPasswords()
+                                this@MainViewModel.verifyEvilTwinPasswordsImpl()
                             } else if (_portalMode.value == "portal" && details.isNotEmpty()) {
                                 val capturedAt = java.time.LocalTime.now()
                                     .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
@@ -2178,12 +1696,12 @@ class MainViewModel(internal val app: Application) {
                             val client = event.optString("client")
                             val rssi = event.optInt("rssi")
                             appendLog("Client associated: $client ($rssi dBm).")
-                            portalLog("Client associated: $client ($rssi dBm)")
+                            this@MainViewModel.portalLogImpl("Client associated: $client ($rssi dBm)")
                         }
                         "deauth_stats" -> {
                             _deauthSent.value = event.optInt("sent_frames", _deauthSent.value)
                             appendLog("Deauth stats: ${_deauthSent.value} frame(s) sent.")
-                            portalLog("Deauth stats: ${_deauthSent.value} frame(s) sent")
+                            this@MainViewModel.portalLogImpl("Deauth stats: ${_deauthSent.value} frame(s) sent")
                         }
                         "heartbeat" -> Unit
                     }
@@ -2271,7 +1789,7 @@ class MainViewModel(internal val app: Application) {
             ?: "Selected folder"
     }
 
-    private fun exportPcapToRootIfConfigured(sourceFile: File?) {
+    internal fun exportPcapToRootIfConfigured(sourceFile: File?) {
         val rootUri = _exportDirectory.value ?: return
         if (sourceFile == null || !sourceFile.exists() || sourceFile.length() == 0L) return
 
@@ -2350,8 +1868,6 @@ class MainViewModel(internal val app: Application) {
         private const val PREF_HISTORY = "session_history"
         internal const val PREF_LAST_DEVICE_FINGERPRINT = "last_device_fingerprint"
         private const val PREF_RECENT_MODULES = "recent_modules"
-        private val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
-        private const val HTML_RAW_CHUNK_SIZE = 512
-        private const val HTML_TAIL_ALLOWANCE = 64
+        internal val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
     }
 }
