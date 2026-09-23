@@ -342,68 +342,68 @@ class MainViewModel(internal val app: Application) {
 
     private var portalStatusJob: Job? = null
 
-    private val _storageFiles = MutableStateFlow<List<StorageFile>>(emptyList())
+    internal val _storageFiles = MutableStateFlow<List<StorageFile>>(emptyList())
     val storageFiles: StateFlow<List<StorageFile>> = _storageFiles.asStateFlow()
 
-    private val _storageTotal = MutableStateFlow(0L)
+    internal val _storageTotal = MutableStateFlow(0L)
     val storageTotal: StateFlow<Long> = _storageTotal.asStateFlow()
 
-    private val _storageUsed = MutableStateFlow(0L)
+    internal val _storageUsed = MutableStateFlow(0L)
     val storageUsed: StateFlow<Long> = _storageUsed.asStateFlow()
 
-    private val _storageFree = MutableStateFlow(0L)
+    internal val _storageFree = MutableStateFlow(0L)
     val storageFree: StateFlow<Long> = _storageFree.asStateFlow()
 
-    private val _storageLoading = MutableStateFlow(false)
+    internal val _storageLoading = MutableStateFlow(false)
     val storageLoading: StateFlow<Boolean> = _storageLoading.asStateFlow()
 
-    private val _badUsbPayloadUri = MutableStateFlow<Uri?>(null)
+    internal val _badUsbPayloadUri = MutableStateFlow<Uri?>(null)
     val badUsbPayloadUri: StateFlow<Uri?> = _badUsbPayloadUri.asStateFlow()
 
-    private val _badUsbPayloadName = MutableStateFlow<String?>(null)
+    internal val _badUsbPayloadName = MutableStateFlow<String?>(null)
     val badUsbPayloadName: StateFlow<String?> = _badUsbPayloadName.asStateFlow()
 
-    private val _badUsbSavedScriptText = MutableStateFlow<String?>(null)
+    internal val _badUsbSavedScriptText = MutableStateFlow<String?>(null)
 
-    private val _bleSavedScriptText = MutableStateFlow<String?>(null)
+    internal val _bleSavedScriptText = MutableStateFlow<String?>(null)
 
-    private val _duckyScriptMap = MutableStateFlow<Map<String, String>>(emptyMap())
+    internal val _duckyScriptMap = MutableStateFlow<Map<String, String>>(emptyMap())
     val duckyScriptMap: StateFlow<Map<String, String>> = _duckyScriptMap.asStateFlow()
 
-    private val _badUsbUploading = MutableStateFlow(false)
+    internal val _badUsbUploading = MutableStateFlow(false)
     val badUsbUploading: StateFlow<Boolean> = _badUsbUploading.asStateFlow()
 
-    private val _badUsbProgress = MutableStateFlow(0)
+    internal val _badUsbProgress = MutableStateFlow(0)
     val badUsbProgress: StateFlow<Int> = _badUsbProgress.asStateFlow()
 
-    private val _bleAdvertising = MutableStateFlow(false)
+    internal val _bleAdvertising = MutableStateFlow(false)
     val bleAdvertising: StateFlow<Boolean> = _bleAdvertising.asStateFlow()
 
-    private val _bleConnected = MutableStateFlow(false)
+    internal val _bleConnected = MutableStateFlow(false)
     val bleConnected: StateFlow<Boolean> = _bleConnected.asStateFlow()
 
-    private val _blePeer = MutableStateFlow("")
+    internal val _blePeer = MutableStateFlow("")
     val blePeer: StateFlow<String> = _blePeer.asStateFlow()
 
-    private val _blePayloadUri = MutableStateFlow<Uri?>(null)
+    internal val _blePayloadUri = MutableStateFlow<Uri?>(null)
     val blePayloadUri: StateFlow<Uri?> = _blePayloadUri.asStateFlow()
 
-    private val _blePayloadName = MutableStateFlow<String?>(null)
+    internal val _blePayloadName = MutableStateFlow<String?>(null)
     val blePayloadName: StateFlow<String?> = _blePayloadName.asStateFlow()
 
-    private val _bleModifiers = MutableStateFlow<Set<String>>(emptySet())
+    internal val _bleModifiers = MutableStateFlow<Set<String>>(emptySet())
     val bleModifiers: StateFlow<Set<String>> = _bleModifiers.asStateFlow()
 
-    private val _bleModifierHold = MutableStateFlow(false)
+    internal val _bleModifierHold = MutableStateFlow(false)
     val bleModifierHold: StateFlow<Boolean> = _bleModifierHold.asStateFlow()
 
-    private val _bleScriptRunning = MutableStateFlow(false)
+    internal val _bleScriptRunning = MutableStateFlow(false)
     val bleScriptRunning: StateFlow<Boolean> = _bleScriptRunning.asStateFlow()
 
-    private val bleTypeBuffer = StringBuilder()
-    private var bleTypeJob: Job? = null
+    internal val bleTypeBuffer = StringBuilder()
+    internal var bleTypeJob: Job? = null
 
-    private var bleStatusJob: Job? = null
+    internal var bleStatusJob: Job? = null
 
     internal var session: NrSession? = null
     internal var activeSerialDevice: UsbSerialDevice? = null
@@ -415,7 +415,7 @@ class MainViewModel(internal val app: Application) {
     init {
         loadExportDirectory()
         loadBeaconLists()
-        loadDuckyScripts()
+        this.loadDuckyScriptsImpl()
         loadHistory()
         loadCredentialSessions()
         refreshDevices()
@@ -592,248 +592,27 @@ class MainViewModel(internal val app: Application) {
         }
     }
 
-    fun setBadUsbPayload(uri: Uri, name: String?) {
-        _badUsbPayloadUri.value = uri
-        _badUsbPayloadName.value = name ?: uri.lastPathSegment ?: "payload.txt"
-        _badUsbProgress.value = 0
-        appendLog("BadUSB payload selected: ${_badUsbPayloadName.value}")
-    }
+    fun setBadUsbPayload(uri: Uri, name: String?) = this.setBadUsbPayloadImpl(uri, name)
 
-    fun clearBadUsbPayload() {
-        _badUsbPayloadUri.value = null
-        _badUsbPayloadName.value = null
-        _badUsbSavedScriptText.value = null
-        _badUsbProgress.value = 0
-        appendLog("BadUSB payload cleared.")
-    }
+    fun clearBadUsbPayload() = this.clearBadUsbPayloadImpl()
 
-    fun saveDuckyScript(name: String, script: String) {
-        val cleanName = name.trim()
-        if (cleanName.isBlank()) return
-        _duckyScriptMap.update { it + (cleanName to script) }
-        persistDuckyScripts()
-        appendLog("Saved DuckyScript '$cleanName'.")
-    }
+    fun saveDuckyScript(name: String, script: String) = this.saveDuckyScriptImpl(name, script)
 
-    fun deleteDuckyScript(name: String) {
-        _duckyScriptMap.update { it - name }
-        persistDuckyScripts()
-        appendLog("Deleted DuckyScript '$name'.")
-    }
+    fun deleteDuckyScript(name: String) = this.deleteDuckyScriptImpl(name)
 
-    fun useBadUsbSavedScript(name: String) {
-        val script = _duckyScriptMap.value[name] ?: return
-        _badUsbPayloadUri.value = null
-        _badUsbPayloadName.value = name
-        _badUsbSavedScriptText.value = script
-        appendLog("BadUSB script selected: $name")
-    }
+    fun useBadUsbSavedScript(name: String) = this.useBadUsbSavedScriptImpl(name)
 
-    fun useBleSavedScript(name: String) {
-        val script = _duckyScriptMap.value[name] ?: return
-        _blePayloadUri.value = null
-        _blePayloadName.value = name
-        _bleSavedScriptText.value = script
-        appendLog("BLE script selected: $name")
-    }
+    fun useBleSavedScript(name: String) = this.useBleSavedScriptImpl(name)
 
-    private fun loadDuckyScripts() {
-        val raw = preferences.getString(PREF_DUCKY_SCRIPTS, null) ?: return
-        runCatching {
-            val json = JSONObject(raw)
-            val map = mutableMapOf<String, String>()
-            json.keys().forEach { key -> map[key] = json.optString(key, "") }
-            _duckyScriptMap.value = map
-        }
-    }
 
-    private fun persistDuckyScripts() {
-        val json = JSONObject()
-        _duckyScriptMap.value.forEach { (name, script) -> json.put(name, script) }
-        preferences.edit().putString(PREF_DUCKY_SCRIPTS, json.toString()).apply()
-    }
 
-    fun armBadUsb(mscMode: Boolean) {
-        val activeSession = session
-        if (activeSession == null) {
-            appendLog("Connect to a device before arming a BadUSB payload.")
-            return
-        }
-        if (_badUsbUploading.value) return
+    fun armBadUsb(mscMode: Boolean) = this.armBadUsbImpl(mscMode)
 
-        val chip = (_connectionState.value as? ConnectionState.Connected)?.chip
-        if (chip !in setOf("ESP32-S2", "ESP32-S3")) {
-            appendLog("BadUSB requires ESP32-S2 or ESP32-S3 (connected chip: ${chip ?: "unknown"}).")
-            return
-        }
+    fun refreshStorage() = this.refreshStorageImpl()
 
-        val payloadUri = _badUsbPayloadUri.value
-        val savedScript = _badUsbSavedScriptText.value
-        if (payloadUri == null && savedScript == null) {
-            appendLog("Choose a DuckyScript payload first.")
-            return
-        }
+    fun deleteStorageFile(name: String) = this.deleteStorageFileImpl(name)
 
-        scope.launch {
-            _badUsbUploading.value = true
-            _badUsbProgress.value = 0
-            try {
-                val bytes = savedScript?.toByteArray(Charsets.UTF_8)
-                    ?: withContext(Dispatchers.IO) {
-                        runCatching {
-                            payloadUri?.let {
-                                app.contentResolver
-                                    .openInputStream(it)
-                                    ?.use { stream -> stream.readBytes() }
-                            }
-                        }.getOrNull()
-                    }
-                if (bytes == null) {
-                    appendLog("Could not read the selected BadUSB payload.")
-                    return@launch
-                }
-                if (bytes.isEmpty()) {
-                    appendLog("BadUSB payload is empty.")
-                    return@launch
-                }
-
-                val remoteFilename = "ducky.txt"
-                var offset = 0
-                while (offset < bytes.size) {
-                    val end = minOf(offset + BADUSB_RAW_CHUNK_SIZE, bytes.size)
-                    val chunk = bytes.copyOfRange(offset, end)
-                    val encoded = android.util.Base64.encodeToString(chunk, android.util.Base64.NO_WRAP)
-                    val isLast = end == bytes.size
-
-                    var success = false
-                    for (attempt in 1..3) {
-                        val response = activeSession.sendCommand(
-                            "SET_FILE_CHUNK",
-                            JSONObject().apply {
-                                put("filename", remoteFilename)
-                                put("data", encoded)
-                                put("last", isLast)
-                            },
-                            timeoutMs = 6_000,
-                        )
-                        if (response?.optBoolean("ok") == true) {
-                            success = true
-                            break
-                        }
-                        appendLog("BadUSB chunk attempt $attempt failed; retrying...")
-                        delay(300)
-                    }
-                    if (!success) {
-                        appendLog("BadUSB upload failed at byte $offset.")
-                        return@launch
-                    }
-
-                    offset = end
-                    _badUsbProgress.value = ((offset * 100) / bytes.size)
-                }
-
-                val response = activeSession.sendCommand(
-                    "START_BADUSB",
-                    JSONObject().apply {
-                        put("filename", remoteFilename)
-                        put("msc", mscMode)
-                    },
-                    timeoutMs = 10_000,
-                )
-                if (response?.optBoolean("ok") == true) {
-                    appendLog("BadUSB payload armed. Unplug and re-plug the device to execute it once.")
-                    addHistory("badusb", "Payload armed for next boot", HistoryLevel.SUCCESS)
-                } else {
-                    appendLog("Failed to arm BadUSB payload: ${response?.optString("msg") ?: "timeout"}")
-                }
-            } finally {
-                _badUsbUploading.value = false
-            }
-        }
-    }
-
-    fun refreshStorage() {
-        val activeSession = session
-        if (activeSession == null) {
-            appendLog("Connect to a device before browsing storage.")
-            return
-        }
-        if (_storageLoading.value) return
-
-        _storageLoading.value = true
-        scope.launch {
-            val response = activeSession.sendCommand("MSC_LIST", timeoutMs = 8_000)
-            _storageLoading.value = false
-            if (response?.optBoolean("ok") != true) {
-                appendLog("Failed to list storage: ${response?.optString("msg") ?: "timeout"}")
-                return@launch
-            }
-
-            _storageTotal.value = response.optLong("total", 0L)
-            _storageUsed.value = response.optLong("used", 0L)
-            _storageFree.value = response.optLong("free", 0L)
-
-            val files = mutableListOf<StorageFile>()
-            val jsonFiles = response.optJSONArray("files")
-            if (jsonFiles != null) {
-                for (index in 0 until jsonFiles.length()) {
-                    val item = jsonFiles.optJSONObject(index) ?: continue
-                    files += StorageFile(
-                        name = item.optString("name"),
-                        size = item.optInt("size", 0),
-                    )
-                }
-            }
-            _storageFiles.value = files
-            appendLog("Storage: ${files.size} file(s), ${_storageFree.value} bytes free.")
-        }
-    }
-
-    fun deleteStorageFile(name: String) {
-        val activeSession = session
-        if (activeSession == null) {
-            appendLog("Connect to a device before deleting files.")
-            return
-        }
-        scope.launch {
-            val response = activeSession.sendCommand(
-                "MSC_DELETE",
-                JSONObject().put("path", name),
-                timeoutMs = 8_000,
-            )
-            if (response?.optBoolean("ok") == true) {
-                appendLog("Deleted $name.")
-                refreshStorage()
-            } else {
-                appendLog("Failed to delete $name: ${response?.optString("msg") ?: "timeout"}")
-            }
-        }
-    }
-
-    fun startMassStorage() {
-        val activeSession = session
-        if (activeSession == null) {
-            appendLog("Connect to a device before entering mass storage mode.")
-            return
-        }
-        val chip = (_connectionState.value as? ConnectionState.Connected)?.chip
-        if (chip !in setOf("ESP32-S2", "ESP32-S3")) {
-            appendLog("Mass storage start requires ESP32-S2 or ESP32-S3 (connected chip: ${chip ?: "unknown"}).")
-            return
-        }
-
-        scope.launch {
-            appendLog("Switching device to USB mass storage mode...")
-            val response = activeSession.sendCommand("START_MSC", timeoutMs = 5_000)
-            if (response?.optBoolean("ok") == true) {
-                appendLog("Device is rebooting into mass storage mode; the USB bridge will disappear.")
-            } else if (response == null) {
-                appendLog("No response, expected: USB is re-enumerating as mass storage.")
-            } else {
-                appendLog("Device refused mass storage mode: ${response.optString("msg")}")
-            }
-        }
-    }
+    fun startMassStorage() = this.startMassStorageImpl()
 
     fun setEvilTwinHtmlFile(uri: Uri, name: String?) {
         _evilTwinHtmlUri.value = uri
@@ -882,7 +661,7 @@ class MainViewModel(internal val app: Application) {
         _bleAdvertising.value = false
         _bleConnected.value = false
         _bleScriptRunning.value = false
-        clearBleRealtimeState()
+        this.clearBleRealtimeStateImpl()
         _portalMode.value = null
 
         val captureToExport = portalPcapFile
@@ -1861,333 +1640,42 @@ class MainViewModel(internal val app: Application) {
         }
     }
 
-    fun setBlePayload(uri: Uri, name: String?) {
-        _blePayloadUri.value = uri
-        _blePayloadName.value = name ?: uri.lastPathSegment ?: "payload.txt"
-        appendLog("BLE payload selected: ${_blePayloadName.value}")
-    }
+    fun setBlePayload(uri: Uri, name: String?) = this.setBlePayloadImpl(uri, name)
 
-    fun clearBlePayload() {
-        _blePayloadUri.value = null
-        _blePayloadName.value = null
-        _bleSavedScriptText.value = null
-        appendLog("BLE payload cleared.")
-    }
+    fun clearBlePayload() = this.clearBlePayloadImpl()
 
-    fun startBle(advertiseName: String) {
-        val activeSession = session
-        if (activeSession == null) {
-            appendLog("Connect to a device before starting BLE HID.")
-            return
-        }
-        if (_bleAdvertising.value) return
-        val activeWifi = activeRadioLabel(includeBle = false)
-        if (activeWifi != null) {
-            appendLog(
-                "Cannot start BLE HID while $activeWifi is active. Stop $activeWifi first.",
-                level = LogLevel.ERROR,
-            )
-            return
-        }
+    fun startBle(advertiseName: String) = this.startBleImpl(advertiseName)
 
-        scope.launch {
-            val name = advertiseName.trim().ifBlank { "NRSuite Keyboard" }
-            appendLog("Starting BLE HID advertising as '$name'...")
-            val response = activeSession.sendCommand(
-                "BLE_START",
-                JSONObject().put("name", name),
-                timeoutMs = 8_000,
-            )
-            if (response?.optBoolean("ok") == true) {
-                _bleAdvertising.value = true
-                _bleConnected.value = false
-                _blePeer.value = ""
-                clearBleRealtimeState()
-                startBleStatusPolling(activeSession)
-                updateForegroundService()
-                appendLog("BLE HID advertising started.")
-                addHistory("ble", "BLE HID advertising started as '$name'", HistoryLevel.SUCCESS)
-            } else {
-                appendLog("Failed to start BLE HID: ${response?.optString("msg") ?: "timeout or unsupported"}")
-            }
-        }
-    }
+    fun stopBle() = this.stopBleImpl()
 
-    fun stopBle() {
-        if (!_bleAdvertising.value && !_bleConnected.value) return
-        bleStatusJob?.cancel()
-        bleStatusJob = null
-        _bleAdvertising.value = false
-        _bleConnected.value = false
-        _blePeer.value = ""
-        clearBleRealtimeState()
-        updateForegroundService()
-        val activeSession = session
-        scope.launch {
-            runCatching { activeSession?.sendCommand("BLE_RELEASE_ALL", timeoutMs = 3_000) }
-            runCatching { activeSession?.sendCommand("BLE_MOUSE_RELEASE", timeoutMs = 3_000) }
-            val response = activeSession?.sendCommand("BLE_STOP", timeoutMs = 5_000)
-            appendLog(
-                if (response?.optBoolean("ok") == true) "BLE HID stopped."
-                else "BLE stop request sent."
-            )
-        }
-    }
+    fun runBlePayload() = this.runBlePayloadImpl()
 
-    fun runBlePayload() {
-        val activeSession = session
-        val payloadUri = _blePayloadUri.value
-        val savedScript = _bleSavedScriptText.value
-        if (activeSession == null) {
-            appendLog("Connect to a device before running a BLE payload.")
-            return
-        }
-        if (!_bleConnected.value) {
-            appendLog("BLE host is not connected yet.")
-            return
-        }
-        if (_bleScriptRunning.value) {
-            appendLog("A BLE payload is already running.")
-            return
-        }
-        if (payloadUri == null && savedScript == null) {
-            appendLog("Choose a DuckyScript payload first.")
-            return
-        }
-        scope.launch {
-            val script = savedScript
-                ?: withContext(Dispatchers.IO) {
-                    runCatching {
-                        payloadUri?.let {
-                            app.contentResolver
-                                .openInputStream(it)
-                                ?.use { stream -> stream.readBytes().toString(Charsets.UTF_8) }
-                        }
-                    }.getOrNull()
-                }
-            if (script.isNullOrBlank()) {
-                appendLog("Could not read the selected BLE payload.")
-                return@launch
-            }
-            runBleScript(activeSession, script)
-        }
-    }
-
-    fun sendBleKeyboardText(text: String) {
-        val activeSession = session ?: run {
-            appendLog("Connect to a device before sending keyboard input.")
-            return
-        }
-        if (text.isBlank()) return
-        val script = if (text.startsWith("STRING", ignoreCase = true) ||
-            text.startsWith("DELAY", ignoreCase = true) ||
-            text.startsWith("CTRL", ignoreCase = true) ||
-            text.startsWith("ALT", ignoreCase = true) ||
-            text.startsWith("GUI", ignoreCase = true) ||
-            text.startsWith("SHIFT", ignoreCase = true)
-        ) {
-            text
-        } else {
-            "STRINGLN $text"
-        }
-        scope.launch { runBleScript(activeSession, script) }
-    }
+    fun sendBleKeyboardText(text: String) = this.sendBleKeyboardTextImpl(text)
 
     /**
      * Realtime keyboard stream. [backspaces] are emitted first, then [inserted]
      * text. Firmware's Print::write handles '\b' as backspace and '\n' as Enter.
      */
-    fun sendBleRealtimeInput(inserted: String, backspaces: Int) {
-        if (!_bleConnected.value || session == null) return
-        if (inserted.isEmpty() && backspaces <= 0) return
+    fun sendBleRealtimeInput(inserted: String, backspaces: Int) = this.sendBleRealtimeInputImpl(inserted, backspaces)
 
-        synchronized(bleTypeBuffer) {
-            repeat(backspaces.coerceAtLeast(0)) { bleTypeBuffer.append('\b') }
-            if (inserted.isNotEmpty()) bleTypeBuffer.append(inserted)
-        }
-        scheduleBleTypeFlush()
-    }
+    fun sendBleSpecialKey(key: String) = this.sendBleSpecialKeyImpl(key)
 
-    fun sendBleSpecialKey(key: String) {
-        val activeSession = session ?: return
-        if (!_bleConnected.value || key.isBlank()) return
-        scope.launch {
-            runCatching {
-                activeSession.sendCommandNoWait(
-                    "BLE_KEY_TAP",
-                    JSONObject().put("key", key),
-                )
-            }
-            releaseMomentaryModifiers(activeSession)
-        }
-    }
+    fun setBleModifierHold(enabled: Boolean) = this.setBleModifierHoldImpl(enabled)
 
-    fun setBleModifierHold(enabled: Boolean) {
-        _bleModifierHold.value = enabled
-    }
+    fun sendBleMouseMove(dx: Int, dy: Int) = this.sendBleMouseMoveImpl(dx, dy)
 
-    fun sendBleMouseMove(dx: Int, dy: Int) {
-        val activeSession = session ?: return
-        if (!_bleConnected.value || (dx == 0 && dy == 0)) return
-        scope.launch {
-            runCatching {
-                activeSession.sendCommandNoWait(
-                    "BLE_MOUSE_MOVE",
-                    JSONObject().put("dx", dx).put("dy", dy),
-                )
-            }
-        }
-    }
+    fun sendBleMouseScroll(wheel: Int) = this.sendBleMouseScrollImpl(wheel)
 
-    fun sendBleMouseScroll(wheel: Int) {
-        val activeSession = session ?: return
-        if (!_bleConnected.value || wheel == 0) return
-        scope.launch {
-            runCatching {
-                activeSession.sendCommandNoWait(
-                    "BLE_MOUSE_SCROLL",
-                    JSONObject().put("wheel", wheel),
-                )
-            }
-        }
-    }
+    fun sendBleMouseButton(button: String, down: Boolean) = this.sendBleMouseButtonImpl(button, down)
 
-    fun sendBleMouseButton(button: String, down: Boolean) {
-        val activeSession = session ?: return
-        if (!_bleConnected.value || button.isBlank()) return
-        scope.launch {
-            runCatching {
-                activeSession.sendCommandNoWait(
-                    "BLE_MOUSE_BUTTON",
-                    JSONObject().put("button", button).put("down", down),
-                )
-            }
-        }
-    }
+    fun releaseBleMouseButtons() = this.releaseBleMouseButtonsImpl()
 
-    fun releaseBleMouseButtons() {
-        val activeSession = session ?: return
-        if (!_bleConnected.value) return
-        scope.launch {
-            runCatching { activeSession.sendCommandNoWait("BLE_MOUSE_RELEASE") }
-        }
-    }
 
-    private suspend fun releaseMomentaryModifiers(activeSession: NrSession?) {
-        if (_bleModifierHold.value) return
-        val active = _bleModifiers.value
-        if (active.isEmpty()) return
-        _bleModifiers.value = emptySet()
-        active.forEach { key ->
-            runCatching {
-                activeSession?.sendCommandNoWait(
-                    "BLE_KEY_UP",
-                    JSONObject().put("key", key),
-                )
-            }
-        }
-    }
+    fun setBleModifier(key: String, down: Boolean) = this.setBleModifierImpl(key, down)
 
-    fun setBleModifier(key: String, down: Boolean) {
-        val activeSession = session ?: return
-        if (!_bleConnected.value || key.isBlank()) return
 
-        _bleModifiers.update { current ->
-            if (down) current + key else current - key
-        }
-        val cmd = if (down) "BLE_KEY_DOWN" else "BLE_KEY_UP"
-        scope.launch {
-            runCatching {
-                activeSession.sendCommandNoWait(cmd, JSONObject().put("key", key))
-            }
-        }
-    }
 
-    private fun scheduleBleTypeFlush() {
-        if (bleTypeJob?.isActive == true) return
-        bleTypeJob = scope.launch {
-            try {
-                while (true) {
-                    delay(25L)
-                    val payload: String? = synchronized(bleTypeBuffer) {
-                        if (bleTypeBuffer.isEmpty()) {
-                            null
-                        } else {
-                            bleTypeBuffer.toString().also { bleTypeBuffer.setLength(0) }
-                        }
-                    }
-                    if (payload == null) return@launch
 
-                    val activeSession = session ?: return@launch
-                    if (!_bleConnected.value) return@launch
-                    runCatching {
-                        activeSession.sendCommandNoWait(
-                            "BLE_TYPE_TEXT",
-                            JSONObject().put("text", payload),
-                        )
-                    }
-                    releaseMomentaryModifiers(activeSession)
-                }
-            } finally {
-                bleTypeJob = null
-            }
-        }
-    }
-
-    private fun clearBleRealtimeState() {
-        _bleModifiers.value = emptySet()
-        synchronized(bleTypeBuffer) {
-            bleTypeBuffer.setLength(0)
-        }
-        bleTypeJob?.cancel()
-        bleTypeJob = null
-    }
-
-    private suspend fun runBleScript(activeSession: NrSession, script: String) {
-        if (!_bleConnected.value) {
-            appendLog("BLE host is not connected yet.")
-            return
-        }
-        if (_bleScriptRunning.value) {
-            appendLog("A BLE payload is already running.")
-            return
-        }
-
-        _bleScriptRunning.value = true
-        try {
-            val response = runCatching {
-                activeSession.sendCommand(
-                    "BLE_RUN_SCRIPT",
-                    JSONObject().put("script", script),
-                    timeoutMs = maxOf(10_000, script.length / 20L),
-                )
-            }.getOrNull()
-            if (response?.optBoolean("ok") == true) {
-                appendLog("BLE script finished (${response.optInt("lines")} lines).")
-            } else {
-                appendLog("BLE script failed: ${response?.optString("msg") ?: "timeout or disconnected"}")
-            }
-        } finally {
-            _bleScriptRunning.value = false
-        }
-    }
-
-    private fun startBleStatusPolling(activeSession: NrSession) {
-        bleStatusJob?.cancel()
-        bleStatusJob = scope.launch {
-            while (isActive && (_bleAdvertising.value || _bleConnected.value)) {
-                delay(2_000)
-                val response = runCatching {
-                    activeSession.sendCommand("BLE_STATUS", timeoutMs = 4_000)
-                }.getOrNull() ?: continue
-                if (response.optBoolean("ok")) {
-                    _bleAdvertising.value = response.optBoolean("advertising", _bleAdvertising.value)
-                    _bleConnected.value = response.optBoolean("connected", _bleConnected.value)
-                    _blePeer.value = response.optString("peer", "")
-                }
-            }
-        }
-    }
 
     fun startDeauth(
         bssid: String,
@@ -2508,7 +1996,7 @@ class MainViewModel(internal val app: Application) {
         }
     }
 
-    private fun activeRadioLabel(includeBle: Boolean = true): String? {
+    internal fun activeRadioLabel(includeBle: Boolean = true): String? {
         if (includeBle && (_bleAdvertising.value || _bleConnected.value)) {
             return "BLE HID"
         }
@@ -2859,13 +2347,11 @@ class MainViewModel(internal val app: Application) {
         private const val PREFERENCES_NAME = "nrsuite"
         private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
         private const val PREF_BEACON_LISTS = "beacon_lists"
-        private const val PREF_DUCKY_SCRIPTS = "ducky_scripts"
         private const val PREF_HISTORY = "session_history"
         internal const val PREF_LAST_DEVICE_FINGERPRINT = "last_device_fingerprint"
         private const val PREF_RECENT_MODULES = "recent_modules"
         private val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
         private const val HTML_RAW_CHUNK_SIZE = 512
         private const val HTML_TAIL_ALLOWANCE = 64
-        private const val BADUSB_RAW_CHUNK_SIZE = 693
     }
 }
