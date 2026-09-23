@@ -157,7 +157,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val connectionState by viewModel.connectionState.collectAsState()
     val logs by viewModel.logs.collectAsState()
     val history by viewModel.history.collectAsState()
-    val activeDeviceName by viewModel.activeDeviceName.collectAsState()
     val firmwareFlashName by viewModel.firmwareFlashName.collectAsState()
     val firmwareFlashSize by viewModel.firmwareFlashSize.collectAsState()
     val firmwareFlashing by viewModel.firmwareFlashing.collectAsState()
@@ -921,7 +920,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
             selectedTab == AppTab.HOME -> HomeScreen(
                 connectionState = connectionState,
-                activeDeviceName = activeDeviceName,
                 permissionRevision = permissionRevision,
                 devices = devices,
                 usbManager = usbManager,
