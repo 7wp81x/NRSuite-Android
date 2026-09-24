@@ -19,9 +19,33 @@ import kotlinx.coroutines.withContext
 
 internal fun MainViewModel.setFirmwareFlashFileImpl(uri: Uri, name: String?) {
     _firmwareFlashUri.value = uri
-    _firmwareFlashName.value = name ?: uri.lastPathSegment ?: "firmware.bin"
+    val resolvedName = queryDocumentDisplayNameImpl(uri)
+        ?.takeIf { it.isNotBlank() }
+        ?: name?.takeIf { it.isNotBlank() && !it.startsWith("msf:") && !it.startsWith("primary:") }
+        ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+        ?: "firmware.bin"
+    _firmwareFlashName.value = resolvedName
     _firmwareFlashSize.value = queryDocumentSizeImpl(uri)
     appendLog("Firmware image selected: ${_firmwareFlashName.value}")
+}
+
+internal fun MainViewModel.queryDocumentDisplayNameImpl(uri: Uri): String? {
+    return runCatching {
+        app.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0 && !cursor.isNull(index)) cursor.getString(index) else null
+            } else {
+                null
+            }
+        }
+    }.getOrNull()
 }
 
 internal fun MainViewModel.queryDocumentSizeImpl(uri: Uri): Long {
@@ -52,6 +76,12 @@ internal fun MainViewModel.clearFirmwareFlashFileImpl() {
 }
 
 internal fun MainViewModel.selectFirmwareTargetImpl(device: UsbDevice) {
+    if (!usbManager.hasPermission(device)) {
+        _firmwareTargetDevice.value = null
+        appendLog("USB permission is required before selecting a flash target.")
+        return
+    }
+
     val entry = _devices.value.firstOrNull { it.device.deviceId == device.deviceId }
         ?: UsbSerialDeviceCatalog.find(usbManager, device)
     if (entry == null) {
@@ -104,7 +134,6 @@ internal fun MainViewModel.startFirmwareFlashImpl(targetChip: String, skipReset:
             session = null
             activeDeviceFingerprint = null
             _connectionState.value = ConnectionState.Disconnected
-            _activeDeviceName.value = null
             currentSession?.disconnect()
 
             val resetMode = when {
@@ -130,6 +159,7 @@ internal fun MainViewModel.startFirmwareFlashImpl(targetChip: String, skipReset:
                     firmware = bytes,
                     offset = 0,
                     resetMode = resetMode,
+                    onStage = { stage -> _firmwareFlashStatus.value = stage },
                 ) { percent ->
                     val written = (bytes.size.toLong() * percent / 100L).toInt()
                     _firmwareFlashProgress.value = percent

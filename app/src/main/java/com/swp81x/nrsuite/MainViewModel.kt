@@ -90,13 +90,13 @@ class MainViewModel(internal val app: Application) {
     internal val preferences =
         app.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
-    private val _exportDirectory = MutableStateFlow<Uri?>(null)
+    internal val _exportDirectory = MutableStateFlow<Uri?>(null)
     val exportDirectory: StateFlow<Uri?> = _exportDirectory.asStateFlow()
 
     private val _exportDirectoryName = MutableStateFlow("Not configured")
     val exportDirectoryName: StateFlow<String> = _exportDirectoryName.asStateFlow()
 
-    private val _requiresRootDirectory = MutableStateFlow(false)
+    internal val _requiresRootDirectory = MutableStateFlow(false)
     val requiresRootDirectory: StateFlow<Boolean> = _requiresRootDirectory.asStateFlow()
 
     private val _actionError = MutableStateFlow<String?>(null)
@@ -114,9 +114,6 @@ class MainViewModel(internal val app: Application) {
 
     private val _history = MutableStateFlow<List<HistoryEntry>>(emptyList())
     val history: StateFlow<List<HistoryEntry>> = _history.asStateFlow()
-
-    internal val _activeDeviceName = MutableStateFlow<String?>(null)
-    val activeDeviceName: StateFlow<String?> = _activeDeviceName.asStateFlow()
 
     internal val _firmwareFlashUri = MutableStateFlow<Uri?>(null)
     val firmwareFlashUri: StateFlow<Uri?> = _firmwareFlashUri.asStateFlow()
@@ -151,51 +148,51 @@ class MainViewModel(internal val app: Application) {
     private val _events = MutableStateFlow<List<JSONObject>>(emptyList())
     val events: StateFlow<List<JSONObject>> = _events.asStateFlow()
 
-    private val _networks = MutableStateFlow<List<JSONObject>>(emptyList())
+    internal val _networks = MutableStateFlow<List<JSONObject>>(emptyList())
     val networks: StateFlow<List<JSONObject>> = _networks.asStateFlow()
 
-    private val _scanning = MutableStateFlow(false)
+    internal val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
 
     internal val _sniffing = MutableStateFlow(false)
     val sniffing: StateFlow<Boolean> = _sniffing.asStateFlow()
 
-    private val _sniffPacketCount = MutableStateFlow(0L)
+    internal val _sniffPacketCount = MutableStateFlow(0L)
     val sniffPacketCount: StateFlow<Long> = _sniffPacketCount.asStateFlow()
 
-    private val _sniffHandshake = MutableStateFlow(EapolHandshake())
+    internal val _sniffHandshake = MutableStateFlow(EapolHandshake())
     val sniffHandshake: StateFlow<EapolHandshake> = _sniffHandshake.asStateFlow()
 
-    private val _capturePath = MutableStateFlow<String?>(null)
+    internal val _capturePath = MutableStateFlow<String?>(null)
     val capturePath: StateFlow<String?> = _capturePath.asStateFlow()
 
     internal val _beaconRunning = MutableStateFlow(false)
     val beaconRunning: StateFlow<Boolean> = _beaconRunning.asStateFlow()
 
-    private val _beaconSent = MutableStateFlow(0)
+    internal val _beaconSent = MutableStateFlow(0)
     val beaconSent: StateFlow<Int> = _beaconSent.asStateFlow()
 
-    private val _beaconSsidCount = MutableStateFlow(0)
+    internal val _beaconSsidCount = MutableStateFlow(0)
     val beaconSsidCount: StateFlow<Int> = _beaconSsidCount.asStateFlow()
 
-    private val _beaconChannel = MutableStateFlow(0)
+    internal val _beaconChannel = MutableStateFlow(0)
     val beaconChannel: StateFlow<Int> = _beaconChannel.asStateFlow()
 
-    private val _beaconListMap = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    internal val _beaconListMap = MutableStateFlow<Map<String, List<String>>>(emptyMap())
     val beaconListMap: StateFlow<Map<String, List<String>>> = _beaconListMap.asStateFlow()
 
     internal var beaconStatusJob: Job? = null
 
-    private val _deauthRunning = MutableStateFlow(false)
+    internal val _deauthRunning = MutableStateFlow(false)
     val deauthRunning: StateFlow<Boolean> = _deauthRunning.asStateFlow()
 
-    private val _deauthSent = MutableStateFlow(0)
+    internal val _deauthSent = MutableStateFlow(0)
     val deauthSent: StateFlow<Int> = _deauthSent.asStateFlow()
 
-    private val _deauthTarget = MutableStateFlow("")
+    internal val _deauthTarget = MutableStateFlow("")
     val deauthTarget: StateFlow<String> = _deauthTarget.asStateFlow()
 
-    private val _deauthChannel = MutableStateFlow(0)
+    internal val _deauthChannel = MutableStateFlow(0)
     val deauthChannel: StateFlow<Int> = _deauthChannel.asStateFlow()
 
     internal val _portalRunning = MutableStateFlow(false)
@@ -271,66 +268,66 @@ class MainViewModel(internal val app: Application) {
     internal val _evilTwinResults = MutableStateFlow<List<EvilTwinResult>>(emptyList())
     val evilTwinResults: StateFlow<List<EvilTwinResult>> = _evilTwinResults.asStateFlow()
 
-    private val credentialStore = CredentialStore(File(app.filesDir, "Credentials"))
-    private val _credentialSessions = MutableStateFlow<List<CredentialSession>>(emptyList())
+    internal val credentialStore = CredentialStore(File(app.filesDir, "Credentials"))
+    internal val _credentialSessions = MutableStateFlow<List<CredentialSession>>(emptyList())
     val credentialSessions: StateFlow<List<CredentialSession>> = _credentialSessions.asStateFlow()
     internal val credentialLock = Any()
     internal var activeCredentialSession: CredentialSession? = null
     internal var evilTwinAutoStopIssued = false
     internal var activePortalTargetBssid: String = ""
 
-    private val _crackerSelectedSession = MutableStateFlow<CredentialSession?>(null)
+    internal val _crackerSelectedSession = MutableStateFlow<CredentialSession?>(null)
     val crackerSelectedSession: StateFlow<CredentialSession?> = _crackerSelectedSession.asStateFlow()
 
-    private val _crackerWordlistUri = MutableStateFlow<Uri?>(null)
+    internal val _crackerWordlistUri = MutableStateFlow<Uri?>(null)
     val crackerWordlistUri: StateFlow<Uri?> = _crackerWordlistUri.asStateFlow()
 
-    private val _crackerWordlistName = MutableStateFlow<String?>(null)
+    internal val _crackerWordlistName = MutableStateFlow<String?>(null)
     val crackerWordlistName: StateFlow<String?> = _crackerWordlistName.asStateFlow()
 
-    private val _crackerRunning = MutableStateFlow(false)
+    internal val _crackerRunning = MutableStateFlow(false)
     val crackerRunning: StateFlow<Boolean> = _crackerRunning.asStateFlow()
 
-    private val _crackerTested = MutableStateFlow(0L)
+    internal val _crackerTested = MutableStateFlow(0L)
     val crackerTested: StateFlow<Long> = _crackerTested.asStateFlow()
 
-    private val _crackerSpeed = MutableStateFlow(0.0)
+    internal val _crackerSpeed = MutableStateFlow(0.0)
     val crackerSpeed: StateFlow<Double> = _crackerSpeed.asStateFlow()
 
-    private val _crackerResult = MutableStateFlow<String?>(null)
+    internal val _crackerResult = MutableStateFlow<String?>(null)
     val crackerResult: StateFlow<String?> = _crackerResult.asStateFlow()
 
-    private val _crackerStatus = MutableStateFlow("Select a saved handshake and a wordlist.")
+    internal val _crackerStatus = MutableStateFlow("Select a saved handshake and a wordlist.")
     val crackerStatus: StateFlow<String> = _crackerStatus.asStateFlow()
 
-    private val _crackerCustomPcapUri = MutableStateFlow<Uri?>(null)
+    internal val _crackerCustomPcapUri = MutableStateFlow<Uri?>(null)
     val crackerCustomPcapUri: StateFlow<Uri?> = _crackerCustomPcapUri.asStateFlow()
 
-    private val _crackerCustomPcapName = MutableStateFlow<String?>(null)
+    internal val _crackerCustomPcapName = MutableStateFlow<String?>(null)
     val crackerCustomPcapName: StateFlow<String?> = _crackerCustomPcapName.asStateFlow()
 
-    private val _crackerCustomSsid = MutableStateFlow("")
+    internal val _crackerCustomSsid = MutableStateFlow("")
     val crackerCustomSsid: StateFlow<String> = _crackerCustomSsid.asStateFlow()
 
-    private val _crackerCustomPcapValid = MutableStateFlow(false)
+    internal val _crackerCustomPcapValid = MutableStateFlow(false)
     val crackerCustomPcapValid: StateFlow<Boolean> = _crackerCustomPcapValid.asStateFlow()
 
-    private val _crackerCustomPcapValidating = MutableStateFlow(false)
+    internal val _crackerCustomPcapValidating = MutableStateFlow(false)
     val crackerCustomPcapValidating: StateFlow<Boolean> = _crackerCustomPcapValidating.asStateFlow()
 
-    private val _crackerCustomPcapMessage = MutableStateFlow("No custom PCAP selected.")
+    internal val _crackerCustomPcapMessage = MutableStateFlow("No custom PCAP selected.")
     val crackerCustomPcapMessage: StateFlow<String> = _crackerCustomPcapMessage.asStateFlow()
 
-    private val _crackerCustomSsidOptions = MutableStateFlow<List<DetectedSsid>>(emptyList())
+    internal val _crackerCustomSsidOptions = MutableStateFlow<List<DetectedSsid>>(emptyList())
     val crackerCustomSsidOptions: StateFlow<List<DetectedSsid>> = _crackerCustomSsidOptions.asStateFlow()
 
-    private val _crackerCustomSsidSelected = MutableStateFlow<String?>(null)
+    internal val _crackerCustomSsidSelected = MutableStateFlow<String?>(null)
     val crackerCustomSsidSelected: StateFlow<String?> = _crackerCustomSsidSelected.asStateFlow()
 
-    private val _crackerCustomSsidManual = MutableStateFlow(true)
+    internal val _crackerCustomSsidManual = MutableStateFlow(true)
     val crackerCustomSsidManual: StateFlow<Boolean> = _crackerCustomSsidManual.asStateFlow()
 
-    private var crackerJob: Job? = null
+    internal var crackerJob: Job? = null
 
     internal val _evilTwinCapturePath = MutableStateFlow<String?>(null)
     val evilTwinCapturePath: StateFlow<String?> = _evilTwinCapturePath.asStateFlow()
@@ -414,11 +411,11 @@ class MainViewModel(internal val app: Application) {
 
     init {
         loadExportDirectory()
-        loadBeaconLists()
+        this.loadBeaconListsImpl()
         this.loadDuckyScriptsImpl()
         loadHistory()
-        loadCredentialSessions()
-        refreshDevices()
+        this.loadCredentialSessionsImpl()
+        this.refreshDevicesImpl()
     }
 
     fun onModuleOpened(moduleId: String) {
@@ -430,48 +427,11 @@ class MainViewModel(internal val app: Application) {
         preferences.edit().putString(PREF_RECENT_MODULES, trimmed.joinToString(",")).apply()
     }
 
-    fun saveBeaconList(name: String, ssids: List<String>) {
-        val cleanName = name.trim()
-        if (cleanName.isBlank()) return
-        val cleanSsids = ssids.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        _beaconListMap.update { it + (cleanName to cleanSsids) }
-        persistBeaconLists()
-        appendLog("Saved beacon SSID list '$cleanName' (${cleanSsids.size} SSIDs).")
-    }
+    fun saveBeaconList(name: String, ssids: List<String>) = this.saveBeaconListImpl(name, ssids)
 
-    fun deleteBeaconList(name: String) {
-        _beaconListMap.update { it - name }
-        persistBeaconLists()
-        appendLog("Deleted beacon SSID list '$name'.")
-    }
+    fun deleteBeaconList(name: String) = this.deleteBeaconListImpl(name)
 
-    private fun loadBeaconLists() {
-        val raw = preferences.getString(PREF_BEACON_LISTS, null) ?: return
-        runCatching {
-            val json = JSONObject(raw)
-            val map = mutableMapOf<String, List<String>>()
-            json.keys().forEach { key ->
-                val array = json.optJSONArray(key) ?: return@forEach
-                val list = mutableListOf<String>()
-                for (i in 0 until array.length()) {
-                    val value = array.optString(i)
-                    if (value.isNotBlank()) list += value
-                }
-                map[key] = list
-            }
-            _beaconListMap.value = map
-        }
-    }
 
-    private fun persistBeaconLists() {
-        val json = JSONObject()
-        _beaconListMap.value.forEach { (name, ssids) ->
-            val array = org.json.JSONArray()
-            ssids.forEach { array.put(it) }
-            json.put(name, array)
-        }
-        preferences.edit().putString(PREF_BEACON_LISTS, json.toString()).apply()
-    }
 
     fun onRootDirectoryPromptShown() {
         _requiresRootDirectory.value = false
@@ -566,31 +526,7 @@ class MainViewModel(internal val app: Application) {
 
     fun connect(device: UsbDevice) = this.connectImpl(device)
 
-    fun scanWifi() {
-        val activeSession = session
-        if (activeSession == null) {
-            appendLog("Connect to a device before scanning.")
-            return
-        }
-        if (_scanning.value) return
-        if (!ensureRadioIdle("WiFi Scan")) return
-
-        _networks.value = emptyList()
-        _scanning.value = true
-        scope.launch {
-            appendLog("Starting WiFi scan...")
-            val count = activeSession.scanWifi()
-            _scanning.value = false
-            when {
-                count == null -> appendLog("WiFi scan timed out.")
-                count < 0 -> appendLog("WiFi scan failed.")
-                else -> {
-                    appendLog("WiFi scan complete: $count network(s).")
-                    addHistory("scan", "WiFi scan complete: $count network(s)", HistoryLevel.SUCCESS)
-                }
-            }
-        }
-    }
+    fun scanWifi() = this.scanWifiImpl()
 
     fun setBadUsbPayload(uri: Uri, name: String?) = this.setBadUsbPayloadImpl(uri, name)
 
@@ -678,94 +614,14 @@ class MainViewModel(internal val app: Application) {
     fun clearEvilTwinPasswords() = this.clearEvilTwinPasswordsImpl()
 
 
-    private fun loadCredentialSessions() {
-        scope.launch(Dispatchers.IO) {
-            val loaded = runCatching { credentialStore.loadSessions() }
-                .getOrDefault(emptyList())
-                .sortedByDescending { it.startedAt }
-            _credentialSessions.value = loaded
-        }
-    }
 
     internal fun timestampNow(): String =
         LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 
-    private fun timeHmNow(): String =
+    internal fun timeHmNow(): String =
         java.time.LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"))
 
-    private fun persistCrackedCredential(sessionId: String, password: String) {
-        synchronized(credentialLock) {
-            val session = _credentialSessions.value.firstOrNull { it.id == sessionId } ?: return
-            if (session.source != CredentialSource.EVIL_TWIN) return
-            if (session.credentials.any { it.status == CredentialStatus.CORRECT }) return
 
-            val updated = session.copy(
-                credentials = listOf(
-                    CapturedCredential(
-                        value = password,
-                        capturedAt = timeHmNow(),
-                        status = CredentialStatus.CORRECT,
-                        source = CredentialSource.EVIL_TWIN,
-                    ),
-                ),
-            )
-            if (_crackerSelectedSession.value?.id == sessionId) {
-                _crackerSelectedSession.value = updated
-            }
-            upsertCredentialSessionLocked(updated)
-        }
-    }
-
-    private suspend fun saveCrackedCustomSession(
-        sourceUri: Uri,
-        displayName: String,
-        ssid: String,
-        bssid: ByteArray?,
-        password: String,
-    ) {
-        val copiedFile = withContext(Dispatchers.IO) {
-            runCatching {
-                val directory = File(app.filesDir, "Credentials")
-                if (!directory.exists() && !directory.mkdirs()) {
-                    throw IOException("Could not create credential capture directory")
-                }
-                val destination = File(directory, "wpa_cracker_${System.currentTimeMillis()}.pcap")
-                val input = app.contentResolver.openInputStream(sourceUri)
-                    ?: throw IOException("Could not open custom PCAP")
-                input.use { source ->
-                    destination.outputStream().use { sink ->
-                        source.copyTo(sink)
-                    }
-                }
-                destination
-            }.onFailure { error ->
-                appendLog("Could not save cracked custom PCAP: ${error.message}", level = LogLevel.ERROR)
-            }.getOrNull()
-        }
-
-        val session = CredentialSession(
-            id = System.currentTimeMillis().toString(),
-            source = CredentialSource.WPA_CRACKER,
-            ssid = ssid.ifBlank { "(hidden)" },
-            bssid = bssid?.toMacString().orEmpty(),
-            channel = null,
-            startedAt = timestampNow(),
-            endedAt = timestampNow(),
-            pcapPath = copiedFile?.absolutePath,
-            credentials = listOf(
-                CapturedCredential(
-                    value = password,
-                    capturedAt = timeHmNow(),
-                    status = CredentialStatus.CORRECT,
-                    source = CredentialSource.WPA_CRACKER,
-                ),
-            ),
-        )
-        synchronized(credentialLock) {
-            upsertCredentialSessionLocked(session)
-        }
-        appendLog("Saved WPA Cracker result for ${ssid.ifBlank { displayName }}.")
-    }
 
     internal fun upsertCredentialSessionLocked(session: CredentialSession) {
         val updated = (_credentialSessions.value.filterNot { it.id == session.id } + session)
@@ -799,370 +655,30 @@ class MainViewModel(internal val app: Application) {
         }
     }
 
-    fun deleteCredentialSession(id: String) {
-        val removed = synchronized(credentialLock) {
-            val session = _credentialSessions.value.firstOrNull { it.id == id } ?: return@synchronized null
-            _credentialSessions.value = _credentialSessions.value.filterNot { it.id == id }
-            session
-        } ?: return
+    fun deleteCredentialSession(id: String) = this.deleteCredentialSessionImpl(id)
 
-        if (_crackerSelectedSession.value?.id == removed.id) {
-            _crackerSelectedSession.value = null
-        }
+    fun clearCredentialSessions() = this.clearCredentialSessionsImpl()
 
-        scope.launch(Dispatchers.IO) {
-            runCatching {
-                credentialStore.deleteCaptureFile(removed)
-                credentialStore.saveSessions(_credentialSessions.value)
-            }
-        }
-    }
+    fun selectCrackerSession(session: CredentialSession?) = this.selectCrackerSessionImpl(session)
 
-    fun clearCredentialSessions() {
-        val removed = synchronized(credentialLock) {
-            val current = _credentialSessions.value
-            _credentialSessions.value = emptyList()
-            current
-        }
-        _crackerSelectedSession.value = null
-        scope.launch(Dispatchers.IO) {
-            runCatching {
-                removed.forEach { credentialStore.deleteCaptureFile(it) }
-                credentialStore.saveSessions(emptyList())
-            }
-        }
-    }
+    fun setCrackerCustomPcap(uri: Uri, name: String?) = this.setCrackerCustomPcapImpl(uri, name)
 
-    fun selectCrackerSession(session: CredentialSession?) {
-        if (_crackerRunning.value) return
-        if (session != null) {
-            resetCrackerCustomPcapState()
-        }
-        _crackerSelectedSession.value = session
-        _crackerResult.value = null
-        _crackerTested.value = 0
-        _crackerSpeed.value = 0.0
-        _crackerStatus.value = when {
-            session == null -> "Select a saved handshake, or choose a custom PCAP."
-            session.pcapPath.isNullOrBlank() -> "Selected session has no PCAP capture."
-            else -> "Ready: ${session.ssid.ifBlank { "target" }}"
-        }
-    }
+    fun selectCrackerCustomSsid(ssid: String) = this.selectCrackerCustomSsidImpl(ssid)
 
-    fun setCrackerCustomPcap(uri: Uri, name: String?) {
-        if (_crackerRunning.value) return
-        _crackerSelectedSession.value = null
-        _crackerCustomPcapUri.value = uri
-        _crackerCustomPcapName.value = name ?: uri.lastPathSegment ?: "capture.pcap"
-        resetCrackerCustomPcapState()
-        _crackerCustomPcapUri.value = uri
-        _crackerCustomPcapName.value = name ?: uri.lastPathSegment ?: "capture.pcap"
-        _crackerCustomPcapMessage.value = "Validating EAPOL handshake..."
-        _crackerResult.value = null
-        _crackerTested.value = 0
-        _crackerSpeed.value = 0.0
-        _crackerStatus.value = "Validating custom PCAP..."
+    fun useManualCrackerSsid() = this.useManualCrackerSsidImpl()
 
-        scope.launch(Dispatchers.IO) {
-            _crackerCustomPcapValidating.value = true
-            try {
-                val analysis = analyzeCustomPcap(uri)
-                val parsed = analysis.handshake
-                val sawM1 = parsed.m1Bssid != null || parsed.aNonce != null
-                val sawM2 = parsed.m2Bssid != null || parsed.mic != null
-                val detected = analysis.detectedSsids
-                val preferred = detected.firstOrNull {
-                    parsed.bssid?.let { bytes -> it.bssid.equals(bytes.toMacString(), ignoreCase = true) } == true
-                } ?: detected.singleOrNull()
+    fun setCrackerCustomSsid(value: String) = this.setCrackerCustomSsidImpl(value)
 
-                _crackerCustomSsidOptions.value = detected
-                if (preferred != null) {
-                    _crackerCustomSsidSelected.value = preferred.ssid
-                    _crackerCustomSsid.value = preferred.ssid
-                    _crackerCustomSsidManual.value = false
-                } else {
-                    _crackerCustomSsidSelected.value = null
-                    _crackerCustomSsid.value = ""
-                    _crackerCustomSsidManual.value = true
-                }
+    fun clearCrackerCustomPcap() = this.clearCrackerCustomPcapImpl()
 
-                _crackerCustomPcapValid.value = parsed.isComplete
-                _crackerCustomPcapMessage.value = when {
-                    parsed.isComplete && detected.isNotEmpty() ->
-                        "Valid M1/M2 EAPOL handshake detected. ${detected.size} SSID(s) found in PCAP."
-                    parsed.isComplete ->
-                        "Valid M1/M2 EAPOL handshake detected. No SSID found; enter it manually."
-                    sawM1 || sawM2 ->
-                        "EAPOL frames found, but the M1+M2 handshake is incomplete."
-                    else ->
-                        "No EAPOL handshake found in this PCAP."
-                }
-                _crackerStatus.value = when {
-                    !parsed.isComplete -> _crackerCustomPcapMessage.value
-                    detected.isNotEmpty() -> "Custom PCAP validated. Select the target SSID and choose a wordlist."
-                    else -> "Custom PCAP validated. Enter the target SSID and choose a wordlist."
-                }
-            } catch (t: Throwable) {
-                _crackerCustomPcapValid.value = false
-                _crackerCustomPcapValidating.value = false
-                _crackerCustomPcapMessage.value = "PCAP invalid: ${t.message ?: t.javaClass.simpleName}"
-                _crackerStatus.value = _crackerCustomPcapMessage.value
-            } finally {
-                _crackerCustomPcapValidating.value = false
-            }
-        }
-    }
 
-    fun selectCrackerCustomSsid(ssid: String) {
-        if (_crackerRunning.value) return
-        _crackerCustomSsidSelected.value = ssid
-        _crackerCustomSsid.value = ssid.take(32)
-        _crackerCustomSsidManual.value = false
-    }
+    fun setCrackerWordlist(uri: Uri, name: String?) = this.setCrackerWordlistImpl(uri, name)
 
-    fun useManualCrackerSsid() {
-        if (_crackerRunning.value) return
-        _crackerCustomSsidSelected.value = null
-        _crackerCustomSsidManual.value = true
-    }
+    fun clearCrackerWordlist() = this.clearCrackerWordlistImpl()
 
-    fun setCrackerCustomSsid(value: String) {
-        if (!_crackerCustomSsidManual.value) return
-        _crackerCustomSsid.value = value.take(32)
-    }
+    fun startCracker() = this.startCrackerImpl()
 
-    fun clearCrackerCustomPcap() {
-        if (_crackerRunning.value) return
-        resetCrackerCustomPcapState()
-        _crackerResult.value = null
-        _crackerStatus.value = "Select a saved handshake, or choose a custom PCAP."
-    }
-
-    private fun resetCrackerCustomPcapState() {
-        _crackerCustomPcapUri.value = null
-        _crackerCustomPcapName.value = null
-        _crackerCustomSsid.value = ""
-        _crackerCustomSsidOptions.value = emptyList()
-        _crackerCustomSsidSelected.value = null
-        _crackerCustomSsidManual.value = true
-        _crackerCustomPcapValid.value = false
-        _crackerCustomPcapValidating.value = false
-        _crackerCustomPcapMessage.value = "No custom PCAP selected."
-    }
-
-    private data class CustomPcapAnalysis(
-        val handshake: WpaHandshake,
-        val detectedSsids: List<DetectedSsid>,
-    )
-
-    private suspend fun analyzeCustomPcap(uri: Uri): CustomPcapAnalysis =
-        withContext(Dispatchers.IO) {
-            val input = app.contentResolver.openInputStream(uri)
-                ?: throw IOException("Could not open the selected PCAP.")
-            val parsed = WpaHandshake()
-            val detected = LinkedHashMap<String, DetectedSsid>()
-            PcapReader(input).forEachPacket { frame ->
-                WpaHandshakeParser.parse(frame, parsed)
-                PcapSsidParser.parse(frame)?.let { ssid ->
-                    detected["${ssid.ssid}|${ssid.bssid}"] = ssid
-                }
-                true
-            }
-            CustomPcapAnalysis(
-                handshake = parsed.copyHandshake(),
-                detectedSsids = detected.values.toList(),
-            )
-        }
-
-    private suspend fun parseHandshakeFromUri(uri: Uri): WpaHandshake =
-        withContext(Dispatchers.IO) {
-            val input = app.contentResolver.openInputStream(uri)
-                ?: throw IOException("Could not open the selected PCAP.")
-            val parsed = WpaHandshake()
-            PcapReader(input).forEachPacket { frame ->
-                WpaHandshakeParser.parse(frame, parsed)
-                !parsed.isComplete
-            }
-            parsed.copyHandshake()
-        }
-
-    private fun ByteArray.toMacString(): String =
-        joinToString(":") { value -> String.format("%02X", value.toInt() and 0xFF) }
-
-    fun setCrackerWordlist(uri: Uri, name: String?) {
-        if (_crackerRunning.value) return
-        _crackerWordlistUri.value = uri
-        _crackerWordlistName.value = name ?: uri.lastPathSegment ?: "wordlist.txt"
-        _crackerResult.value = null
-        _crackerStatus.value = "Wordlist selected: ${_crackerWordlistName.value}"
-    }
-
-    fun clearCrackerWordlist() {
-        if (_crackerRunning.value) return
-        _crackerWordlistUri.value = null
-        _crackerWordlistName.value = null
-        _crackerResult.value = null
-        _crackerStatus.value = "Select a saved handshake and a wordlist."
-    }
-
-    fun startCracker() {
-        if (_crackerRunning.value) return
-
-        val wordlistUri = _crackerWordlistUri.value
-        if (wordlistUri == null) {
-            appendLog("WPA cracker: select a wordlist first.", level = LogLevel.ERROR)
-            return
-        }
-
-        val customUri = _crackerCustomPcapUri.value
-        val session = _crackerSelectedSession.value
-        val ssid: String
-        val pcapLabel: String
-        val savedSessionId: String?
-        val parseHandshake: suspend () -> WpaHandshake
-
-        when {
-            customUri != null -> {
-                if (_crackerCustomPcapValidating.value) {
-                    appendLog("WPA cracker: custom PCAP is still being validated.", level = LogLevel.ERROR)
-                    return
-                }
-                val customSsid = _crackerCustomSsid.value.trim()
-                if (!_crackerCustomPcapValid.value) {
-                    appendLog("WPA cracker: custom PCAP has no validated M1/M2 EAPOL handshake.", level = LogLevel.ERROR)
-                    return
-                }
-                if (customSsid.isBlank() || customSsid.length > 32) {
-                    appendLog("WPA cracker: enter the target SSID (1-32 characters) for the custom PCAP.", level = LogLevel.ERROR)
-                    return
-                }
-                ssid = customSsid
-                pcapLabel = _crackerCustomPcapName.value ?: "custom PCAP"
-                savedSessionId = null
-                parseHandshake = { parseHandshakeFromUri(customUri) }
-            }
-
-            session != null -> {
-                val pcapPath = session.pcapPath
-                if (pcapPath.isNullOrBlank()) {
-                    appendLog("WPA cracker: selected session has no PCAP capture.", level = LogLevel.ERROR)
-                    return
-                }
-                val pcapFile = File(pcapPath)
-                if (!pcapFile.exists()) {
-                    appendLog("WPA cracker: PCAP file no longer exists.", level = LogLevel.ERROR)
-                    return
-                }
-                if (session.ssid.isBlank() || session.ssid == "(hidden)") {
-                    appendLog("WPA cracker: the saved session has no usable SSID.", level = LogLevel.ERROR)
-                    return
-                }
-                ssid = session.ssid
-                pcapLabel = pcapFile.name
-                savedSessionId = session.id
-                parseHandshake = {
-                    withContext(Dispatchers.IO) {
-                        val parsed = WpaHandshake()
-                        PcapReader(pcapFile).forEachPacket { frame ->
-                            WpaHandshakeParser.parse(frame, parsed)
-                            !parsed.isComplete
-                        }
-                        parsed.copyHandshake()
-                    }
-                }
-            }
-
-            else -> {
-                appendLog("WPA cracker: select a saved session or choose a custom PCAP.", level = LogLevel.ERROR)
-                return
-            }
-        }
-
-        _crackerRunning.value = true
-        _crackerResult.value = null
-        _crackerTested.value = 0
-        _crackerSpeed.value = 0.0
-        _crackerStatus.value = "Parsing handshake..."
-        appendLog("WPA cracker: parsing $pcapLabel...")
-
-        crackerJob = scope.launch(Dispatchers.Default) {
-            try {
-                val handshake = parseHandshake()
-                if (!handshake.isComplete) {
-                    _crackerStatus.value = "No complete M1/M2 WPA2 handshake found in the capture."
-                    appendLog("WPA cracker: no complete M1/M2 handshake found.", level = LogLevel.ERROR)
-                    return@launch
-                }
-
-                _crackerStatus.value = "Testing wordlist..."
-                appendLog("WPA cracker: handshake ready; testing wordlist...")
-
-                val reader = withContext(Dispatchers.IO) {
-                    app.contentResolver.openInputStream(wordlistUri)?.bufferedReader()
-                } ?: throw IOException("Could not open the selected wordlist.")
-
-                val runningJob = coroutineContext[Job]
-                val found = WpaCracker.crack(
-                    handshake = handshake,
-                    ssid = ssid,
-                    wordlist = reader,
-                    shouldStop = { runningJob?.isActive != true },
-                    onProgress = { progress ->
-                        _crackerTested.update { maxOf(it, progress.tested) }
-                        _crackerSpeed.value = progress.candidatesPerSecond
-                    },
-                )
-
-                if (runningJob?.isActive != true) {
-                    _crackerStatus.value = "Cracker stopped."
-                    return@launch
-                }
-
-                if (found != null) {
-                    _crackerResult.value = found
-                    _crackerStatus.value = "Password found: $found"
-                    if (savedSessionId != null) {
-                        persistCrackedCredential(savedSessionId, found)
-                    } else if (customUri != null) {
-                        saveCrackedCustomSession(
-                            sourceUri = customUri,
-                            displayName = pcapLabel,
-                            ssid = ssid,
-                            bssid = handshake.bssid,
-                            password = found,
-                        )
-                    }
-                    appendLog("WPA cracker: password found.")
-                    addHistory(
-                        "wpa_cracker",
-                        "WPA2 password recovered for ${ssid.ifBlank { pcapLabel }}",
-                        HistoryLevel.SUCCESS,
-                    )
-                } else {
-                    _crackerStatus.value = "Password not found in the selected wordlist."
-                    appendLog("WPA cracker: password not found.")
-                }
-            } catch (e: CancellationException) {
-                _crackerStatus.value = "Cracker stopped."
-                throw e
-            } catch (t: Throwable) {
-                _crackerStatus.value = "Cracker failed: ${t.message ?: t.javaClass.simpleName}"
-                appendLog(
-                    "WPA cracker failed: ${t.message ?: t.javaClass.simpleName}",
-                    level = LogLevel.ERROR,
-                )
-            } finally {
-                _crackerRunning.value = false
-                crackerJob = null
-            }
-        }
-    }
-
-    fun stopCracker() {
-        if (!_crackerRunning.value) return
-        _crackerStatus.value = "Stopping..."
-        crackerJob?.cancel()
-    }
+    fun stopCracker() = this.stopCrackerImpl()
 
     fun clearEvilTwinEventLog() = this.clearEvilTwinEventLogImpl()
 
@@ -1209,324 +725,16 @@ class MainViewModel(internal val app: Application) {
 
 
 
-    fun startDeauth(
-        bssid: String,
-        channel: Int,
-        client: String,
-        count: Int,
-        duration: Int,
-        intervalMs: Int,
-    ) {
-        val activeSession = session
-        if (activeSession == null) {
-            appendLog("Connect to a device before sending deauth frames.")
-            return
-        }
-        if (_deauthRunning.value) return
-        if (!ensureRadioIdle("Deauthentication")) return
-        this.stopLocalPortalImpl()
+    fun startDeauth(bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int) = this.startDeauthImpl(bssid, channel, client, count, duration, intervalMs)
 
-        val cleanBssid = bssid.trim().uppercase()
-        val cleanClient = client.trim().ifBlank { "FF:FF:FF:FF:FF:FF" }.uppercase()
-        if (!MAC_PATTERN.matches(cleanBssid)) {
-            appendLog("Invalid target BSSID: $cleanBssid")
-            return
-        }
-        if (!MAC_PATTERN.matches(cleanClient)) {
-            appendLog("Invalid client MAC: $cleanClient")
-            return
-        }
+    fun startBeacon(ssids: List<String>, channel: Int, intervalMs: Int, hidden: Boolean, randomBssid: Boolean) = this.startBeaconImpl(ssids, channel, intervalMs, hidden, randomBssid)
 
-        // The firmware's DEAUTH handler calls radioIdle(), so stop local
-        // companion tasks before issuing the burst.
-        beaconStatusJob?.cancel()
-        beaconStatusJob = null
-        _beaconRunning.value = false
-        if (_sniffing.value) {
-            _sniffing.value = false
-            pcapJob?.cancel()
-            pcapJob = null
-            scope.launch(Dispatchers.IO) {
-                runCatching { pcapWriter?.close() }
-                pcapWriter = null
-            }
-        }
+    fun stopBeacon() = this.stopBeaconImpl()
 
-        _deauthSent.value = 0
-        _deauthTarget.value = cleanBssid
-        _deauthChannel.value = channel.coerceIn(1, 13)
-        _deauthRunning.value = true
-        updateForegroundService()
 
-        scope.launch {
-            appendLog(
-                "Starting deauth burst: $cleanBssid on channel $channel " +
-                    "(client=$cleanClient, count=${if (count <= 0) "firmware default" else count})."
-            )
-            val args = JSONObject().apply {
-                put("bssid", cleanBssid)
-                put("client", cleanClient)
-                put("channel", channel.coerceIn(1, 13))
-                put("count", count.coerceAtLeast(0))
-                put("duration", duration.coerceAtLeast(0))
-                put("deauth_interval_ms", intervalMs.coerceIn(10, 10_000))
-                put("reason", 7)
-            }
-            val response = activeSession.sendCommand("DEAUTH", args, timeoutMs = 60_000)
-            _deauthRunning.value = false
-            updateForegroundService()
-            if (response?.optBoolean("ok") == true) {
-                appendLog("Deauth burst completed.")
-                addHistory("deauth", "Deauth burst completed on $cleanBssid", HistoryLevel.SUCCESS)
-            } else {
-                appendLog("Deauth request failed: ${response?.optString("msg") ?: "timeout"}")
-            }
-        }
-    }
+    fun startSniff(request: SniffRequest) = this.startSniffImpl(request)
 
-    fun startBeacon(
-        ssids: List<String>,
-        channel: Int,
-        intervalMs: Int,
-        hidden: Boolean,
-        randomBssid: Boolean,
-    ) {
-        val activeSession = session
-        if (activeSession == null) {
-            appendLog("Connect to a device before starting beacon broadcast.")
-            return
-        }
-        if (_beaconRunning.value) return
-        if (!ensureRadioIdle("Beacon Broadcast")) return
-        this.stopLocalPortalImpl()
-
-        val cleanSsids = ssids.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        if (cleanSsids.isEmpty()) {
-            appendLog("At least one SSID is required.")
-            return
-        }
-        if (cleanSsids.size > 32) {
-            appendLog("Firmware supports at most 32 SSIDs.")
-            return
-        }
-
-        scope.launch {
-            appendLog("Starting beacon broadcast (${cleanSsids.size} SSID(s), channel $channel)...")
-            val args = JSONObject().apply {
-                put("ssids", cleanSsids.joinToString("\n"))
-                put("channel", channel.coerceIn(1, 13))
-                put("interval_ms", intervalMs.coerceIn(10, 2000))
-                put("hidden", hidden)
-                put("random_bssid", randomBssid)
-            }
-            val response = activeSession.sendCommand("START_BEACON", args, timeoutMs = 10_000)
-            if (response?.optBoolean("ok") == true) {
-                _beaconRunning.value = true
-                updateForegroundService()
-                _beaconSent.value = 0
-                _beaconSsidCount.value = response.optInt("ssids", cleanSsids.size)
-                _beaconChannel.value = response.optInt("channel", channel)
-                appendLog("Beacon broadcast started.")
-                addHistory("beacon", "Beacon broadcast started (${cleanSsids.size} SSIDs)", HistoryLevel.SUCCESS)
-                startBeaconStatusPolling(activeSession)
-            } else {
-                appendLog("Failed to start beacon broadcast: ${response?.optString("msg") ?: "timeout"}")
-            }
-        }
-    }
-
-    fun stopBeacon() {
-        if (!_beaconRunning.value) return
-        beaconStatusJob?.cancel()
-        beaconStatusJob = null
-        _beaconRunning.value = false
-        updateForegroundService()
-
-        val activeSession = session
-        scope.launch {
-            val response = activeSession?.sendCommand("STOP_BEACON", timeoutMs = 6_000)
-            if (response?.optBoolean("ok") == true) {
-                _beaconSent.value = response.optInt("sent", _beaconSent.value)
-                _beaconSsidCount.value = response.optInt("ssids", _beaconSsidCount.value)
-                appendLog("Beacon stopped. Frames sent: ${_beaconSent.value}.")
-                addHistory("beacon", "Beacon stopped; ${_beaconSent.value} frames sent", HistoryLevel.SUCCESS)
-            } else {
-                appendLog("Beacon stop request sent, but the device did not confirm.")
-            }
-        }
-    }
-
-    private fun startBeaconStatusPolling(activeSession: NrSession) {
-        beaconStatusJob?.cancel()
-        beaconStatusJob = scope.launch {
-            while (isActive && _beaconRunning.value) {
-                delay(2_000)
-                val response = activeSession.sendCommand("BEACON_STATUS", timeoutMs = 4_000) ?: continue
-                if (response.optBoolean("ok")) {
-                    _beaconRunning.value = response.optBoolean("active", _beaconRunning.value)
-                    _beaconSent.value = response.optInt("sent", _beaconSent.value)
-                    _beaconSsidCount.value = response.optInt("ssids", _beaconSsidCount.value)
-                    _beaconChannel.value = response.optInt("channel", _beaconChannel.value)
-                }
-            }
-        }
-    }
-
-    fun startSniff(request: SniffRequest) {
-        val activeSession = session
-        if (activeSession == null) {
-            appendLog("Connect to a device before sniffing.")
-            return
-        }
-        if (_sniffing.value) return
-        if (!ensureRadioIdle("Packet Sniffer")) return
-        beaconStatusJob?.cancel()
-        beaconStatusJob = null
-        _beaconRunning.value = false
-        this.stopLocalPortalImpl()
-
-        val captureName = "capture_${System.currentTimeMillis()}.pcap"
-        val exportUri = _exportDirectory.value
-        if (exportUri == null) {
-            _requiresRootDirectory.value = true
-            appendLog("Choose an NRSuite root directory before starting a capture.")
-            return
-        }
-        val writerResult = runCatching {
-            val pcapDir = ensureChildDirectory(exportUri, "Pcap")
-            val pcapDirUri = pcapDir?.uri ?: exportUri
-            val documentUri = createPcapDocumentInDirectory(pcapDirUri, captureName)
-            val outputStream = app.contentResolver
-                .openOutputStream(documentUri, "wt")
-                ?: throw IOException("Could not open export file")
-            val displayName = displayNameForTreeUri(exportUri)
-            PcapWriter(outputStream, closeOutput = true) to "$displayName/Pcap/$captureName"
-        }
-        val (writer, captureDisplayPath) = writerResult.getOrElse { error ->
-            appendLog("Could not create capture output: ${error.message}")
-            return
-        }
-
-        pcapWriter = writer
-        _capturePath.value = captureDisplayPath
-        _sniffPacketCount.value = 0
-        _sniffHandshake.value = EapolHandshake()
-        _sniffing.value = true
-        updateForegroundService()
-
-        appendLog("Capture file: $captureDisplayPath")
-
-        val eapolState = EapolHandshake()
-        var eapolStopRequested = false
-        pcapJob = scope.launch(Dispatchers.IO) {
-            activeSession.pcap.collect { frame ->
-                val matchesTarget = !request.targetNetworkOnly ||
-                    frameMatchesBssid(frame, request.targetBssid)
-                if (matchesTarget) {
-                    try {
-                        writer.writePacket(frame)
-                        _sniffPacketCount.update { it + 1 }
-                    } catch (t: Throwable) {
-                        appendLog("PCAP write error: ${t.message}")
-                    }
-                }
-
-                if (request.eapolOnly) {
-                    EapolParser.parse(frame, eapolState)
-                    _sniffHandshake.value = eapolState.copy()
-                    val targetMatches = MAC_PATTERN.matches(request.targetBssid.trim().uppercase())
-                    if (!eapolStopRequested && targetMatches && eapolState.isComplete) {
-                        eapolStopRequested = true
-                        appendLog("[+] Valid 4-Way Handshake captured!")
-                        stopSniff()
-                    }
-                }
-            }
-        }
-
-        scope.launch {
-            if (request.deauthBeforeCapture) {
-                val cleanBssid = request.targetBssid.trim().uppercase()
-                if (MAC_PATTERN.matches(cleanBssid)) {
-                    val cleanClient = request.client.trim()
-                        .ifBlank { "FF:FF:FF:FF:FF:FF" }
-                        .uppercase()
-                    appendLog("Sending deauth burst before capture...")
-                    val deauthResponse = activeSession.sendCommand(
-                        "DEAUTH",
-                        JSONObject().apply {
-                            put("bssid", cleanBssid)
-                            put("client", cleanClient)
-                            put("channel", request.channel.coerceIn(1, 13))
-                            put("count", request.deauthCount.coerceAtLeast(0))
-                            put("deauth_interval_ms", request.deauthIntervalMs.coerceIn(10, 10_000))
-                            put("reason", 7)
-                        },
-                        timeoutMs = 20_000,
-                    )
-                    if (deauthResponse?.optBoolean("ok") != true) {
-                        appendLog("Deauth burst failed or timed out; continuing with capture.")
-                    }
-                } else {
-                    appendLog("Skipping deauth trigger: invalid target BSSID.")
-                }
-            }
-
-            val cleanFilterBssid = request.targetBssid.trim().uppercase()
-            val args = JSONObject().apply {
-                put("mode", if (request.fixedMode) "fixed" else "hop")
-                put("channel", request.channel.coerceIn(1, 13))
-                put("interval_ms", request.intervalMs.coerceIn(50, 2_000))
-                if (request.eapolOnly) {
-                    put("eapol_only", true)
-                }
-                if (MAC_PATTERN.matches(cleanFilterBssid)) {
-                    put("bssid", cleanFilterBssid)
-                }
-            }
-            val response = activeSession.sendCommand("START_SNIFF", args, timeoutMs = 12_000)
-            if (response?.optBoolean("ok") == true) {
-                val message = if (request.fixedMode) {
-                    "Sniffing started on channel ${request.channel.coerceIn(1, 13)}."
-                } else {
-                    "Channel-hopping sniffing started."
-                }
-                appendLog(message)
-                addHistory("sniff", message, HistoryLevel.SUCCESS)
-            } else {
-                appendLog("Failed to start sniffing: ${response?.optString("msg") ?: "timeout"}")
-                stopSniff()
-            }
-        }
-    }
-
-    fun stopSniff() {
-        if (!_sniffing.value) return
-        _sniffing.value = false
-        updateForegroundService()
-
-        pcapJob?.cancel()
-        pcapJob = null
-
-        val activeSession = session
-        scope.launch {
-            val response = activeSession?.sendCommand("STOP_SNIFF", timeoutMs = 6_000)
-            if (response != null) {
-                appendLog(
-                    "Capture stopped: captured=${response.optInt("captured")}, " +
-                        "sent=${response.optInt("sent")}, dropped=${response.optInt("dropped")}"
-                )
-            }
-            withContext(Dispatchers.IO) {
-                runCatching { pcapWriter?.close() }
-            }
-            pcapWriter = null
-            _capturePath.value?.let {
-                appendLog("Capture saved: $it")
-                addHistory("sniff", "Capture saved: $it", HistoryLevel.SUCCESS)
-            }
-        }
-    }
+    fun stopSniff() = this.stopSniffImpl()
 
     internal fun activeRadioLabel(includeBle: Boolean = true): String? {
         if (includeBle && (_bleAdvertising.value || _bleConnected.value)) {
@@ -1749,12 +957,12 @@ class MainViewModel(internal val app: Application) {
         }
     }
 
-    private fun ensureChildDirectory(rootUri: Uri, name: String): DocumentFile? {
+    internal fun ensureChildDirectory(rootUri: Uri, name: String): DocumentFile? {
         val root = DocumentFile.fromTreeUri(app, rootUri) ?: return null
         return root.findFile(name) ?: root.createDirectory(name)
     }
 
-    private fun createPcapDocumentInDirectory(directoryUri: Uri, displayName: String): Uri {
+    internal fun createPcapDocumentInDirectory(directoryUri: Uri, displayName: String): Uri {
         return DocumentsContract.createDocument(
             app.contentResolver,
             directoryUri,
@@ -1775,7 +983,7 @@ class MainViewModel(internal val app: Application) {
         ) ?: throw IOException("Storage provider did not create a document")
     }
 
-    private fun displayNameForTreeUri(uri: Uri): String {
+    internal fun displayNameForTreeUri(uri: Uri): String {
         val documentId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
         val fromDocumentId = documentId
             ?.substringAfterLast('/')
@@ -1822,29 +1030,6 @@ class MainViewModel(internal val app: Application) {
         }
     }
 
-    private fun frameMatchesBssid(frame: ByteArray, bssid: String): Boolean {
-        val parts = bssid.trim().uppercase().split(":")
-        if (parts.size != 6) return false
-        val target = ByteArray(6) { index ->
-            parts[index].toIntOrNull(16)?.toByte() ?: return false
-        }
-        if (frame.size < 8) return false
-        val radiotapLength = (frame[2].toInt() and 0xFF) or
-            ((frame[3].toInt() and 0xFF) shl 8)
-        val macBase = radiotapLength
-        if (frame.size < macBase + 22) return false
-        for (offset in intArrayOf(4, 10, 16)) {
-            var matches = true
-            for (i in 0 until 6) {
-                if (frame[macBase + offset + i] != target[i]) {
-                    matches = false
-                    break
-                }
-            }
-            if (matches) return true
-        }
-        return false
-    }
 
     internal fun appendLog(
         message: String,
@@ -1864,9 +1049,7 @@ class MainViewModel(internal val app: Application) {
     companion object {
         private const val PREFERENCES_NAME = "nrsuite"
         private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
-        private const val PREF_BEACON_LISTS = "beacon_lists"
         private const val PREF_HISTORY = "session_history"
-        internal const val PREF_LAST_DEVICE_FINGERPRINT = "last_device_fingerprint"
         private const val PREF_RECENT_MODULES = "recent_modules"
         internal val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
     }

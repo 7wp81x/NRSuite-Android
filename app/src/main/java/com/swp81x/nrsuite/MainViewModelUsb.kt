@@ -14,6 +14,20 @@ internal fun MainViewModel.refreshDevicesImpl() {
     val found = UsbSerialDeviceCatalog.list(usbManager)
     _devices.value = found
     appendLog("Found ${found.size} supported USB serial device(s).")
+
+    // If the selected flash target vanished or lost permission, clear it so
+    // the flasher asks for permission instead of showing a stale "Selected".
+    val selectedTarget = _firmwareTargetDevice.value
+    if (selectedTarget != null) {
+        val stillPresent = found.firstOrNull {
+            it.device.deviceId == selectedTarget.device.deviceId
+        }
+        if (stillPresent == null || !usbManager.hasPermission(stillPresent.device)) {
+            _firmwareTargetDevice.value = null
+        } else {
+            _firmwareTargetDevice.value = stillPresent
+        }
+    }
 }
 
 internal fun MainViewModel.onUsbDeviceAttachedImpl() {
@@ -53,7 +67,6 @@ internal fun MainViewModel.onUsbDeviceDetachedImpl(device: UsbDevice) {
     if (_firmwareTargetDevice.value?.device?.deviceId == device.deviceId) {
         _firmwareTargetDevice.value = null
     }
-    _activeDeviceName.value = null
 
     // Set clean state BEFORE disconnecting so UI never shows Failed
     _connectionState.value = ConnectionState.Disconnected
@@ -109,10 +122,6 @@ internal fun MainViewModel.connectImpl(device: UsbDevice) {
     activeSerialDevice = entry
     _firmwareTargetDevice.value = entry
     activeDeviceFingerprint = deviceFingerprintImpl(entry.device)
-    _activeDeviceName.value = entry.displayName
-    preferences.edit()
-        .putString(MainViewModel.PREF_LAST_DEVICE_FINGERPRINT, activeDeviceFingerprint)
-        .apply()
     observe(newSession)
     scope.launch {
         appendLog("Opening ${entry.displayName}...")
