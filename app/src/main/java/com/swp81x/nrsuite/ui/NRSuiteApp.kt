@@ -192,6 +192,14 @@ internal val modules = listOf(
         available = true,
     ),
     ModuleCardSpec(
+        id = "deauth_detector",
+        title = "Deauth Detector",
+        description = "Passively detect deauth and disassoc frames around you.",
+        icon = Icons.Default.Warning,
+        category = "Wireless",
+        available = true,
+    ),
+    ModuleCardSpec(
         id = "evil_twin",
         title = "Evil Twin",
         description = "Portal + deauth + EAPOL capture workflow.",

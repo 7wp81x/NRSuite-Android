@@ -11,6 +11,7 @@ import android.provider.OpenableColumns
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
+import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.credentials.CredentialSession
 import com.swp81x.nrsuite.core.credentials.CredentialSource
 import com.swp81x.nrsuite.core.credentials.CredentialStatus
@@ -194,6 +195,21 @@ class MainViewModel(internal val app: Application) {
 
     internal val _deauthChannel = MutableStateFlow(0)
     val deauthChannel: StateFlow<Int> = _deauthChannel.asStateFlow()
+
+    internal val _deauthDetectorRunning = MutableStateFlow(false)
+    val deauthDetectorRunning: StateFlow<Boolean> = _deauthDetectorRunning.asStateFlow()
+
+    internal val _deauthDetectorHopping = MutableStateFlow(false)
+    val deauthDetectorHopping: StateFlow<Boolean> = _deauthDetectorHopping.asStateFlow()
+
+    internal val _deauthDetectorChannel = MutableStateFlow(0)
+    val deauthDetectorChannel: StateFlow<Int> = _deauthDetectorChannel.asStateFlow()
+
+    internal val _deauthDetectorIntervalMs = MutableStateFlow(300)
+    val deauthDetectorIntervalMs: StateFlow<Int> = _deauthDetectorIntervalMs.asStateFlow()
+
+    internal val _deauthDetectorAlerts = MutableStateFlow<List<DeauthAlert>>(emptyList())
+    val deauthDetectorAlerts: StateFlow<List<DeauthAlert>> = _deauthDetectorAlerts.asStateFlow()
 
     internal val _portalRunning = MutableStateFlow(false)
     val portalRunning: StateFlow<Boolean> = _portalRunning.asStateFlow()
@@ -580,6 +596,7 @@ class MainViewModel(internal val app: Application) {
         _portalRunning.value = false
         _sniffing.value = false
         _deauthRunning.value = false
+        _deauthDetectorRunning.value = false
         _bleAdvertising.value = false
         _bleConnected.value = false
         _bleScriptRunning.value = false
@@ -727,6 +744,15 @@ class MainViewModel(internal val app: Application) {
 
     fun startDeauth(bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int) = this.startDeauthImpl(bssid, channel, client, count, duration, intervalMs)
 
+    fun startDeauthDetector(hop: Boolean, channel: Int, bssid: String, client: String, rssiMin: Int, intervalMs: Int) =
+        this.startDeauthDetectorImpl(hop, channel, bssid, client, rssiMin, intervalMs)
+
+    fun stopDeauthDetector() = this.stopDeauthDetectorImpl()
+
+    fun clearDeauthDetectorAlerts() {
+        _deauthDetectorAlerts.value = emptyList()
+    }
+
     fun startBeacon(ssids: List<String>, channel: Int, intervalMs: Int, hidden: Boolean, randomBssid: Boolean) = this.startBeaconImpl(ssids, channel, intervalMs, hidden, randomBssid)
 
     fun stopBeacon() = this.stopBeaconImpl()
@@ -747,6 +773,7 @@ class MainViewModel(internal val app: Application) {
             _sniffing.value -> "Packet Sniffer"
             _beaconRunning.value -> "Beacon Broadcast"
             _deauthRunning.value -> "Deauthentication"
+            _deauthDetectorRunning.value -> "Deauth Detector"
             _scanning.value -> "WiFi Scan"
             else -> null
         }
@@ -772,6 +799,7 @@ class MainViewModel(internal val app: Application) {
             _beaconRunning.value -> "Beacon broadcast active"
             _portalRunning.value -> "Captive portal active"
             _deauthRunning.value -> "Deauth burst active"
+            _deauthDetectorRunning.value -> "Deauth detector active"
             _bleAdvertising.value || _bleConnected.value -> "BLE HID active"
             else -> null
         }
@@ -803,6 +831,12 @@ class MainViewModel(internal val app: Application) {
             scope.launch(Dispatchers.IO) {
                 runCatching { pcapWriter?.close() }
                 pcapWriter = null
+            }
+        }
+        if (_deauthDetectorRunning.value) {
+            _deauthDetectorRunning.value = false
+            scope.launch {
+                runCatching { current?.sendCommand("DEAUTH_DETECT_STOP", timeoutMs = 4_000) }
             }
         }
         portalStatusJob?.cancel()
@@ -910,6 +944,25 @@ class MainViewModel(internal val app: Application) {
                             _deauthSent.value = event.optInt("sent_frames", _deauthSent.value)
                             appendLog("Deauth stats: ${_deauthSent.value} frame(s) sent.")
                             this@MainViewModel.portalLogImpl("Deauth stats: ${_deauthSent.value} frame(s) sent")
+                        }
+                        "deauth_detected" -> {
+                            val alert = DeauthAlert(
+                                subtype = event.optString("subtype", "deauth"),
+                                subtypeCode = event.optInt("subtype_code", 0x0C),
+                                bssid = event.optString("bssid", "?"),
+                                source = event.optString("source", "?"),
+                                client = event.optString("client", event.optString("destination", "?")),
+                                channel = event.optInt("channel", 0),
+                                rssi = event.optInt("rssi", -127),
+                                reason = event.optInt("reason", 0),
+                                uptimeMs = event.optLong("uptime_ms", 0L),
+                                receivedAt = timeHmNow(),
+                            )
+                            _deauthDetectorAlerts.update { (listOf(alert) + it).take(500) }
+                            appendLog(
+                                "Deauth detected: ${alert.subtype} ${alert.source} -> ${alert.client} " +
+                                    "on ch ${alert.channel} (${alert.rssi} dBm, reason ${alert.reason})"
+                            )
                         }
                         "heartbeat" -> Unit
                     }

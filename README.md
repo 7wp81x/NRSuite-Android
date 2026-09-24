@@ -37,6 +37,7 @@ check [screenshots](./Screenshots/) for more screenshots.
 | Wi-Fi Scan | Passive AP and client discovery |
 | Beacon Injection | Broadcast fake SSIDs |
 | Deauthentication | Send deauth frames to targets |
+| Deauth Detector | Passive detection, filters, and live alerts for deauth/disassoc frames |
 | Evil Twin | Rogue AP with captive portal |
 | Captive Portal | Custom HTML portal for credential capture |
 | Packet Sniffer | Monitor-mode pcap capture and export |
@@ -47,7 +48,7 @@ check [screenshots](./Screenshots/) for more screenshots.
 | ESP32 Flasher | Flash NRSuite firmware directly from the app over USB |
 
 ### Planned (see [FEATURES.md](./FEATURES.md))
-- Defense modules: rogue AP detector, deauth detector, AirTag/tracker detector
+- Defense modules: rogue AP detector, AirTag/tracker detector
 - ESP-NOW mesh: multi-node coordination, distributed sensing, triangulation
 - Mesh chat: encrypted offline team messaging
 - Remote camera node support (ESP32-CAM)

@@ -283,7 +283,7 @@ internal fun HomeScreen(
                     name = "Wireless",
                     icon = Icons.Default.Wifi,
                     iconTint = NrAccent,
-                    moduleIds = listOf("wifi", "sniff", "beacon", "deauth", "evil_twin", "portal"),
+                    moduleIds = listOf("wifi", "sniff", "beacon", "deauth", "deauth_detector", "evil_twin", "portal"),
                     available = firmwareConnected,
                 ),
                 CategorySpec(
