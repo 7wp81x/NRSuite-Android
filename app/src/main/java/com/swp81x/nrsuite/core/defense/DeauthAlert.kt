@@ -1,19 +1,25 @@
 package com.swp81x.nrsuite.core.defense
 
 /**
- * A deauth/disassoc frame detected by the firmware's deauth detector.
+ * UI state for a currently-active deauth attack alert.
  */
 data class DeauthAlert(
-    val subtype: String,
-    val subtypeCode: Int,
-    val bssid: String,
-    val source: String,
-    val client: String,
+    val sourceMac: String,
+    val ssid: String,
     val channel: Int,
+    val espDeviceLabel: String,
+    val possiblySpoofed: Boolean,
+)
+
+/**
+ * One deauth/disassoc frame displayed in the detector feed.
+ */
+data class DeauthFeedEntry(
+    val timestamp: String,
+    val sourceMac: String,
+    val targetMac: String?,   // null = broadcast
+    val reasonCode: Int,
     val rssi: Int,
-    val reason: Int,
-    val uptimeMs: Long,
-    val receivedAt: String,
-) {
-    val isDeauth: Boolean get() = subtypeCode == 0x0C
-}
+)
+
+enum class DeauthFeedFilter { ALL, BROADCAST, TARGETED }

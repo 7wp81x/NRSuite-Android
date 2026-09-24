@@ -121,6 +121,7 @@ import androidx.core.content.ContextCompat
 import com.swp81x.nrsuite.MainViewModel
 import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
@@ -183,9 +184,15 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val deauthTarget by viewModel.deauthTarget.collectAsState()
     val deauthChannel by viewModel.deauthChannel.collectAsState()
     val deauthDetectorRunning by viewModel.deauthDetectorRunning.collectAsState()
-    val deauthDetectorHopping by viewModel.deauthDetectorHopping.collectAsState()
     val deauthDetectorChannel by viewModel.deauthDetectorChannel.collectAsState()
-    val deauthDetectorAlerts by viewModel.deauthDetectorAlerts.collectAsState()
+    val deauthDetectorActiveAlert by viewModel.deauthDetectorActiveAlert.collectAsState()
+    val deauthDetectorFeed by viewModel.deauthDetectorFeed.collectAsState()
+    val deauthDetectorFeedFilter by viewModel.deauthDetectorFeedFilter.collectAsState()
+    val deauthDetectorFramesPerSecond by viewModel.deauthDetectorFramesPerSecond.collectAsState()
+    val deauthDetectorTotalFrames by viewModel.deauthDetectorTotalFrames.collectAsState()
+    val deauthDetectorUniqueSourceCount by viewModel.deauthDetectorUniqueSourceCount.collectAsState()
+    val deauthDetectorTargets by viewModel.deauthDetectorTargets.collectAsState()
+    val deauthDetectorSelectedTarget by viewModel.deauthDetectorSelectedTarget.collectAsState()
     val portalRunning by viewModel.portalRunning.collectAsState()
     val portalMode by viewModel.portalMode.collectAsState()
     val portalHtmlSize by viewModel.portalHtmlSize.collectAsState()
@@ -705,15 +712,34 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
 
             activeModuleId == "deauth_detector" -> {
+                val visibleFeed = remember(deauthDetectorFeed, deauthDetectorFeedFilter) {
+                    when (deauthDetectorFeedFilter) {
+                        DeauthFeedFilter.ALL -> deauthDetectorFeed
+                        DeauthFeedFilter.BROADCAST -> deauthDetectorFeed.filter { it.targetMac == null }
+                        DeauthFeedFilter.TARGETED -> deauthDetectorFeed.filter { it.targetMac != null }
+                    }
+                }
                 DeauthDetectorScreen(
                     connected = connectionState is ConnectionState.Connected,
                     running = deauthDetectorRunning,
-                    hopping = deauthDetectorHopping,
-                    activeChannel = deauthDetectorChannel,
-                    alerts = deauthDetectorAlerts,
+                    espDeviceLabel = connectedChip ?: "ESP32",
+                    framesPerSecond = deauthDetectorFramesPerSecond,
+                    totalFrames = deauthDetectorTotalFrames,
+                    uniqueSourceCount = deauthDetectorUniqueSourceCount,
+                    thresholdFramesPerSecond = 10,
+                    activeAlert = deauthDetectorActiveAlert,
+                    feed = visibleFeed,
+                    feedFilter = deauthDetectorFeedFilter,
+                    scanResults = deauthDetectorTargets,
+                    selectedTarget = deauthDetectorSelectedTarget,
+                    channel = deauthDetectorChannel,
+                    onChannelChange = viewModel::setDeauthDetectorChannel,
+                    onSelectTarget = viewModel::selectDeauthDetectorTarget,
+                    onScanClick = viewModel::scanWifi,
+                    isScanning = scanning,
+                    onFeedFilterChange = viewModel::setDeauthDetectorFeedFilter,
                     onStart = viewModel::startDeauthDetector,
                     onStop = viewModel::stopDeauthDetector,
-                    onClearAlerts = viewModel::clearDeauthDetectorAlerts,
                     modifier = contentModifier,
                 )
             }

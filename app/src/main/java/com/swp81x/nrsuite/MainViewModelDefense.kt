@@ -6,74 +6,59 @@ import org.json.JSONObject
 
 // Deauth detector state and command handling.
 
-internal fun MainViewModel.startDeauthDetectorImpl(
-    hop: Boolean,
-    channel: Int,
-    bssid: String,
-    client: String,
-    rssiMin: Int,
-    intervalMs: Int,
-) {
+internal fun MainViewModel.startDeauthDetectorImpl() {
     val activeSession = session
     if (activeSession == null) {
         appendLog("Connect to a device before starting the deauth detector.")
         return
     }
     if (_deauthDetectorRunning.value) return
+
+    val target = _deauthDetectorSelectedTarget.value
+    if (target == null) {
+        _actionError.value = "Select a target AP before starting the deauth detector."
+        return
+    }
     if (!ensureRadioIdle("Deauth Detector")) return
 
-    val cleanBssid = bssid.trim().uppercase()
-    val cleanClient = client.trim().uppercase()
-    val hasBssid = cleanBssid.isNotBlank()
-    val hasClient = cleanClient.isNotBlank()
+    val channel = _deauthDetectorChannel.value.coerceIn(1, 14)
 
-    if (hasBssid && !MainViewModel.MAC_PATTERN.matches(cleanBssid)) {
-        appendLog("Invalid BSSID filter: $cleanBssid")
-        return
-    }
-    if (hasClient && !MainViewModel.MAC_PATTERN.matches(cleanClient)) {
-        appendLog("Invalid client filter: $cleanClient")
-        return
-    }
+    _deauthDetectorActiveAlert.value = null
+    _deauthDetectorFeed.value = emptyList()
+    _deauthDetectorFramesPerSecond.value = 0
+    _deauthDetectorTotalFrames.value = 0
+    _deauthDetectorUniqueSourceCount.value = 0
+    deauthDetectorSources.clear()
+    deauthDetectorFrameTimestamps.clear()
+    deauthAlertClearJob?.cancel()
+    deauthAlertClearJob = null
+    deauthFpsResetJob?.cancel()
+    deauthFpsResetJob = null
 
-    val safeChannel = channel.coerceIn(1, 13)
-    val safeIntervalMs = intervalMs.coerceIn(50, 5_000)
-    val safeRssiMin = rssiMin.coerceIn(-127, 0)
-
-    _deauthDetectorAlerts.value = emptyList()
-    _deauthDetectorHopping.value = hop
-    _deauthDetectorChannel.value = if (hop) 1 else safeChannel
-    _deauthDetectorIntervalMs.value = safeIntervalMs
     _deauthDetectorRunning.value = true
     updateForegroundService()
 
     scope.launch {
-        appendLog(
-            "Starting deauth detector (" +
-                (if (hop) "channel hop" else "channel $safeChannel") +
-                ", RSSI >= $safeRssiMin dBm)..."
-        )
+        appendLog("Starting deauth detector on channel $channel (target ${target.ssid})...")
         val args = JSONObject().apply {
-            put("mode", if (hop) "hop" else "fixed")
-            put("channel", safeChannel)
-            put("interval_ms", safeIntervalMs)
-            put("rssi_min", safeRssiMin)
-            if (hasBssid) put("bssid", cleanBssid)
-            if (hasClient) put("client", cleanClient)
+            put("mode", "fixed")
+            put("channel", channel)
+            put("bssid", target.bssid)
+            put("interval_ms", 300)
+            put("rssi_min", -127)
         }
 
         val response = activeSession.sendCommand("DEAUTH_DETECT_START", args, timeoutMs = 10_000)
         if (response?.optBoolean("ok") == true) {
-            _deauthDetectorHopping.value = response.optBoolean("hopping", hop)
-            _deauthDetectorChannel.value = response.optInt("channel", if (hop) 1 else safeChannel)
             appendLog("Deauth detector started.")
             addHistory(
                 "deauth_detector",
-                "Deauth detector started (${if (hop) "channel hop" else "channel $safeChannel"})",
+                "Deauth detector started on channel $channel",
                 HistoryLevel.SUCCESS,
             )
         } else {
             _deauthDetectorRunning.value = false
+            _deauthDetectorFramesPerSecond.value = 0
             updateForegroundService()
             appendLog("Failed to start deauth detector: ${response?.optString("msg") ?: "timeout"}")
         }
@@ -83,16 +68,20 @@ internal fun MainViewModel.startDeauthDetectorImpl(
 internal fun MainViewModel.stopDeauthDetectorImpl() {
     if (!_deauthDetectorRunning.value) return
     _deauthDetectorRunning.value = false
+    _deauthDetectorFramesPerSecond.value = 0
+    deauthAlertClearJob?.cancel()
+    deauthAlertClearJob = null
+    deauthFpsResetJob?.cancel()
+    deauthFpsResetJob = null
+    _deauthDetectorActiveAlert.value = null
     updateForegroundService()
 
     val activeSession = session
     scope.launch {
         val response = activeSession?.sendCommand("DEAUTH_DETECT_STOP", timeoutMs = 6_000)
         if (response?.optBoolean("ok") == true) {
-            val detected = response.optInt("detected", _deauthDetectorAlerts.value.size)
-            val sent = response.optInt("sent", detected)
-            val dropped = response.optInt("dropped", 0)
-            appendLog("Deauth detector stopped: detected=$detected, sent=$sent, dropped=$dropped.")
+            val detected = response.optInt("detected", _deauthDetectorTotalFrames.value)
+            appendLog("Deauth detector stopped: detected=$detected frame(s).")
             addHistory(
                 "deauth_detector",
                 "Deauth detector stopped; detected=$detected",

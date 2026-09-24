@@ -72,6 +72,7 @@ internal fun MainViewModel.scanWifiImpl() {
     if (!ensureRadioIdle("WiFi Scan")) return
 
     _networks.value = emptyList()
+    _deauthDetectorTargets.value = emptyList()
     _scanning.value = true
     scope.launch {
         appendLog("Starting WiFi scan...")

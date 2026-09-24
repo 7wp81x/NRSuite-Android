@@ -12,6 +12,8 @@ import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.defense.DeauthAlert
+import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
+import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
 import com.swp81x.nrsuite.core.credentials.CredentialSession
 import com.swp81x.nrsuite.core.credentials.CredentialSource
 import com.swp81x.nrsuite.core.credentials.CredentialStatus
@@ -29,6 +31,7 @@ import com.swp81x.nrsuite.core.pcap.PcapWriter
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
 import com.swp81x.nrsuite.core.wifi.DetectedSsid
+import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wifi.PcapSsidParser
 import com.swp81x.nrsuite.core.wpa.WpaCracker
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeVerifier
@@ -100,7 +103,7 @@ class MainViewModel(internal val app: Application) {
     internal val _requiresRootDirectory = MutableStateFlow(false)
     val requiresRootDirectory: StateFlow<Boolean> = _requiresRootDirectory.asStateFlow()
 
-    private val _actionError = MutableStateFlow<String?>(null)
+    internal val _actionError = MutableStateFlow<String?>(null)
     val actionError: StateFlow<String?> = _actionError.asStateFlow()
 
     internal val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
@@ -199,17 +202,37 @@ class MainViewModel(internal val app: Application) {
     internal val _deauthDetectorRunning = MutableStateFlow(false)
     val deauthDetectorRunning: StateFlow<Boolean> = _deauthDetectorRunning.asStateFlow()
 
-    internal val _deauthDetectorHopping = MutableStateFlow(false)
-    val deauthDetectorHopping: StateFlow<Boolean> = _deauthDetectorHopping.asStateFlow()
-
-    internal val _deauthDetectorChannel = MutableStateFlow(0)
+    internal val _deauthDetectorChannel = MutableStateFlow(6)
     val deauthDetectorChannel: StateFlow<Int> = _deauthDetectorChannel.asStateFlow()
 
-    internal val _deauthDetectorIntervalMs = MutableStateFlow(300)
-    val deauthDetectorIntervalMs: StateFlow<Int> = _deauthDetectorIntervalMs.asStateFlow()
+    internal val _deauthDetectorActiveAlert = MutableStateFlow<DeauthAlert?>(null)
+    val deauthDetectorActiveAlert: StateFlow<DeauthAlert?> = _deauthDetectorActiveAlert.asStateFlow()
 
-    internal val _deauthDetectorAlerts = MutableStateFlow<List<DeauthAlert>>(emptyList())
-    val deauthDetectorAlerts: StateFlow<List<DeauthAlert>> = _deauthDetectorAlerts.asStateFlow()
+    internal val _deauthDetectorFeed = MutableStateFlow<List<DeauthFeedEntry>>(emptyList())
+    val deauthDetectorFeed: StateFlow<List<DeauthFeedEntry>> = _deauthDetectorFeed.asStateFlow()
+
+    internal val _deauthDetectorFeedFilter = MutableStateFlow(DeauthFeedFilter.ALL)
+    val deauthDetectorFeedFilter: StateFlow<DeauthFeedFilter> = _deauthDetectorFeedFilter.asStateFlow()
+
+    internal val _deauthDetectorFramesPerSecond = MutableStateFlow(0)
+    val deauthDetectorFramesPerSecond: StateFlow<Int> = _deauthDetectorFramesPerSecond.asStateFlow()
+
+    internal val _deauthDetectorTotalFrames = MutableStateFlow(0)
+    val deauthDetectorTotalFrames: StateFlow<Int> = _deauthDetectorTotalFrames.asStateFlow()
+
+    internal val _deauthDetectorUniqueSourceCount = MutableStateFlow(0)
+    val deauthDetectorUniqueSourceCount: StateFlow<Int> = _deauthDetectorUniqueSourceCount.asStateFlow()
+
+    internal val _deauthDetectorTargets = MutableStateFlow<List<NetworkTarget>>(emptyList())
+    val deauthDetectorTargets: StateFlow<List<NetworkTarget>> = _deauthDetectorTargets.asStateFlow()
+
+    internal val _deauthDetectorSelectedTarget = MutableStateFlow<NetworkTarget?>(null)
+    val deauthDetectorSelectedTarget: StateFlow<NetworkTarget?> = _deauthDetectorSelectedTarget.asStateFlow()
+
+    internal val deauthDetectorFrameTimestamps = ArrayDeque<Long>()
+    internal val deauthDetectorSources = mutableSetOf<String>()
+    internal var deauthAlertClearJob: Job? = null
+    internal var deauthFpsResetJob: Job? = null
 
     internal val _portalRunning = MutableStateFlow(false)
     val portalRunning: StateFlow<Boolean> = _portalRunning.asStateFlow()
@@ -597,6 +620,12 @@ class MainViewModel(internal val app: Application) {
         _sniffing.value = false
         _deauthRunning.value = false
         _deauthDetectorRunning.value = false
+        deauthAlertClearJob?.cancel()
+        deauthAlertClearJob = null
+        deauthFpsResetJob?.cancel()
+        deauthFpsResetJob = null
+        _deauthDetectorActiveAlert.value = null
+        _deauthDetectorFramesPerSecond.value = 0
         _bleAdvertising.value = false
         _bleConnected.value = false
         _bleScriptRunning.value = false
@@ -637,6 +666,11 @@ class MainViewModel(internal val app: Application) {
 
     internal fun timeHmNow(): String =
         java.time.LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"))
+
+    internal fun currentEspDeviceLabel(): String =
+        activeSerialDevice?.displayName
+            ?: (_connectionState.value as? ConnectionState.Connected)?.chip
+            ?: "ESP32"
 
 
 
@@ -744,13 +778,25 @@ class MainViewModel(internal val app: Application) {
 
     fun startDeauth(bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int) = this.startDeauthImpl(bssid, channel, client, count, duration, intervalMs)
 
-    fun startDeauthDetector(hop: Boolean, channel: Int, bssid: String, client: String, rssiMin: Int, intervalMs: Int) =
-        this.startDeauthDetectorImpl(hop, channel, bssid, client, rssiMin, intervalMs)
+    fun startDeauthDetector() = this.startDeauthDetectorImpl()
 
     fun stopDeauthDetector() = this.stopDeauthDetectorImpl()
 
-    fun clearDeauthDetectorAlerts() {
-        _deauthDetectorAlerts.value = emptyList()
+    fun clearDeauthDetectorFeed() {
+        _deauthDetectorFeed.value = emptyList()
+    }
+
+    fun setDeauthDetectorFeedFilter(filter: DeauthFeedFilter) {
+        _deauthDetectorFeedFilter.value = filter
+    }
+
+    fun setDeauthDetectorChannel(channel: Int) {
+        _deauthDetectorChannel.value = channel.coerceIn(1, 14)
+    }
+
+    fun selectDeauthDetectorTarget(target: NetworkTarget?) {
+        _deauthDetectorSelectedTarget.value = target
+        target?.let { _deauthDetectorChannel.value = it.channel.coerceIn(1, 14) }
     }
 
     fun startBeacon(ssids: List<String>, channel: Int, intervalMs: Int, hidden: Boolean, randomBssid: Boolean) = this.startBeaconImpl(ssids, channel, intervalMs, hidden, randomBssid)
@@ -867,12 +913,26 @@ class MainViewModel(internal val app: Application) {
                     _events.update { (it + event).takeLast(100) }
                     when (event.optString("type")) {
                         "scan_ap" -> {
+                            val bssid = event.optString("bssid")
                             _networks.update { current ->
-                                val bssid = event.optString("bssid")
                                 (current.filterNot { it.optString("bssid") == bssid } + event)
                                     .sortedByDescending { it.optInt("rssi", -999) }
                             }
                             val ssid = event.optString("ssid").ifBlank { "(hidden)" }
+                            val target = NetworkTarget(
+                                ssid = ssid,
+                                bssid = bssid,
+                                channel = event.optInt("channel", 0),
+                                rssi = event.optInt("rssi", -100),
+                                security = event.optString("security", "?"),
+                            )
+                            _deauthDetectorTargets.update { current ->
+                                (current.filterNot { it.bssid.equals(bssid, ignoreCase = true) } + target)
+                                    .sortedByDescending { it.rssi }
+                            }
+                            _deauthDetectorSelectedTarget.update { selected ->
+                                selected?.takeIf { it.bssid.equals(bssid, ignoreCase = true) } ?: selected
+                            }
                             appendLog(
                                 "AP: $ssid  ${event.optString("bssid")}  " +
                                     "ch ${event.optInt("channel")}  ${event.optInt("rssi")} dBm  " +
@@ -946,22 +1006,72 @@ class MainViewModel(internal val app: Application) {
                             this@MainViewModel.portalLogImpl("Deauth stats: ${_deauthSent.value} frame(s) sent")
                         }
                         "deauth_detected" -> {
+                            val bssid = event.optString("bssid", "?").uppercase()
+                            val sourceMac = event.optString("source", bssid).uppercase()
+                            val rawClient = event.optString(
+                                "client",
+                                event.optString("destination", ""),
+                            ).uppercase()
+                            val targetMac = rawClient.takeIf {
+                                it.isNotBlank() &&
+                                    it != "FF:FF:FF:FF:FF:FF" &&
+                                    it != "00:00:00:00:00:00"
+                            }
+                            val channel = event.optInt("channel", _deauthDetectorChannel.value)
+                            val rssi = event.optInt("rssi", -127)
+                            val reasonCode = event.optInt("reason", 0)
+                            val resolvedSsid = _deauthDetectorTargets.value
+                                .firstOrNull { it.bssid.equals(bssid, ignoreCase = true) }
+                                ?.ssid
+                                ?: _deauthDetectorSelectedTarget.value
+                                    ?.takeIf { it.bssid.equals(bssid, ignoreCase = true) }
+                                    ?.ssid
+                                ?: bssid
+
+                            _deauthDetectorFeed.update { current ->
+                                (current + DeauthFeedEntry(
+                                    timestamp = timeHmNow(),
+                                    sourceMac = sourceMac,
+                                    targetMac = targetMac,
+                                    reasonCode = reasonCode,
+                                    rssi = rssi,
+                                )).takeLast(500)
+                            }
+                            _deauthDetectorTotalFrames.update { it + 1 }
+                            deauthDetectorSources += sourceMac
+                            _deauthDetectorUniqueSourceCount.value = deauthDetectorSources.size
+
+                            val now = System.currentTimeMillis()
+                            deauthDetectorFrameTimestamps.addLast(now)
+                            while (deauthDetectorFrameTimestamps.isNotEmpty() &&
+                                now - deauthDetectorFrameTimestamps.first() > 1_000
+                            ) {
+                                deauthDetectorFrameTimestamps.removeFirst()
+                            }
+                            _deauthDetectorFramesPerSecond.value = deauthDetectorFrameTimestamps.size
+                            deauthFpsResetJob?.cancel()
+                            deauthFpsResetJob = scope.launch {
+                                delay(1_000)
+                                _deauthDetectorFramesPerSecond.value = 0
+                            }
+
                             val alert = DeauthAlert(
-                                subtype = event.optString("subtype", "deauth"),
-                                subtypeCode = event.optInt("subtype_code", 0x0C),
-                                bssid = event.optString("bssid", "?"),
-                                source = event.optString("source", "?"),
-                                client = event.optString("client", event.optString("destination", "?")),
-                                channel = event.optInt("channel", 0),
-                                rssi = event.optInt("rssi", -127),
-                                reason = event.optInt("reason", 0),
-                                uptimeMs = event.optLong("uptime_ms", 0L),
-                                receivedAt = timeHmNow(),
+                                sourceMac = sourceMac,
+                                ssid = resolvedSsid,
+                                channel = channel,
+                                espDeviceLabel = currentEspDeviceLabel(),
+                                possiblySpoofed = event.optBoolean("possibly_spoofed", false),
                             )
-                            _deauthDetectorAlerts.update { (listOf(alert) + it).take(500) }
+                            _deauthDetectorActiveAlert.value = alert
+                            deauthAlertClearJob?.cancel()
+                            deauthAlertClearJob = scope.launch {
+                                delay(8_000)
+                                _deauthDetectorActiveAlert.value = null
+                            }
+
                             appendLog(
-                                "Deauth detected: ${alert.subtype} ${alert.source} -> ${alert.client} " +
-                                    "on ch ${alert.channel} (${alert.rssi} dBm, reason ${alert.reason})"
+                                "Deauth detected: $sourceMac -> ${targetMac ?: "broadcast"} " +
+                                    "on ch $channel ($rssi dBm, reason $reasonCode)"
                             )
                         }
                         "heartbeat" -> Unit

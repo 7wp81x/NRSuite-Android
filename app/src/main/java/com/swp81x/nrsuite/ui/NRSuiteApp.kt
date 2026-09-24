@@ -196,7 +196,7 @@ internal val modules = listOf(
         title = "Deauth Detector",
         description = "Passively detect deauth and disassoc frames around you.",
         icon = Icons.Default.Warning,
-        category = "Wireless",
+        category = "Detection",
         available = true,
     ),
     ModuleCardSpec(

@@ -280,10 +280,17 @@ internal fun HomeScreen(
             val firmwareConnected = connectionState is ConnectionState.Connected
             val categories = listOf(
                 CategorySpec(
+                    name = "Detection",
+                    icon = Icons.Default.Warning,
+                    iconTint = NrAccent,
+                    moduleIds = listOf("deauth_detector"),
+                    available = firmwareConnected,
+                ),
+                CategorySpec(
                     name = "Wireless",
                     icon = Icons.Default.Wifi,
                     iconTint = NrAccent,
-                    moduleIds = listOf("wifi", "sniff", "beacon", "deauth", "deauth_detector", "evil_twin", "portal"),
+                    moduleIds = listOf("wifi", "sniff", "beacon", "deauth", "evil_twin", "portal"),
                     available = firmwareConnected,
                 ),
                 CategorySpec(
