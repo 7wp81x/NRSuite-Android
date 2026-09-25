@@ -164,11 +164,9 @@ internal fun LogsScreen(
 
         if (selectedTab == 0) {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(NrSurfaceVariant.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -178,18 +176,24 @@ internal fun LogsScreen(
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.weight(1f),
                         )
-                        IconButton(onClick = {
-                            val text = logs.joinToString("\n") { "${it.timestamp} [${it.tag}] ${it.message}" }
-                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
-                        }) { Icon(Icons.Default.ContentCopy, contentDescription = "Copy log") }
-                        IconButton(onClick = {
-                            val text = logs.joinToString("\n") { "${it.timestamp} [${it.tag}] ${it.message}" }
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, text)
-                            }
-                            context.startActivity(Intent.createChooser(intent, "Export log"))
-                        }) { Icon(Icons.Default.Share, contentDescription = "Export log") }
+                        IconButton(
+                            onClick = {
+                                val text = logs.joinToString("\n") { "${it.timestamp} [${it.tag}] ${it.message}" }
+                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+                            },
+                            enabled = logs.isNotEmpty(),
+                        ) { Icon(Icons.Default.ContentCopy, contentDescription = "Copy log") }
+                        IconButton(
+                            onClick = {
+                                val text = logs.joinToString("\n") { "${it.timestamp} [${it.tag}] ${it.message}" }
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, text)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "Export log"))
+                            },
+                            enabled = logs.isNotEmpty(),
+                        ) { Icon(Icons.Default.Share, contentDescription = "Export log") }
                         IconButton(onClick = onClearLogs, enabled = logs.isNotEmpty()) {
                             Icon(Icons.Default.Delete, contentDescription = "Clear log")
                         }
@@ -213,7 +217,28 @@ internal fun LogsScreen(
                     }
                 }
                 if (filtered.isEmpty()) {
-                    item { Text("No logs yet. Connect a device or run a module.", color = NrOnSurfaceVariant) }
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Terminal,
+                                contentDescription = null,
+                                tint = NrOnSurfaceVariant,
+                                modifier = Modifier.size(32.dp),
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text("No runtime logs yet", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Connect a device or run a module to see live log output.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NrOnSurfaceVariant,
+                            )
+                        }
+                    }
                 } else {
                     items(filtered.takeLast(300).reversed(), contentType = { "log" }) { entry ->
                         val textColor = when (entry.level) {
@@ -222,30 +247,36 @@ internal fun LogsScreen(
                             LogLevel.USB -> LogColorUsb
                             LogLevel.INFO -> LogColorInfo
                         }
-                        val bg = if (entry.level == LogLevel.ERROR) LogBgError else Color.Transparent
-                        SelectionContainer {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(bg, RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 8.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.Top,
-                            ) {
-                                Text(
-                                    text = entry.timestamp,
-                                    fontSize = 11.sp,
-                                    color = NrOnSurfaceVariant,
-                                    fontFamily = FontFamily.Monospace,
-                                    modifier = Modifier.width(56.dp),
-                                )
-                                Text(
-                                    text = "[${entry.tag}] ${entry.message}",
-                                    fontSize = 12.sp,
-                                    color = textColor,
-                                    fontFamily = FontFamily.Monospace,
-                                    modifier = Modifier.weight(1f),
-                                    softWrap = true,
-                                )
+                        val cardColor = if (entry.level == LogLevel.ERROR) LogBgError else NrSurface
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = cardColor),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(0.5.dp, NrOutline),
+                        ) {
+                            SelectionContainer {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.Top,
+                                ) {
+                                    Text(
+                                        text = entry.timestamp,
+                                        fontSize = 11.sp,
+                                        color = NrOnSurfaceVariant,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.width(56.dp),
+                                    )
+                                    Text(
+                                        text = "[${entry.tag}] ${entry.message}",
+                                        fontSize = 12.sp,
+                                        color = textColor,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.weight(1f),
+                                        softWrap = true,
+                                    )
+                                }
                             }
                         }
                     }
@@ -255,7 +286,7 @@ internal fun LogsScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
