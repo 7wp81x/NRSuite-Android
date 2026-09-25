@@ -1084,7 +1084,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
             selectedTab == AppTab.MODULES -> ModulesScreen(
                 modules = liveModules,
-                onOpenModule = { activeModuleId = it },
+                onOpenModule = {
+                    viewModel.onModuleOpened(it)
+                    activeModuleId = it
+                },
                 modifier = contentModifier,
             )
 

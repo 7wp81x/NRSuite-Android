@@ -53,6 +53,8 @@ import com.swp81x.nrsuite.core.defense.RogueApAlert
 import com.swp81x.nrsuite.core.defense.RogueApCategory
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.util.rssiToProximity
+import com.swp81x.nrsuite.ui.util.signalQualityColor
+import com.swp81x.nrsuite.ui.util.threatProximityColor
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -424,6 +426,12 @@ private fun NearbyApRow(ap: NearbyAp) {
         else -> StatusNeutral
     }
 
+    val signalTint = if (ap.suspicious) {
+        threatProximityColor(ap.rssi)
+    } else {
+        signalQualityColor(ap.rssi)
+    }
+
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -454,7 +462,7 @@ private fun NearbyApRow(ap: NearbyAp) {
         Text(
             text = "ch ${ap.channel} · ${ap.rssi} dBm · ${rssiToProximity(ap.rssi).label} · ${ap.security}",
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-            color = NrOnSurfaceVariant,
+            color = signalTint,
         )
         if (!ap.vendor.isNullOrBlank()) {
             Text(
@@ -580,7 +588,7 @@ private fun RogueApAlertRow(alert: RogueApAlert) {
                 text = "${alert.bssid} · ch ${alert.channel} · ${alert.rssi} dBm · " +
                     rssiToProximity(alert.rssi).label,
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                color = NrOnSurfaceVariant,
+                color = threatProximityColor(alert.rssi),
             )
             if (!alert.vendor.isNullOrBlank()) {
                 Text(

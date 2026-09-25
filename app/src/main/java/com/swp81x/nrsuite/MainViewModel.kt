@@ -13,6 +13,7 @@ import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.OuiRule
+import com.swp81x.nrsuite.core.defense.matchOuiRule
 import com.swp81x.nrsuite.core.defense.OuiRuleAction
 import com.swp81x.nrsuite.core.defense.NearbyAp
 import com.swp81x.nrsuite.core.defense.RogueApAlert
@@ -524,6 +525,27 @@ class MainViewModel(internal val app: Application) {
         val trimmed = current.take(3)
         _recentModuleIds.value = trimmed
         preferences.edit().putString(PREF_RECENT_MODULES, trimmed.joinToString(",")).apply()
+        clearScanResultsForModule(moduleId)
+    }
+
+    private fun clearScanResultsForModule(moduleId: String) {
+        when (moduleId) {
+            "wifi", "sniff", "deauth", "evil_twin" -> {
+                _networks.value = emptyList()
+                _deauthDetectorTargets.value = emptyList()
+            }
+
+            "deauth_detector" -> {
+                if (!_deauthDetectorRunning.value) {
+                    _deauthDetectorTargets.value = emptyList()
+                    _deauthDetectorSelectedTarget.value = null
+                }
+            }
+
+            "rogue_ap" -> {
+                _rogueApNearby.value = emptyList()
+            }
+        }
     }
 
     fun saveBeaconList(name: String, ssids: List<String>) = this.saveBeaconListImpl(name, ssids)
@@ -1017,6 +1039,14 @@ class MainViewModel(internal val app: Application) {
                     when (event.optString("type")) {
                         "scan_ap" -> {
                             val bssid = event.optString("bssid")
+                            val vendor = ouiDatabaseRepository.lookup(bssid)?.vendor
+                            val ouiRule = matchOuiRule(bssid, _ouiRules.value)
+                            val ouiWhitelisted = ouiRule?.action == OuiRuleAction.WHITELIST
+                            val ouiBlacklisted = ouiRule?.action == OuiRuleAction.BLACKLIST
+                            if (!vendor.isNullOrBlank()) event.put("vendor", vendor)
+                            event.put("oui_whitelisted", ouiWhitelisted)
+                            event.put("oui_blacklisted", ouiBlacklisted)
+
                             _networks.update { current ->
                                 (current.filterNot { it.optString("bssid") == bssid } + event)
                                     .sortedByDescending { it.optInt("rssi", -999) }
@@ -1028,6 +1058,9 @@ class MainViewModel(internal val app: Application) {
                                 channel = event.optInt("channel", 0),
                                 rssi = event.optInt("rssi", -100),
                                 security = event.optString("security", "?"),
+                                vendor = vendor,
+                                ouiWhitelisted = ouiWhitelisted,
+                                ouiBlacklisted = ouiBlacklisted,
                             )
                             _deauthDetectorTargets.update { current ->
                                 (current.filterNot { it.bssid.equals(bssid, ignoreCase = true) } + target)

@@ -9,4 +9,7 @@ data class NetworkTarget(
     val channel: Int,
     val rssi: Int,
     val security: String,
+    val vendor: String? = null,
+    val ouiWhitelisted: Boolean = false,
+    val ouiBlacklisted: Boolean = false,
 )
