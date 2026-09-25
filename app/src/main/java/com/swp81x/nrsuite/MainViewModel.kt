@@ -15,6 +15,8 @@ import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.OuiRule
 import com.swp81x.nrsuite.core.defense.matchOuiRule
 import com.swp81x.nrsuite.core.defense.OuiRuleAction
+import com.swp81x.nrsuite.core.defense.ClientObservation
+import com.swp81x.nrsuite.core.defense.ClientPresenceMode
 import com.swp81x.nrsuite.core.defense.NearbyAp
 import com.swp81x.nrsuite.core.defense.RogueApAlert
 import com.swp81x.nrsuite.core.defense.DeauthChannelMode
@@ -188,6 +190,33 @@ class MainViewModel(internal val app: Application) {
 
     internal val _rogueApNearby = MutableStateFlow<List<NearbyAp>>(emptyList())
     val rogueApNearby: StateFlow<List<NearbyAp>> = _rogueApNearby.asStateFlow()
+
+    internal val _clientPresenceRunning = MutableStateFlow(false)
+    val clientPresenceRunning: StateFlow<Boolean> = _clientPresenceRunning.asStateFlow()
+
+    internal val _clientPresenceMode = MutableStateFlow(ClientPresenceMode.PASSIVE)
+    val clientPresenceMode: StateFlow<ClientPresenceMode> = _clientPresenceMode.asStateFlow()
+
+    internal val _clientPresenceFixed = MutableStateFlow(true)
+    val clientPresenceFixed: StateFlow<Boolean> = _clientPresenceFixed.asStateFlow()
+
+    internal val _clientPresenceChannel = MutableStateFlow(6)
+    val clientPresenceChannel: StateFlow<Int> = _clientPresenceChannel.asStateFlow()
+
+    internal val _clientPresenceTargetBssid = MutableStateFlow("")
+    val clientPresenceTargetBssid: StateFlow<String> = _clientPresenceTargetBssid.asStateFlow()
+
+    internal val _clientPresenceClients = MutableStateFlow<List<ClientObservation>>(emptyList())
+    val clientPresenceClients: StateFlow<List<ClientObservation>> = _clientPresenceClients.asStateFlow()
+
+    internal val _clientPresenceFrameCount = MutableStateFlow(0L)
+    val clientPresenceFrameCount: StateFlow<Long> = _clientPresenceFrameCount.asStateFlow()
+
+    internal val _clientPresenceLastTriggerAt = MutableStateFlow<String?>(null)
+    val clientPresenceLastTriggerAt: StateFlow<String?> = _clientPresenceLastTriggerAt.asStateFlow()
+
+    internal var clientPresenceSavedChannel = 6
+    internal var clientPresenceSavedTarget = ""
 
     internal val _rogueApLastScanAt = MutableStateFlow<String?>(null)
     val rogueApLastScanAt: StateFlow<String?> = _rogueApLastScanAt.asStateFlow()
@@ -525,7 +554,7 @@ class MainViewModel(internal val app: Application) {
 
     private fun clearScanResultsForModule(moduleId: String) {
         when (moduleId) {
-            "wifi", "sniff", "deauth", "evil_twin" -> {
+            "wifi", "sniff", "deauth", "evil_twin", "client_presence" -> {
                 _networks.value = emptyList()
                 _deauthDetectorTargets.value = emptyList()
             }
@@ -568,6 +597,51 @@ class MainViewModel(internal val app: Application) {
 
     fun clearRogueApAlerts() {
         _rogueApAlerts.value = emptyList()
+    }
+
+    fun startClientPresence(
+        mode: ClientPresenceMode,
+        fixed: Boolean,
+        channel: Int,
+        targetBssid: String,
+        intervalMs: Int,
+    ) = this.startClientPresenceImpl(mode, fixed, channel, targetBssid, intervalMs)
+
+    fun startClientPresence() = this.startClientPresenceImpl(
+        _clientPresenceMode.value,
+        _clientPresenceFixed.value,
+        _clientPresenceChannel.value,
+        _clientPresenceTargetBssid.value,
+        300,
+    )
+
+    fun stopClientPresence() = this.stopClientPresenceImpl()
+
+    fun triggerClientReconnectBurst() = this.triggerClientReconnectBurstImpl()
+
+    fun setClientPresenceMode(mode: ClientPresenceMode) {
+        _clientPresenceMode.value = mode
+    }
+
+    fun setClientPresenceFixed(fixed: Boolean) {
+        _clientPresenceFixed.value = fixed
+    }
+
+    fun setClientPresenceChannel(channel: Int) {
+        _clientPresenceChannel.value = channel.coerceIn(1, 14)
+    }
+
+    fun selectClientPresenceTarget(target: NetworkTarget?) {
+        _clientPresenceTargetBssid.value = target?.bssid ?: ""
+        target?.let {
+            _clientPresenceChannel.value = it.channel.coerceIn(1, 14)
+            _clientPresenceFixed.value = true
+        }
+    }
+
+    fun clearClientPresence() {
+        _clientPresenceClients.value = emptyList()
+        _clientPresenceFrameCount.value = 0
     }
 
 
@@ -724,6 +798,7 @@ class MainViewModel(internal val app: Application) {
         rogueApScanJob = null
         _rogueApRunning.value = false
         _rogueApScanning.value = false
+        _clientPresenceRunning.value = false
         deauthAlertClearJob?.cancel()
         deauthAlertClearJob = null
         deauthFpsResetJob?.cancel()
@@ -926,6 +1001,7 @@ class MainViewModel(internal val app: Application) {
             _deauthDetectorRunning.value -> "Deauth Detector"
             _rogueApRunning.value -> "Rogue AP Detector"
             _rogueApScanning.value -> "Rogue AP baseline scan"
+            _clientPresenceRunning.value -> "Client/Presence Detector"
             _scanning.value -> "WiFi Scan"
             else -> null
         }
@@ -953,6 +1029,7 @@ class MainViewModel(internal val app: Application) {
             _deauthRunning.value -> "Deauth burst active"
             _deauthDetectorRunning.value -> "Deauth detector active"
             _rogueApRunning.value -> "Rogue AP detector active"
+            _clientPresenceRunning.value -> "Client/Presence detector active"
             _bleAdvertising.value || _bleConnected.value -> "BLE HID active"
             else -> null
         }
@@ -996,6 +1073,12 @@ class MainViewModel(internal val app: Application) {
             _rogueApRunning.value = false
             rogueApScanJob?.cancel()
             rogueApScanJob = null
+        }
+        if (_clientPresenceRunning.value) {
+            _clientPresenceRunning.value = false
+            scope.launch {
+                runCatching { current?.sendCommand("STOP_CLIENT_DETECT", timeoutMs = 4_000) }
+            }
         }
         portalStatusJob?.cancel()
         portalStatusJob = null
@@ -1138,6 +1221,7 @@ class MainViewModel(internal val app: Application) {
                                 )
                             }
                         }
+                        "client_detected" -> this@MainViewModel.recordClientPresenceEvent(event)
                         "heartbeat" -> Unit
                     }
                 }

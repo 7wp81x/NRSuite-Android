@@ -61,6 +61,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Nfc
+import androidx.compose.material.icons.filled.PersonSearch
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Radio
@@ -190,6 +191,14 @@ internal val modules = listOf(
         description = "Send a targeted deauth burst to a BSSID.",
         icon = Icons.Default.WifiOff,
         category = "Wireless",
+        available = true,
+    ),
+    ModuleCardSpec(
+        id = "client_presence",
+        title = "Client/Presence Detector",
+        description = "Passively detect client management frames, with optional active reconnection triggering.",
+        icon = Icons.Default.PersonSearch,
+        category = "Detection",
         available = true,
     ),
     ModuleCardSpec(
