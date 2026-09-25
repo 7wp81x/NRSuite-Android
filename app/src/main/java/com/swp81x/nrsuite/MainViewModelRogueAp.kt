@@ -211,16 +211,12 @@ internal fun MainViewModel.startRogueApDetectorImpl() {
         return
     }
     if (_rogueApRunning.value) return
-    if (_trustedNetworks.value.isEmpty()) {
-        _actionError.value = "Capture a trusted AP baseline before starting the Rogue AP detector."
-        return
-    }
     if (!ensureRadioIdle("Rogue AP Detector")) return
 
     _rogueApRunning.value = true
     _rogueApAlerts.value = emptyList()
     updateForegroundService()
-    appendLog("Rogue AP detector started; rescanning every ${ROGUE_AP_SCAN_INTERVAL_MS / 1000}s.")
+    appendLog("Rogue AP detector started; automatic nearby comparison every ${ROGUE_AP_SCAN_INTERVAL_MS / 1000}s.")
     addHistory("rogue_ap", "Rogue AP detector started", HistoryLevel.SUCCESS)
 
     rogueApScanJob?.cancel()
@@ -257,7 +253,12 @@ private suspend fun MainViewModel.performRogueApScan(activeSession: com.swp81x.n
     }
 
     val observed = _networks.value.mapNotNull { it.toObservedAp() }
-    val newAlerts = classifyRogueAps(observed)
+    val baselineAlerts = classifyAgainstBaseline(observed)
+    val nearbyAlerts = classifyNearbyDuplicates(observed)
+    val newAlerts = (nearbyAlerts + baselineAlerts)
+        .associateBy { it.bssid }
+        .values
+        .toList()
     if (newAlerts.isEmpty()) return
 
     val existingKeys = _rogueApAlerts.value
@@ -281,7 +282,7 @@ private suspend fun MainViewModel.performRogueApScan(activeSession: com.swp81x.n
     )
 }
 
-private fun MainViewModel.classifyRogueAps(observed: List<ObservedAp>): List<RogueApAlert> {
+private fun MainViewModel.classifyAgainstBaseline(observed: List<ObservedAp>): List<RogueApAlert> {
     val trusted = _trustedNetworks.value
     val rules = _ouiRules.value
     val alerts = mutableListOf<RogueApAlert>()
@@ -369,6 +370,87 @@ private fun MainViewModel.classifyRogueAps(observed: List<ObservedAp>): List<Rog
     }
 
     return alerts
+}
+
+private fun MainViewModel.classifyNearbyDuplicates(
+    observed: List<ObservedAp>,
+): List<RogueApAlert> {
+    val rules = _ouiRules.value
+    val alerts = mutableListOf<RogueApAlert>()
+
+    observed.groupBy { it.ssid.lowercase() }.values.forEach { group ->
+        group.forEach { ap ->
+            val ouiRule = matchOuiRule(ap.bssid, rules)
+            val action = ouiRule?.action
+            val reasons = mutableListOf<String>()
+
+            if (action == OuiRuleAction.BLACKLIST) {
+                val ruleLabel = ouiRule.label.takeIf { it.isNotBlank() }
+                    ?: ouiRule.ouiPrefix
+                reasons += "Blacklisted OUI: $ruleLabel"
+            }
+
+            if (group.size >= 2) {
+                val highestSecurity = group.maxOf { securityRank(it.security) }
+                val thisSecurity = securityRank(ap.security)
+                if (thisSecurity >= 0 &&
+                    thisSecurity < highestSecurity &&
+                    action != OuiRuleAction.WHITELIST
+                ) {
+                    reasons += "Lower security than other APs advertising SSID '${ap.ssid}'"
+                }
+
+                val prefixes = group.mapNotNull { ouiPrefixOf(it.bssid) }.distinct()
+                if (prefixes.size > 1) {
+                    val whitelistPrefixes = rules
+                        .filter { it.action == OuiRuleAction.WHITELIST }
+                        .map { it.ouiPrefix }
+                        .toSet()
+                    val thisPrefix = ouiPrefixOf(ap.bssid)
+                    val thisWhitelisted = thisPrefix != null && thisPrefix in whitelistPrefixes
+                    val anotherWhitelisted = whitelistPrefixes.any { it != thisPrefix && it in prefixes }
+                    if (!thisWhitelisted && (anotherWhitelisted || whitelistPrefixes.isEmpty())) {
+                        reasons += "Different OUI from other APs advertising SSID '${ap.ssid}'"
+                    }
+                }
+            }
+
+            if (reasons.isEmpty()) return@forEach
+
+            val category = when {
+                reasons.any { it.startsWith("Lower security") } -> RogueApCategory.FAKE_PORTAL
+                reasons.any { it.startsWith("Different OUI") } -> RogueApCategory.EVIL_TWIN
+                else -> RogueApCategory.UNKNOWN_ROGUE
+            }
+            val confidence = when {
+                reasons.size > 1 -> AlertConfidence.HIGH
+                category == RogueApCategory.UNKNOWN_ROGUE -> AlertConfidence.LOW
+                else -> AlertConfidence.MEDIUM
+            }
+
+            alerts += RogueApAlert(
+                id = UUID.randomUUID().toString(),
+                ssid = ap.ssid,
+                bssid = ap.bssid,
+                channel = ap.channel,
+                rssi = ap.rssi,
+                category = category,
+                reasons = reasons,
+                confidence = confidence,
+                vendor = ouiDatabaseRepository.lookup(ap.bssid)?.vendor,
+                detectedAt = timeHmNow(),
+            )
+        }
+    }
+
+    return alerts
+}
+
+private fun ouiPrefixOf(mac: String): String? {
+    val parts = mac.trim().uppercase().replace("-", ":").split(":")
+    if (parts.size < 3) return null
+    if (parts.take(3).any { it.length != 2 || it.toIntOrNull(16) == null }) return null
+    return parts.take(3).joinToString(":")
 }
 
 private fun mergeRogueApAlerts(

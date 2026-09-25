@@ -20,7 +20,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Stop
@@ -49,7 +48,6 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.AlertConfidence
 import com.swp81x.nrsuite.core.defense.RogueApAlert
 import com.swp81x.nrsuite.core.defense.RogueApCategory
-import com.swp81x.nrsuite.core.defense.TrustedNetwork
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.util.rssiToProximity
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -65,19 +63,14 @@ fun RogueApScreen(
     connected: Boolean,
     running: Boolean,
     scanning: Boolean,
-    trustedNetworks: List<TrustedNetwork>,
     alerts: List<RogueApAlert>,
     lastScanAt: String?,
-    onCaptureBaseline: () -> Unit,
-    onClearBaseline: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onClearAlerts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var confirmStart by remember { mutableStateOf(false) }
-    val canStart = connected && trustedNetworks.isNotEmpty()
-    val needsBaseline = trustedNetworks.isEmpty()
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -94,15 +87,6 @@ fun RogueApScreen(
             )
             Spacer(Modifier.height(10.dp))
 
-            TrustedBaselineCard(
-                connected = connected,
-                running = running,
-                scanning = scanning,
-                trustedNetworks = trustedNetworks,
-                onClearBaseline = onClearBaseline,
-            )
-            Spacer(Modifier.height(10.dp))
-
             RogueApAlertsCard(
                 alerts = alerts,
                 running = running,
@@ -115,32 +99,21 @@ fun RogueApScreen(
         if (connected) {
             FloatingActionButton(
                 onClick = {
-                    when {
-                        running -> onStop()
-                        needsBaseline -> onCaptureBaseline()
-                        canStart -> confirmStart = true
-                    }
+                    if (running) onStop() else confirmStart = true
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp)
-                    .alpha(
-                        if (!connected || (!running && !needsBaseline && !canStart)) 0.4f
-                        else 1f
-                    ),
+                    .alpha(if (!connected) 0.4f else 1f),
                 containerColor = if (running) StatusRed else NrAccent,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(
-                    imageVector = when {
-                        running -> Icons.Default.Stop
-                        needsBaseline -> Icons.Default.Add
-                        else -> Icons.Default.PlayArrow
-                    },
-                    contentDescription = when {
-                        running -> "Stop Rogue AP detector"
-                        needsBaseline -> "Capture trusted baseline"
-                        else -> "Start Rogue AP detector"
+                    imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                    contentDescription = if (running) {
+                        "Stop Rogue AP detector"
+                    } else {
+                        "Start Rogue AP detector"
                     },
                 )
             }
@@ -153,8 +126,9 @@ fun RogueApScreen(
             title = { Text("Start Rogue AP monitoring?") },
             text = {
                 Text(
-                    "The ESP32 will repeatedly scan WiFi and compare visible APs " +
-                        "against your trusted baseline. This uses the WiFi radio."
+                    "The ESP32 will repeatedly scan WiFi and compare nearby APs " +
+                        "sharing the same SSID for OUI and security mismatches. " +
+                        "This uses the WiFi radio."
                 )
             },
             confirmButton = {
@@ -224,90 +198,6 @@ private fun RogueApStatusCard(
                     )
                     Text(
                         text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TrustedBaselineCard(
-    connected: Boolean,
-    running: Boolean,
-    scanning: Boolean,
-    trustedNetworks: List<TrustedNetwork>,
-    onClearBaseline: () -> Unit,
-) {
-    val enabled = connected && !running && !scanning
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(0.5.dp, NrOutline),
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = "Trusted baseline",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = "${trustedNetworks.size} trusted AP(s)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                }
-                if (trustedNetworks.isNotEmpty()) {
-                    OutlinedButton(
-                        onClick = onClearBaseline,
-                        enabled = enabled,
-                    ) {
-                        Text("Clear")
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = if (scanning) {
-                    "Scanning for a trusted baseline..."
-                } else {
-                    "Tap the FAB to capture a baseline."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = NrOnSurfaceVariant,
-            )
-
-            if (trustedNetworks.isNotEmpty()) {
-                Spacer(Modifier.height(10.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    trustedNetworks.take(8).forEach { network ->
-                        Column {
-                            Text(
-                                text = network.ssid,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                text = "${network.bssid} · ch ${network.channel} · ${network.security}",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                ),
-                                color = NrOnSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-                if (trustedNetworks.size > 8) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Showing first 8 of ${trustedNetworks.size}.",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )

@@ -201,7 +201,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val deauthDetectorUniqueSourceCount by viewModel.deauthDetectorUniqueSourceCount.collectAsState()
     val deauthDetectorTargets by viewModel.deauthDetectorTargets.collectAsState()
     val deauthDetectorSelectedTarget by viewModel.deauthDetectorSelectedTarget.collectAsState()
-    val trustedNetworks by viewModel.trustedNetworks.collectAsState()
     val rogueApRunning by viewModel.rogueApRunning.collectAsState()
     val rogueApScanning by viewModel.rogueApScanning.collectAsState()
     val rogueApAlerts by viewModel.rogueApAlerts.collectAsState()
@@ -813,11 +812,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     connected = connectionState is ConnectionState.Connected,
                     running = rogueApRunning,
                     scanning = rogueApScanning,
-                    trustedNetworks = trustedNetworks,
                     alerts = rogueApAlerts,
                     lastScanAt = rogueApLastScanAt,
-                    onCaptureBaseline = viewModel::captureRogueApBaseline,
-                    onClearBaseline = viewModel::clearRogueApBaseline,
                     onStart = viewModel::startRogueApDetector,
                     onStop = viewModel::stopRogueApDetector,
                     onClearAlerts = viewModel::clearRogueApAlerts,
