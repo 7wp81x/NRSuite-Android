@@ -17,7 +17,6 @@ import com.swp81x.nrsuite.core.defense.matchOuiRule
 import com.swp81x.nrsuite.core.defense.OuiRuleAction
 import com.swp81x.nrsuite.core.defense.NearbyAp
 import com.swp81x.nrsuite.core.defense.RogueApAlert
-import com.swp81x.nrsuite.core.defense.TrustedNetwork
 import com.swp81x.nrsuite.core.defense.DeauthChannelMode
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
@@ -177,9 +176,6 @@ class MainViewModel(internal val app: Application) {
 
     internal val _requiresOuiDatabase = MutableStateFlow(false)
     val requiresOuiDatabase: StateFlow<Boolean> = _requiresOuiDatabase.asStateFlow()
-
-    internal val _trustedNetworks = MutableStateFlow<List<TrustedNetwork>>(emptyList())
-    val trustedNetworks: StateFlow<List<TrustedNetwork>> = _trustedNetworks.asStateFlow()
 
     internal val _rogueApRunning = MutableStateFlow(false)
     val rogueApRunning: StateFlow<Boolean> = _rogueApRunning.asStateFlow()
@@ -511,7 +507,6 @@ class MainViewModel(internal val app: Application) {
         this.loadBeaconListsImpl()
         this.loadOuiRulesImpl()
         this.loadOuiDatabaseImpl()
-        this.loadTrustedNetworksImpl()
         this.loadDuckyScriptsImpl()
         loadHistory()
         this.loadCredentialSessionsImpl()
@@ -566,10 +561,6 @@ class MainViewModel(internal val app: Application) {
     }
 
     fun onOuiDatabasePromptShown() = this.onOuiDatabasePromptShownImpl()
-
-    fun captureRogueApBaseline() = this.captureRogueApBaselineImpl()
-
-    fun clearRogueApBaseline() = this.clearRogueApBaselineImpl()
 
     fun startRogueApDetector() = this.startRogueApDetectorImpl()
 
