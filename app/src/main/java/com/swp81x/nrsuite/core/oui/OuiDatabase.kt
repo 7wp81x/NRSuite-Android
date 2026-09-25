@@ -1,6 +1,8 @@
 package com.swp81x.nrsuite.core.oui
 
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.HttpURLConnection
 import java.net.URL
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -44,6 +46,9 @@ class OuiDatabaseRepository(
     private val _status = MutableStateFlow<OuiDatabaseStatus>(OuiDatabaseStatus.NotDownloaded)
     val status: StateFlow<OuiDatabaseStatus> = _status.asStateFlow()
 
+    private val _progress = MutableStateFlow<Float?>(null)
+    val progress: StateFlow<Float?> = _progress.asStateFlow()
+
     private val vendors = HashMap<String, String>()
 
     fun isReady(): Boolean = vendors.isNotEmpty()
@@ -69,9 +74,39 @@ class OuiDatabaseRepository(
 
     suspend fun download() {
         _status.value = OuiDatabaseStatus.Downloading
+        _progress.value = 0f
         runCatching {
             val text = withContext(Dispatchers.IO) {
-                URL(csvUrl).openStream().bufferedReader().use { it.readText() }
+                val connection = (URL(csvUrl).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 15_000
+                    readTimeout = 30_000
+                    requestMethod = "GET"
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "NRSuite/1.0 (Android)")
+                    setRequestProperty("Accept", "text/csv,application/octet-stream,*/*")
+                }
+                connection.connect()
+                val responseCode = connection.responseCode
+                if (responseCode !in 200..299) {
+                    error("OUI database server returned HTTP $responseCode")
+                }
+                val totalBytes = connection.contentLengthLong
+                val output = ByteArrayOutputStream()
+                connection.inputStream.use { input ->
+                    val buffer = ByteArray(8 * 1024)
+                    var readTotal = 0L
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        output.write(buffer, 0, read)
+                        readTotal += read
+                        if (totalBytes > 0) {
+                            _progress.value = (readTotal * 100f / totalBytes).coerceIn(0f, 100f)
+                        }
+                    }
+                }
+                connection.disconnect()
+                output.toString(Charsets.UTF_8.name())
             }
             withContext(Dispatchers.IO) {
                 dataFile.parentFile?.mkdirs()
@@ -79,6 +114,7 @@ class OuiDatabaseRepository(
                 parseCsv(text)
             }
             check(vendors.isNotEmpty()) { "OUI database contained no entries" }
+            _progress.value = 100f
             _status.value = OuiDatabaseStatus.Ready(
                 vendorCount = vendors.size,
                 updatedAt = dataFile.lastModified().toReadableTime(),
@@ -88,6 +124,7 @@ class OuiDatabaseRepository(
                 error.message ?: "OUI database download failed"
             )
         }
+        _progress.value = null
     }
 
     fun lookup(mac: String): OuiVendor? {

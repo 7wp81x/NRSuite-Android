@@ -170,6 +170,7 @@ internal fun SettingsScreen(
     onAddOuiRule: (ouiPrefix: String, label: String, action: OuiRuleAction) -> Unit = { _, _, _ -> },
     onDeleteOuiRule: (id: String) -> Unit = {},
     ouiDatabaseStatus: OuiDatabaseStatus = OuiDatabaseStatus.NotDownloaded,
+    ouiDatabaseProgress: Float? = null,
     onDownloadOuiDatabase: () -> Unit = {},
     flasherOnly: Boolean = false,
     modifier: Modifier = Modifier,
@@ -457,6 +458,7 @@ internal fun SettingsScreen(
 
         OuiDatabaseCard(
             status = ouiDatabaseStatus,
+            progress = ouiDatabaseProgress,
             onDownload = onDownloadOuiDatabase,
         )
 
@@ -716,6 +718,7 @@ private fun OuiRuleRow(
 @Composable
 private fun OuiDatabaseCard(
     status: OuiDatabaseStatus,
+    progress: Float?,
     onDownload: () -> Unit,
 ) {
     Card(
@@ -744,11 +747,30 @@ private fun OuiDatabaseCard(
                     )
                 }
                 OuiDatabaseStatus.Downloading -> {
-                    Text(
-                        text = "Downloading…",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = StatusAmber,
-                    )
+                    if (progress != null) {
+                        LinearProgressIndicator(
+                            progress = { (progress / 100f).coerceIn(0f, 1f) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Downloading… ${progress.toInt()}%",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                            ),
+                            color = StatusAmber,
+                        )
+                    } else {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Downloading…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
+                        )
+                    }
                 }
                 is OuiDatabaseStatus.Ready -> {
                     Text(

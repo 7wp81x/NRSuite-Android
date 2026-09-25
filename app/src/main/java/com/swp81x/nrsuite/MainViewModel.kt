@@ -168,6 +168,7 @@ class MainViewModel(internal val app: Application) {
 
     internal val ouiDatabaseRepository = OuiDatabaseRepository(File(app.filesDir, "oui/oui.csv"))
     val ouiDatabaseStatus: StateFlow<OuiDatabaseStatus> = ouiDatabaseRepository.status
+    val ouiDatabaseDownloadProgress: StateFlow<Float?> = ouiDatabaseRepository.progress
 
     internal val _macLookupResult = MutableStateFlow<MacLookupResult?>(null)
     val macLookupResult: StateFlow<MacLookupResult?> = _macLookupResult.asStateFlow()

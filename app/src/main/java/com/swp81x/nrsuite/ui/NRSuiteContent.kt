@@ -174,6 +174,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val exportDirectoryName by viewModel.exportDirectoryName.collectAsState()
     val ouiRules by viewModel.ouiRules.collectAsState()
     val ouiDatabaseStatus by viewModel.ouiDatabaseStatus.collectAsState()
+    val ouiDatabaseProgress by viewModel.ouiDatabaseDownloadProgress.collectAsState()
     val macLookupResult by viewModel.macLookupResult.collectAsState()
     val requiresOuiDatabase by viewModel.requiresOuiDatabase.collectAsState()
     val requiresRootDirectory by viewModel.requiresRootDirectory.collectAsState()
@@ -1036,6 +1037,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onAddOuiRule = viewModel::addOuiRule,
                 onDeleteOuiRule = viewModel::deleteOuiRule,
                 ouiDatabaseStatus = ouiDatabaseStatus,
+                ouiDatabaseProgress = ouiDatabaseProgress,
                 onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
                 modifier = contentModifier,
             )
