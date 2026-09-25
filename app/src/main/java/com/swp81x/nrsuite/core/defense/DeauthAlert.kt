@@ -7,8 +7,12 @@ data class DeauthAlert(
     val sourceMac: String,
     val ssid: String,
     val channel: Int,
-    val espDeviceLabel: String,
     val possiblySpoofed: Boolean,
+    val confidence: AlertConfidence,
+    val sustainedSeconds: Int,
+    val targetConcentrationPct: Int,
+    val reasonCodeConsistencyPct: Int,
+    val dominantSourceRssi: Int,
 )
 
 /**
@@ -28,3 +32,9 @@ enum class DeauthFeedFilter { ALL, BROADCAST, TARGETED }
  * Detector scan mode: one selected target/channel vs. hopping across channels.
  */
 enum class DeauthChannelMode { TARGETED, HOPPING }
+
+/**
+ * Heuristic confidence that the detector is seeing a real deauth burst rather
+ * than a single stray frame. Scored upstream; rendered by the UI.
+ */
+enum class AlertConfidence { LOW, MEDIUM, HIGH }

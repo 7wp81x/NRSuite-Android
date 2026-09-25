@@ -241,6 +241,12 @@ class MainViewModel(internal val app: Application) {
 
     internal val deauthDetectorFrameTimestamps = ArrayDeque<Long>()
     internal val deauthDetectorSources = mutableSetOf<String>()
+    internal val deauthDetectorWindowTargets = ArrayDeque<String>()
+    internal val deauthDetectorWindowReasons = ArrayDeque<Int>()
+    internal val deauthDetectorWindowSources = ArrayDeque<String>()
+    internal val deauthDetectorSourceLatestRssi = mutableMapOf<String, Int>()
+    internal var deauthDetectorAlertStartedAtMs: Long? = null
+    internal var deauthDetectorLastEventAtMs: Long = 0L
     internal var deauthAlertClearJob: Job? = null
     internal var deauthFpsResetJob: Job? = null
 
@@ -678,11 +684,6 @@ class MainViewModel(internal val app: Application) {
     internal fun timeHmNow(): String =
         java.time.LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"))
 
-    internal fun currentEspDeviceLabel(): String =
-        activeSerialDevice?.displayName
-            ?: (_connectionState.value as? ConnectionState.Connected)?.chip
-            ?: "ESP32"
-
 
 
     internal fun upsertCredentialSessionLocked(session: CredentialSession) {
@@ -1024,78 +1025,7 @@ class MainViewModel(internal val app: Application) {
                             appendLog("Deauth stats: ${_deauthSent.value} frame(s) sent.")
                             this@MainViewModel.portalLogImpl("Deauth stats: ${_deauthSent.value} frame(s) sent")
                         }
-                        "deauth_detected" -> {
-                            val bssid = event.optString("bssid", "?").uppercase()
-                            val sourceMac = event.optString("source", bssid).uppercase()
-                            val rawClient = event.optString(
-                                "client",
-                                event.optString("destination", ""),
-                            ).uppercase()
-                            val targetMac = rawClient.takeIf {
-                                it.isNotBlank() &&
-                                    it != "FF:FF:FF:FF:FF:FF" &&
-                                    it != "00:00:00:00:00:00"
-                            }
-                            val channel = event.optInt("channel", _deauthDetectorChannel.value)
-                            if (_deauthDetectorChannelMode.value == DeauthChannelMode.HOPPING) {
-                                _deauthDetectorCurrentHopChannel.value = channel
-                            }
-                            val rssi = event.optInt("rssi", -127)
-                            val reasonCode = event.optInt("reason", 0)
-                            val resolvedSsid = _deauthDetectorTargets.value
-                                .firstOrNull { it.bssid.equals(bssid, ignoreCase = true) }
-                                ?.ssid
-                                ?: _deauthDetectorSelectedTarget.value
-                                    ?.takeIf { it.bssid.equals(bssid, ignoreCase = true) }
-                                    ?.ssid
-                                ?: bssid
-
-                            _deauthDetectorFeed.update { current ->
-                                (current + DeauthFeedEntry(
-                                    timestamp = timeHmNow(),
-                                    sourceMac = sourceMac,
-                                    targetMac = targetMac,
-                                    reasonCode = reasonCode,
-                                    rssi = rssi,
-                                )).takeLast(500)
-                            }
-                            _deauthDetectorTotalFrames.update { it + 1 }
-                            deauthDetectorSources += sourceMac
-                            _deauthDetectorUniqueSourceCount.value = deauthDetectorSources.size
-
-                            val now = System.currentTimeMillis()
-                            deauthDetectorFrameTimestamps.addLast(now)
-                            while (deauthDetectorFrameTimestamps.isNotEmpty() &&
-                                now - deauthDetectorFrameTimestamps.first() > 1_000
-                            ) {
-                                deauthDetectorFrameTimestamps.removeFirst()
-                            }
-                            _deauthDetectorFramesPerSecond.value = deauthDetectorFrameTimestamps.size
-                            deauthFpsResetJob?.cancel()
-                            deauthFpsResetJob = scope.launch {
-                                delay(1_000)
-                                _deauthDetectorFramesPerSecond.value = 0
-                            }
-
-                            val alert = DeauthAlert(
-                                sourceMac = sourceMac,
-                                ssid = resolvedSsid,
-                                channel = channel,
-                                espDeviceLabel = currentEspDeviceLabel(),
-                                possiblySpoofed = event.optBoolean("possibly_spoofed", false),
-                            )
-                            _deauthDetectorActiveAlert.value = alert
-                            deauthAlertClearJob?.cancel()
-                            deauthAlertClearJob = scope.launch {
-                                delay(8_000)
-                                _deauthDetectorActiveAlert.value = null
-                            }
-
-                            appendLog(
-                                "Deauth detected: $sourceMac -> ${targetMac ?: "broadcast"} " +
-                                    "on ch $channel ($rssi dBm, reason $reasonCode)"
-                            )
-                        }
+                        "deauth_detected" -> this@MainViewModel.recordDeauthDetectorFrame(event)
                         "deauth_detector_hop" -> {
                             if (_deauthDetectorChannelMode.value == DeauthChannelMode.HOPPING) {
                                 _deauthDetectorCurrentHopChannel.value = event.optInt(

@@ -53,11 +53,13 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.core.defense.AlertConfidence
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.DeauthChannelMode
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
+import com.swp81x.nrsuite.ui.util.rssiToProximity
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.theme.NrAccent
@@ -66,6 +68,7 @@ import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
+import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
 
 @Composable
@@ -77,7 +80,6 @@ fun DeauthDetectorScreen(
     hopIntervalMs: Int,
     onHopIntervalChange: (Int) -> Unit,
     currentHopChannel: Int? = null,
-    espDeviceLabel: String,
     framesPerSecond: Int,
     totalFrames: Int,
     uniqueSourceCount: Int,
@@ -113,14 +115,13 @@ fun DeauthDetectorScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp),
         ) {
-            if (activeAlert != null) {
-                ActiveAlertCard(
-                    alert = activeAlert,
-                    onStop = onStop,
-                    onLocateClick = onLocateClick,
-                )
-                Spacer(Modifier.height(10.dp))
-            }
+            DetectorStatusCard(
+                running = running,
+                connected = connected,
+                alert = activeAlert,
+                onLocateClick = onLocateClick,
+            )
+            Spacer(Modifier.height(10.dp))
 
             if (running || activeAlert != null) {
                 LiveStatsRow(
@@ -226,74 +227,169 @@ fun DeauthDetectorScreen(
 }
 
 @Composable
-private fun ActiveAlertCard(
-    alert: DeauthAlert,
-    onStop: () -> Unit,
+private fun DetectorStatusCard(
+    running: Boolean,
+    connected: Boolean,
+    alert: DeauthAlert?,
     onLocateClick: () -> Unit,
 ) {
+    val border = when {
+        alert != null && alert.confidence == AlertConfidence.HIGH ->
+            BorderStroke(1.dp, StatusRed)
+        alert != null ->
+            BorderStroke(0.5.dp, StatusAmber)
+        else ->
+            BorderStroke(0.5.dp, NrOutline)
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
-        border = BorderStroke(1.dp, StatusRed),
+        border = border,
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Shield,
-                    contentDescription = null,
-                    tint = StatusRed,
-                    modifier = Modifier.size(22.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "Deauth attack detected",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = StatusRed,
-                )
-            }
+            when {
+                alert != null -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = StatusRed,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Deauth attack detected",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = StatusRed,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        ConfidenceBadge(alert.confidence)
+                    }
 
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "${alert.ssid} · ch ${alert.channel} · ${alert.espDeviceLabel}",
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                color = NrOnSurfaceVariant,
-            )
-
-            if (alert.possiblySpoofed) {
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.WarningAmber,
-                        contentDescription = null,
-                        tint = StatusAmber,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "Source MAC may be spoofed",
+                        text = "${alert.ssid} · ch ${alert.channel}",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                        ),
+                        color = NrOnSurfaceVariant,
+                    )
+
+                    if (alert.possiblySpoofed) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.WarningAmber,
+                                contentDescription = null,
+                                tint = StatusAmber,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "Source MAC may be spoofed",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusAmber,
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "${rssiToProximity(alert.dominantSourceRssi).label} " +
+                            "(${alert.dominantSourceRssi} dBm)",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                        ),
+                        color = NrOnSurfaceVariant,
+                    )
+
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = onLocateClick,
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                            contentColor = NrAccent,
+                        ),
+                    ) {
+                        Text("Locate")
+                    }
+                }
+
+                running -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = NrAccent,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "No attack detected",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Monitoring for deauth activity",
                         style = MaterialTheme.typography.bodySmall,
-                        color = StatusAmber,
+                        color = NrOnSurfaceVariant,
                     )
                 }
-            }
 
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onStop) {
-                    Text("Stop")
-                }
-                OutlinedButton(
-                    onClick = onLocateClick,
-                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                        contentColor = NrAccent,
-                    ),
-                ) {
-                    Text("Locate")
+                else -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = if (!connected) StatusAmber else NrOnSurfaceVariant,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "No attack detected",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = if (!connected) {
+                            "Connect a device to begin"
+                        } else {
+                            "Start monitoring to watch for deauth activity"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ConfidenceBadge(confidence: AlertConfidence) {
+    val (label, color) = when (confidence) {
+        AlertConfidence.HIGH -> "High confidence" to StatusRed
+        AlertConfidence.MEDIUM -> "Medium confidence" to StatusAmber
+        AlertConfidence.LOW -> "Possible false alarm" to StatusNeutral
+    }
+    Row(
+        modifier = Modifier
+            .background(color.copy(alpha = 0.15f), RoundedCornerShape(50))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+        )
     }
 }
 
@@ -626,7 +722,8 @@ private fun FeedRow(entry: DeauthFeedEntry) {
         val targetAddress = entry.targetMac ?: "FF:FF:FF:FF:FF:FF"
         val targetKind = if (entry.targetMac == null) "broadcast" else "directed"
         Text(
-            text = "to $targetAddress ($targetKind) · reason ${entry.reasonCode} · ${entry.rssi} dBm",
+            text = "to $targetAddress ($targetKind) · reason ${entry.reasonCode} · " +
+                "${entry.rssi} dBm · ${rssiToProximity(entry.rssi).label}",
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
             color = NrOnSurfaceVariant,
         )

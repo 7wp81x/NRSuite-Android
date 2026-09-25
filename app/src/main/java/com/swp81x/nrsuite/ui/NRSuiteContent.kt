@@ -730,7 +730,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     hopIntervalMs = deauthDetectorHopIntervalMs,
                     onHopIntervalChange = viewModel::setDeauthDetectorHopIntervalMs,
                     currentHopChannel = deauthDetectorCurrentHopChannel,
-                    espDeviceLabel = connectedChip ?: "ESP32",
                     framesPerSecond = deauthDetectorFramesPerSecond,
                     totalFrames = deauthDetectorTotalFrames,
                     uniqueSourceCount = deauthDetectorUniqueSourceCount,
