@@ -205,6 +205,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val rogueApScanning by viewModel.rogueApScanning.collectAsState()
     val rogueApAlerts by viewModel.rogueApAlerts.collectAsState()
     val rogueApNearby by viewModel.rogueApNearby.collectAsState()
+    val trustedNetworks by viewModel.trustedNetworks.collectAsState()
     val rogueApLastScanAt by viewModel.rogueApLastScanAt.collectAsState()
     val portalRunning by viewModel.portalRunning.collectAsState()
     val portalMode by viewModel.portalMode.collectAsState()
@@ -816,6 +817,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     nearbyNetworks = rogueApNearby,
                     alerts = rogueApAlerts,
                     lastScanAt = rogueApLastScanAt,
+                    trustedNetworks = trustedNetworks,
+                    onCaptureBaseline = viewModel::captureRogueApBaseline,
+                    onClearBaseline = viewModel::clearRogueApBaseline,
+                    ouiDatabaseStatus = ouiDatabaseStatus,
+                    onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
                     onStart = viewModel::startRogueApDetector,
                     onStop = viewModel::stopRogueApDetector,
                     onClearAlerts = viewModel::clearRogueApAlerts,

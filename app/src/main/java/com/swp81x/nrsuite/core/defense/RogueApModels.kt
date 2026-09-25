@@ -4,7 +4,19 @@ package com.swp81x.nrsuite.core.defense
  * Classification for an observed access point that does not match the trusted
  * baseline or otherwise looks suspicious.
  */
-enum class RogueApCategory { EVIL_TWIN, FAKE_PORTAL, UNKNOWN_ROGUE }
+enum class RogueApCategory {
+    EVIL_TWIN,
+
+    /**
+     * Reserved for cases where a captive portal / credential-harvest page has
+     * been actively confirmed by a future active-probe feature. Do not infer
+     * this category from RF-level signals alone.
+     */
+    FAKE_PORTAL,
+
+    SECURITY_DOWNGRADE,
+    UNKNOWN_ROGUE,
+}
 
 /**
  * One user-approved AP observation. A trusted network is keyed by the pair of

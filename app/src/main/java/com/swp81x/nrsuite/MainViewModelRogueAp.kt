@@ -257,10 +257,7 @@ private suspend fun MainViewModel.performRogueApScan(activeSession: com.swp81x.n
     val observed = _networks.value.mapNotNull { it.toObservedAp() }
     val baselineAlerts = classifyAgainstBaseline(observed)
     val nearbyAlerts = classifyNearbyDuplicates(observed)
-    val newAlerts = (nearbyAlerts + baselineAlerts)
-        .associateBy { it.bssid }
-        .values
-        .toList()
+    val newAlerts = combineRogueApAlerts(nearbyAlerts, baselineAlerts)
     val alertsByBssid = newAlerts.associateBy { it.bssid }
     _rogueApNearby.value = observed
         .map { ap ->
@@ -362,19 +359,22 @@ private fun MainViewModel.classifyAgainstBaseline(observed: List<ObservedAp>): L
             reasons += "Blacklisted OUI: $ruleLabel"
         }
 
+        // channelMismatch is intentionally excluded as a standalone trigger:
+        // channel changes are common on otherwise-matching BSSIDs (ACS/DFS,
+        // router reboot) and should only contribute as an extra reason when
+        // another signal already made the AP suspicious.
         val category = when {
-            mismatchedSsid && securityDowngrade -> RogueApCategory.FAKE_PORTAL
+            mismatchedSsid && securityDowngrade -> RogueApCategory.SECURITY_DOWNGRADE
             mismatchedSsid -> RogueApCategory.EVIL_TWIN
-            channelMismatch -> RogueApCategory.UNKNOWN_ROGUE
             ouiSuspicious -> RogueApCategory.UNKNOWN_ROGUE
             else -> null
         } ?: return@forEach
 
         val confidence = when {
-            category == RogueApCategory.FAKE_PORTAL -> AlertConfidence.HIGH
-            mismatchedSsid && (channelMismatch || ouiSuspicious || vendorMismatch) ->
+            mismatchedSsid && (channelMismatch || ouiSuspicious || vendorMismatch || securityDowngrade) ->
                 AlertConfidence.HIGH
             mismatchedSsid -> AlertConfidence.MEDIUM
+            category == RogueApCategory.SECURITY_DOWNGRADE -> AlertConfidence.MEDIUM
             ouiSuspicious -> AlertConfidence.MEDIUM
             else -> AlertConfidence.LOW
         }
@@ -448,7 +448,8 @@ private fun MainViewModel.classifyNearbyDuplicates(
             if (reasons.isEmpty()) return@forEach
 
             val category = when {
-                reasons.any { it.startsWith("Lower security") } -> RogueApCategory.FAKE_PORTAL
+                reasons.any { it.startsWith("Lower security") } ->
+                    RogueApCategory.SECURITY_DOWNGRADE
                 reasons.any { it.startsWith("Different OUI") } -> RogueApCategory.EVIL_TWIN
                 else -> RogueApCategory.UNKNOWN_ROGUE
             }
@@ -481,6 +482,39 @@ private fun ouiPrefixOf(mac: String): String? {
     if (parts.size < 3) return null
     if (parts.take(3).any { it.length != 2 || it.toIntOrNull(16) == null }) return null
     return parts.take(3).joinToString(":")
+}
+
+private fun combineRogueApAlerts(
+    nearby: List<RogueApAlert>,
+    baseline: List<RogueApAlert>,
+): List<RogueApAlert> {
+    val byBssid = mutableMapOf<String, RogueApAlert>()
+    (nearby + baseline).forEach { alert ->
+        val existing = byBssid[alert.bssid]
+        byBssid[alert.bssid] = if (existing == null) {
+            alert
+        } else {
+            existing.copy(
+                reasons = (existing.reasons + alert.reasons).distinct(),
+                category = higherSeverityCategory(existing.category, alert.category),
+                confidence = maxOf(existing.confidence, alert.confidence),
+            )
+        }
+    }
+    return byBssid.values.toList()
+}
+
+private fun higherSeverityCategory(
+    a: RogueApCategory,
+    b: RogueApCategory,
+): RogueApCategory {
+    val severity = listOf(
+        RogueApCategory.UNKNOWN_ROGUE,
+        RogueApCategory.SECURITY_DOWNGRADE,
+        RogueApCategory.EVIL_TWIN,
+        RogueApCategory.FAKE_PORTAL,
+    )
+    return if (severity.indexOf(a) >= severity.indexOf(b)) a else b
 }
 
 private fun mergeRogueApAlerts(
