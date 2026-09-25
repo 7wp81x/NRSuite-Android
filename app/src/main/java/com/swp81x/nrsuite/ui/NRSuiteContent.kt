@@ -120,6 +120,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.swp81x.nrsuite.MainViewModel
 import com.swp81x.nrsuite.NrSuiteApplication
+import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
@@ -276,6 +277,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         portalRunning,
         portalMode,
         bleAdvertising,
+        ouiDatabaseStatus,
     ) {
         modules.map { module ->
         val runsWithoutDevice = module.id == "ducky" || module.id == "firmware" || module.id == "credential_manager" || module.id == "wpa_cracker" || module.id == "mac_lookup"
@@ -303,9 +305,13 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             featureKey in deviceFeatures
         }
         val supported = featureSupported
-        val available = module.available && (runsWithoutDevice || (isDeviceConnected && supported))
+        val requiresOuiDb = module.id == "mac_lookup" && ouiDatabaseStatus !is OuiDatabaseStatus.Ready
+        val available = module.available &&
+            !requiresOuiDb &&
+            (runsWithoutDevice || (isDeviceConnected && supported))
         val supportLabel = when {
             !module.available -> module.statusLabel
+            module.id == "mac_lookup" && requiresOuiDb -> "OUI DB required"
             !isDeviceConnected && !runsWithoutDevice -> null
             isDeviceConnected && !supported && module.id == "ble" -> "No BLE radio on this chip"
             isDeviceConnected && !supported && module.id == "badusb" -> "Requires S2/S3 or matching firmware"
@@ -315,6 +321,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
         module.copy(
             available = available,
+            iconTint = moduleCategoryColor(module.category),
             statusLabel = supportLabel,
             isRunning = when (module.id) {
                 "wifi" -> scanning
@@ -551,6 +558,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
     Scaffold(
         topBar = {
+            Column {
             TopAppBar(
                 title = {
                     Text(
@@ -587,6 +595,18 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     }
                 },
             )
+            if (ouiDatabaseStatus is OuiDatabaseStatus.Downloading) {
+                val downloadProgress = ouiDatabaseProgress
+                if (downloadProgress != null) {
+                    LinearProgressIndicator(
+                        progress = { (downloadProgress / 100f).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            }
+            }
         },
         bottomBar = {
             if (activeModuleId == null) {
@@ -1059,6 +1079,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 devices = devices,
                 usbManager = usbManager,
                 modules = liveModules,
+                ouiDatabaseStatus = ouiDatabaseStatus,
+                ouiDatabaseProgress = ouiDatabaseProgress,
+                onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
                 onOpenModule = {
                     viewModel.onModuleOpened(it)
                     activeModuleId = it
