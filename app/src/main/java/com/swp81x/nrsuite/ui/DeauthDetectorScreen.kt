@@ -91,7 +91,6 @@ fun DeauthDetectorScreen(
     scanResults: List<NetworkTarget>,
     selectedTarget: NetworkTarget?,
     channel: Int,
-    onChannelChange: (Int) -> Unit,
     onSelectTarget: (NetworkTarget) -> Unit,
     onScanClick: () -> Unit,
     isScanning: Boolean,
@@ -143,14 +142,12 @@ fun DeauthDetectorScreen(
                 currentHopChannel = currentHopChannel,
                 scanResults = scanResults,
                 selectedTarget = selectedTarget,
-                channel = channel,
                 isScanning = isScanning,
                 onToggle = { configExpanded = !configExpanded },
                 onChannelModeChange = onChannelModeChange,
                 onHopIntervalChange = onHopIntervalChange,
                 onScanClick = onScanClick,
                 onSelectTarget = onSelectTarget,
-                onChannelChange = onChannelChange,
             )
 
             Spacer(Modifier.height(10.dp))
@@ -471,14 +468,12 @@ private fun ConfigZone(
     currentHopChannel: Int?,
     scanResults: List<NetworkTarget>,
     selectedTarget: NetworkTarget?,
-    channel: Int,
     isScanning: Boolean,
     onToggle: () -> Unit,
     onChannelModeChange: (DeauthChannelMode) -> Unit,
     onHopIntervalChange: (Int) -> Unit,
     onScanClick: () -> Unit,
     onSelectTarget: (NetworkTarget) -> Unit,
-    onChannelChange: (Int) -> Unit,
 ) {
     val controlsEnabled = connected && !running
 
@@ -556,7 +551,7 @@ private fun ConfigZone(
                             onClick = onScanClick,
                             enabled = controlsEnabled && !isScanning,
                         ) {
-                            Text(if (isScanning) "Scanning..." else "Scan")
+                            Text(if (isScanning) "Scanning..." else "Scan WiFi for targets")
                         }
 
                         if (scanResults.isNotEmpty()) {
@@ -581,14 +576,6 @@ private fun ConfigZone(
                             }
                         }
 
-                        Spacer(Modifier.height(10.dp))
-                        NumberStepper(
-                            label = "Channel",
-                            valueText = channel.toString(),
-                            enabled = controlsEnabled,
-                            onDecrease = { onChannelChange((channel - 1).coerceAtLeast(1)) },
-                            onIncrease = { onChannelChange((channel + 1).coerceAtMost(14)) },
-                        )
                     } else {
                         NumberStepper(
                             label = "Dwell time (ms)",

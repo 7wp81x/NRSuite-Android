@@ -807,7 +807,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     scanResults = deauthDetectorTargets,
                     selectedTarget = deauthDetectorSelectedTarget,
                     channel = deauthDetectorChannel,
-                    onChannelChange = viewModel::setDeauthDetectorChannel,
                     onSelectTarget = viewModel::selectDeauthDetectorTarget,
                     onScanClick = viewModel::scanWifi,
                     isScanning = scanning,
