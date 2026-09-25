@@ -177,13 +177,16 @@ internal fun MainViewModel.recordDeauthDetectorFrame(event: JSONObject) {
     }
     val rssi = event.optInt("rssi", -127)
     val reasonCode = event.optInt("reason", 0)
-    val resolvedSsid = _deauthDetectorTargets.value
-        .firstOrNull { it.bssid.equals(bssid, ignoreCase = true) }
-        ?.ssid
-        ?: _deauthDetectorSelectedTarget.value
-            ?.takeIf { it.bssid.equals(bssid, ignoreCase = true) }
+    val firmwareSsid = event.optString("ssid", "").trim()
+    val resolvedSsid = firmwareSsid.ifBlank {
+        _deauthDetectorTargets.value
+            .firstOrNull { it.bssid.equals(bssid, ignoreCase = true) }
             ?.ssid
-        ?: bssid
+            ?: _deauthDetectorSelectedTarget.value
+                ?.takeIf { it.bssid.equals(bssid, ignoreCase = true) }
+                ?.ssid
+            ?: bssid
+    }
 
     val nowMs = System.currentTimeMillis()
     if (deauthDetectorLastEventAtMs > 0 &&

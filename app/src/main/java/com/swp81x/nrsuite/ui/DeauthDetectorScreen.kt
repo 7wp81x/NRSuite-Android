@@ -265,8 +265,6 @@ private fun DetectorStatusCard(
                             fontWeight = FontWeight.SemiBold,
                             color = StatusRed,
                         )
-                        Spacer(Modifier.weight(1f))
-                        ConfidenceBadge(alert.confidence)
                     }
 
                     Spacer(Modifier.height(6.dp))
@@ -307,13 +305,20 @@ private fun DetectorStatusCard(
                     )
 
                     Spacer(Modifier.height(10.dp))
-                    OutlinedButton(
-                        onClick = onLocateClick,
-                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                            contentColor = NrAccent,
-                        ),
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("Locate")
+                        OutlinedButton(
+                            onClick = onLocateClick,
+                            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                contentColor = NrAccent,
+                            ),
+                        ) {
+                            Text("Locate")
+                        }
+                        Spacer(Modifier.weight(1f))
+                        ConfidenceBadge(alert.confidence)
                     }
                 }
 
@@ -389,6 +394,8 @@ private fun ConfidenceBadge(confidence: AlertConfidence) {
             text = label,
             style = MaterialTheme.typography.labelSmall,
             color = color,
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }
