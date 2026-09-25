@@ -197,6 +197,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val deauthDetectorUniqueSourceCount by viewModel.deauthDetectorUniqueSourceCount.collectAsState()
     val deauthDetectorTargets by viewModel.deauthDetectorTargets.collectAsState()
     val deauthDetectorSelectedTarget by viewModel.deauthDetectorSelectedTarget.collectAsState()
+    val trustedNetworks by viewModel.trustedNetworks.collectAsState()
+    val rogueApRunning by viewModel.rogueApRunning.collectAsState()
+    val rogueApScanning by viewModel.rogueApScanning.collectAsState()
+    val rogueApAlerts by viewModel.rogueApAlerts.collectAsState()
+    val rogueApLastScanAt by viewModel.rogueApLastScanAt.collectAsState()
     val portalRunning by viewModel.portalRunning.collectAsState()
     val portalMode by viewModel.portalMode.collectAsState()
     val portalHtmlSize by viewModel.portalHtmlSize.collectAsState()
@@ -263,6 +268,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         beaconRunning,
         deauthRunning,
         deauthDetectorRunning,
+        rogueApRunning,
         portalRunning,
         portalMode,
         bleAdvertising,
@@ -312,6 +318,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "beacon" -> beaconRunning
                 "deauth" -> deauthRunning
                 "deauth_detector" -> deauthDetectorRunning
+                "rogue_ap" -> rogueApRunning
                 "portal" -> portalRunning && portalMode == "portal"
                 "evil_twin" -> portalRunning && portalMode == "evil_twin"
                 "ble" -> bleAdvertising
@@ -367,7 +374,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || portalRunning || bleAdvertising || crackerRunning
+    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || rogueApRunning || portalRunning || bleAdvertising || crackerRunning
     val view = LocalView.current
     DisposableEffect(anyModuleRunning) {
         val window = (view.context as? Activity)?.window
@@ -749,6 +756,23 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onClearFeed = viewModel::clearDeauthDetectorFeed,
                     onStart = viewModel::startDeauthDetector,
                     onStop = viewModel::stopDeauthDetector,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "rogue_ap" -> {
+                RogueApScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    running = rogueApRunning,
+                    scanning = rogueApScanning,
+                    trustedNetworks = trustedNetworks,
+                    alerts = rogueApAlerts,
+                    lastScanAt = rogueApLastScanAt,
+                    onCaptureBaseline = viewModel::captureRogueApBaseline,
+                    onClearBaseline = viewModel::clearRogueApBaseline,
+                    onStart = viewModel::startRogueApDetector,
+                    onStop = viewModel::stopRogueApDetector,
+                    onClearAlerts = viewModel::clearRogueApAlerts,
                     modifier = contentModifier,
                 )
             }

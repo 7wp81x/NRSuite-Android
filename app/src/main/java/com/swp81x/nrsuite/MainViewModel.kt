@@ -13,6 +13,9 @@ import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.OuiRule
+import com.swp81x.nrsuite.core.defense.OuiRuleAction
+import com.swp81x.nrsuite.core.defense.RogueApAlert
+import com.swp81x.nrsuite.core.defense.TrustedNetwork
 import com.swp81x.nrsuite.core.defense.DeauthChannelMode
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
@@ -159,6 +162,23 @@ class MainViewModel(internal val app: Application) {
 
     internal val _ouiRules = MutableStateFlow<List<OuiRule>>(emptyList())
     val ouiRules: StateFlow<List<OuiRule>> = _ouiRules.asStateFlow()
+
+    internal val _trustedNetworks = MutableStateFlow<List<TrustedNetwork>>(emptyList())
+    val trustedNetworks: StateFlow<List<TrustedNetwork>> = _trustedNetworks.asStateFlow()
+
+    internal val _rogueApRunning = MutableStateFlow(false)
+    val rogueApRunning: StateFlow<Boolean> = _rogueApRunning.asStateFlow()
+
+    internal val _rogueApScanning = MutableStateFlow(false)
+    val rogueApScanning: StateFlow<Boolean> = _rogueApScanning.asStateFlow()
+
+    internal val _rogueApAlerts = MutableStateFlow<List<RogueApAlert>>(emptyList())
+    val rogueApAlerts: StateFlow<List<RogueApAlert>> = _rogueApAlerts.asStateFlow()
+
+    internal val _rogueApLastScanAt = MutableStateFlow<String?>(null)
+    val rogueApLastScanAt: StateFlow<String?> = _rogueApLastScanAt.asStateFlow()
+
+    internal var rogueApScanJob: Job? = null
 
     internal val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
@@ -472,6 +492,7 @@ class MainViewModel(internal val app: Application) {
         loadExportDirectory()
         this.loadBeaconListsImpl()
         this.loadOuiRulesImpl()
+        this.loadTrustedNetworksImpl()
         this.loadDuckyScriptsImpl()
         loadHistory()
         this.loadCredentialSessionsImpl()
@@ -491,10 +512,22 @@ class MainViewModel(internal val app: Application) {
 
     fun deleteBeaconList(name: String) = this.deleteBeaconListImpl(name)
 
-    fun addOuiRule(ouiPrefix: String, label: String, action: com.swp81x.nrsuite.core.defense.OuiRuleAction) =
+    fun addOuiRule(ouiPrefix: String, label: String, action: OuiRuleAction) =
         this.addOuiRuleImpl(ouiPrefix, label, action)
 
     fun deleteOuiRule(id: String) = this.deleteOuiRuleImpl(id)
+
+    fun captureRogueApBaseline() = this.captureRogueApBaselineImpl()
+
+    fun clearRogueApBaseline() = this.clearRogueApBaselineImpl()
+
+    fun startRogueApDetector() = this.startRogueApDetectorImpl()
+
+    fun stopRogueApDetector() = this.stopRogueApDetectorImpl()
+
+    fun clearRogueApAlerts() {
+        _rogueApAlerts.value = emptyList()
+    }
 
 
 
@@ -646,6 +679,10 @@ class MainViewModel(internal val app: Application) {
         _sniffing.value = false
         _deauthRunning.value = false
         _deauthDetectorRunning.value = false
+        rogueApScanJob?.cancel()
+        rogueApScanJob = null
+        _rogueApRunning.value = false
+        _rogueApScanning.value = false
         deauthAlertClearJob?.cancel()
         deauthAlertClearJob = null
         deauthFpsResetJob?.cancel()
@@ -850,6 +887,8 @@ class MainViewModel(internal val app: Application) {
             _beaconRunning.value -> "Beacon Broadcast"
             _deauthRunning.value -> "Deauthentication"
             _deauthDetectorRunning.value -> "Deauth Detector"
+            _rogueApRunning.value -> "Rogue AP Detector"
+            _rogueApScanning.value -> "Rogue AP baseline scan"
             _scanning.value -> "WiFi Scan"
             else -> null
         }
@@ -876,6 +915,7 @@ class MainViewModel(internal val app: Application) {
             _portalRunning.value -> "Captive portal active"
             _deauthRunning.value -> "Deauth burst active"
             _deauthDetectorRunning.value -> "Deauth detector active"
+            _rogueApRunning.value -> "Rogue AP detector active"
             _bleAdvertising.value || _bleConnected.value -> "BLE HID active"
             else -> null
         }
@@ -914,6 +954,11 @@ class MainViewModel(internal val app: Application) {
             scope.launch {
                 runCatching { current?.sendCommand("DEAUTH_DETECT_STOP", timeoutMs = 4_000) }
             }
+        }
+        if (_rogueApRunning.value) {
+            _rogueApRunning.value = false
+            rogueApScanJob?.cancel()
+            rogueApScanJob = null
         }
         portalStatusJob?.cancel()
         portalStatusJob = null
