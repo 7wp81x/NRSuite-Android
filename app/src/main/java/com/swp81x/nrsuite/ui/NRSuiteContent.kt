@@ -172,6 +172,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val sniffHandshake by viewModel.sniffHandshake.collectAsState()
     val capturePath by viewModel.capturePath.collectAsState()
     val exportDirectoryName by viewModel.exportDirectoryName.collectAsState()
+    val ouiRules by viewModel.ouiRules.collectAsState()
     val requiresRootDirectory by viewModel.requiresRootDirectory.collectAsState()
     val actionError by viewModel.actionError.collectAsState()
     val beaconRunning by viewModel.beaconRunning.collectAsState()
@@ -960,6 +961,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onRequestPermission = { device -> requestPermission(device) },
                 onSelectFlashTarget = viewModel::selectFirmwareTarget,
                 onStartFirmwareFlash = viewModel::startFirmwareFlash,
+                ouiRules = ouiRules,
+                onAddOuiRule = viewModel::addOuiRule,
+                onDeleteOuiRule = viewModel::deleteOuiRule,
                 modifier = contentModifier,
             )
 

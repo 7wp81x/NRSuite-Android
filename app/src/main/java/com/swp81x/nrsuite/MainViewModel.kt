@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.defense.DeauthAlert
+import com.swp81x.nrsuite.core.defense.OuiRule
 import com.swp81x.nrsuite.core.defense.DeauthChannelMode
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
@@ -155,6 +156,9 @@ class MainViewModel(internal val app: Application) {
 
     internal val _networks = MutableStateFlow<List<JSONObject>>(emptyList())
     val networks: StateFlow<List<JSONObject>> = _networks.asStateFlow()
+
+    internal val _ouiRules = MutableStateFlow<List<OuiRule>>(emptyList())
+    val ouiRules: StateFlow<List<OuiRule>> = _ouiRules.asStateFlow()
 
     internal val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
@@ -467,6 +471,7 @@ class MainViewModel(internal val app: Application) {
     init {
         loadExportDirectory()
         this.loadBeaconListsImpl()
+        this.loadOuiRulesImpl()
         this.loadDuckyScriptsImpl()
         loadHistory()
         this.loadCredentialSessionsImpl()
@@ -485,6 +490,11 @@ class MainViewModel(internal val app: Application) {
     fun saveBeaconList(name: String, ssids: List<String>) = this.saveBeaconListImpl(name, ssids)
 
     fun deleteBeaconList(name: String) = this.deleteBeaconListImpl(name)
+
+    fun addOuiRule(ouiPrefix: String, label: String, action: com.swp81x.nrsuite.core.defense.OuiRuleAction) =
+        this.addOuiRuleImpl(ouiPrefix, label, action)
+
+    fun deleteOuiRule(id: String) = this.deleteOuiRuleImpl(id)
 
 
 
