@@ -207,6 +207,14 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val rogueApAlerts by viewModel.rogueApAlerts.collectAsState()
     val rogueApNearby by viewModel.rogueApNearby.collectAsState()
     val rogueApLastScanAt by viewModel.rogueApLastScanAt.collectAsState()
+    val clientPresenceRunning by viewModel.clientPresenceRunning.collectAsState()
+    val clientPresenceMode by viewModel.clientPresenceMode.collectAsState()
+    val clientPresenceFixed by viewModel.clientPresenceFixed.collectAsState()
+    val clientPresenceChannel by viewModel.clientPresenceChannel.collectAsState()
+    val clientPresenceTargetBssid by viewModel.clientPresenceTargetBssid.collectAsState()
+    val clientPresenceClients by viewModel.clientPresenceClients.collectAsState()
+    val clientPresenceFrameCount by viewModel.clientPresenceFrameCount.collectAsState()
+    val clientPresenceLastTriggerAt by viewModel.clientPresenceLastTriggerAt.collectAsState()
     val portalRunning by viewModel.portalRunning.collectAsState()
     val portalMode by viewModel.portalMode.collectAsState()
     val portalHtmlSize by viewModel.portalHtmlSize.collectAsState()
@@ -274,6 +282,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         deauthRunning,
         deauthDetectorRunning,
         rogueApRunning,
+        clientPresenceRunning,
         portalRunning,
         portalMode,
         bleAdvertising,
@@ -287,6 +296,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "beacon" -> "beacon"
             "deauth" -> "deauth"
             "deauth_detector" -> "deauth_detect"
+            "client_presence" -> "client_detect"
             "portal" -> "portal"
             "evil_twin" -> "portal"
             "storage" -> "storage"
@@ -330,6 +340,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "deauth" -> deauthRunning
                 "deauth_detector" -> deauthDetectorRunning
                 "rogue_ap" -> rogueApRunning
+                "client_presence" -> clientPresenceRunning
                 "portal" -> portalRunning && portalMode == "portal"
                 "evil_twin" -> portalRunning && portalMode == "evil_twin"
                 "ble" -> bleAdvertising
@@ -386,7 +397,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || rogueApRunning || portalRunning || bleAdvertising || crackerRunning
+    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || rogueApRunning || clientPresenceRunning || portalRunning || bleAdvertising || crackerRunning
     val view = LocalView.current
     DisposableEffect(anyModuleRunning) {
         val window = (view.context as? Activity)?.window
@@ -777,6 +788,32 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     networks = networks,
                     onScanWifi = viewModel::scanWifi,
                     onStart = viewModel::startDeauth,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "client_presence" -> {
+                ClientPresenceScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    running = clientPresenceRunning,
+                    mode = clientPresenceMode,
+                    fixed = clientPresenceFixed,
+                    channel = clientPresenceChannel,
+                    targetBssid = clientPresenceTargetBssid,
+                    scanning = scanning,
+                    networks = networks,
+                    clients = clientPresenceClients,
+                    frameCount = clientPresenceFrameCount,
+                    lastTriggerAt = clientPresenceLastTriggerAt,
+                    onModeChange = viewModel::setClientPresenceMode,
+                    onFixedChange = viewModel::setClientPresenceFixed,
+                    onChannelChange = viewModel::setClientPresenceChannel,
+                    onScanWifi = viewModel::scanWifi,
+                    onSelectTarget = viewModel::selectClientPresenceTarget,
+                    onStart = viewModel::startClientPresence,
+                    onStop = viewModel::stopClientPresence,
+                    onTriggerReconnect = viewModel::triggerClientReconnectBurst,
+                    onClear = viewModel::clearClientPresence,
                     modifier = contentModifier,
                 )
             }
