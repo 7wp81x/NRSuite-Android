@@ -1,6 +1,8 @@
 package com.swp81x.nrsuite
 
 import com.swp81x.nrsuite.core.defense.AlertConfidence
+import com.swp81x.nrsuite.core.defense.NearbyAp
+import com.swp81x.nrsuite.core.defense.isLikelyInfrastructureVendor
 import com.swp81x.nrsuite.core.defense.OuiRule
 import com.swp81x.nrsuite.core.defense.OuiRuleAction
 import com.swp81x.nrsuite.core.defense.RogueApAlert
@@ -259,6 +261,28 @@ private suspend fun MainViewModel.performRogueApScan(activeSession: com.swp81x.n
         .associateBy { it.bssid }
         .values
         .toList()
+    val alertsByBssid = newAlerts.associateBy { it.bssid }
+    _rogueApNearby.value = observed
+        .map { ap ->
+            val alert = alertsByBssid[ap.bssid]
+            val vendor = ouiDatabaseRepository.lookup(ap.bssid)?.vendor
+            val ouiRule = matchOuiRule(ap.bssid, _ouiRules.value)
+            NearbyAp(
+                ssid = ap.ssid,
+                bssid = ap.bssid,
+                channel = ap.channel,
+                rssi = ap.rssi,
+                security = ap.security,
+                vendor = vendor,
+                likelyInfrastructureVendor = isLikelyInfrastructureVendor(vendor) ||
+                    ouiRule?.action == OuiRuleAction.WHITELIST,
+                suspicious = alert != null,
+                category = alert?.category,
+                confidence = alert?.confidence,
+            )
+        }
+        .sortedByDescending { it.rssi }
+
     if (newAlerts.isEmpty()) return
 
     val existingKeys = _rogueApAlerts.value
@@ -378,6 +402,14 @@ private fun MainViewModel.classifyNearbyDuplicates(
     val rules = _ouiRules.value
     val alerts = mutableListOf<RogueApAlert>()
 
+    fun isProtected(ap: ObservedAp): Boolean {
+        val rule = matchOuiRule(ap.bssid, rules)
+        if (rule?.action == OuiRuleAction.BLACKLIST) return false
+        if (rule?.action == OuiRuleAction.WHITELIST) return true
+        val vendor = ouiDatabaseRepository.lookup(ap.bssid)?.vendor
+        return isLikelyInfrastructureVendor(vendor)
+    }
+
     observed.groupBy { it.ssid.lowercase() }.values.forEach { group ->
         group.forEach { ap ->
             val ouiRule = matchOuiRule(ap.bssid, rules)
@@ -402,14 +434,12 @@ private fun MainViewModel.classifyNearbyDuplicates(
 
                 val prefixes = group.mapNotNull { ouiPrefixOf(it.bssid) }.distinct()
                 if (prefixes.size > 1) {
-                    val whitelistPrefixes = rules
-                        .filter { it.action == OuiRuleAction.WHITELIST }
-                        .map { it.ouiPrefix }
-                        .toSet()
-                    val thisPrefix = ouiPrefixOf(ap.bssid)
-                    val thisWhitelisted = thisPrefix != null && thisPrefix in whitelistPrefixes
-                    val anotherWhitelisted = whitelistPrefixes.any { it != thisPrefix && it in prefixes }
-                    if (!thisWhitelisted && (anotherWhitelisted || whitelistPrefixes.isEmpty())) {
+                    val thisProtected = isProtected(ap)
+                    val anotherProtected = group.any {
+                        it.bssid != ap.bssid && isProtected(it)
+                    }
+                    val anyProtected = group.any { isProtected(it) }
+                    if (!thisProtected && (anotherProtected || !anyProtected)) {
                         reasons += "Different OUI from other APs advertising SSID '${ap.ssid}'"
                     }
                 }

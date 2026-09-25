@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.AlertConfidence
+import com.swp81x.nrsuite.core.defense.NearbyAp
 import com.swp81x.nrsuite.core.defense.RogueApAlert
 import com.swp81x.nrsuite.core.defense.RogueApCategory
 import com.swp81x.nrsuite.ui.theme.NrAccent
@@ -63,6 +64,7 @@ fun RogueApScreen(
     connected: Boolean,
     running: Boolean,
     scanning: Boolean,
+    nearbyNetworks: List<NearbyAp>,
     alerts: List<RogueApAlert>,
     lastScanAt: String?,
     onStart: () -> Unit,
@@ -85,6 +87,10 @@ fun RogueApScreen(
                 scanning = scanning,
                 lastScanAt = lastScanAt,
             )
+            Spacer(Modifier.height(10.dp))
+
+            NearbyNetworksCard(nearbyNetworks = nearbyNetworks)
+
             Spacer(Modifier.height(10.dp))
 
             RogueApAlertsCard(
@@ -203,6 +209,106 @@ private fun RogueApStatusCard(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NearbyNetworksCard(
+    nearbyNetworks: List<NearbyAp>,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                text = "Nearby networks",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "${nearbyNetworks.size} AP(s) seen in the latest scan",
+                style = MaterialTheme.typography.bodySmall,
+                color = NrOnSurfaceVariant,
+            )
+
+            if (nearbyNetworks.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(nearbyNetworks, key = { it.bssid }) { ap ->
+                        NearbyApRow(ap)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NearbyApRow(ap: NearbyAp) {
+    val statusLabel = when {
+        ap.suspicious && ap.category != null -> when (ap.category) {
+            RogueApCategory.EVIL_TWIN -> "Evil Twin"
+            RogueApCategory.FAKE_PORTAL -> "Fake Portal"
+            RogueApCategory.UNKNOWN_ROGUE -> "Unknown Rogue"
+        }
+        ap.likelyInfrastructureVendor -> "Likely legit"
+        else -> "Unclassified"
+    }
+    val statusColor = when {
+        ap.suspicious && ap.category == RogueApCategory.EVIL_TWIN -> StatusRed
+        ap.suspicious && ap.category == RogueApCategory.FAKE_PORTAL -> StatusAmber
+        ap.suspicious -> StatusNeutral
+        ap.likelyInfrastructureVendor -> NrAccent
+        else -> StatusNeutral
+    }
+
+    Column(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = ap.ssid.ifBlank { "(hidden)" },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Row(
+                modifier = Modifier
+                    .background(statusColor.copy(alpha = 0.15f), RoundedCornerShape(50))
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+            ) {
+                Text(
+                    text = statusLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = statusColor,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+        }
+        Text(
+            text = ap.bssid,
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            color = NrOnSurfaceVariant,
+        )
+        Text(
+            text = "ch ${ap.channel} · ${ap.rssi} dBm · ${rssiToProximity(ap.rssi).label} · ${ap.security}",
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            color = NrOnSurfaceVariant,
+        )
+        if (!ap.vendor.isNullOrBlank()) {
+            Text(
+                text = "Vendor: ${ap.vendor}",
+                style = MaterialTheme.typography.bodySmall,
+                color = NrOnSurfaceVariant,
+            )
         }
     }
 }

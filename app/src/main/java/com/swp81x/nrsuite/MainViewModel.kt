@@ -14,6 +14,7 @@ import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.OuiRule
 import com.swp81x.nrsuite.core.defense.OuiRuleAction
+import com.swp81x.nrsuite.core.defense.NearbyAp
 import com.swp81x.nrsuite.core.defense.RogueApAlert
 import com.swp81x.nrsuite.core.defense.TrustedNetwork
 import com.swp81x.nrsuite.core.defense.DeauthChannelMode
@@ -187,6 +188,9 @@ class MainViewModel(internal val app: Application) {
 
     internal val _rogueApAlerts = MutableStateFlow<List<RogueApAlert>>(emptyList())
     val rogueApAlerts: StateFlow<List<RogueApAlert>> = _rogueApAlerts.asStateFlow()
+
+    internal val _rogueApNearby = MutableStateFlow<List<NearbyAp>>(emptyList())
+    val rogueApNearby: StateFlow<List<NearbyAp>> = _rogueApNearby.asStateFlow()
 
     internal val _rogueApLastScanAt = MutableStateFlow<String?>(null)
     val rogueApLastScanAt: StateFlow<String?> = _rogueApLastScanAt.asStateFlow()

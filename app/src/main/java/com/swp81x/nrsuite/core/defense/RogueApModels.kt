@@ -35,6 +35,22 @@ data class RogueApAlert(
 )
 
 /**
+ * A nearby AP observation for display, regardless of whether it is suspicious.
+ */
+data class NearbyAp(
+    val ssid: String,
+    val bssid: String,
+    val channel: Int,
+    val rssi: Int,
+    val security: String,
+    val vendor: String?,
+    val likelyInfrastructureVendor: Boolean,
+    val suspicious: Boolean,
+    val category: RogueApCategory?,
+    val confidence: AlertConfidence?,
+)
+
+/**
  * Security ranking used to decide whether an observation is downgraded
  * compared to the trusted baseline for the same AP.
  */
