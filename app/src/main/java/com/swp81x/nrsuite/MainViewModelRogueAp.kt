@@ -32,6 +32,7 @@ private data class ObservedAp(
     val channel: Int,
     val rssi: Int,
     val security: String,
+    val wps: Boolean,
 )
 
 private fun JSONObject.toObservedAp(): ObservedAp? {
@@ -45,6 +46,7 @@ private fun JSONObject.toObservedAp(): ObservedAp? {
         channel = optInt("channel", 0),
         rssi = optInt("rssi", -100),
         security = optString("security", "?"),
+        wps = optBoolean("wps"),
     )
 }
 
@@ -167,6 +169,7 @@ private suspend fun MainViewModel.performRogueApScan(activeSession: com.swp81x.n
                 channel = ap.channel,
                 rssi = ap.rssi,
                 security = ap.security,
+                wps = ap.wps,
                 vendor = vendor,
                 likelyInfrastructureVendor = isLikelyInfrastructureVendor(vendor) ||
                     ouiRule?.action == OuiRuleAction.WHITELIST,

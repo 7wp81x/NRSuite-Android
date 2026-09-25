@@ -43,6 +43,7 @@ data class NearbyAp(
     val channel: Int,
     val rssi: Int,
     val security: String,
+    val wps: Boolean,
     val vendor: String?,
     val likelyInfrastructureVendor: Boolean,
     val suspicious: Boolean,

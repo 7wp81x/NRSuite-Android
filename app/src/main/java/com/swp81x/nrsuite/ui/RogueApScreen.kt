@@ -50,6 +50,7 @@ import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.defense.NearbyAp
 import com.swp81x.nrsuite.core.defense.RogueApAlert
 import com.swp81x.nrsuite.core.defense.RogueApCategory
+import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.util.rssiToProximity
 import com.swp81x.nrsuite.ui.util.signalQualityColor
@@ -350,11 +351,17 @@ private fun NearbyApRow(ap: NearbyAp) {
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
             color = NrOnSurfaceVariant,
         )
-        Text(
-            text = "ch ${ap.channel} · ${ap.rssi} dBm · ${rssiToProximity(ap.rssi).label} · ${ap.security}",
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-            color = signalTint,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "ch ${ap.channel} · ${ap.rssi} dBm · ${rssiToProximity(ap.rssi).label} · ${ap.security}",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = signalTint,
+            )
+            if (ap.wps) {
+                Spacer(Modifier.width(6.dp))
+                NetworkStatusBadge(text = "WPS", color = StatusAmber)
+            }
+        }
         if (!ap.vendor.isNullOrBlank()) {
             Text(
                 text = "Vendor: ${ap.vendor}",

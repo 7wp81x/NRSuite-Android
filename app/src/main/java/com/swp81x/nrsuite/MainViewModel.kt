@@ -890,10 +890,6 @@ class MainViewModel(internal val app: Application) {
         _deauthDetectorFeedFilter.value = filter
     }
 
-    fun setDeauthDetectorChannel(channel: Int) {
-        _deauthDetectorChannel.value = channel.coerceIn(1, 14)
-    }
-
     fun setDeauthDetectorChannelMode(mode: DeauthChannelMode) {
         _deauthDetectorChannelMode.value = mode
     }
@@ -1049,6 +1045,7 @@ class MainViewModel(internal val app: Application) {
                                 channel = event.optInt("channel", 0),
                                 rssi = event.optInt("rssi", -100),
                                 security = event.optString("security", "?"),
+                                wps = event.optBoolean("wps"),
                                 vendor = vendor,
                                 ouiWhitelisted = ouiWhitelisted,
                                 ouiBlacklisted = ouiBlacklisted,
