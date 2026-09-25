@@ -26,7 +26,6 @@ import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
-import com.swp81x.nrsuite.ui.theme.StatusRed
 import com.swp81x.nrsuite.ui.util.ouiStatusColor
 import com.swp81x.nrsuite.ui.util.securityColor
 import com.swp81x.nrsuite.ui.util.signalQualityColor
@@ -54,12 +53,6 @@ fun NetworkTargetRow(
         blacklisted = ouiBlacklisted,
     )
     val signalTint = signalQualityColor(rssi)
-    val riskTint = when {
-        ouiBlacklisted -> StatusRed
-        security.uppercase().contains("OPEN") -> StatusRed
-        vendor != null -> ouiTint
-        else -> NrOutline
-    }
 
     Card(
         modifier = modifier
@@ -71,7 +64,7 @@ fun NetworkTargetRow(
         shape = RoundedCornerShape(10.dp),
         border = BorderStroke(
             width = if (selected) 1.dp else 0.5.dp,
-            color = if (selected) NrAccent else riskTint,
+            color = if (selected) NrAccent else NrOutline,
         ),
     ) {
         Row(

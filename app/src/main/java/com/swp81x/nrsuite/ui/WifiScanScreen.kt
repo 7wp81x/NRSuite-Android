@@ -46,7 +46,6 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.StatusAmber
-import com.swp81x.nrsuite.ui.theme.StatusRed
 import com.swp81x.nrsuite.ui.util.ouiStatusColor
 import com.swp81x.nrsuite.ui.util.securityColor
 import com.swp81x.nrsuite.ui.util.signalQualityColor
@@ -229,18 +228,12 @@ private fun NetworkRow(network: JSONObject) {
     val securityTint = securityColor(security)
     val ouiTint = ouiStatusColor(vendor, ouiWhitelisted, ouiBlacklisted)
     val signalTint = signalQualityColor(rssi)
-    val cardBorder = when {
-        ouiBlacklisted -> StatusRed
-        security.uppercase().contains("OPEN") -> StatusRed
-        vendor != null -> ouiTint
-        else -> NrOutline
-    }
     val clipboardManager = LocalClipboardManager.current
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(0.5.dp, cardBorder),
+        border = BorderStroke(0.5.dp, NrOutline),
         shape = RoundedCornerShape(10.dp),
     ) {
         Column(Modifier.padding(12.dp)) {
