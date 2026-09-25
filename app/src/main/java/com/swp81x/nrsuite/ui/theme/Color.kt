@@ -17,6 +17,8 @@ val StatusAmber = Color(0xFFF59E0B)
 val StatusRed = Color(0xFFEF4444)
 val StatusNeutral = Color(0xFF8B949E)
 
+val CategoryDetectionBlue = Color(0xFF60A5FA)
+
 // Log level tints.
 val LogColorInfo = Color(0xFF8B949E)
 val LogColorUsb = Color(0xFF3D9BFF)

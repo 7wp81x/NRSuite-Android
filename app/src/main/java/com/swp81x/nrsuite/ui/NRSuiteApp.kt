@@ -71,7 +71,7 @@ import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.WifiFind
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
@@ -195,7 +195,7 @@ internal val modules = listOf(
         id = "deauth_detector",
         title = "Deauth Detector",
         description = "Passively detect deauth and disassoc frames around you.",
-        icon = Icons.Default.Warning,
+        icon = Icons.Default.WifiFind,
         category = "Detection",
         available = true,
     ),
