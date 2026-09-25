@@ -30,6 +30,7 @@ data class RogueApAlert(
     val category: RogueApCategory,
     val reasons: List<String>,
     val confidence: AlertConfidence,
+    val vendor: String?,
     val detectedAt: String,
 )
 

@@ -173,6 +173,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val capturePath by viewModel.capturePath.collectAsState()
     val exportDirectoryName by viewModel.exportDirectoryName.collectAsState()
     val ouiRules by viewModel.ouiRules.collectAsState()
+    val ouiDatabaseStatus by viewModel.ouiDatabaseStatus.collectAsState()
+    val macLookupResult by viewModel.macLookupResult.collectAsState()
+    val requiresOuiDatabase by viewModel.requiresOuiDatabase.collectAsState()
     val requiresRootDirectory by viewModel.requiresRootDirectory.collectAsState()
     val actionError by viewModel.actionError.collectAsState()
     val beaconRunning by viewModel.beaconRunning.collectAsState()
@@ -274,7 +277,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         bleAdvertising,
     ) {
         modules.map { module ->
-        val runsWithoutDevice = module.id == "ducky" || module.id == "firmware" || module.id == "credential_manager" || module.id == "wpa_cracker"
+        val runsWithoutDevice = module.id == "ducky" || module.id == "firmware" || module.id == "credential_manager" || module.id == "wpa_cracker" || module.id == "mac_lookup"
         val featureKey = when (module.id) {
             "wifi" -> "wifi"
             "sniff" -> "sniff"
@@ -333,6 +336,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     var activeModuleId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedCategory by rememberSaveable { mutableStateOf<String?>(null) }
     var showRootDirectoryDialog by rememberSaveable { mutableStateOf(false) }
+    var showOuiDatabaseDialog by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(enabled = firmwareFlashing) {
         // Swallow back while a firmware flash is in progress.
@@ -398,6 +402,13 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         if (requiresRootDirectory) {
             showRootDirectoryDialog = true
             viewModel.onRootDirectoryPromptShown()
+        }
+    }
+
+    LaunchedEffect(requiresOuiDatabase) {
+        if (requiresOuiDatabase) {
+            showOuiDatabaseDialog = true
+            viewModel.onOuiDatabasePromptShown()
         }
     }
 
@@ -645,6 +656,33 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             )
         }
 
+        if (showOuiDatabaseDialog) {
+            AlertDialog(
+                onDismissRequest = { showOuiDatabaseDialog = false },
+                title = { Text("MAC vendor database") },
+                text = {
+                    Text(
+                        text = "Download the IEEE OUI registry now for offline MAC/vendor lookup? " +
+                            "You can also do this later in Settings.",
+                        color = NrOnSurfaceVariant,
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        showOuiDatabaseDialog = false
+                        viewModel.downloadOuiDatabase()
+                    }) {
+                        Text("Download")
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { showOuiDatabaseDialog = false }) {
+                        Text("Later")
+                    }
+                },
+            )
+        }
+
         actionError?.let { message ->
             AlertDialog(
                 onDismissRequest = viewModel::consumeActionError,
@@ -756,6 +794,15 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onClearFeed = viewModel::clearDeauthDetectorFeed,
                     onStart = viewModel::startDeauthDetector,
                     onStop = viewModel::stopDeauthDetector,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "mac_lookup" -> {
+                MacLookupScreen(
+                    result = macLookupResult,
+                    onLookup = viewModel::lookupMac,
+                    onClear = viewModel::clearMacLookup,
                     modifier = contentModifier,
                 )
             }
@@ -988,6 +1035,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 ouiRules = ouiRules,
                 onAddOuiRule = viewModel::addOuiRule,
                 onDeleteOuiRule = viewModel::deleteOuiRule,
+                ouiDatabaseStatus = ouiDatabaseStatus,
+                onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
                 modifier = contentModifier,
             )
 

@@ -209,6 +209,14 @@ internal val modules = listOf(
         available = true,
     ),
     ModuleCardSpec(
+        id = "mac_lookup",
+        title = "MAC Lookup",
+        description = "Offline OUI and vendor lookup for any MAC address.",
+        icon = Icons.Default.Search,
+        category = "Detection",
+        available = true,
+    ),
+    ModuleCardSpec(
         id = "evil_twin",
         title = "Evil Twin",
         description = "Portal + deauth + EAPOL capture workflow.",

@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Stop
@@ -50,6 +51,7 @@ import com.swp81x.nrsuite.core.defense.RogueApAlert
 import com.swp81x.nrsuite.core.defense.RogueApCategory
 import com.swp81x.nrsuite.core.defense.TrustedNetwork
 import com.swp81x.nrsuite.ui.theme.NrAccent
+import com.swp81x.nrsuite.ui.util.rssiToProximity
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -75,6 +77,7 @@ fun RogueApScreen(
 ) {
     var confirmStart by remember { mutableStateOf(false) }
     val canStart = connected && trustedNetworks.isNotEmpty()
+    val needsBaseline = trustedNetworks.isEmpty()
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -96,7 +99,6 @@ fun RogueApScreen(
                 running = running,
                 scanning = scanning,
                 trustedNetworks = trustedNetworks,
-                onCaptureBaseline = onCaptureBaseline,
                 onClearBaseline = onClearBaseline,
             )
             Spacer(Modifier.height(10.dp))
@@ -113,22 +115,33 @@ fun RogueApScreen(
         if (connected) {
             FloatingActionButton(
                 onClick = {
-                    if (running) {
-                        onStop()
-                    } else if (canStart) {
-                        confirmStart = true
+                    when {
+                        running -> onStop()
+                        needsBaseline -> onCaptureBaseline()
+                        canStart -> confirmStart = true
                     }
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp)
-                    .alpha(if (!canStart && !running) 0.4f else 1f),
+                    .alpha(
+                        if (!connected || (!running && !needsBaseline && !canStart)) 0.4f
+                        else 1f
+                    ),
                 containerColor = if (running) StatusRed else NrAccent,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(
-                    imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = null,
+                    imageVector = when {
+                        running -> Icons.Default.Stop
+                        needsBaseline -> Icons.Default.Add
+                        else -> Icons.Default.PlayArrow
+                    },
+                    contentDescription = when {
+                        running -> "Stop Rogue AP detector"
+                        needsBaseline -> "Capture trusted baseline"
+                        else -> "Start Rogue AP detector"
+                    },
                 )
             }
         }
@@ -226,7 +239,6 @@ private fun TrustedBaselineCard(
     running: Boolean,
     scanning: Boolean,
     trustedNetworks: List<TrustedNetwork>,
-    onCaptureBaseline: () -> Unit,
     onClearBaseline: () -> Unit,
 ) {
     val enabled = connected && !running && !scanning
@@ -262,12 +274,15 @@ private fun TrustedBaselineCard(
             }
 
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = onCaptureBaseline,
-                enabled = enabled,
-            ) {
-                Text(if (scanning) "Scanning..." else "Capture baseline")
-            }
+            Text(
+                text = if (scanning) {
+                    "Scanning for a trusted baseline..."
+                } else {
+                    "Tap the FAB to capture a baseline."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = NrOnSurfaceVariant,
+            )
 
             if (trustedNetworks.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp))
@@ -411,10 +426,18 @@ private fun RogueApAlertRow(alert: RogueApAlert) {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "${alert.bssid} · ch ${alert.channel} · ${alert.rssi} dBm",
+                text = "${alert.bssid} · ch ${alert.channel} · ${alert.rssi} dBm · " +
+                    rssiToProximity(alert.rssi).label,
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                 color = NrOnSurfaceVariant,
             )
+            if (!alert.vendor.isNullOrBlank()) {
+                Text(
+                    text = "Vendor: ${alert.vendor}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                )
+            }
 
             if (alert.reasons.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))

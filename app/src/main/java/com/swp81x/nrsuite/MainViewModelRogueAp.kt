@@ -23,8 +23,9 @@ import org.json.JSONObject
 
 private const val PREF_OUI_RULES = "rogue_ap_oui_rules"
 private const val PREF_TRUSTED_NETWORKS = "rogue_ap_trusted_networks"
-private const val ROGUE_AP_SCAN_INTERVAL_MS = 15_000L
-private const val ROGUE_AP_BASELINE_SETTLE_MS = 350L
+private const val ROGUE_AP_SCAN_INTERVAL_MS = 5_000L
+private const val ROGUE_AP_BASELINE_SETTLE_MS = 200L
+private const val ROGUE_AP_SCAN_TIMEOUT_MS = 15_000L
 
 private data class ObservedAp(
     val ssid: String,
@@ -159,7 +160,7 @@ internal fun MainViewModel.captureRogueApBaselineImpl() {
     scope.launch {
         appendLog("Capturing trusted AP baseline...")
         _networks.value = emptyList()
-        val count = runCatching { activeSession.scanWifi(timeoutMs = 30_000) }.getOrNull()
+        val count = runCatching { activeSession.scanWifi(timeoutMs = ROGUE_AP_SCAN_TIMEOUT_MS) }.getOrNull()
         delay(ROGUE_AP_BASELINE_SETTLE_MS)
         _rogueApScanning.value = false
 
@@ -245,7 +246,7 @@ internal fun MainViewModel.stopRogueApDetectorImpl() {
 private suspend fun MainViewModel.performRogueApScan(activeSession: com.swp81x.nrsuite.core.session.NrSession) {
     _rogueApScanning.value = true
     _networks.value = emptyList()
-    val count = runCatching { activeSession.scanWifi(timeoutMs = 30_000) }.getOrNull()
+    val count = runCatching { activeSession.scanWifi(timeoutMs = ROGUE_AP_SCAN_TIMEOUT_MS) }.getOrNull()
     delay(ROGUE_AP_BASELINE_SETTLE_MS)
     _rogueApScanning.value = false
     _rogueApLastScanAt.value = timeHmNow()
@@ -299,6 +300,19 @@ private fun MainViewModel.classifyRogueAps(observed: List<ObservedAp>): List<Rog
         val ouiRule = matchOuiRule(ap.bssid, rules)
         val blacklisted = ouiRule?.action == OuiRuleAction.BLACKLIST
         val ouiSuspicious = blacklisted && sameBssid == null
+
+        val observedVendor = ouiDatabaseRepository.lookup(ap.bssid)?.vendor
+        val trustedVendor = trustedForSsid
+            .asSequence()
+            .mapNotNull { ouiDatabaseRepository.lookup(it.bssid)?.vendor }
+            .firstOrNull()
+        val vendorMismatch = mismatchedSsid &&
+            observedVendor != null &&
+            trustedVendor != null &&
+            !observedVendor.equals(trustedVendor, ignoreCase = true)
+        val databaseReady = ouiDatabaseRepository.isReady()
+        val unknownVendor = databaseReady && observedVendor == null
+
         val reasons = mutableListOf<String>()
 
         if (mismatchedSsid) {
@@ -309,6 +323,12 @@ private fun MainViewModel.classifyRogueAps(observed: List<ObservedAp>): List<Rog
         }
         if (securityDowngrade) {
             reasons += "Security downgrade (expected ${sameBssid?.security}, saw ${ap.security})"
+        }
+        if (vendorMismatch) {
+            reasons += "Vendor mismatch (trusted: $trustedVendor, observed: $observedVendor)"
+        }
+        if (unknownVendor && mismatchedSsid) {
+            reasons += "Observed OUI is not in the vendor database"
         }
         if (ouiSuspicious) {
             val ruleLabel = ouiRule?.label?.takeIf { it.isNotBlank() }
@@ -327,7 +347,8 @@ private fun MainViewModel.classifyRogueAps(observed: List<ObservedAp>): List<Rog
 
         val confidence = when {
             category == RogueApCategory.FAKE_PORTAL -> AlertConfidence.HIGH
-            mismatchedSsid && (channelMismatch || ouiSuspicious) -> AlertConfidence.HIGH
+            mismatchedSsid && (channelMismatch || ouiSuspicious || vendorMismatch) ->
+                AlertConfidence.HIGH
             mismatchedSsid -> AlertConfidence.MEDIUM
             ouiSuspicious -> AlertConfidence.MEDIUM
             else -> AlertConfidence.LOW
@@ -342,6 +363,7 @@ private fun MainViewModel.classifyRogueAps(observed: List<ObservedAp>): List<Rog
             category = category,
             reasons = reasons,
             confidence = confidence,
+            vendor = observedVendor,
             detectedAt = timeHmNow(),
         )
     }

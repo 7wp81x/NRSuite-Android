@@ -31,6 +31,9 @@ import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.history.HistoryEntry
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
+import com.swp81x.nrsuite.core.oui.MacLookupResult
+import com.swp81x.nrsuite.core.oui.OuiDatabaseRepository
+import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.pcap.PcapReader
 import com.swp81x.nrsuite.core.pcap.PcapWriter
 import com.swp81x.nrsuite.core.session.ConnectionState
@@ -162,6 +165,15 @@ class MainViewModel(internal val app: Application) {
 
     internal val _ouiRules = MutableStateFlow<List<OuiRule>>(emptyList())
     val ouiRules: StateFlow<List<OuiRule>> = _ouiRules.asStateFlow()
+
+    internal val ouiDatabaseRepository = OuiDatabaseRepository(File(app.filesDir, "oui/oui.csv"))
+    val ouiDatabaseStatus: StateFlow<OuiDatabaseStatus> = ouiDatabaseRepository.status
+
+    internal val _macLookupResult = MutableStateFlow<MacLookupResult?>(null)
+    val macLookupResult: StateFlow<MacLookupResult?> = _macLookupResult.asStateFlow()
+
+    internal val _requiresOuiDatabase = MutableStateFlow(false)
+    val requiresOuiDatabase: StateFlow<Boolean> = _requiresOuiDatabase.asStateFlow()
 
     internal val _trustedNetworks = MutableStateFlow<List<TrustedNetwork>>(emptyList())
     val trustedNetworks: StateFlow<List<TrustedNetwork>> = _trustedNetworks.asStateFlow()
@@ -492,6 +504,7 @@ class MainViewModel(internal val app: Application) {
         loadExportDirectory()
         this.loadBeaconListsImpl()
         this.loadOuiRulesImpl()
+        this.loadOuiDatabaseImpl()
         this.loadTrustedNetworksImpl()
         this.loadDuckyScriptsImpl()
         loadHistory()
@@ -516,6 +529,16 @@ class MainViewModel(internal val app: Application) {
         this.addOuiRuleImpl(ouiPrefix, label, action)
 
     fun deleteOuiRule(id: String) = this.deleteOuiRuleImpl(id)
+
+    fun downloadOuiDatabase() = this.downloadOuiDatabaseImpl()
+
+    fun lookupMac(mac: String) = this.lookupMacImpl(mac)
+
+    fun clearMacLookup() {
+        _macLookupResult.value = null
+    }
+
+    fun onOuiDatabasePromptShown() = this.onOuiDatabasePromptShownImpl()
 
     fun captureRogueApBaseline() = this.captureRogueApBaselineImpl()
 

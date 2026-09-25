@@ -121,6 +121,7 @@ import androidx.core.content.ContextCompat
 import com.swp81x.nrsuite.MainViewModel
 import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.defense.OuiRule
+import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.defense.OuiRuleAction
 import com.swp81x.nrsuite.core.defense.normalizeOuiPrefix
 import com.swp81x.nrsuite.core.session.ConnectionState
@@ -168,6 +169,8 @@ internal fun SettingsScreen(
     ouiRules: List<OuiRule> = emptyList(),
     onAddOuiRule: (ouiPrefix: String, label: String, action: OuiRuleAction) -> Unit = { _, _, _ -> },
     onDeleteOuiRule: (id: String) -> Unit = {},
+    ouiDatabaseStatus: OuiDatabaseStatus = OuiDatabaseStatus.NotDownloaded,
+    onDownloadOuiDatabase: () -> Unit = {},
     flasherOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -452,6 +455,11 @@ internal fun SettingsScreen(
 
         if (!flasherOnly) {
 
+        OuiDatabaseCard(
+            status = ouiDatabaseStatus,
+            onDownload = onDownloadOuiDatabase,
+        )
+
         OuiRulesCard(
             ouiRules = ouiRules,
             onAddOuiRule = onAddOuiRule,
@@ -702,5 +710,71 @@ private fun OuiRuleRow(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun OuiDatabaseCard(
+    status: OuiDatabaseStatus,
+    onDownload: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text("MAC vendor database", fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Download the IEEE OUI registry for offline vendor/MAC lookup. " +
+                    "No MAC lookup leaves the device.",
+                style = MaterialTheme.typography.bodySmall,
+                color = NrOnSurfaceVariant,
+            )
+            Spacer(Modifier.height(10.dp))
+
+            when (status) {
+                OuiDatabaseStatus.NotDownloaded -> {
+                    Text(
+                        text = "Not downloaded.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+                OuiDatabaseStatus.Downloading -> {
+                    Text(
+                        text = "Downloading…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusAmber,
+                    )
+                }
+                is OuiDatabaseStatus.Ready -> {
+                    Text(
+                        text = "${status.vendorCount} OUI prefixes · updated ${status.updatedAt}",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                        ),
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+                is OuiDatabaseStatus.Error -> {
+                    Text(
+                        text = status.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusRed,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = onDownload,
+                enabled = status !is OuiDatabaseStatus.Downloading,
+            ) {
+                Text(if (status is OuiDatabaseStatus.Ready) "Update database" else "Download database")
+            }
+        }
     }
 }

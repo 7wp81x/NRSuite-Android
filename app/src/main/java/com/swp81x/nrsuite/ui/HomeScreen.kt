@@ -284,7 +284,7 @@ internal fun HomeScreen(
                     name = "Detection",
                     icon = Icons.Default.Shield,
                     iconTint = CategoryDetectionBlue,
-                    moduleIds = listOf("deauth_detector", "rogue_ap"),
+                    moduleIds = listOf("deauth_detector", "rogue_ap", "mac_lookup"),
                     available = firmwareConnected,
                 ),
                 CategorySpec(
