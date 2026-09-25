@@ -60,6 +60,7 @@ import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.ui.util.rssiToProximity
+import com.swp81x.nrsuite.ui.util.threatProximityColor
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.theme.NrAccent
@@ -301,7 +302,7 @@ private fun DetectorStatusCard(
                         style = MaterialTheme.typography.bodySmall.copy(
                             fontFamily = FontFamily.Monospace,
                         ),
-                        color = NrOnSurfaceVariant,
+                        color = threatProximityColor(alert.dominantSourceRssi),
                     )
 
                     Spacer(Modifier.height(10.dp))
@@ -568,6 +569,9 @@ private fun ConfigZone(
                                         channel = target.channel,
                                         rssi = target.rssi,
                                         security = target.security,
+                                        vendor = target.vendor,
+                                        ouiWhitelisted = target.ouiWhitelisted,
+                                        ouiBlacklisted = target.ouiBlacklisted,
                                         selected = selectedTarget?.bssid == target.bssid,
                                         enabled = controlsEnabled,
                                         onClick = { onSelectTarget(target) },
@@ -732,7 +736,7 @@ private fun FeedRow(entry: DeauthFeedEntry) {
             text = "to $targetAddress ($targetKind) · reason ${entry.reasonCode} · " +
                 "${entry.rssi} dBm · ${rssiToProximity(entry.rssi).label}",
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-            color = NrOnSurfaceVariant,
+            color = threatProximityColor(entry.rssi),
         )
     }
 }

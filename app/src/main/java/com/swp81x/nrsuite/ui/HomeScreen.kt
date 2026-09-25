@@ -73,6 +73,7 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -120,13 +121,18 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.swp81x.nrsuite.MainViewModel
 import com.swp81x.nrsuite.NrSuiteApplication
+import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.theme.CategoryBleBlue
 import com.swp81x.nrsuite.ui.theme.CategoryDetectionBlue
+import com.swp81x.nrsuite.ui.theme.CategoryFirmwareGreen
+import com.swp81x.nrsuite.ui.theme.CategoryHidPurple
+import com.swp81x.nrsuite.ui.theme.CategoryStorageTeal
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
@@ -166,6 +172,9 @@ internal fun HomeScreen(
     usbManager: UsbManager,
     modules: List<ModuleCardSpec>,
     recentModuleIds: List<String>,
+    ouiDatabaseStatus: OuiDatabaseStatus,
+    ouiDatabaseProgress: Float?,
+    onDownloadOuiDatabase: () -> Unit,
     onOpenModule: (String) -> Unit,
     onOpenCategory: (String) -> Unit,
     onRefreshDevices: () -> Unit,
@@ -185,6 +194,16 @@ internal fun HomeScreen(
                 onDisconnect = onDisconnect,
                 onManageDevice = onManageDevice,
             )
+        }
+
+        if (ouiDatabaseStatus !is OuiDatabaseStatus.Ready) {
+            item {
+                OuiDatabaseDashboardWarning(
+                    status = ouiDatabaseStatus,
+                    progress = ouiDatabaseProgress,
+                    onDownload = onDownloadOuiDatabase,
+                )
+            }
         }
 
         if (connectionState !is ConnectionState.Connected) {
@@ -260,7 +279,7 @@ internal fun HomeScreen(
                                 imageVector = spec.icon,
                                 contentDescription = null,
                                 modifier = Modifier.size(14.dp),
-                                tint = NrAccent,
+                                tint = spec.iconTint ?: NrAccent,
                             )
                         },
                     )
@@ -304,21 +323,21 @@ internal fun HomeScreen(
                 CategorySpec(
                     name = "HID",
                     icon = Icons.Default.Keyboard,
-                    iconTint = Color(0xFFA78BFA),
+                    iconTint = CategoryHidPurple,
                     moduleIds = listOf("ducky", "ble", "badusb"),
                     available = true,
                 ),
                 CategorySpec(
                     name = "Storage",
                     icon = Icons.Default.Folder,
-                    iconTint = StatusAmber,
+                    iconTint = CategoryStorageTeal,
                     moduleIds = listOf("storage"),
                     available = firmwareConnected,
                 ),
                 CategorySpec(
                     name = "BLE",
                     icon = Icons.Default.Bluetooth,
-                    iconTint = Color(0xFF3D9BFF),
+                    iconTint = CategoryBleBlue,
                     moduleIds = emptyList(),
                     available = false,
                     statusLabel = "Planned",
@@ -326,14 +345,14 @@ internal fun HomeScreen(
                 CategorySpec(
                     name = "Firmware",
                     icon = Icons.Default.Memory,
-                    iconTint = Color(0xFF34D399),
+                    iconTint = CategoryFirmwareGreen,
                     moduleIds = listOf("firmware", "serial_debugger"),
                     available = true,
                 ),
                 CategorySpec(
                     name = "IR",
                     icon = Icons.Default.SettingsRemote,
-                    iconTint = Color(0xFFAAB2BD),
+                    iconTint = StatusNeutral,
                     moduleIds = listOf("ir"),
                     available = false,
                     statusLabel = "Planned",
@@ -341,7 +360,7 @@ internal fun HomeScreen(
                 CategorySpec(
                     name = "RF",
                     icon = Icons.Default.Radio,
-                    iconTint = Color(0xFFAAB2BD),
+                    iconTint = StatusNeutral,
                     moduleIds = listOf("rf"),
                     available = false,
                     statusLabel = "Planned",
@@ -349,7 +368,7 @@ internal fun HomeScreen(
                 CategorySpec(
                     name = "RFID",
                     icon = Icons.Default.Nfc,
-                    iconTint = Color(0xFFAAB2BD),
+                    iconTint = StatusNeutral,
                     moduleIds = listOf("rfid"),
                     available = false,
                     statusLabel = "Planned",
@@ -608,4 +627,68 @@ internal fun ModulesScreen(
             )
         }
     }
+}
+
+@Composable
+private fun OuiDatabaseDashboardWarning(
+    status: OuiDatabaseStatus,
+    progress: Float?,
+    onDownload: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, StatusAmber),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.WarningAmber,
+                    contentDescription = null,
+                    tint = StatusAmber,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "OUI/vendor database not downloaded",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Vendor names and OUI-based signals will be unavailable until this is downloaded.",
+                style = MaterialTheme.typography.bodySmall,
+                color = NrOnSurfaceVariant,
+            )
+            if (status is OuiDatabaseStatus.Downloading) {
+                Spacer(Modifier.height(8.dp))
+                if (progress != null) {
+                    LinearProgressIndicator(
+                        progress = { (progress / 100f).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            } else {
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = onDownload) {
+                    Text("Download database")
+                }
+            }
+        }
+    }
+}
+
+internal fun moduleCategoryColor(category: String): Color = when (category) {
+    "Detection" -> CategoryDetectionBlue
+    "Wireless" -> NrAccent
+    "Credentials" -> StatusAmber
+    "HID" -> CategoryHidPurple
+    "Storage" -> CategoryStorageTeal
+    "Firmware" -> CategoryFirmwareGreen
+    "BLE" -> CategoryBleBlue
+    else -> StatusNeutral
 }

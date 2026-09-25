@@ -19,18 +19,6 @@ enum class RogueApCategory {
 }
 
 /**
- * One user-approved AP observation. A trusted network is keyed by the pair of
- * SSID + BSSID; multiple BSSIDs with the same SSID are allowed.
- */
-data class TrustedNetwork(
-    val ssid: String,
-    val bssid: String,
-    val channel: Int,
-    val security: String,
-    val addedAt: String,
-)
-
-/**
  * A suspicious AP observation produced by the Rogue AP detector.
  */
 data class RogueApAlert(

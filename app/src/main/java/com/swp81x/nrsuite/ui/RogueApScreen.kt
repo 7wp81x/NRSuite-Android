@@ -46,13 +46,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.AlertConfidence
-import com.swp81x.nrsuite.core.defense.TrustedNetwork
 import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.defense.NearbyAp
 import com.swp81x.nrsuite.core.defense.RogueApAlert
 import com.swp81x.nrsuite.core.defense.RogueApCategory
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.util.rssiToProximity
+import com.swp81x.nrsuite.ui.util.signalQualityColor
+import com.swp81x.nrsuite.ui.util.threatProximityColor
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -69,9 +70,6 @@ fun RogueApScreen(
     nearbyNetworks: List<NearbyAp>,
     alerts: List<RogueApAlert>,
     lastScanAt: String?,
-    trustedNetworks: List<TrustedNetwork>,
-    onCaptureBaseline: () -> Unit,
-    onClearBaseline: () -> Unit,
     ouiDatabaseStatus: OuiDatabaseStatus,
     onDownloadOuiDatabase: () -> Unit,
     onStart: () -> Unit,
@@ -132,16 +130,6 @@ fun RogueApScreen(
                 running = running,
                 scanning = scanning,
                 lastScanAt = lastScanAt,
-            )
-            Spacer(Modifier.height(10.dp))
-
-            KnownGoodBaselineCard(
-                connected = connected,
-                running = running,
-                scanning = scanning,
-                trustedNetworks = trustedNetworks,
-                onCaptureBaseline = onCaptureBaseline,
-                onClearBaseline = onClearBaseline,
             )
             Spacer(Modifier.height(10.dp))
 
@@ -270,101 +258,6 @@ private fun RogueApStatusCard(
 }
 
 @Composable
-private fun KnownGoodBaselineCard(
-    connected: Boolean,
-    running: Boolean,
-    scanning: Boolean,
-    trustedNetworks: List<TrustedNetwork>,
-    onCaptureBaseline: () -> Unit,
-    onClearBaseline: () -> Unit,
-) {
-    var confirmRecapture by remember { mutableStateOf(false) }
-    val captureEnabled = connected && !running && !scanning
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(0.5.dp, NrOutline),
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = "Known-good baseline (optional)",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = "${trustedNetworks.size} trusted AP(s)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                }
-                if (trustedNetworks.isNotEmpty()) {
-                    OutlinedButton(
-                        onClick = onClearBaseline,
-                        enabled = captureEnabled,
-                    ) {
-                        Text("Clear")
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "Optional. Improves matching for APs you already trust; " +
-                    "the autonomous nearby comparison works without it.",
-                style = MaterialTheme.typography.bodySmall,
-                color = NrOnSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = {
-                    if (trustedNetworks.isNotEmpty()) {
-                        confirmRecapture = true
-                    } else {
-                        onCaptureBaseline()
-                    }
-                },
-                enabled = captureEnabled,
-            ) {
-                Text(if (scanning) "Scanning..." else "Capture baseline")
-            }
-        }
-    }
-
-    if (confirmRecapture) {
-        AlertDialog(
-            onDismissRequest = { confirmRecapture = false },
-            title = { Text("Replace trusted baseline?") },
-            text = {
-                Text(
-                    "This replaces your current ${trustedNetworks.size} trusted " +
-                        "AP(s) with what's visible right now. Networks not currently " +
-                        "in range will be removed from the trusted list."
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onCaptureBaseline()
-                        confirmRecapture = false
-                    },
-                ) {
-                    Text("Replace")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmRecapture = false }) {
-                    Text("Cancel")
-                }
-            },
-        )
-    }
-}
-
-@Composable
 private fun NearbyNetworksCard(
     nearbyNetworks: List<NearbyAp>,
 ) {
@@ -424,6 +317,12 @@ private fun NearbyApRow(ap: NearbyAp) {
         else -> StatusNeutral
     }
 
+    val signalTint = if (ap.suspicious) {
+        threatProximityColor(ap.rssi)
+    } else {
+        signalQualityColor(ap.rssi)
+    }
+
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -454,7 +353,7 @@ private fun NearbyApRow(ap: NearbyAp) {
         Text(
             text = "ch ${ap.channel} · ${ap.rssi} dBm · ${rssiToProximity(ap.rssi).label} · ${ap.security}",
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-            color = NrOnSurfaceVariant,
+            color = signalTint,
         )
         if (!ap.vendor.isNullOrBlank()) {
             Text(
@@ -580,7 +479,7 @@ private fun RogueApAlertRow(alert: RogueApAlert) {
                 text = "${alert.bssid} · ch ${alert.channel} · ${alert.rssi} dBm · " +
                     rssiToProximity(alert.rssi).label,
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                color = NrOnSurfaceVariant,
+                color = threatProximityColor(alert.rssi),
             )
             if (!alert.vendor.isNullOrBlank()) {
                 Text(

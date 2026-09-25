@@ -24,8 +24,11 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
-import com.swp81x.nrsuite.ui.theme.NrSurface
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
+import com.swp81x.nrsuite.ui.theme.StatusRed
+import com.swp81x.nrsuite.ui.util.ouiStatusColor
+import com.swp81x.nrsuite.ui.util.securityColor
+import com.swp81x.nrsuite.ui.util.signalQualityColor
 
 @Composable
 fun NetworkTargetRow(
@@ -35,10 +38,27 @@ fun NetworkTargetRow(
     rssi: Int,
     security: String,
     selected: Boolean,
+    vendor: String? = null,
+    ouiWhitelisted: Boolean = false,
+    ouiBlacklisted: Boolean = false,
     enabled: Boolean = true,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val securityTint = securityColor(security)
+    val ouiTint = ouiStatusColor(
+        vendor = vendor,
+        whitelisted = ouiWhitelisted,
+        blacklisted = ouiBlacklisted,
+    )
+    val signalTint = signalQualityColor(rssi)
+    val riskTint = when {
+        ouiBlacklisted -> StatusRed
+        security.uppercase().contains("OPEN") -> StatusRed
+        vendor != null -> ouiTint
+        else -> NrOutline
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -47,7 +67,10 @@ fun NetworkTargetRow(
             containerColor = if (selected) NrAccent.copy(alpha = 0.12f) else NrSurfaceVariant,
         ),
         shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(if (selected) 1.dp else 0.5.dp, if (selected) NrAccent else NrOutline),
+        border = BorderStroke(
+            width = if (selected) 1.dp else 0.5.dp,
+            color = if (selected) NrAccent else riskTint,
+        ),
     ) {
         Row(
             modifier = Modifier
@@ -69,11 +92,28 @@ fun NetworkTargetRow(
                     maxLines = 1,
                 )
                 Text(
-                    text = "ch $channel  ·  $rssi dBm  ·  $security",
+                    text = "ch $channel  ·  $rssi dBm",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
+                    color = signalTint,
                     maxLines = 1,
                 )
+                Row {
+                    Text(
+                        text = security,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = securityTint,
+                        maxLines = 1,
+                    )
+                    if (!vendor.isNullOrBlank()) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "· $vendor",
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = ouiTint,
+                            maxLines = 1,
+                        )
+                    }
+                }
             }
             RadioButton(
                 selected = selected,

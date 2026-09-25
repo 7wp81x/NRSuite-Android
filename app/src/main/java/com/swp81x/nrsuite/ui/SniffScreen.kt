@@ -364,6 +364,9 @@ private fun ConfigZone(
                                     channel = channelValue,
                                     rssi = network.optInt("rssi", -100),
                                     security = network.optString("security", "?"),
+                                    vendor = network.optString("vendor").takeIf { it.isNotBlank() },
+                                    ouiWhitelisted = network.optBoolean("oui_whitelisted"),
+                                    ouiBlacklisted = network.optBoolean("oui_blacklisted"),
                                     selected = targetBssid.trim().equals(bssidValue, ignoreCase = true),
                                     enabled = !sniffing,
                                     onClick = {

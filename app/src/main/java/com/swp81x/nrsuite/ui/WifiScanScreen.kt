@@ -44,6 +44,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.ui.theme.NrAccent
+import com.swp81x.nrsuite.ui.theme.StatusRed
+import com.swp81x.nrsuite.ui.util.ouiStatusColor
+import com.swp81x.nrsuite.ui.util.securityColor
+import com.swp81x.nrsuite.ui.util.signalQualityColor
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import org.json.JSONObject
@@ -216,12 +220,24 @@ private fun NetworkRow(network: JSONObject) {
     val channel = network.optInt("channel")
     val rssi = network.optInt("rssi")
     val security = network.optString("security").ifBlank { "?" }
+    val vendor = network.optString("vendor").takeIf { it.isNotBlank() }
+    val ouiWhitelisted = network.optBoolean("oui_whitelisted")
+    val ouiBlacklisted = network.optBoolean("oui_blacklisted")
+    val securityTint = securityColor(security)
+    val ouiTint = ouiStatusColor(vendor, ouiWhitelisted, ouiBlacklisted)
+    val signalTint = signalQualityColor(rssi)
+    val cardBorder = when {
+        ouiBlacklisted -> StatusRed
+        security.uppercase().contains("OPEN") -> StatusRed
+        vendor != null -> ouiTint
+        else -> NrOutline
+    }
     val clipboardManager = LocalClipboardManager.current
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(0.5.dp, NrOutline),
+        border = BorderStroke(0.5.dp, cardBorder),
         shape = RoundedCornerShape(10.dp),
     ) {
         Column(Modifier.padding(12.dp)) {
@@ -244,10 +260,27 @@ private fun NetworkRow(network: JSONObject) {
                 },
             )
             Text(
-                text = "ch $channel  •  $rssi dBm  •  $security",
+                text = "ch $channel  •  $rssi dBm",
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                color = NrOnSurfaceVariant,
+                color = signalTint,
             )
+            Row {
+                Text(
+                    text = security,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = securityTint,
+                    maxLines = 1,
+                )
+                if (vendor != null) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "• $vendor",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = ouiTint,
+                        maxLines = 1,
+                    )
+                }
+            }
         }
     }
 }
@@ -271,7 +304,7 @@ private fun SignalBars(rssi: Int) {
                     .width(4.dp)
                     .height((4 + index * 4).dp)
                     .background(
-                        color = if (index <= bars) NrAccent else MaterialTheme.colorScheme.outline,
+                        color = if (index <= bars) signalQualityColor(rssi) else MaterialTheme.colorScheme.outline,
                         shape = RoundedCornerShape(1.dp),
                     ),
             )
