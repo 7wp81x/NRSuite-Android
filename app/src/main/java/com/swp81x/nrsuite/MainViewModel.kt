@@ -1049,6 +1049,7 @@ class MainViewModel(internal val app: Application) {
                                 channel = event.optInt("channel", 0),
                                 rssi = event.optInt("rssi", -100),
                                 security = event.optString("security", "?"),
+                                wps = event.optBoolean("wps"),
                                 vendor = vendor,
                                 ouiWhitelisted = ouiWhitelisted,
                                 ouiBlacklisted = ouiBlacklisted,

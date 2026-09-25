@@ -43,7 +43,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.theme.NrAccent
+import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusRed
 import com.swp81x.nrsuite.ui.util.ouiStatusColor
 import com.swp81x.nrsuite.ui.util.securityColor
@@ -220,6 +222,7 @@ private fun NetworkRow(network: JSONObject) {
     val channel = network.optInt("channel")
     val rssi = network.optInt("rssi")
     val security = network.optString("security").ifBlank { "?" }
+    val wps = network.optBoolean("wps")
     val vendor = network.optString("vendor").takeIf { it.isNotBlank() }
     val ouiWhitelisted = network.optBoolean("oui_whitelisted")
     val ouiBlacklisted = network.optBoolean("oui_blacklisted")
@@ -264,7 +267,7 @@ private fun NetworkRow(network: JSONObject) {
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                 color = signalTint,
             )
-            Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = security,
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
@@ -279,6 +282,10 @@ private fun NetworkRow(network: JSONObject) {
                         color = ouiTint,
                         maxLines = 1,
                     )
+                }
+                if (wps) {
+                    Spacer(Modifier.width(6.dp))
+                    NetworkStatusBadge(text = "WPS", color = StatusAmber)
                 }
             }
         }

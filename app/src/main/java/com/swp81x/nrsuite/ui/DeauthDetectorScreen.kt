@@ -569,6 +569,7 @@ private fun ConfigZone(
                                         channel = target.channel,
                                         rssi = target.rssi,
                                         security = target.security,
+                                        wps = target.wps,
                                         vendor = target.vendor,
                                         ouiWhitelisted = target.ouiWhitelisted,
                                         ouiBlacklisted = target.ouiBlacklisted,
