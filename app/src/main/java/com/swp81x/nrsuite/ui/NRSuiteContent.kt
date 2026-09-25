@@ -185,6 +185,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val deauthChannel by viewModel.deauthChannel.collectAsState()
     val deauthDetectorRunning by viewModel.deauthDetectorRunning.collectAsState()
     val deauthDetectorChannel by viewModel.deauthDetectorChannel.collectAsState()
+    val deauthDetectorChannelMode by viewModel.deauthDetectorChannelMode.collectAsState()
+    val deauthDetectorHopIntervalMs by viewModel.deauthDetectorHopIntervalMs.collectAsState()
+    val deauthDetectorCurrentHopChannel by viewModel.deauthDetectorCurrentHopChannel.collectAsState()
     val deauthDetectorActiveAlert by viewModel.deauthDetectorActiveAlert.collectAsState()
     val deauthDetectorFeed by viewModel.deauthDetectorFeed.collectAsState()
     val deauthDetectorFeedFilter by viewModel.deauthDetectorFeedFilter.collectAsState()
@@ -722,6 +725,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 DeauthDetectorScreen(
                     connected = connectionState is ConnectionState.Connected,
                     running = deauthDetectorRunning,
+                    channelMode = deauthDetectorChannelMode,
+                    onChannelModeChange = viewModel::setDeauthDetectorChannelMode,
+                    hopIntervalMs = deauthDetectorHopIntervalMs,
+                    onHopIntervalChange = viewModel::setDeauthDetectorHopIntervalMs,
+                    currentHopChannel = deauthDetectorCurrentHopChannel,
                     espDeviceLabel = connectedChip ?: "ESP32",
                     framesPerSecond = deauthDetectorFramesPerSecond,
                     totalFrames = deauthDetectorTotalFrames,

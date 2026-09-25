@@ -23,7 +23,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
@@ -55,25 +54,29 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.DeauthAlert
+import com.swp81x.nrsuite.core.defense.DeauthChannelMode
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.NrFilterChip
-import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
-import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusRed
 
 @Composable
 fun DeauthDetectorScreen(
     connected: Boolean,
     running: Boolean,
+    channelMode: DeauthChannelMode,
+    onChannelModeChange: (DeauthChannelMode) -> Unit,
+    hopIntervalMs: Int,
+    onHopIntervalChange: (Int) -> Unit,
+    currentHopChannel: Int? = null,
     espDeviceLabel: String,
     framesPerSecond: Int,
     totalFrames: Int,
@@ -109,33 +112,6 @@ fun DeauthDetectorScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                StatusIndicator(
-                    label = when {
-                        !connected -> "Disconnected"
-                        activeAlert != null -> "Attack detected"
-                        running -> "Monitoring"
-                        else -> "Ready"
-                    },
-                    color = when {
-                        !connected -> StatusRed
-                        activeAlert != null -> StatusRed
-                        running -> StatusGreen
-                        else -> StatusAmber
-                    },
-                )
-                Spacer(Modifier.weight(1f))
-                EspDeviceChip(
-                    label = if (connected) espDeviceLabel else "No ESP32 linked",
-                    connected = connected,
-                )
-            }
-
-            Spacer(Modifier.height(10.dp))
-
             if (activeAlert != null) {
                 ActiveAlertCard(
                     alert = activeAlert,
@@ -159,11 +135,16 @@ fun DeauthDetectorScreen(
                 connected = connected,
                 running = running,
                 expanded = configExpanded,
+                channelMode = channelMode,
+                hopIntervalMs = hopIntervalMs,
+                currentHopChannel = currentHopChannel,
                 scanResults = scanResults,
                 selectedTarget = selectedTarget,
                 channel = channel,
                 isScanning = isScanning,
                 onToggle = { configExpanded = !configExpanded },
+                onChannelModeChange = onChannelModeChange,
+                onHopIntervalChange = onHopIntervalChange,
                 onScanClick = onScanClick,
                 onSelectTarget = onSelectTarget,
                 onChannelChange = onChannelChange,
@@ -182,18 +163,22 @@ fun DeauthDetectorScreen(
             Spacer(Modifier.height(80.dp))
         }
 
+        val canStart = when (channelMode) {
+            DeauthChannelMode.TARGETED -> selectedTarget != null
+            DeauthChannelMode.HOPPING -> true
+        }
         FloatingActionButton(
             onClick = {
                 if (running) {
                     onStop()
-                } else if (selectedTarget != null) {
+                } else if (canStart) {
                     confirmStart = true
                 }
             },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp)
-                .alpha(if (!connected || (!running && selectedTarget == null)) 0.4f else 1f),
+                .alpha(if (!connected || (!running && !canStart)) 0.4f else 1f),
             containerColor = if (running) StatusRed else NrAccent,
             contentColor = MaterialTheme.colorScheme.onPrimary,
         ) {
@@ -210,8 +195,13 @@ fun DeauthDetectorScreen(
             title = { Text("Start monitoring?") },
             text = {
                 Text(
-                    "The ESP32 will switch to monitor mode on channel $channel " +
-                        "to watch ${selectedTarget?.ssid ?: "the selected target"}."
+                    if (channelMode == DeauthChannelMode.HOPPING) {
+                        "The ESP32 will switch to monitor mode and hop across all channels " +
+                            "every $hopIntervalMs ms."
+                    } else {
+                        "The ESP32 will switch to monitor mode on channel $channel " +
+                            "to watch ${selectedTarget?.ssid ?: "the selected target"}."
+                    }
                 )
             },
             confirmButton = {
@@ -229,33 +219,6 @@ fun DeauthDetectorScreen(
                     Text("Cancel")
                 }
             },
-        )
-    }
-}
-
-@Composable
-private fun EspDeviceChip(
-    label: String,
-    connected: Boolean,
-) {
-    Row(
-        modifier = Modifier
-            .background(NrSurfaceVariant, RoundedCornerShape(50))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Default.DeveloperBoard,
-            contentDescription = null,
-            tint = if (connected) NrOnSurfaceVariant else StatusRed,
-            modifier = Modifier.size(14.dp),
-        )
-        Spacer(Modifier.width(4.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-            color = if (connected) NrOnSurfaceVariant else StatusRed,
-            maxLines = 1,
         )
     }
 }
@@ -397,11 +360,16 @@ private fun ConfigZone(
     connected: Boolean,
     running: Boolean,
     expanded: Boolean,
+    channelMode: DeauthChannelMode,
+    hopIntervalMs: Int,
+    currentHopChannel: Int?,
     scanResults: List<NetworkTarget>,
     selectedTarget: NetworkTarget?,
     channel: Int,
     isScanning: Boolean,
     onToggle: () -> Unit,
+    onChannelModeChange: (DeauthChannelMode) -> Unit,
+    onHopIntervalChange: (Int) -> Unit,
     onScanClick: () -> Unit,
     onSelectTarget: (NetworkTarget) -> Unit,
     onChannelChange: (Int) -> Unit,
@@ -433,7 +401,14 @@ private fun ConfigZone(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = selectedTarget?.ssid ?: "No target selected",
+                        text = when {
+                            running && channelMode == DeauthChannelMode.HOPPING ->
+                                "Hopping · ch ${currentHopChannel ?: "-"}"
+                            running -> "Monitoring ${selectedTarget?.ssid ?: "target"}"
+                            channelMode == DeauthChannelMode.TARGETED ->
+                                selectedTarget?.ssid ?: "No target selected"
+                            else -> "Hopping all channels"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
@@ -449,39 +424,85 @@ private fun ConfigZone(
             if (expanded) {
                 Column {
                     Spacer(Modifier.height(10.dp))
-                    OutlinedButton(
-                        onClick = onScanClick,
-                        enabled = controlsEnabled && !isScanning,
-                    ) {
-                        Text(if (isScanning) "Scanning..." else "Scan")
+                    Text(
+                        text = "Mode",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NrFilterChip(
+                            selected = channelMode == DeauthChannelMode.TARGETED,
+                            onClick = { onChannelModeChange(DeauthChannelMode.TARGETED) },
+                            label = "Targeted",
+                            enabled = controlsEnabled,
+                        )
+                        NrFilterChip(
+                            selected = channelMode == DeauthChannelMode.HOPPING,
+                            onClick = { onChannelModeChange(DeauthChannelMode.HOPPING) },
+                            label = "Hopping",
+                            enabled = controlsEnabled,
+                        )
                     }
+                    Spacer(Modifier.height(10.dp))
 
-                    if (scanResults.isNotEmpty()) {
-                        Spacer(Modifier.height(6.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            scanResults.forEach { target ->
-                                NetworkTargetRow(
-                                    ssid = target.ssid,
-                                    bssid = target.bssid,
-                                    channel = target.channel,
-                                    rssi = target.rssi,
-                                    security = target.security,
-                                    selected = selectedTarget?.bssid == target.bssid,
-                                    enabled = controlsEnabled,
-                                    onClick = { onSelectTarget(target) },
-                                )
+                    if (channelMode == DeauthChannelMode.TARGETED) {
+                        OutlinedButton(
+                            onClick = onScanClick,
+                            enabled = controlsEnabled && !isScanning,
+                        ) {
+                            Text(if (isScanning) "Scanning..." else "Scan")
+                        }
+
+                        if (scanResults.isNotEmpty()) {
+                            Spacer(Modifier.height(6.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                scanResults.forEach { target ->
+                                    NetworkTargetRow(
+                                        ssid = target.ssid,
+                                        bssid = target.bssid,
+                                        channel = target.channel,
+                                        rssi = target.rssi,
+                                        security = target.security,
+                                        selected = selectedTarget?.bssid == target.bssid,
+                                        enabled = controlsEnabled,
+                                        onClick = { onSelectTarget(target) },
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    Spacer(Modifier.height(10.dp))
-                    NumberStepper(
-                        label = "Channel",
-                        valueText = channel.toString(),
-                        enabled = controlsEnabled,
-                        onDecrease = { onChannelChange((channel - 1).coerceAtLeast(1)) },
-                        onIncrease = { onChannelChange((channel + 1).coerceAtMost(14)) },
-                    )
+                        Spacer(Modifier.height(10.dp))
+                        NumberStepper(
+                            label = "Channel",
+                            valueText = channel.toString(),
+                            enabled = controlsEnabled,
+                            onDecrease = { onChannelChange((channel - 1).coerceAtLeast(1)) },
+                            onIncrease = { onChannelChange((channel + 1).coerceAtMost(14)) },
+                        )
+                    } else {
+                        NumberStepper(
+                            label = "Dwell time (ms)",
+                            valueText = hopIntervalMs.toString(),
+                            enabled = controlsEnabled,
+                            onDecrease = {
+                                onHopIntervalChange((hopIntervalMs - 100).coerceAtLeast(100))
+                            },
+                            onIncrease = {
+                                onHopIntervalChange((hopIntervalMs + 100).coerceAtMost(2_000))
+                            },
+                        )
+
+                        if (running) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "Currently on ch ${currentHopChannel ?: "-"}",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                ),
+                                color = NrOnSurfaceVariant,
+                            )
+                        }
+                    }
 
                     if (!connected) {
                         Spacer(Modifier.height(8.dp))

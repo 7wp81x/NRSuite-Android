@@ -23,3 +23,8 @@ data class DeauthFeedEntry(
 )
 
 enum class DeauthFeedFilter { ALL, BROADCAST, TARGETED }
+
+/**
+ * Detector scan mode: one selected target/channel vs. hopping across channels.
+ */
+enum class DeauthChannelMode { TARGETED, HOPPING }

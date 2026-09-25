@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.defense.DeauthAlert
+import com.swp81x.nrsuite.core.defense.DeauthChannelMode
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
 import com.swp81x.nrsuite.core.credentials.CredentialSession
@@ -213,6 +214,15 @@ class MainViewModel(internal val app: Application) {
 
     internal val _deauthDetectorFeedFilter = MutableStateFlow(DeauthFeedFilter.ALL)
     val deauthDetectorFeedFilter: StateFlow<DeauthFeedFilter> = _deauthDetectorFeedFilter.asStateFlow()
+
+    internal val _deauthDetectorChannelMode = MutableStateFlow(DeauthChannelMode.TARGETED)
+    val deauthDetectorChannelMode: StateFlow<DeauthChannelMode> = _deauthDetectorChannelMode.asStateFlow()
+
+    internal val _deauthDetectorHopIntervalMs = MutableStateFlow(300)
+    val deauthDetectorHopIntervalMs: StateFlow<Int> = _deauthDetectorHopIntervalMs.asStateFlow()
+
+    internal val _deauthDetectorCurrentHopChannel = MutableStateFlow<Int?>(null)
+    val deauthDetectorCurrentHopChannel: StateFlow<Int?> = _deauthDetectorCurrentHopChannel.asStateFlow()
 
     internal val _deauthDetectorFramesPerSecond = MutableStateFlow(0)
     val deauthDetectorFramesPerSecond: StateFlow<Int> = _deauthDetectorFramesPerSecond.asStateFlow()
@@ -625,6 +635,7 @@ class MainViewModel(internal val app: Application) {
         deauthFpsResetJob?.cancel()
         deauthFpsResetJob = null
         _deauthDetectorActiveAlert.value = null
+        _deauthDetectorCurrentHopChannel.value = null
         _deauthDetectorFramesPerSecond.value = 0
         _bleAdvertising.value = false
         _bleConnected.value = false
@@ -792,6 +803,14 @@ class MainViewModel(internal val app: Application) {
 
     fun setDeauthDetectorChannel(channel: Int) {
         _deauthDetectorChannel.value = channel.coerceIn(1, 14)
+    }
+
+    fun setDeauthDetectorChannelMode(mode: DeauthChannelMode) {
+        _deauthDetectorChannelMode.value = mode
+    }
+
+    fun setDeauthDetectorHopIntervalMs(intervalMs: Int) {
+        _deauthDetectorHopIntervalMs.value = intervalMs.coerceIn(100, 2_000)
     }
 
     fun selectDeauthDetectorTarget(target: NetworkTarget?) {
@@ -1018,6 +1037,9 @@ class MainViewModel(internal val app: Application) {
                                     it != "00:00:00:00:00:00"
                             }
                             val channel = event.optInt("channel", _deauthDetectorChannel.value)
+                            if (_deauthDetectorChannelMode.value == DeauthChannelMode.HOPPING) {
+                                _deauthDetectorCurrentHopChannel.value = channel
+                            }
                             val rssi = event.optInt("rssi", -127)
                             val reasonCode = event.optInt("reason", 0)
                             val resolvedSsid = _deauthDetectorTargets.value
@@ -1073,6 +1095,14 @@ class MainViewModel(internal val app: Application) {
                                 "Deauth detected: $sourceMac -> ${targetMac ?: "broadcast"} " +
                                     "on ch $channel ($rssi dBm, reason $reasonCode)"
                             )
+                        }
+                        "deauth_detector_hop" -> {
+                            if (_deauthDetectorChannelMode.value == DeauthChannelMode.HOPPING) {
+                                _deauthDetectorCurrentHopChannel.value = event.optInt(
+                                    "channel",
+                                    _deauthDetectorCurrentHopChannel.value ?: 1,
+                                )
+                            }
                         }
                         "heartbeat" -> Unit
                     }
