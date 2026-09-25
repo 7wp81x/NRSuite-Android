@@ -121,6 +121,7 @@ import androidx.core.content.ContextCompat
 import com.swp81x.nrsuite.MainViewModel
 import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
@@ -182,6 +183,19 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val deauthSent by viewModel.deauthSent.collectAsState()
     val deauthTarget by viewModel.deauthTarget.collectAsState()
     val deauthChannel by viewModel.deauthChannel.collectAsState()
+    val deauthDetectorRunning by viewModel.deauthDetectorRunning.collectAsState()
+    val deauthDetectorChannel by viewModel.deauthDetectorChannel.collectAsState()
+    val deauthDetectorChannelMode by viewModel.deauthDetectorChannelMode.collectAsState()
+    val deauthDetectorHopIntervalMs by viewModel.deauthDetectorHopIntervalMs.collectAsState()
+    val deauthDetectorCurrentHopChannel by viewModel.deauthDetectorCurrentHopChannel.collectAsState()
+    val deauthDetectorActiveAlert by viewModel.deauthDetectorActiveAlert.collectAsState()
+    val deauthDetectorFeed by viewModel.deauthDetectorFeed.collectAsState()
+    val deauthDetectorFeedFilter by viewModel.deauthDetectorFeedFilter.collectAsState()
+    val deauthDetectorFramesPerSecond by viewModel.deauthDetectorFramesPerSecond.collectAsState()
+    val deauthDetectorTotalFrames by viewModel.deauthDetectorTotalFrames.collectAsState()
+    val deauthDetectorUniqueSourceCount by viewModel.deauthDetectorUniqueSourceCount.collectAsState()
+    val deauthDetectorTargets by viewModel.deauthDetectorTargets.collectAsState()
+    val deauthDetectorSelectedTarget by viewModel.deauthDetectorSelectedTarget.collectAsState()
     val portalRunning by viewModel.portalRunning.collectAsState()
     val portalMode by viewModel.portalMode.collectAsState()
     val portalHtmlSize by viewModel.portalHtmlSize.collectAsState()
@@ -247,6 +261,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         sniffing,
         beaconRunning,
         deauthRunning,
+        deauthDetectorRunning,
         portalRunning,
         portalMode,
         bleAdvertising,
@@ -258,6 +273,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "sniff" -> "sniff"
             "beacon" -> "beacon"
             "deauth" -> "deauth"
+            "deauth_detector" -> "deauth_detect"
             "portal" -> "portal"
             "evil_twin" -> "portal"
             "storage" -> "storage"
@@ -283,6 +299,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             isDeviceConnected && !supported && module.id == "ble" -> "No BLE radio on this chip"
             isDeviceConnected && !supported && module.id == "badusb" -> "Requires S2/S3 or matching firmware"
             isDeviceConnected && !supported && module.id == "evil_twin" -> "Firmware portal support required"
+            isDeviceConnected && !supported && module.id == "deauth_detector" -> "Requires deauth_detect firmware"
             else -> module.statusLabel
         }
         module.copy(
@@ -293,6 +310,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "sniff" -> sniffing
                 "beacon" -> beaconRunning
                 "deauth" -> deauthRunning
+                "deauth_detector" -> deauthDetectorRunning
                 "portal" -> portalRunning && portalMode == "portal"
                 "evil_twin" -> portalRunning && portalMode == "evil_twin"
                 "ble" -> bleAdvertising
@@ -348,7 +366,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || portalRunning || bleAdvertising || crackerRunning
+    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || portalRunning || bleAdvertising || crackerRunning
     val view = LocalView.current
     DisposableEffect(anyModuleRunning) {
         val window = (view.context as? Activity)?.window
@@ -692,6 +710,44 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     networks = networks,
                     onScanWifi = viewModel::scanWifi,
                     onStart = viewModel::startDeauth,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "deauth_detector" -> {
+                val visibleFeed = remember(deauthDetectorFeed, deauthDetectorFeedFilter) {
+                    when (deauthDetectorFeedFilter) {
+                        DeauthFeedFilter.ALL -> deauthDetectorFeed
+                        DeauthFeedFilter.BROADCAST -> deauthDetectorFeed.filter { it.targetMac == null }
+                        DeauthFeedFilter.TARGETED -> deauthDetectorFeed.filter { it.targetMac != null }
+                    }
+                }
+                DeauthDetectorScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    running = deauthDetectorRunning,
+                    channelMode = deauthDetectorChannelMode,
+                    onChannelModeChange = viewModel::setDeauthDetectorChannelMode,
+                    hopIntervalMs = deauthDetectorHopIntervalMs,
+                    onHopIntervalChange = viewModel::setDeauthDetectorHopIntervalMs,
+                    currentHopChannel = deauthDetectorCurrentHopChannel,
+                    framesPerSecond = deauthDetectorFramesPerSecond,
+                    totalFrames = deauthDetectorTotalFrames,
+                    uniqueSourceCount = deauthDetectorUniqueSourceCount,
+                    thresholdFramesPerSecond = 10,
+                    activeAlert = deauthDetectorActiveAlert,
+                    feed = visibleFeed,
+                    feedFilter = deauthDetectorFeedFilter,
+                    scanResults = deauthDetectorTargets,
+                    selectedTarget = deauthDetectorSelectedTarget,
+                    channel = deauthDetectorChannel,
+                    onChannelChange = viewModel::setDeauthDetectorChannel,
+                    onSelectTarget = viewModel::selectDeauthDetectorTarget,
+                    onScanClick = viewModel::scanWifi,
+                    isScanning = scanning,
+                    onFeedFilterChange = viewModel::setDeauthDetectorFeedFilter,
+                    onClearFeed = viewModel::clearDeauthDetectorFeed,
+                    onStart = viewModel::startDeauthDetector,
+                    onStop = viewModel::stopDeauthDetector,
                     modifier = contentModifier,
                 )
             }

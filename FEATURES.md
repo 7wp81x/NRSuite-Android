@@ -28,7 +28,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 | Feature | Status | Notes |
 |---|---|---|
 | Rogue AP Detector | 📋 | Baseline SSID→BSSID/channel/security; flags mismatches, downgrades, duplicate SSIDs, KARMA-style probe-response behavior |
-| Deauth Detector | 📋 | Frame-rate anomaly detection per source/dest pair |
+| Deauth Detector | ✅ | Passive deauth/disassoc monitoring with BSSID/client/RSSI/reason filters, async alerts, and live logs |
 | Deauth Locator | 📋 | RSSI-based direction/distance estimate; multi-node triangulation |
 | AirTag/Tracker Detector | 📋 | BLE "Find My"-style advert detection; cross-location persistence heuristic |
 | Client/Presence Detector | 📋 | Passive client-count via associated/probe-request MACs |

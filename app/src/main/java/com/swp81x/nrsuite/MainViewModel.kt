@@ -11,6 +11,10 @@ import android.provider.OpenableColumns
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
+import com.swp81x.nrsuite.core.defense.DeauthAlert
+import com.swp81x.nrsuite.core.defense.DeauthChannelMode
+import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
+import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
 import com.swp81x.nrsuite.core.credentials.CredentialSession
 import com.swp81x.nrsuite.core.credentials.CredentialSource
 import com.swp81x.nrsuite.core.credentials.CredentialStatus
@@ -28,6 +32,7 @@ import com.swp81x.nrsuite.core.pcap.PcapWriter
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
 import com.swp81x.nrsuite.core.wifi.DetectedSsid
+import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wifi.PcapSsidParser
 import com.swp81x.nrsuite.core.wpa.WpaCracker
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeVerifier
@@ -99,7 +104,7 @@ class MainViewModel(internal val app: Application) {
     internal val _requiresRootDirectory = MutableStateFlow(false)
     val requiresRootDirectory: StateFlow<Boolean> = _requiresRootDirectory.asStateFlow()
 
-    private val _actionError = MutableStateFlow<String?>(null)
+    internal val _actionError = MutableStateFlow<String?>(null)
     val actionError: StateFlow<String?> = _actionError.asStateFlow()
 
     internal val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
@@ -194,6 +199,56 @@ class MainViewModel(internal val app: Application) {
 
     internal val _deauthChannel = MutableStateFlow(0)
     val deauthChannel: StateFlow<Int> = _deauthChannel.asStateFlow()
+
+    internal val _deauthDetectorRunning = MutableStateFlow(false)
+    val deauthDetectorRunning: StateFlow<Boolean> = _deauthDetectorRunning.asStateFlow()
+
+    internal val _deauthDetectorChannel = MutableStateFlow(6)
+    val deauthDetectorChannel: StateFlow<Int> = _deauthDetectorChannel.asStateFlow()
+
+    internal val _deauthDetectorActiveAlert = MutableStateFlow<DeauthAlert?>(null)
+    val deauthDetectorActiveAlert: StateFlow<DeauthAlert?> = _deauthDetectorActiveAlert.asStateFlow()
+
+    internal val _deauthDetectorFeed = MutableStateFlow<List<DeauthFeedEntry>>(emptyList())
+    val deauthDetectorFeed: StateFlow<List<DeauthFeedEntry>> = _deauthDetectorFeed.asStateFlow()
+
+    internal val _deauthDetectorFeedFilter = MutableStateFlow(DeauthFeedFilter.ALL)
+    val deauthDetectorFeedFilter: StateFlow<DeauthFeedFilter> = _deauthDetectorFeedFilter.asStateFlow()
+
+    internal val _deauthDetectorChannelMode = MutableStateFlow(DeauthChannelMode.TARGETED)
+    val deauthDetectorChannelMode: StateFlow<DeauthChannelMode> = _deauthDetectorChannelMode.asStateFlow()
+
+    internal val _deauthDetectorHopIntervalMs = MutableStateFlow(300)
+    val deauthDetectorHopIntervalMs: StateFlow<Int> = _deauthDetectorHopIntervalMs.asStateFlow()
+
+    internal val _deauthDetectorCurrentHopChannel = MutableStateFlow<Int?>(null)
+    val deauthDetectorCurrentHopChannel: StateFlow<Int?> = _deauthDetectorCurrentHopChannel.asStateFlow()
+
+    internal val _deauthDetectorFramesPerSecond = MutableStateFlow(0)
+    val deauthDetectorFramesPerSecond: StateFlow<Int> = _deauthDetectorFramesPerSecond.asStateFlow()
+
+    internal val _deauthDetectorTotalFrames = MutableStateFlow(0)
+    val deauthDetectorTotalFrames: StateFlow<Int> = _deauthDetectorTotalFrames.asStateFlow()
+
+    internal val _deauthDetectorUniqueSourceCount = MutableStateFlow(0)
+    val deauthDetectorUniqueSourceCount: StateFlow<Int> = _deauthDetectorUniqueSourceCount.asStateFlow()
+
+    internal val _deauthDetectorTargets = MutableStateFlow<List<NetworkTarget>>(emptyList())
+    val deauthDetectorTargets: StateFlow<List<NetworkTarget>> = _deauthDetectorTargets.asStateFlow()
+
+    internal val _deauthDetectorSelectedTarget = MutableStateFlow<NetworkTarget?>(null)
+    val deauthDetectorSelectedTarget: StateFlow<NetworkTarget?> = _deauthDetectorSelectedTarget.asStateFlow()
+
+    internal val deauthDetectorFrameTimestamps = ArrayDeque<Long>()
+    internal val deauthDetectorSources = mutableSetOf<String>()
+    internal val deauthDetectorWindowTargets = ArrayDeque<String>()
+    internal val deauthDetectorWindowReasons = ArrayDeque<Int>()
+    internal val deauthDetectorWindowSources = ArrayDeque<String>()
+    internal val deauthDetectorSourceLatestRssi = mutableMapOf<String, Int>()
+    internal var deauthDetectorAlertStartedAtMs: Long? = null
+    internal var deauthDetectorLastEventAtMs: Long = 0L
+    internal var deauthAlertClearJob: Job? = null
+    internal var deauthFpsResetJob: Job? = null
 
     internal val _portalRunning = MutableStateFlow(false)
     val portalRunning: StateFlow<Boolean> = _portalRunning.asStateFlow()
@@ -580,6 +635,14 @@ class MainViewModel(internal val app: Application) {
         _portalRunning.value = false
         _sniffing.value = false
         _deauthRunning.value = false
+        _deauthDetectorRunning.value = false
+        deauthAlertClearJob?.cancel()
+        deauthAlertClearJob = null
+        deauthFpsResetJob?.cancel()
+        deauthFpsResetJob = null
+        _deauthDetectorActiveAlert.value = null
+        _deauthDetectorCurrentHopChannel.value = null
+        _deauthDetectorFramesPerSecond.value = 0
         _bleAdvertising.value = false
         _bleConnected.value = false
         _bleScriptRunning.value = false
@@ -727,6 +790,35 @@ class MainViewModel(internal val app: Application) {
 
     fun startDeauth(bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int) = this.startDeauthImpl(bssid, channel, client, count, duration, intervalMs)
 
+    fun startDeauthDetector() = this.startDeauthDetectorImpl()
+
+    fun stopDeauthDetector() = this.stopDeauthDetectorImpl()
+
+    fun clearDeauthDetectorFeed() {
+        _deauthDetectorFeed.value = emptyList()
+    }
+
+    fun setDeauthDetectorFeedFilter(filter: DeauthFeedFilter) {
+        _deauthDetectorFeedFilter.value = filter
+    }
+
+    fun setDeauthDetectorChannel(channel: Int) {
+        _deauthDetectorChannel.value = channel.coerceIn(1, 14)
+    }
+
+    fun setDeauthDetectorChannelMode(mode: DeauthChannelMode) {
+        _deauthDetectorChannelMode.value = mode
+    }
+
+    fun setDeauthDetectorHopIntervalMs(intervalMs: Int) {
+        _deauthDetectorHopIntervalMs.value = intervalMs.coerceIn(100, 2_000)
+    }
+
+    fun selectDeauthDetectorTarget(target: NetworkTarget?) {
+        _deauthDetectorSelectedTarget.value = target
+        target?.let { _deauthDetectorChannel.value = it.channel.coerceIn(1, 14) }
+    }
+
     fun startBeacon(ssids: List<String>, channel: Int, intervalMs: Int, hidden: Boolean, randomBssid: Boolean) = this.startBeaconImpl(ssids, channel, intervalMs, hidden, randomBssid)
 
     fun stopBeacon() = this.stopBeaconImpl()
@@ -747,6 +839,7 @@ class MainViewModel(internal val app: Application) {
             _sniffing.value -> "Packet Sniffer"
             _beaconRunning.value -> "Beacon Broadcast"
             _deauthRunning.value -> "Deauthentication"
+            _deauthDetectorRunning.value -> "Deauth Detector"
             _scanning.value -> "WiFi Scan"
             else -> null
         }
@@ -772,6 +865,7 @@ class MainViewModel(internal val app: Application) {
             _beaconRunning.value -> "Beacon broadcast active"
             _portalRunning.value -> "Captive portal active"
             _deauthRunning.value -> "Deauth burst active"
+            _deauthDetectorRunning.value -> "Deauth detector active"
             _bleAdvertising.value || _bleConnected.value -> "BLE HID active"
             else -> null
         }
@@ -805,6 +899,12 @@ class MainViewModel(internal val app: Application) {
                 pcapWriter = null
             }
         }
+        if (_deauthDetectorRunning.value) {
+            _deauthDetectorRunning.value = false
+            scope.launch {
+                runCatching { current?.sendCommand("DEAUTH_DETECT_STOP", timeoutMs = 4_000) }
+            }
+        }
         portalStatusJob?.cancel()
         portalStatusJob = null
         session = null
@@ -833,12 +933,26 @@ class MainViewModel(internal val app: Application) {
                     _events.update { (it + event).takeLast(100) }
                     when (event.optString("type")) {
                         "scan_ap" -> {
+                            val bssid = event.optString("bssid")
                             _networks.update { current ->
-                                val bssid = event.optString("bssid")
                                 (current.filterNot { it.optString("bssid") == bssid } + event)
                                     .sortedByDescending { it.optInt("rssi", -999) }
                             }
                             val ssid = event.optString("ssid").ifBlank { "(hidden)" }
+                            val target = NetworkTarget(
+                                ssid = ssid,
+                                bssid = bssid,
+                                channel = event.optInt("channel", 0),
+                                rssi = event.optInt("rssi", -100),
+                                security = event.optString("security", "?"),
+                            )
+                            _deauthDetectorTargets.update { current ->
+                                (current.filterNot { it.bssid.equals(bssid, ignoreCase = true) } + target)
+                                    .sortedByDescending { it.rssi }
+                            }
+                            _deauthDetectorSelectedTarget.update { selected ->
+                                selected?.takeIf { it.bssid.equals(bssid, ignoreCase = true) } ?: selected
+                            }
                             appendLog(
                                 "AP: $ssid  ${event.optString("bssid")}  " +
                                     "ch ${event.optInt("channel")}  ${event.optInt("rssi")} dBm  " +
@@ -910,6 +1024,15 @@ class MainViewModel(internal val app: Application) {
                             _deauthSent.value = event.optInt("sent_frames", _deauthSent.value)
                             appendLog("Deauth stats: ${_deauthSent.value} frame(s) sent.")
                             this@MainViewModel.portalLogImpl("Deauth stats: ${_deauthSent.value} frame(s) sent")
+                        }
+                        "deauth_detected" -> this@MainViewModel.recordDeauthDetectorFrame(event)
+                        "deauth_detector_hop" -> {
+                            if (_deauthDetectorChannelMode.value == DeauthChannelMode.HOPPING) {
+                                _deauthDetectorCurrentHopChannel.value = event.optInt(
+                                    "channel",
+                                    _deauthDetectorCurrentHopChannel.value ?: 1,
+                                )
+                            }
                         }
                         "heartbeat" -> Unit
                     }

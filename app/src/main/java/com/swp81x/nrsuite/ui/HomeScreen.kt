@@ -71,7 +71,7 @@ import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
@@ -126,6 +126,7 @@ import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.theme.CategoryDetectionBlue
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
@@ -279,6 +280,13 @@ internal fun HomeScreen(
         item {
             val firmwareConnected = connectionState is ConnectionState.Connected
             val categories = listOf(
+                CategorySpec(
+                    name = "Detection",
+                    icon = Icons.Default.Shield,
+                    iconTint = CategoryDetectionBlue,
+                    moduleIds = listOf("deauth_detector"),
+                    available = firmwareConnected,
+                ),
                 CategorySpec(
                     name = "Wireless",
                     icon = Icons.Default.Wifi,
