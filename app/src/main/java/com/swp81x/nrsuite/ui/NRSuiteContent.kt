@@ -746,6 +746,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onScanClick = viewModel::scanWifi,
                     isScanning = scanning,
                     onFeedFilterChange = viewModel::setDeauthDetectorFeedFilter,
+                    onClearFeed = viewModel::clearDeauthDetectorFeed,
                     onStart = viewModel::startDeauthDetector,
                     onStop = viewModel::stopDeauthDetector,
                     modifier = contentModifier,

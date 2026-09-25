@@ -93,6 +93,7 @@ fun DeauthDetectorScreen(
     onScanClick: () -> Unit,
     isScanning: Boolean,
     onFeedFilterChange: (DeauthFeedFilter) -> Unit,
+    onClearFeed: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onLocateClick: () -> Unit = {},
@@ -157,6 +158,7 @@ fun DeauthDetectorScreen(
                     feed = feed,
                     feedFilter = feedFilter,
                     onFeedFilterChange = onFeedFilterChange,
+                    onClearFeed = onClearFeed,
                 )
             }
 
@@ -523,6 +525,7 @@ private fun DetectionFeedCard(
     feed: List<DeauthFeedEntry>,
     feedFilter: DeauthFeedFilter,
     onFeedFilterChange: (DeauthFeedFilter) -> Unit,
+    onClearFeed: () -> Unit,
 ) {
     val listState = rememberLazyListState()
 
@@ -539,11 +542,29 @@ private fun DetectionFeedCard(
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
-            Text(
-                text = "Detection feed",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "Detection feed",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "${feed.size} shown",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+                OutlinedButton(
+                    onClick = onClearFeed,
+                    enabled = feed.isNotEmpty(),
+                ) {
+                    Text("Clear")
+                }
+            }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DeauthFeedFilter.entries.forEach { filter ->
@@ -553,7 +574,7 @@ private fun DetectionFeedCard(
                         label = when (filter) {
                             DeauthFeedFilter.ALL -> "All"
                             DeauthFeedFilter.BROADCAST -> "Broadcast"
-                            DeauthFeedFilter.TARGETED -> "Targeted"
+                            DeauthFeedFilter.TARGETED -> "Directed"
                         },
                     )
                 }
@@ -602,8 +623,10 @@ private fun FeedRow(entry: DeauthFeedEntry) {
                 color = NrOnSurfaceVariant,
             )
         }
+        val targetAddress = entry.targetMac ?: "FF:FF:FF:FF:FF:FF"
+        val targetKind = if (entry.targetMac == null) "broadcast" else "directed"
         Text(
-            text = "to ${entry.targetMac ?: "broadcast"} · reason ${entry.reasonCode} · ${entry.rssi} dBm",
+            text = "to $targetAddress ($targetKind) · reason ${entry.reasonCode} · ${entry.rssi} dBm",
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
             color = NrOnSurfaceVariant,
         )
