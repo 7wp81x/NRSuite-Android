@@ -172,6 +172,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val sniffHandshake by viewModel.sniffHandshake.collectAsState()
     val capturePath by viewModel.capturePath.collectAsState()
     val exportDirectoryName by viewModel.exportDirectoryName.collectAsState()
+    val ouiRules by viewModel.ouiRules.collectAsState()
+    val ouiDatabaseStatus by viewModel.ouiDatabaseStatus.collectAsState()
+    val ouiDatabaseProgress by viewModel.ouiDatabaseDownloadProgress.collectAsState()
+    val macLookupResult by viewModel.macLookupResult.collectAsState()
+    val requiresOuiDatabase by viewModel.requiresOuiDatabase.collectAsState()
     val requiresRootDirectory by viewModel.requiresRootDirectory.collectAsState()
     val actionError by viewModel.actionError.collectAsState()
     val beaconRunning by viewModel.beaconRunning.collectAsState()
@@ -196,6 +201,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val deauthDetectorUniqueSourceCount by viewModel.deauthDetectorUniqueSourceCount.collectAsState()
     val deauthDetectorTargets by viewModel.deauthDetectorTargets.collectAsState()
     val deauthDetectorSelectedTarget by viewModel.deauthDetectorSelectedTarget.collectAsState()
+    val rogueApRunning by viewModel.rogueApRunning.collectAsState()
+    val rogueApScanning by viewModel.rogueApScanning.collectAsState()
+    val rogueApAlerts by viewModel.rogueApAlerts.collectAsState()
+    val rogueApNearby by viewModel.rogueApNearby.collectAsState()
+    val trustedNetworks by viewModel.trustedNetworks.collectAsState()
+    val rogueApLastScanAt by viewModel.rogueApLastScanAt.collectAsState()
     val portalRunning by viewModel.portalRunning.collectAsState()
     val portalMode by viewModel.portalMode.collectAsState()
     val portalHtmlSize by viewModel.portalHtmlSize.collectAsState()
@@ -262,12 +273,13 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         beaconRunning,
         deauthRunning,
         deauthDetectorRunning,
+        rogueApRunning,
         portalRunning,
         portalMode,
         bleAdvertising,
     ) {
         modules.map { module ->
-        val runsWithoutDevice = module.id == "ducky" || module.id == "firmware" || module.id == "credential_manager" || module.id == "wpa_cracker"
+        val runsWithoutDevice = module.id == "ducky" || module.id == "firmware" || module.id == "credential_manager" || module.id == "wpa_cracker" || module.id == "mac_lookup"
         val featureKey = when (module.id) {
             "wifi" -> "wifi"
             "sniff" -> "sniff"
@@ -311,6 +323,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "beacon" -> beaconRunning
                 "deauth" -> deauthRunning
                 "deauth_detector" -> deauthDetectorRunning
+                "rogue_ap" -> rogueApRunning
                 "portal" -> portalRunning && portalMode == "portal"
                 "evil_twin" -> portalRunning && portalMode == "evil_twin"
                 "ble" -> bleAdvertising
@@ -325,6 +338,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     var activeModuleId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedCategory by rememberSaveable { mutableStateOf<String?>(null) }
     var showRootDirectoryDialog by rememberSaveable { mutableStateOf(false) }
+    var showOuiDatabaseDialog by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(enabled = firmwareFlashing) {
         // Swallow back while a firmware flash is in progress.
@@ -366,7 +380,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || portalRunning || bleAdvertising || crackerRunning
+    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || rogueApRunning || portalRunning || bleAdvertising || crackerRunning
     val view = LocalView.current
     DisposableEffect(anyModuleRunning) {
         val window = (view.context as? Activity)?.window
@@ -390,6 +404,13 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         if (requiresRootDirectory) {
             showRootDirectoryDialog = true
             viewModel.onRootDirectoryPromptShown()
+        }
+    }
+
+    LaunchedEffect(requiresOuiDatabase) {
+        if (requiresOuiDatabase) {
+            showOuiDatabaseDialog = true
+            viewModel.onOuiDatabasePromptShown()
         }
     }
 
@@ -637,6 +658,33 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             )
         }
 
+        if (showOuiDatabaseDialog) {
+            AlertDialog(
+                onDismissRequest = { showOuiDatabaseDialog = false },
+                title = { Text("MAC vendor database") },
+                text = {
+                    Text(
+                        text = "Download the IEEE OUI registry now for offline MAC/vendor lookup? " +
+                            "You can also do this later in Settings.",
+                        color = NrOnSurfaceVariant,
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        showOuiDatabaseDialog = false
+                        viewModel.downloadOuiDatabase()
+                    }) {
+                        Text("Download")
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { showOuiDatabaseDialog = false }) {
+                        Text("Later")
+                    }
+                },
+            )
+        }
+
         actionError?.let { message ->
             AlertDialog(
                 onDismissRequest = viewModel::consumeActionError,
@@ -748,6 +796,35 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onClearFeed = viewModel::clearDeauthDetectorFeed,
                     onStart = viewModel::startDeauthDetector,
                     onStop = viewModel::stopDeauthDetector,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "mac_lookup" -> {
+                MacLookupScreen(
+                    result = macLookupResult,
+                    onLookup = viewModel::lookupMac,
+                    onClear = viewModel::clearMacLookup,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "rogue_ap" -> {
+                RogueApScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    running = rogueApRunning,
+                    scanning = rogueApScanning,
+                    nearbyNetworks = rogueApNearby,
+                    alerts = rogueApAlerts,
+                    lastScanAt = rogueApLastScanAt,
+                    trustedNetworks = trustedNetworks,
+                    onCaptureBaseline = viewModel::captureRogueApBaseline,
+                    onClearBaseline = viewModel::clearRogueApBaseline,
+                    ouiDatabaseStatus = ouiDatabaseStatus,
+                    onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
+                    onStart = viewModel::startRogueApDetector,
+                    onStop = viewModel::stopRogueApDetector,
+                    onClearAlerts = viewModel::clearRogueApAlerts,
                     modifier = contentModifier,
                 )
             }
@@ -960,6 +1037,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onRequestPermission = { device -> requestPermission(device) },
                 onSelectFlashTarget = viewModel::selectFirmwareTarget,
                 onStartFirmwareFlash = viewModel::startFirmwareFlash,
+                ouiRules = ouiRules,
+                onAddOuiRule = viewModel::addOuiRule,
+                onDeleteOuiRule = viewModel::deleteOuiRule,
+                ouiDatabaseStatus = ouiDatabaseStatus,
+                ouiDatabaseProgress = ouiDatabaseProgress,
+                onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
                 modifier = contentModifier,
             )
 

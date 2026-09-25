@@ -71,6 +71,7 @@ import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.WifiFind
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
@@ -196,6 +197,22 @@ internal val modules = listOf(
         title = "Deauth Detector",
         description = "Passively detect deauth and disassoc frames around you.",
         icon = Icons.Default.WifiFind,
+        category = "Detection",
+        available = true,
+    ),
+    ModuleCardSpec(
+        id = "rogue_ap",
+        title = "Rogue AP Detector",
+        description = "Compare visible APs against a trusted baseline and OUI rules.",
+        icon = Icons.Default.Router,
+        category = "Detection",
+        available = true,
+    ),
+    ModuleCardSpec(
+        id = "mac_lookup",
+        title = "MAC Lookup",
+        description = "Offline OUI and vendor lookup for any MAC address.",
+        icon = Icons.Default.Search,
         category = "Detection",
         available = true,
     ),
