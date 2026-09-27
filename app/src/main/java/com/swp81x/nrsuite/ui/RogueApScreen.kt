@@ -51,7 +51,6 @@ import com.swp81x.nrsuite.core.defense.NearbyAp
 import com.swp81x.nrsuite.core.defense.RogueApAlert
 import com.swp81x.nrsuite.core.defense.RogueApCategory
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
-import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.util.rssiToProximity
 import com.swp81x.nrsuite.ui.util.signalQualityColor
 import com.swp81x.nrsuite.ui.util.threatProximityColor
@@ -156,7 +155,7 @@ fun RogueApScreen(
                     .align(Alignment.BottomEnd)
                     .padding(16.dp)
                     .alpha(if (!connected) 0.4f else 1f),
-                containerColor = if (running) StatusRed else NrAccent,
+                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(
@@ -208,7 +207,7 @@ private fun RogueApStatusCard(
     scanning: Boolean,
     lastScanAt: String?,
 ) {
-    val border = if (running) BorderStroke(1.dp, NrAccent) else BorderStroke(0.5.dp, NrOutline)
+    val border = if (running) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else BorderStroke(0.5.dp, NrOutline)
     val title = when {
         !connected -> "Disconnected"
         running -> "Monitoring"
@@ -222,7 +221,7 @@ private fun RogueApStatusCard(
     }
     val iconColor = when {
         !connected -> StatusAmber
-        running -> NrAccent
+        running -> MaterialTheme.colorScheme.primary
         else -> NrOnSurfaceVariant
     }
 
@@ -314,7 +313,7 @@ private fun NearbyApRow(ap: NearbyAp) {
         ap.suspicious && ap.category == RogueApCategory.FAKE_PORTAL -> StatusAmber
         ap.suspicious && ap.category == RogueApCategory.SECURITY_DOWNGRADE -> StatusAmber
         ap.suspicious -> StatusNeutral
-        ap.likelyInfrastructureVendor -> NrAccent
+        ap.likelyInfrastructureVendor -> MaterialTheme.colorScheme.primary
         else -> StatusNeutral
     }
 

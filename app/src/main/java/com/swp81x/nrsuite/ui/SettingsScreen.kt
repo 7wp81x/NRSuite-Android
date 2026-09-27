@@ -177,6 +177,7 @@ internal fun SettingsScreen(
 ) {
     val currentFirmware = (connectionState as? ConnectionState.Connected)?.firmwareVersion
     val context = androidx.compose.ui.platform.LocalContext.current
+    val accent = MaterialTheme.colorScheme.primary
     val chip = (connectionState as? ConnectionState.Connected)?.chip
     val boardName = when (chip) {
         "ESP32-C3" -> "ESP32-C3"
@@ -282,11 +283,15 @@ internal fun SettingsScreen(
                     OutlinedButton(
                         onClick = onChooseFirmware,
                         enabled = !firmwareFlashing,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
                     ) {
                         Text("Choose firmware .bin")
                     }
                     if (firmwareFileName != null && !firmwareFlashing) {
-                        OutlinedButton(onClick = onClearFirmware) {
+                        OutlinedButton(
+                            onClick = onClearFirmware,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
+                        ) {
                             Text("Clear")
                         }
                     }
@@ -360,6 +365,7 @@ internal fun SettingsScreen(
                                     }
                                 },
                                 enabled = !firmwareFlashing && !selected,
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
                             ) {
                                 Text(
                                     when {
@@ -399,6 +405,10 @@ internal fun SettingsScreen(
                         targetHasPermission &&
                         firmwareFileName != null &&
                         !firmwareFlashing,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = accent,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
                 ) {
                     Text(if (firmwareFlashing) "Flashing..." else "Flash firmware")
                 }

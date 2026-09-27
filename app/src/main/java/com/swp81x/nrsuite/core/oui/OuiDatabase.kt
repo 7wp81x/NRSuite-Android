@@ -74,7 +74,9 @@ class OuiDatabaseRepository(
 
     suspend fun download() {
         _status.value = OuiDatabaseStatus.Downloading
-        _progress.value = 0f
+        // Leave progress indeterminate until we can trust the server's
+        // Content-Length header. The UI falls back to an indeterminate bar.
+        _progress.value = null
         runCatching {
             val text = withContext(Dispatchers.IO) {
                 val connection = (URL(csvUrl).openConnection() as HttpURLConnection).apply {
@@ -84,6 +86,8 @@ class OuiDatabaseRepository(
                     instanceFollowRedirects = true
                     setRequestProperty("User-Agent", "NRSuite/1.0 (Android)")
                     setRequestProperty("Accept", "text/csv,application/octet-stream,*/*")
+                    // Keep Content-Length aligned with the bytes we actually read.
+                    setRequestProperty("Accept-Encoding", "identity")
                 }
                 connection.connect()
                 val responseCode = connection.responseCode
@@ -114,7 +118,9 @@ class OuiDatabaseRepository(
                 parseCsv(text)
             }
             check(vendors.isNotEmpty()) { "OUI database contained no entries" }
-            _progress.value = 100f
+            // Clear progress before flipping to Ready; the UI switches to the
+            // Ready branch and must not rely on a fleeting 100% frame.
+            _progress.value = null
             _status.value = OuiDatabaseStatus.Ready(
                 vendorCount = vendors.size,
                 updatedAt = dataFile.lastModified().toReadableTime(),

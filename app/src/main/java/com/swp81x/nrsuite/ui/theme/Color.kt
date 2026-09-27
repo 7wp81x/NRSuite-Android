@@ -20,8 +20,8 @@ val StatusNeutral = Color(0xFF8B949E)
 val CategoryDetectionBlue = Color(0xFF60A5FA)
 val CategoryHidPurple = Color(0xFFA78BFA)
 val CategoryStorageTeal = Color(0xFF14B8A6)
-val CategoryFirmwareGreen = Color(0xFF34D399)
-val CategoryBleBlue = Color(0xFF3D9BFF)
+val CategoryFirmwareGreen = Color(0xFF22C55E) // green, separated from storage teal
+val CategoryBleBlue = Color(0xFF22D3EE) // cyan, kept distinct from detection blue and dark storage teal
 
 // Log level tints.
 val LogColorInfo = Color(0xFF8B949E)

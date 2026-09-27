@@ -128,6 +128,8 @@ import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.theme.CategoryAccentTheme
+import com.swp81x.nrsuite.ui.theme.categoryColor
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
@@ -332,7 +334,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
         module.copy(
             available = available,
-            iconTint = moduleCategoryColor(module.category),
+            iconTint = categoryColor(module.category),
             statusLabel = supportLabel,
             isRunning = when (module.id) {
                 "wifi" -> scanning
@@ -734,6 +736,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             )
         }
 
+        CategoryAccentTheme(activeModule?.category) {
         when {
             activeModuleId == "wifi" -> {
                 WifiScanScreen(
@@ -1154,6 +1157,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onClearHistory = viewModel::clearHistory,
                 modifier = contentModifier,
             )
+        }
         }
     }
 }

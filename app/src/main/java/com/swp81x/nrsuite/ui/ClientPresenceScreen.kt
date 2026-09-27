@@ -60,8 +60,6 @@ import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.util.copyWithToast
-import com.swp81x.nrsuite.ui.theme.CategoryDetectionBlue
-import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -170,7 +168,7 @@ fun ClientPresenceScreen(
                     .align(Alignment.BottomEnd)
                     .padding(20.dp)
                     .alpha(if (!canStart && !running) 0.4f else 1f),
-                containerColor = if (running) StatusRed else NrAccent,
+                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(
@@ -229,7 +227,7 @@ private fun ClientPresenceStatusCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
-        border = BorderStroke(0.5.dp, if (running) NrAccent else NrOutline),
+        border = BorderStroke(0.5.dp, if (running) MaterialTheme.colorScheme.primary else NrOutline),
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -314,7 +312,7 @@ private fun ConfigZone(
                 Icon(
                     imageVector = Icons.Default.PersonSearch,
                     contentDescription = null,
-                    tint = CategoryDetectionBlue,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.width(10.dp))

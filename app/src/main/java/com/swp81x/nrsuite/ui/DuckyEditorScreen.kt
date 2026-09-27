@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import com.swp81x.nrsuite.ui.components.SavedScriptPicker
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
@@ -31,7 +32,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 
 private const val SAMPLE_DUCKY = """REM NRSuite DuckyScript
@@ -48,6 +48,7 @@ fun DuckyEditorScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val accent = MaterialTheme.colorScheme.primary
     var script by remember { mutableStateOf(SAMPLE_DUCKY) }
     var selectedName by remember { mutableStateOf<String?>(null) }
     var showSaveDialog by remember { mutableStateOf(false) }
@@ -116,16 +117,28 @@ fun DuckyEditorScreen(
                             if (selectedName == name) selectedName = null
                         },
                     )
-                    OutlinedButton(onClick = { showSaveDialog = true }) {
+                    OutlinedButton(
+                        onClick = { showSaveDialog = true },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
+                    ) {
                         Text("Save")
                     }
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { importPicker.launch(arrayOf("text/plain", "*/*")) }) {
+                    OutlinedButton(
+                        onClick = { importPicker.launch(arrayOf("text/plain", "*/*")) },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
+                    ) {
                         Text("Import .txt")
                     }
-                    Button(onClick = { exportLauncher.launch("ducky.txt") }) {
+                    Button(
+                        onClick = { exportLauncher.launch("ducky.txt") },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = accent,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                    ) {
                         Text("Export .txt")
                     }
                 }

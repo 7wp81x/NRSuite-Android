@@ -58,7 +58,6 @@ import com.swp81x.nrsuite.core.credentials.CredentialStatus
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.util.copyWithToast
-import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -383,7 +382,7 @@ private fun CredentialSessionCard(
                 Icon(
                     imageVector = Icons.Default.Lock,
                     contentDescription = null,
-                    tint = NrAccent,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(8.dp))
@@ -402,7 +401,7 @@ private fun CredentialSessionCard(
                     Text(
                         text = sourceLabel(session.source),
                         style = MaterialTheme.typography.labelSmall,
-                        color = NrAccent,
+                        color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }

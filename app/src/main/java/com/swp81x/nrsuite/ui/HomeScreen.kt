@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeveloperBoard
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Edit
@@ -128,17 +129,13 @@ import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
-import com.swp81x.nrsuite.ui.theme.CategoryBleBlue
-import com.swp81x.nrsuite.ui.theme.CategoryDetectionBlue
-import com.swp81x.nrsuite.ui.theme.CategoryFirmwareGreen
-import com.swp81x.nrsuite.ui.theme.CategoryHidPurple
-import com.swp81x.nrsuite.ui.theme.CategoryStorageTeal
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrSurface
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
+import com.swp81x.nrsuite.ui.theme.categoryColor
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
@@ -302,42 +299,42 @@ internal fun HomeScreen(
                 CategorySpec(
                     name = "Detection",
                     icon = Icons.Default.Shield,
-                    iconTint = CategoryDetectionBlue,
+                    iconTint = categoryColor("Detection"),
                     moduleIds = listOf("deauth_detector", "client_presence", "rogue_ap", "mac_lookup"),
                     available = firmwareConnected,
                 ),
                 CategorySpec(
                     name = "Wireless",
                     icon = Icons.Default.Wifi,
-                    iconTint = NrAccent,
+                    iconTint = categoryColor("Wireless"),
                     moduleIds = listOf("wifi", "sniff", "beacon", "deauth", "evil_twin", "portal"),
                     available = firmwareConnected,
                 ),
                 CategorySpec(
                     name = "Credentials",
                     icon = Icons.Default.Key,
-                    iconTint = StatusAmber,
+                    iconTint = categoryColor("Credentials"),
                     moduleIds = listOf("credential_manager", "wpa_cracker"),
                     available = true,
                 ),
                 CategorySpec(
                     name = "HID",
                     icon = Icons.Default.Keyboard,
-                    iconTint = CategoryHidPurple,
+                    iconTint = categoryColor("HID"),
                     moduleIds = listOf("ducky", "ble", "badusb"),
                     available = true,
                 ),
                 CategorySpec(
                     name = "Storage",
                     icon = Icons.Default.Folder,
-                    iconTint = CategoryStorageTeal,
+                    iconTint = categoryColor("Storage"),
                     moduleIds = listOf("storage"),
                     available = firmwareConnected,
                 ),
                 CategorySpec(
                     name = "BLE",
                     icon = Icons.Default.Bluetooth,
-                    iconTint = CategoryBleBlue,
+                    iconTint = categoryColor("BLE"),
                     moduleIds = emptyList(),
                     available = false,
                     statusLabel = "Planned",
@@ -345,14 +342,14 @@ internal fun HomeScreen(
                 CategorySpec(
                     name = "Firmware",
                     icon = Icons.Default.Memory,
-                    iconTint = CategoryFirmwareGreen,
+                    iconTint = categoryColor("Firmware"),
                     moduleIds = listOf("firmware", "serial_debugger"),
                     available = true,
                 ),
                 CategorySpec(
                     name = "IR",
                     icon = Icons.Default.SettingsRemote,
-                    iconTint = StatusNeutral,
+                    iconTint = categoryColor("IR"),
                     moduleIds = listOf("ir"),
                     available = false,
                     statusLabel = "Planned",
@@ -360,7 +357,7 @@ internal fun HomeScreen(
                 CategorySpec(
                     name = "RF",
                     icon = Icons.Default.Radio,
-                    iconTint = StatusNeutral,
+                    iconTint = categoryColor("RF"),
                     moduleIds = listOf("rf"),
                     available = false,
                     statusLabel = "Planned",
@@ -368,7 +365,7 @@ internal fun HomeScreen(
                 CategorySpec(
                     name = "RFID",
                     icon = Icons.Default.Nfc,
-                    iconTint = StatusNeutral,
+                    iconTint = categoryColor("RFID"),
                     moduleIds = listOf("rfid"),
                     available = false,
                     statusLabel = "Planned",
@@ -615,6 +612,7 @@ internal fun ModulesScreen(
                         selected = selectedCategory == category,
                         onClick = { selectedCategory = category },
                         label = label,
+                        selectedColor = if (category == null) NrAccent else categoryColor(category),
                     )
                 }
             }
@@ -635,34 +633,62 @@ private fun OuiDatabaseDashboardWarning(
     progress: Float?,
     onDownload: () -> Unit,
 ) {
+    val downloading = status is OuiDatabaseStatus.Downloading
+    val error = status is OuiDatabaseStatus.Error
+    val borderColor = when {
+        error -> StatusRed
+        downloading -> categoryColor("Detection")
+        else -> StatusAmber
+    }
+    val icon = if (downloading) Icons.Default.Download else Icons.Default.WarningAmber
+    val iconTint = when {
+        error -> StatusRed
+        downloading -> categoryColor("Detection")
+        else -> StatusAmber
+    }
+    val title = when (status) {
+        OuiDatabaseStatus.NotDownloaded -> "OUI/vendor database not downloaded"
+        OuiDatabaseStatus.Downloading -> "Updating OUI/vendor database…"
+        is OuiDatabaseStatus.Error -> "OUI/vendor database download failed"
+        is OuiDatabaseStatus.Ready -> ""
+    }
+    val message = when (status) {
+        OuiDatabaseStatus.NotDownloaded ->
+            "Vendor names and OUI-based signals will be unavailable until this is downloaded."
+        OuiDatabaseStatus.Downloading ->
+            "Downloading the IEEE OUI registry. Vendor names and OUI-based signals will be available when it finishes."
+        is OuiDatabaseStatus.Error -> status.message
+        is OuiDatabaseStatus.Ready -> ""
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(0.5.dp, StatusAmber),
+        border = BorderStroke(0.5.dp, borderColor),
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = Icons.Default.WarningAmber,
+                    imageVector = icon,
                     contentDescription = null,
-                    tint = StatusAmber,
+                    tint = iconTint,
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "OUI/vendor database not downloaded",
+                    text = title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "Vendor names and OUI-based signals will be unavailable until this is downloaded.",
+                text = message,
                 style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
             )
-            if (status is OuiDatabaseStatus.Downloading) {
+            if (downloading) {
                 Spacer(Modifier.height(8.dp))
                 if (progress != null) {
                     LinearProgressIndicator(
@@ -675,20 +701,9 @@ private fun OuiDatabaseDashboardWarning(
             } else {
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = onDownload) {
-                    Text("Download database")
+                    Text(if (error) "Retry download" else "Download database")
                 }
             }
         }
     }
-}
-
-internal fun moduleCategoryColor(category: String): Color = when (category) {
-    "Detection" -> CategoryDetectionBlue
-    "Wireless" -> NrAccent
-    "Credentials" -> StatusAmber
-    "HID" -> CategoryHidPurple
-    "Storage" -> CategoryStorageTeal
-    "Firmware" -> CategoryFirmwareGreen
-    "BLE" -> CategoryBleBlue
-    else -> StatusNeutral
 }
