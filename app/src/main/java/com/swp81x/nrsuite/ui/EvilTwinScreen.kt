@@ -55,7 +55,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -65,6 +64,7 @@ import com.swp81x.nrsuite.core.wpa.EvilTwinResult
 import com.swp81x.nrsuite.ui.components.HtmlUploadSection
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -278,7 +278,7 @@ fun EvilTwinScreen(
                     )
                     IconButton(
                         onClick = {
-                            clipboard.setText(AnnotatedString(results.joinToString("\n") { it.password }))
+                            clipboard.copyWithToast(context, results.joinToString("\n") { it.password }, "Passwords copied")
                         },
                         enabled = results.isNotEmpty(),
                     ) {
@@ -321,7 +321,7 @@ fun EvilTwinScreen(
                                 modifier = Modifier.weight(1f),
                             )
                             IconButton(
-                                onClick = { clipboard.setText(AnnotatedString(result.password)) },
+                                onClick = { clipboard.copyWithToast(context, result.password, "Password copied") },
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.ContentCopy,
@@ -373,7 +373,7 @@ fun EvilTwinScreen(
                     )
                     IconButton(
                         onClick = {
-                            clipboard.setText(AnnotatedString(eventLog.joinToString("\n")))
+                            clipboard.copyWithToast(context, eventLog.joinToString("\n"), "Logs copied")
                         },
                         enabled = eventLog.isNotEmpty(),
                     ) {

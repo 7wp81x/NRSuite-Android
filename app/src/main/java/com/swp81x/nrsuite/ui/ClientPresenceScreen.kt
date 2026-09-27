@@ -1,6 +1,7 @@
 package com.swp81x.nrsuite.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,6 +48,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -56,8 +59,7 @@ import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.NrFilterChip
-import com.swp81x.nrsuite.ui.theme.CategoryDetectionBlue
-import com.swp81x.nrsuite.ui.theme.NrAccent
+import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -114,6 +116,7 @@ fun ClientPresenceScreen(
                 connected = connected,
                 running = running,
                 mode = mode,
+                targetBssid = targetBssid,
                 frameCount = frameCount,
                 lastTriggerAt = lastTriggerAt,
             )
@@ -165,7 +168,7 @@ fun ClientPresenceScreen(
                     .align(Alignment.BottomEnd)
                     .padding(20.dp)
                     .alpha(if (!canStart && !running) 0.4f else 1f),
-                containerColor = if (running) StatusRed else NrAccent,
+                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(
@@ -212,6 +215,7 @@ private fun ClientPresenceStatusCard(
     connected: Boolean,
     running: Boolean,
     mode: ClientPresenceMode,
+    targetBssid: String,
     frameCount: Long,
     lastTriggerAt: String?,
 ) {
@@ -223,7 +227,7 @@ private fun ClientPresenceStatusCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
-        border = BorderStroke(0.5.dp, if (running) NrAccent else NrOutline),
+        border = BorderStroke(0.5.dp, if (running) MaterialTheme.colorScheme.primary else NrOutline),
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -254,6 +258,13 @@ private fun ClientPresenceStatusCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
+                    if (mode == ClientPresenceMode.ACTIVE && targetBssid.isNotBlank()) {
+                        Text(
+                            text = "Target: $targetBssid",
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
                     if (running && lastTriggerAt != null) {
                         Text(
                             text = "Last force trigger: $lastTriggerAt",
@@ -301,7 +312,7 @@ private fun ConfigZone(
                 Icon(
                     imageVector = Icons.Default.PersonSearch,
                     contentDescription = null,
-                    tint = CategoryDetectionBlue,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.width(10.dp))
@@ -492,6 +503,8 @@ private fun ClientListCard(
 
 @Composable
 private fun ClientRow(client: ClientObservation) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val signalColor = signalQualityColor(client.rssi)
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -505,7 +518,11 @@ private fun ClientRow(client: ClientObservation) {
                     text = client.mac,
                     style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                     fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            clipboard.copyWithToast(context, client.mac, "MAC copied")
+                        },
                 )
                 NetworkStatusBadge(text = client.subtype.replace('_', ' '), color = signalColor)
             }

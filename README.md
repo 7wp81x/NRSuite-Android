@@ -38,6 +38,7 @@ check [screenshots](./Screenshots/) for more screenshots.
 | Beacon Injection | Broadcast fake SSIDs |
 | Deauthentication | Send deauth frames to targets |
 | Deauth Detector | Passive detection, filters, and live alerts for deauth/disassoc frames |
+| Client/Presence Detector | Passive probe/assoc/reassoc/auth monitoring, with optional active deauth-trigger mode |
 | Evil Twin | Rogue AP with captive portal |
 | Captive Portal | Custom HTML portal for credential capture |
 | Packet Sniffer | Monitor-mode pcap capture and export |

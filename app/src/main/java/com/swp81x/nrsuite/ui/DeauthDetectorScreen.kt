@@ -63,7 +63,6 @@ import com.swp81x.nrsuite.ui.util.rssiToProximity
 import com.swp81x.nrsuite.ui.util.threatProximityColor
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.NrFilterChip
-import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -180,7 +179,7 @@ fun DeauthDetectorScreen(
                 .align(Alignment.BottomEnd)
                 .padding(16.dp)
                 .alpha(if (!connected || (!running && !canStart)) 0.4f else 1f),
-            containerColor = if (running) StatusRed else NrAccent,
+            containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
         ) {
             Icon(
@@ -310,7 +309,7 @@ private fun DetectorStatusCard(
                         OutlinedButton(
                             onClick = onLocateClick,
                             colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                                contentColor = NrAccent,
+                                contentColor = MaterialTheme.colorScheme.primary,
                             ),
                         ) {
                             Text("Locate")
@@ -325,7 +324,7 @@ private fun DetectorStatusCard(
                         Icon(
                             imageVector = Icons.Default.Shield,
                             contentDescription = null,
-                            tint = NrAccent,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(22.dp),
                         )
                         Spacer(Modifier.width(8.dp))
@@ -405,7 +404,7 @@ private fun LiveStatsRow(
     uniqueSourceCount: Int,
     thresholdFramesPerSecond: Int,
 ) {
-    val fpsColor = if (framesPerSecond > thresholdFramesPerSecond) StatusRed else NrAccent
+    val fpsColor = if (framesPerSecond > thresholdFramesPerSecond) StatusRed else MaterialTheme.colorScheme.primary
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -491,7 +490,7 @@ private fun ConfigZone(
                 Icon(
                     imageVector = Icons.Default.WifiTethering,
                     contentDescription = null,
-                    tint = NrAccent,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.width(10.dp))

@@ -39,7 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,7 +47,7 @@ import com.swp81x.nrsuite.core.credentials.CredentialSession
 import com.swp81x.nrsuite.core.wifi.DetectedSsid
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
-import com.swp81x.nrsuite.ui.theme.NrAccent
+import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -89,6 +89,7 @@ fun WpaCrackerScreen(
     modifier: Modifier = Modifier,
 ) {
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     val candidates = sessions.filter { path ->
         !path.pcapPath.isNullOrBlank() && File(path.pcapPath!!).exists()
     }
@@ -130,7 +131,7 @@ fun WpaCrackerScreen(
                         Icon(
                             imageVector = Icons.Default.Key,
                             contentDescription = null,
-                            tint = NrAccent,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(22.dp),
                         )
                         Spacer(Modifier.width(10.dp))
@@ -266,7 +267,7 @@ fun WpaCrackerScreen(
                                 ),
                                 border = BorderStroke(
                                     width = if (selected) 1.dp else 0.5.dp,
-                                    color = if (selected) NrAccent else NrOutline,
+                                    color = if (selected) MaterialTheme.colorScheme.primary else NrOutline,
                                 ),
                                 shape = RoundedCornerShape(10.dp),
                             ) {
@@ -375,7 +376,7 @@ fun WpaCrackerScreen(
                                 modifier = Modifier.weight(1f),
                             )
                             IconButton(onClick = {
-                                clipboard.setText(AnnotatedString(password))
+                                clipboard.copyWithToast(context, password, "Password copied")
                             }) {
                                 Icon(
                                     imageVector = Icons.Default.ContentCopy,
@@ -397,7 +398,7 @@ fun WpaCrackerScreen(
                 .align(Alignment.BottomEnd)
                 .padding(16.dp)
                 .alpha(if (running || canStart) 1f else 0.4f),
-            containerColor = if (running) StatusRed else NrAccent,
+            containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
             contentColor = if (running) NrOnSurface else NrSurface,
         ) {
             Icon(

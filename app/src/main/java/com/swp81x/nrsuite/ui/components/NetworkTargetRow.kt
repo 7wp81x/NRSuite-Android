@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
@@ -53,18 +52,19 @@ fun NetworkTargetRow(
         blacklisted = ouiBlacklisted,
     )
     val signalTint = signalQualityColor(rssi)
+    val selectedAccent = MaterialTheme.colorScheme.primary
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .clickable(enabled = enabled) { onClick() },
         colors = CardDefaults.cardColors(
-            containerColor = if (selected) NrAccent.copy(alpha = 0.12f) else NrSurfaceVariant,
+            containerColor = if (selected) selectedAccent.copy(alpha = 0.12f) else NrSurfaceVariant,
         ),
         shape = RoundedCornerShape(10.dp),
         border = BorderStroke(
             width = if (selected) 1.dp else 0.5.dp,
-            color = if (selected) NrAccent else NrOutline,
+            color = if (selected) selectedAccent else NrOutline,
         ),
     ) {
         Row(

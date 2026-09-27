@@ -3,7 +3,7 @@ package com.swp81x.nrsuite.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
+import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.util.ouiStatusColor
@@ -229,6 +230,7 @@ private fun NetworkRow(network: JSONObject) {
     val ouiTint = ouiStatusColor(vendor, ouiWhitelisted, ouiBlacklisted)
     val signalTint = signalQualityColor(rssi)
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -252,7 +254,7 @@ private fun NetworkRow(network: JSONObject) {
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                 color = NrOnSurfaceVariant,
                 modifier = Modifier.clickable {
-                    clipboardManager.setText(AnnotatedString(bssid))
+                    clipboardManager.copyWithToast(context, bssid)
                 },
             )
             Text(

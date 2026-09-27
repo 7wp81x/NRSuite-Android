@@ -167,6 +167,7 @@ internal val modules = listOf(
         description = "Active 2.4 GHz scan with SSID, BSSID, channel, RSSI, and security.",
         icon = Icons.Default.Wifi,
         category = "Wireless",
+        radio = "2.4GHz",
         available = true,
     ),
     ModuleCardSpec(
@@ -175,6 +176,7 @@ internal val modules = listOf(
         description = "Capture 802.11 frames and export PCAP.",
         icon = Icons.Default.FilterCenterFocus,
         category = "Wireless",
+        radio = "2.4GHz",
         available = true,
     ),
     ModuleCardSpec(
@@ -183,6 +185,7 @@ internal val modules = listOf(
         description = "Broadcast custom or hidden SSIDs.",
         icon = Icons.Default.SettingsInputAntenna,
         category = "Wireless",
+        radio = "2.4GHz",
         available = true,
     ),
     ModuleCardSpec(
@@ -191,6 +194,7 @@ internal val modules = listOf(
         description = "Send a targeted deauth burst to a BSSID.",
         icon = Icons.Default.WifiOff,
         category = "Wireless",
+        radio = "2.4GHz",
         available = true,
     ),
     ModuleCardSpec(
@@ -199,6 +203,7 @@ internal val modules = listOf(
         description = "Passively detect client management frames, with optional active reconnection triggering.",
         icon = Icons.Default.PersonSearch,
         category = "Detection",
+        radio = "2.4GHz",
         available = true,
     ),
     ModuleCardSpec(
@@ -207,6 +212,7 @@ internal val modules = listOf(
         description = "Passively detect deauth and disassoc frames around you.",
         icon = Icons.Default.WifiFind,
         category = "Detection",
+        radio = "2.4GHz",
         available = true,
     ),
     ModuleCardSpec(
@@ -215,6 +221,7 @@ internal val modules = listOf(
         description = "Compare visible APs against a trusted baseline and OUI rules.",
         icon = Icons.Default.Router,
         category = "Detection",
+        radio = "2.4GHz",
         available = true,
     ),
     ModuleCardSpec(
@@ -223,6 +230,7 @@ internal val modules = listOf(
         description = "Offline OUI and vendor lookup for any MAC address.",
         icon = Icons.Default.Search,
         category = "Detection",
+        radio = "2.4GHz",
         available = true,
     ),
     ModuleCardSpec(
@@ -231,6 +239,7 @@ internal val modules = listOf(
         description = "Portal + deauth + EAPOL capture workflow.",
         icon = Icons.Default.ContentCopy,
         category = "Wireless",
+        radio = "2.4GHz",
         available = true,
     ),
     ModuleCardSpec(
@@ -247,6 +256,7 @@ internal val modules = listOf(
         description = "Offline handshake verification against a wordlist.",
         icon = Icons.Default.Key,
         category = "Credentials",
+        radio = "2.4GHz",
         available = true,
     ),
     ModuleCardSpec(
@@ -255,6 +265,7 @@ internal val modules = listOf(
         description = "Start an AP and serve a custom HTML page.",
         icon = Icons.Default.Language,
         category = "Wireless",
+        radio = "2.4GHz",
         available = true,
     ),
     ModuleCardSpec(
@@ -263,6 +274,7 @@ internal val modules = listOf(
         description = "Create, import, and export DuckyScript payloads.",
         icon = Icons.Default.Code,
         category = "HID",
+        radio = "USB",
         available = true,
     ),
     ModuleCardSpec(
@@ -271,6 +283,7 @@ internal val modules = listOf(
         description = "BadBLE payloads and realtime keyboard input.",
         icon = Icons.Default.Bluetooth,
         category = "HID",
+        radio = "BLE",
         available = true,
     ),
     ModuleCardSpec(
@@ -279,6 +292,7 @@ internal val modules = listOf(
         description = "Browse and manage files on the device.",
         icon = Icons.Default.Folder,
         category = "Storage",
+        radio = "USB",
         available = true,
     ),
     ModuleCardSpec(
@@ -287,6 +301,7 @@ internal val modules = listOf(
         description = "Native USB HID payloads.",
         icon = Icons.Default.Keyboard,
         category = "HID",
+        radio = "USB",
         available = true,
     ),
     ModuleCardSpec(
@@ -295,6 +310,7 @@ internal val modules = listOf(
         description = "Flash a complete merged firmware image over the USB ROM bootloader.",
         icon = Icons.Default.Memory,
         category = "Firmware",
+        radio = "USB",
         available = true,
     ),
     ModuleCardSpec(
@@ -303,6 +319,7 @@ internal val modules = listOf(
         description = "NRSuite serial monitor and debugger (planned).",
         icon = Icons.Default.DeveloperBoard,
         category = "Firmware",
+        radio = "USB",
         available = false,
         statusLabel = "Planned",
     ),
@@ -312,6 +329,7 @@ internal val modules = listOf(
         description = "Infrared transmit/receive module (planned).",
         icon = Icons.Default.SettingsRemote,
         category = "IR",
+        radio = "IR",
         available = false,
         statusLabel = "Planned",
     ),
@@ -321,6 +339,7 @@ internal val modules = listOf(
         description = "Sub-GHz radio frequency module (planned).",
         icon = Icons.Default.Radio,
         category = "RF",
+        radio = "Sub-1GHz",
         available = false,
         statusLabel = "Planned",
     ),
@@ -330,6 +349,7 @@ internal val modules = listOf(
         description = "RFID/NFC read and emulation module (planned).",
         icon = Icons.Default.Nfc,
         category = "RFID",
+        radio = "13.56MHz",
         available = false,
         statusLabel = "Planned",
     ),

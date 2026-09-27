@@ -8,6 +8,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +47,7 @@ data class ModuleCardSpec(
     val description: String,
     val icon: ImageVector,
     val category: String = "General",
+    val radio: String = "",
     val iconTint: Color? = null,
     val available: Boolean = true,
     val statusLabel: String? = null,
@@ -124,6 +126,17 @@ fun ModuleCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
+                if (module.radio.isNotBlank()) {
+                    Spacer(Modifier.size(5.dp))
+                    Text(
+                        text = module.radio,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NrOnSurfaceVariant,
+                        modifier = Modifier
+                            .border(0.5.dp, NrOutline, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
             }
 
             if (module.isRunning) {

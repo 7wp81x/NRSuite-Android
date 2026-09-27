@@ -30,7 +30,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.oui.MacLookupResult
-import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -122,7 +121,7 @@ private fun MacLookupResultCard(result: MacLookupResult) {
             InfoLine(
                 label = "Vendor",
                 value = result.vendor ?: if (result.databaseReady) "Unknown / not in database" else "Database not downloaded",
-                valueColor = if (result.vendor != null) NrAccent else StatusAmber,
+                valueColor = if (result.vendor != null) MaterialTheme.colorScheme.primary else StatusAmber,
             )
 
             Spacer(Modifier.height(8.dp))
