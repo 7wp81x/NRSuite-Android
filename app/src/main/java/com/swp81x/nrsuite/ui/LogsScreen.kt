@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.LogColorError
 import com.swp81x.nrsuite.ui.theme.LogColorInfo
 import com.swp81x.nrsuite.ui.theme.LogColorSuccess
@@ -179,7 +180,7 @@ internal fun LogsScreen(
                         IconButton(
                             onClick = {
                                 val text = logs.joinToString("\n") { "${it.timestamp} [${it.tag}] ${it.message}" }
-                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+                                clipboardManager.copyWithToast(context, text)
                             },
                             enabled = logs.isNotEmpty(),
                         ) { Icon(Icons.Default.ContentCopy, contentDescription = "Copy log") }
@@ -298,7 +299,7 @@ internal fun LogsScreen(
                         )
                         IconButton(onClick = {
                             val text = history.joinToString("\n") { "${it.timestamp} [${it.module}] ${it.summary}" }
-                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+                            clipboardManager.copyWithToast(context, text)
                         }, enabled = history.isNotEmpty()) { Icon(Icons.Default.ContentCopy, contentDescription = "Copy history") }
                         IconButton(onClick = {
                             val text = history.joinToString("\n") { "${it.timestamp} [${it.module}] ${it.summary}" }

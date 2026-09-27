@@ -39,7 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,6 +47,7 @@ import com.swp81x.nrsuite.core.credentials.CredentialSession
 import com.swp81x.nrsuite.core.wifi.DetectedSsid
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -89,6 +90,7 @@ fun WpaCrackerScreen(
     modifier: Modifier = Modifier,
 ) {
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     val candidates = sessions.filter { path ->
         !path.pcapPath.isNullOrBlank() && File(path.pcapPath!!).exists()
     }
@@ -375,7 +377,7 @@ fun WpaCrackerScreen(
                                 modifier = Modifier.weight(1f),
                             )
                             IconButton(onClick = {
-                                clipboard.setText(AnnotatedString(password))
+                                clipboard.copyWithToast(context, password, "Password copied")
                             }) {
                                 Icon(
                                     imageVector = Icons.Default.ContentCopy,

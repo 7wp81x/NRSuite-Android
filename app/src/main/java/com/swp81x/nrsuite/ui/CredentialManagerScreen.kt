@@ -48,7 +48,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,6 +57,7 @@ import com.swp81x.nrsuite.core.credentials.CredentialSource
 import com.swp81x.nrsuite.core.credentials.CredentialStatus
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -184,7 +184,7 @@ fun CredentialManagerScreen(
                 displayedSessions.forEach { session ->
                     CredentialSessionCard(
                         session = session,
-                        onCopyPassword = { value -> clipboard.setText(AnnotatedString(value)) },
+                        onCopyPassword = { value -> clipboard.copyWithToast(context, value) },
                         onSharePcap = { path -> sharePcap(context, path) },
                         onDelete = { deleteTarget = session },
                         onViewSubmissions = { detailSession = it },
@@ -295,7 +295,7 @@ fun CredentialManagerScreen(
                                         val text = credential.details.entries.joinToString("\n") {
                                             "${it.key}: ${it.value}"
                                         }
-                                        clipboard.setText(AnnotatedString(text))
+                                        clipboard.copyWithToast(context, text)
                                     }) {
                                         Icon(
                                             imageVector = Icons.Default.ContentCopy,

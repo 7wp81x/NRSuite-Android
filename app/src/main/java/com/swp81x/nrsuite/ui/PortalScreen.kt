@@ -11,7 +11,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,6 +58,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
+import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.components.HtmlUploadSection
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
@@ -107,6 +108,7 @@ fun PortalScreen(
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -195,7 +197,11 @@ fun PortalScreen(
                             )
                             IconButton(
                                 onClick = {
-                                    clipboardManager.setText(AnnotatedString(eventLog.joinToString("\n")))
+                                    clipboardManager.copyWithToast(
+                                        context,
+                                        eventLog.joinToString("\n"),
+                                        "Logs copied",
+                                    )
                                 },
                                 enabled = eventLog.isNotEmpty(),
                             ) {
@@ -435,6 +441,7 @@ private fun NumberStepper(
 @Composable
 private fun CapturedCredentialsZone(credentials: List<CapturedCredential>) {
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     val latest = credentials.lastOrNull() ?: return
     val shownFields = latest.knownPortalFields()
 
@@ -484,7 +491,7 @@ private fun CapturedCredentialsZone(credentials: List<CapturedCredential>) {
                         color = if (label == "Password") StatusGreen else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
-                    IconButton(onClick = { clipboard.setText(AnnotatedString(value)) }) {
+                    IconButton(onClick = { clipboard.copyWithToast(context, value) }) {
                         Icon(
                             imageVector = Icons.Default.ContentCopy,
                             contentDescription = "Copy $label",

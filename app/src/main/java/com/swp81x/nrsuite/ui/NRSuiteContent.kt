@@ -327,6 +327,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             isDeviceConnected && !supported && module.id == "badusb" -> "Requires S2/S3 or matching firmware"
             isDeviceConnected && !supported && module.id == "evil_twin" -> "Firmware portal support required"
             isDeviceConnected && !supported && module.id == "deauth_detector" -> "Requires deauth_detect firmware"
+            isDeviceConnected && !supported && module.id == "client_presence" -> "Requires client_detect firmware"
             else -> module.statusLabel
         }
         module.copy(
