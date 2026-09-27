@@ -283,6 +283,11 @@ internal fun DeviceConnectionCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
+                Text(
+                    text = "Device ID: ${state.deviceId ?: "unknown"}",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                )
             }
             if (!disconnecting) {
                 when (state) {

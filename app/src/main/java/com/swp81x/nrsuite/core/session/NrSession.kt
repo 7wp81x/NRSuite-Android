@@ -92,6 +92,7 @@ class NrSession(
             val status = sendCommand("STATUS", timeoutMs = 5_000)
             val chip = status?.optString("chip")?.takeIf { it.isNotBlank() }
             val firmware = status?.optString("fw")?.takeIf { it.isNotBlank() }
+            val deviceId = status?.optString("device_id")?.takeIf { it.isNotBlank() }
             val features = mutableSetOf<String>()
             status?.optJSONArray("features")?.let { array ->
                 for (index in 0 until array.length()) {
@@ -103,8 +104,12 @@ class NrSession(
                 chip = chip,
                 firmwareVersion = firmware,
                 features = features,
+                deviceId = deviceId,
             )
-            log("Connected to ${chip ?: "NRSuite device"}")
+            log(
+                "Connected to ${chip ?: "NRSuite device"}" +
+                    (deviceId?.let { " ($it)" } ?: "")
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (t: Throwable) {

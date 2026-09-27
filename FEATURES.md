@@ -106,7 +106,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 |---|---|---|
 | Multi-device USB sessions | ✅ | Multiple simultaneous USB serial sessions with per-device permission, connect/disconnect, and reconnect state. User-initiated disconnect uses idle-session reuse for S2 CDC stability. |
 | BadUSB device picker | 📋 | Select which connected device receives BadUSB independent of the primary Wireless/Flasher session. Multi-device session refactor is the prerequisite. |
-| Persistent firmware device ID | 📋 | Firmware-generated ID stored in NVS and exposed via `STATUS.device_id`; current fingerprint is transport-bound. |
+| Persistent firmware device ID | ✅ | Firmware generates/stores `NRxxxxxxx` in NVS and exposes it via `STATUS.device_id`; Android shows it on Home and Device manager. |
 
 ## Explicitly Out of Scope
 

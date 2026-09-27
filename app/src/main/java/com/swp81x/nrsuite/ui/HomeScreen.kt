@@ -550,6 +550,11 @@ internal fun DashboardDeviceCard(
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = NrOnSurfaceVariant,
                     )
+                    Text(
+                        text = "id: ${state.deviceId ?: "unknown"}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = NrOnSurfaceVariant,
+                    )
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = onManageDevice) {
