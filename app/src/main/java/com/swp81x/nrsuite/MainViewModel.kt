@@ -8,6 +8,7 @@ import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
@@ -72,12 +73,23 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 data class CapturedPassword(
     val value: String,
     val capturedAt: String,
+)
+
+internal data class DeviceSession(
+    val fingerprint: String,
+    val device: UsbSerialDevice,
+    val session: NrSession,
+    var observers: List<Job> = emptyList(),
+    var openedOnce: Boolean = false,
+    var opening: Boolean = false,
 )
 
 /**
@@ -99,6 +111,8 @@ class MainViewModel(internal val app: Application) {
                 )
             },
     )
+
+    internal val usbOperationMutex = Mutex()
 
     internal val usbManager =
         app.getSystemService(Context.USB_SERVICE) as UsbManager
@@ -123,6 +137,23 @@ class MainViewModel(internal val app: Application) {
     internal val _connectionState =
         MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
+
+    /** Per-device connection states, keyed by [deviceFingerprintImpl]. */
+    internal val _deviceConnectionStates = MutableStateFlow<Map<String, ConnectionState>>(emptyMap())
+    val deviceConnectionStates: StateFlow<Map<String, ConnectionState>> =
+        _deviceConnectionStates.asStateFlow()
+
+    /** Device IDs with a USB permission dialog currently in flight. */
+    internal val _pendingPermissionRequests = MutableStateFlow<Set<Int>>(emptySet())
+    val pendingPermissionRequests: StateFlow<Set<Int>> = _pendingPermissionRequests.asStateFlow()
+
+    /** Device fingerprints currently being gracefully stopped/closed. */
+    internal val _disconnectingFingerprints = MutableStateFlow<Set<String>>(emptySet())
+    val disconnectingFingerprints: StateFlow<Set<String>> = _disconnectingFingerprints.asStateFlow()
+
+    /** Primary session fingerprint for legacy single-device feature screens. */
+    internal val _primaryFingerprint = MutableStateFlow<String?>(null)
+    val primaryFingerprint: StateFlow<String?> = _primaryFingerprint.asStateFlow()
 
     private val _logs = MutableStateFlow<List<LogEntry>>(emptyList())
     val logs: StateFlow<List<LogEntry>> = _logs.asStateFlow()
@@ -524,10 +555,32 @@ class MainViewModel(internal val app: Application) {
 
     internal var bleStatusJob: Job? = null
 
-    internal var session: NrSession? = null
-    internal var activeSerialDevice: UsbSerialDevice? = null
-    internal var activeDeviceFingerprint: String? = null
-    internal var sessionObservers: List<Job> = emptyList()
+    /** All open device sessions, keyed by fingerprint. */
+    internal val deviceSessions = linkedMapOf<String, DeviceSession>()
+
+    /**
+     * Sessions that were "disconnected" from the UI but intentionally keep
+     * their USB transport open. TinyUSB S2 devices can stop answering after a
+     * host-side close/reopen, so these are adopted again on reconnect.
+     */
+    internal val idleDeviceSessions = linkedMapOf<String, DeviceSession>()
+
+    internal val activeDeviceFingerprint: String?
+        get() = _primaryFingerprint.value
+            ?.takeIf { deviceSessions.containsKey(it) }
+            ?: deviceSessions.keys.firstOrNull()
+
+    internal val activeSerialDevice: UsbSerialDevice?
+        get() = activeDeviceFingerprint?.let { deviceSessions[it]?.device }
+
+    /**
+     * Legacy single-device access used by feature modules. Points at the
+     * primary session so existing screens keep working, while secondary
+     * sessions remain available through [deviceSessions].
+     */
+    internal val session: NrSession?
+        get() = activeDeviceFingerprint?.let { deviceSessions[it]?.session }
+
     internal var pcapWriter: PcapWriter? = null
     internal var pcapJob: Job? = null
 
@@ -738,6 +791,9 @@ class MainViewModel(internal val app: Application) {
     fun onPermissionResult(device: UsbDevice, granted: Boolean) = this.onPermissionResultImpl(device, granted)
 
     fun connect(device: UsbDevice) = this.connectImpl(device)
+    fun markPermissionRequested(device: UsbDevice) = this.markPermissionRequestedImpl(device)
+    fun clearPermissionRequest(deviceId: Int) = this.clearPermissionRequestImpl(deviceId)
+    fun disconnectDevice(device: UsbDevice) = this.disconnectDeviceImpl(device)
 
     fun scanWifi() = this.scanWifiImpl()
 
@@ -1045,66 +1101,66 @@ class MainViewModel(internal val app: Application) {
 
 
     fun disconnect() {
-        val current = session
-        beaconStatusJob?.cancel()
-        beaconStatusJob = null
-        if (_beaconRunning.value) {
-            _beaconRunning.value = false
-            scope.launch {
-                runCatching { current?.sendCommand("STOP_BEACON", timeoutMs = 4_000) }
-            }
+        val fingerprint = activeDeviceFingerprint ?: run {
+            stopActiveOperations()
+            _connectionState.value = ConnectionState.Disconnected
+            return
         }
-        if (_sniffing.value) {
-            _sniffing.value = false
-            pcapJob?.cancel()
-            pcapJob = null
-            scope.launch(Dispatchers.IO) {
-                runCatching { pcapWriter?.close() }
-                pcapWriter = null
-            }
-        }
-        if (_deauthDetectorRunning.value) {
-            _deauthDetectorRunning.value = false
-            scope.launch {
-                runCatching { current?.sendCommand("DEAUTH_DETECT_STOP", timeoutMs = 4_000) }
-            }
-        }
-        if (_rogueApRunning.value) {
-            _rogueApRunning.value = false
-            rogueApScanJob?.cancel()
-            rogueApScanJob = null
-        }
-        if (_clientPresenceRunning.value) {
-            _clientPresenceRunning.value = false
-            scope.launch {
-                runCatching { current?.sendCommand("STOP_CLIENT_DETECT", timeoutMs = 4_000) }
-            }
-        }
-        portalStatusJob?.cancel()
-        portalStatusJob = null
-        session = null
-        updateForegroundService()
-        scope.launch {
-            if (_portalRunning.value) {
-                _portalRunning.value = false
-                runCatching { current?.sendCommand("STOP_PORTAL", timeoutMs = 4_000) }
-            }
-            updateForegroundService()
-            current?.disconnect()
-            disconnectInternal()
-        }
+        idleSession(fingerprint, stopOperations = true)
     }
 
-    internal fun observe(session: NrSession) {
-        sessionObservers = listOf(
+
+
+    internal fun observe(fingerprint: String, session: NrSession) {
+        val observers = listOf(
             scope.launch {
-                session.state.collect { _connectionState.value = it }
+                session.state.collect { state ->
+                    // A replaced session's observer may still be cancelling.
+                    // Never let a stale session overwrite its replacement.
+                    val tracked = deviceSessions[fingerprint]
+                    if (tracked?.session !== session) return@collect
+
+                    _deviceConnectionStates.update { it + (fingerprint to state) }
+                    if (fingerprint == activeDeviceFingerprint) {
+                        _connectionState.value = state
+                    }
+
+                    when (state) {
+                        is ConnectionState.Connecting -> tracked?.opening = true
+                        is ConnectionState.Connected -> {
+                            tracked?.opening = false
+                            tracked?.openedOnce = true
+                        }
+                        is ConnectionState.Failed -> tracked?.opening = false
+                        is ConnectionState.Disconnected -> {
+                            tracked?.opening = false
+                        }
+                    }
+                    if (state is ConnectionState.Disconnected &&
+                        tracked?.openedOnce == true
+                    ) {
+                        // A transport read/write failure surfaces as a clean
+                        // Disconnected state. Remove the dead session and let
+                        // refreshDevices drop it from the UI list.
+                        scope.launch {
+                            val current = deviceSessions[fingerprint]
+                            if (current?.session === session) {
+                                disconnectSession(
+                                    fingerprint = fingerprint,
+                                    stopOperations = fingerprint == activeDeviceFingerprint,
+                                )
+                            }
+                        }
+                    }
+                }
             },
             scope.launch {
                 session.logs.collect { appendLog(it) }
             },
             scope.launch {
                 session.events.collect { event ->
+                    if (deviceSessions[fingerprint]?.session !== session) return@collect
+                    if (fingerprint != activeDeviceFingerprint) return@collect
                     _events.update { (it + event).takeLast(100) }
                     when (event.optString("type")) {
                         "scan_ap" -> {
@@ -1227,19 +1283,112 @@ class MainViewModel(internal val app: Application) {
                 }
             },
         )
+
+        deviceSessions[fingerprint]?.observers = observers
+        _deviceConnectionStates.update { it + (fingerprint to session.state.value) }
+        if (fingerprint == activeDeviceFingerprint) {
+            _connectionState.value = session.state.value
+        }
+    }
+
+    /**
+     * Soft disconnect: stop firmware modules and mark the UI/session idle, but
+     * keep the USB transport open. Reconnecting can adopt this session instead
+     * of doing a host-side close/open cycle that TinyUSB S2 devices do not
+     * reliably recover from.
+     */
+    internal fun idleSession(fingerprint: String, stopOperations: Boolean = false) {
+        val entry = deviceSessions[fingerprint] ?: return
+        val wasPrimary = activeDeviceFingerprint == fingerprint
+
+        if (stopOperations && wasPrimary) {
+            stopActiveOperations()
+        }
+
+        appendLog("Idling ${entry.device.displayName}...", tag = "USB")
+        deviceSessions.remove(fingerprint)
+        entry.observers.forEach { it.cancel() }
+        entry.opening = false
+        idleDeviceSessions[fingerprint] = entry
+        _deviceConnectionStates.update { it + (fingerprint to ConnectionState.Disconnected) }
+
+        if (wasPrimary) {
+            val next = deviceSessions.keys.firstOrNull()
+            _primaryFingerprint.value = next
+            _connectionState.value = next
+                ?.let { _deviceConnectionStates.value[it] }
+                ?: ConnectionState.Disconnected
+        }
+        updateForegroundService()
+        _disconnectingFingerprints.update { it + fingerprint }
+
+        scope.launch {
+            runCatching { entry.session.sendCommand("STOP_ALL", timeoutMs = 1_500) }
+            _disconnectingFingerprints.update { it - fingerprint }
+        }
+    }
+
+    internal fun disconnectSession(
+        fingerprint: String,
+        stopOperations: Boolean = false,
+        sendStopAll: Boolean = false,
+    ) {
+        val activeEntry = deviceSessions[fingerprint]
+        val idleEntry = idleDeviceSessions[fingerprint]
+        val entry = activeEntry ?: idleEntry ?: return
+        val wasPrimary = activeEntry != null && activeDeviceFingerprint == fingerprint
+        if (stopOperations && wasPrimary) {
+            stopActiveOperations()
+        }
+
+        appendLog("Disconnecting ${entry.device.displayName}...", tag = "USB")
+        deviceSessions.remove(fingerprint)
+        idleDeviceSessions.remove(fingerprint)
+        entry.observers.forEach { it.cancel() }
+        _deviceConnectionStates.update { it - fingerprint }
+
+        if (wasPrimary) {
+            val next = deviceSessions.keys.firstOrNull()
+            _primaryFingerprint.value = next
+            _connectionState.value = next
+                ?.let { _deviceConnectionStates.value[it] }
+                ?: ConnectionState.Disconnected
+        }
+
+        _disconnectingFingerprints.update { it + fingerprint }
+        scope.launch {
+            try {
+                // Keep the whole stop + close sequence atomic. Otherwise a fast
+                // reconnect can open a new session while the old port is still
+                // being torn down, which surfaces as controlTransfer/Already open.
+                usbOperationMutex.withLock {
+                    if (sendStopAll && entry.session.state.value is ConnectionState.Connected) {
+                        runCatching { entry.session.sendCommand("STOP_ALL", timeoutMs = 1_500) }
+                    }
+                    runCatching { entry.session.disconnect() }
+                }
+                appendLog("Disconnected ${entry.device.displayName}.", tag = "USB")
+                // The device list can still contain a just-detached device until
+                // its UsbDeviceConnection is actually closed.
+                runCatching { refreshDevices() }
+            } finally {
+                _disconnectingFingerprints.update { it - fingerprint }
+            }
+        }
+        updateForegroundService()
     }
 
     internal fun disconnectInternal() {
         stopActiveOperations()
-        sessionObservers.forEach { it.cancel() }
-        sessionObservers = emptyList()
-        session?.let { activeSession ->
-            scope.launch { activeSession.disconnect() }
+        (deviceSessions.keys + idleDeviceSessions.keys).toList().forEach { fingerprint ->
+            disconnectSession(fingerprint, stopOperations = false)
         }
-        session = null
-        activeDeviceFingerprint = null
+        _primaryFingerprint.value = null
         _connectionState.value = ConnectionState.Disconnected
+        _deviceConnectionStates.value = emptyMap()
+        updateForegroundService()
     }
+
 
     private fun ensureRootStructure(rootUri: Uri) {
         scope.launch(Dispatchers.IO) {
@@ -1354,6 +1503,7 @@ class MainViewModel(internal val app: Application) {
             tag = tag,
             message = message,
         )
+        Log.d("NRSuite", "${entry.timestamp} [$level/$tag] $message")
         _logs.update { (it + entry).takeLast(300) }
     }
 

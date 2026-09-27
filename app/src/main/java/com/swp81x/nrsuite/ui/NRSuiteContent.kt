@@ -119,6 +119,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.swp81x.nrsuite.MainViewModel
+import com.swp81x.nrsuite.deviceFingerprintImpl
 import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.session.ConnectionState
@@ -159,6 +160,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
     val devices by viewModel.devices.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
+    val deviceConnectionStates by viewModel.deviceConnectionStates.collectAsState()
+    val pendingPermissionRequests by viewModel.pendingPermissionRequests.collectAsState()
+    val disconnectingFingerprints by viewModel.disconnectingFingerprints.collectAsState()
     val logs by viewModel.logs.collectAsState()
     val history by viewModel.history.collectAsState()
     val firmwareFlashName by viewModel.firmwareFlashName.collectAsState()
@@ -379,6 +383,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 val device = intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE)
                 val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
                 if (device != null) {
+                    viewModel.clearPermissionRequest(device.deviceId)
                     val reallyGranted = granted || usbManager.hasPermission(device)
                     viewModel.onPermissionResult(device, reallyGranted)
                     permissionRevision++
@@ -544,6 +549,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
         val intent = Intent(ACTION_USB_PERMISSION).setPackage(context.packageName)
         val pendingIntent = PendingIntent.getBroadcast(context, device.deviceId, intent, flags)
+        viewModel.markPermissionRequested(device)
         usbManager.requestPermission(device, pendingIntent)
 
         // Fallback for devices/OEMs that do not deliver the permission
@@ -564,6 +570,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val activeTitle = when {
         activeModuleId == "firmware" -> "Flasher"
         activeModuleId == "wpa_cracker" -> "WPA Cracker"
+        activeModuleId == "devices" -> "Devices"
         activeModule != null -> activeModule.title
         activeModuleId == "settings" -> "Settings"
         selectedCategory != null -> selectedCategory!!
@@ -1051,6 +1058,29 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 )
             }
 
+            activeModuleId == "devices" -> {
+                DeviceScreen(
+                    connectionState = connectionState,
+                    devices = devices,
+                    deviceConnectionStates = deviceConnectionStates,
+                    deviceFingerprint = { viewModel.deviceFingerprintImpl(it) },
+                    pendingPermissionRequests = pendingPermissionRequests,
+                    disconnectingFingerprints = disconnectingFingerprints,
+                    usbManager = usbManager,
+                    onRefresh = viewModel::refreshDevices,
+                    onConnect = { device ->
+                        if (usbManager.hasPermission(device)) {
+                            viewModel.connect(device)
+                        } else {
+                            requestPermission(device)
+                        }
+                    },
+                    onDisconnect = viewModel::disconnect,
+                    onDisconnectDevice = viewModel::disconnectDevice,
+                    modifier = contentModifier,
+                )
+            }
+
             activeModuleId == "firmware" -> SettingsScreen(
                 connectionState = connectionState,
                 exportDirectoryName = exportDirectoryName,
@@ -1117,6 +1147,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 connectionState = connectionState,
                 permissionRevision = permissionRevision,
                 devices = devices,
+                deviceConnectionStates = deviceConnectionStates,
+                deviceFingerprint = { viewModel.deviceFingerprintImpl(it) },
+                pendingPermissionRequests = pendingPermissionRequests,
+                disconnectingFingerprints = disconnectingFingerprints,
                 usbManager = usbManager,
                 modules = liveModules,
                 ouiDatabaseStatus = ouiDatabaseStatus,
@@ -1137,7 +1171,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     }
                 },
                 onDisconnect = viewModel::disconnect,
-                onManageDevice = { activeModuleId = "settings" },
+                onManageDevice = { activeModuleId = "devices" },
                 modifier = contentModifier,
             )
 

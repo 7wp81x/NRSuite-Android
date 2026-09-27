@@ -146,12 +146,21 @@ import com.swp81x.nrsuite.ui.theme.LogBgError
 internal fun DeviceScreen(
     connectionState: ConnectionState,
     devices: List<UsbSerialDevice>,
+    deviceConnectionStates: Map<String, ConnectionState>,
+    deviceFingerprint: (UsbDevice) -> String,
+    pendingPermissionRequests: Set<Int>,
+    disconnectingFingerprints: Set<String>,
     usbManager: UsbManager,
     onRefresh: () -> Unit,
     onConnect: (UsbDevice) -> Unit,
     onDisconnect: () -> Unit,
+    onDisconnectDevice: (UsbDevice) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val usbConnectBusy = deviceConnectionStates.values.any {
+        it is ConnectionState.Connecting
+    } || pendingPermissionRequests.isNotEmpty() || disconnectingFingerprints.isNotEmpty()
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -160,6 +169,7 @@ internal fun DeviceScreen(
         item {
             DeviceConnectionCard(
                 state = connectionState,
+                disconnecting = disconnectingFingerprints.isNotEmpty(),
                 onDisconnect = onDisconnect,
             )
         }
@@ -193,7 +203,12 @@ internal fun DeviceScreen(
                     entry = device,
                     hasPermission = usbManager.hasPermission(device.device),
                     permissionRevision = 0,
+                    state = deviceConnectionStates[deviceFingerprint(device.device)],
+                    pendingPermission = device.device.deviceId in pendingPermissionRequests,
+                    disconnecting = deviceFingerprint(device.device) in disconnectingFingerprints,
+                    connectEnabled = !usbConnectBusy,
                     onConnect = { onConnect(device.device) },
+                    onDisconnect = { onDisconnectDevice(device.device) },
                 )
             }
         }
@@ -230,6 +245,7 @@ internal fun DeviceScreen(
 @Composable
 internal fun DeviceConnectionCard(
     state: ConnectionState,
+    disconnecting: Boolean,
     onDisconnect: () -> Unit,
 ) {
     Card(
@@ -244,11 +260,15 @@ internal fun DeviceConnectionCard(
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(8.dp))
-            val (label, color) = when (state) {
-                ConnectionState.Disconnected -> "Disconnected" to StatusNeutral
-                ConnectionState.Connecting -> "Connecting..." to StatusAmber
-                is ConnectionState.Connected -> "Connected" to StatusGreen
-                is ConnectionState.Failed -> "Error: ${state.message}" to StatusRed
+            val (label, color) = if (disconnecting) {
+                "Disconnecting..." to StatusAmber
+            } else {
+                when (state) {
+                    ConnectionState.Disconnected -> "Disconnected" to StatusNeutral
+                    ConnectionState.Connecting -> "Connecting..." to StatusAmber
+                    is ConnectionState.Connected -> "Connected" to StatusGreen
+                    is ConnectionState.Failed -> "Error: ${state.message}" to StatusRed
+                }
             }
             StatusIndicator(label = label, color = color)
             if (state is ConnectionState.Connected) {
@@ -264,10 +284,30 @@ internal fun DeviceConnectionCard(
                     color = NrOnSurfaceVariant,
                 )
             }
-            if (state !is ConnectionState.Disconnected) {
-                Spacer(Modifier.height(10.dp))
-                OutlinedButton(onClick = onDisconnect) {
-                    Text("Disconnect")
+            if (!disconnecting) {
+                when (state) {
+                    is ConnectionState.Connected -> {
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(onClick = onDisconnect) {
+                            Text("Disconnect")
+                        }
+                    }
+
+                    ConnectionState.Connecting -> {
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(onClick = onDisconnect) {
+                            Text("Cancel")
+                        }
+                    }
+
+                    is ConnectionState.Failed -> {
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(onClick = onDisconnect) {
+                            Text("Clear")
+                        }
+                    }
+
+                    ConnectionState.Disconnected -> Unit
                 }
             }
         }
@@ -279,7 +319,12 @@ internal fun DeviceRow(
     entry: UsbSerialDevice,
     hasPermission: Boolean,
     permissionRevision: Int,
+    state: ConnectionState?,
+    pendingPermission: Boolean,
+    disconnecting: Boolean = false,
+    connectEnabled: Boolean = true,
     onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
 ) {
     @Suppress("UNUSED_EXPRESSION")
     permissionRevision
@@ -299,21 +344,84 @@ internal fun DeviceRow(
                     text = entry.displayName,
                     fontWeight = FontWeight.Medium,
                 )
+                val statusText = when {
+                    disconnecting -> "Disconnecting..."
+                    state is ConnectionState.Connected -> "Connected"
+                    state is ConnectionState.Connecting -> "Connecting..."
+                    pendingPermission -> "Requesting permission..."
+                    state is ConnectionState.Failed -> "Connection failed"
+                    hasPermission -> "Permission granted"
+                    else -> "Permission required"
+                }
+                val statusColor = when {
+                    disconnecting -> StatusAmber
+                    state is ConnectionState.Connected -> StatusGreen
+                    state is ConnectionState.Connecting -> StatusAmber
+                    pendingPermission -> StatusAmber
+                    state is ConnectionState.Failed -> StatusRed
+                    else -> NrOnSurfaceVariant
+                }
                 Text(
-                    text = if (hasPermission) "Permission granted" else "Permission required",
+                    text = statusText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
+                    color = statusColor,
                 )
+                if (state is ConnectionState.Failed) {
+                    Text(
+                        text = state.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusRed,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             Spacer(Modifier.width(8.dp))
-            Button(
-                onClick = onConnect,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = NrAccent,
-                    contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
-                ),
-            ) {
-                Text("Connect")
+            when {
+                disconnecting -> {
+                    Button(
+                        onClick = {},
+                        enabled = false,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = StatusAmber,
+                            contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
+                        ),
+                    ) {
+                        Text("Disconnecting...")
+                    }
+                }
+
+                state is ConnectionState.Connected -> {
+                    OutlinedButton(onClick = onDisconnect) {
+                        Text("Disconnect")
+                    }
+                }
+
+                state is ConnectionState.Connecting || pendingPermission -> {
+                    Button(
+                        onClick = {},
+                        enabled = false,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = StatusAmber,
+                            contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
+                        ),
+                    ) {
+                        Text(if (pendingPermission) "Requesting..." else "Connecting...")
+                    }
+                }
+
+                else -> {
+                    Button(
+                        onClick = onConnect,
+                        enabled = connectEnabled,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = NrAccent,
+                            contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
+                        ),
+                    ) {
+                        Text("Connect")
+                    }
+                }
             }
         }
     }
