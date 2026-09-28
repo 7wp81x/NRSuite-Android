@@ -10,15 +10,7 @@ data class UsbSerialDevice(
     val driver: UsbSerialDriver,
 ) {
     val displayName: String
-        get() = buildString {
-            val product = device.productName?.takeIf { it.isNotBlank() }
-            val manufacturer = device.manufacturerName?.takeIf { it.isNotBlank() }
-            if (!manufacturer.isNullOrBlank()) {
-                append(manufacturer)
-                append(' ')
-            }
-            append(product ?: "USB serial device")
-        }
+        get() = device.productName?.takeIf { it.isNotBlank() } ?: "USB serial device"
 }
 
 object UsbSerialDeviceCatalog {
