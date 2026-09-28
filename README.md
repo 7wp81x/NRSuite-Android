@@ -30,7 +30,7 @@ check [screenshots](./Screenshots/) for more screenshots.
 
 ## Features
 
-### Current (v1.0.0-beta.1)
+### Current (in development)
 
 | Module | Description |
 |---|---|
