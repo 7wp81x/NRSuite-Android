@@ -559,19 +559,12 @@ private fun ConfigCard(
             )
 
             Spacer(Modifier.height(10.dp))
-            Text("DuckyScript payload", style = MaterialTheme.typography.labelLarge)
-            Text(
-                text = selectedPayloadName ?: "No payload selected",
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                color = NrOnSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
             SavedScriptPicker(
                 names = savedScripts.keys.toList(),
-                selectedName = selectedPayloadName?.takeIf { it in savedScripts },
+                selectedName = selectedPayloadName,
                 onSelect = onUseSavedScript,
-                onDelete = {},
                 enabled = !bleScriptRunning,
+                label = "DuckyScript payload",
             )
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

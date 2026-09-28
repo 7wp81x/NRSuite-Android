@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.swp81x.nrsuite.ui.components.SavedScriptPicker
@@ -18,6 +20,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -33,6 +37,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
+import com.swp81x.nrsuite.ui.theme.StatusRed
 
 private const val SAMPLE_DUCKY = """REM NRSuite DuckyScript
 DELAY 1000
@@ -53,6 +58,7 @@ fun DuckyEditorScreen(
     var selectedName by remember { mutableStateOf<String?>(null) }
     var showSaveDialog by remember { mutableStateOf(false) }
     var saveName by remember { mutableStateOf("") }
+    var confirmDeleteName by remember { mutableStateOf<String?>(null) }
 
     val importPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -112,10 +118,7 @@ fun DuckyEditorScreen(
                             selectedName = name
                             script = savedScripts[name].orEmpty()
                         },
-                        onDelete = { name ->
-                            onDeleteScript(name)
-                            if (selectedName == name) selectedName = null
-                        },
+                        modifier = Modifier.weight(1f),
                     )
                     OutlinedButton(
                         onClick = { showSaveDialog = true },
@@ -123,9 +126,23 @@ fun DuckyEditorScreen(
                     ) {
                         Text("Save")
                     }
+                    if (selectedName != null) {
+                        IconButton(
+                            onClick = { confirmDeleteName = selectedName },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete selected DuckyScript",
+                                tint = StatusRed,
+                            )
+                        }
+                    }
                 }
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.align(androidx.compose.ui.Alignment.End),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     OutlinedButton(
                         onClick = { importPicker.launch(arrayOf("text/plain", "*/*")) },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
@@ -159,6 +176,32 @@ fun DuckyEditorScreen(
                 .weight(1f),
             label = { Text("DuckyScript") },
             textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        )
+    }
+
+    confirmDeleteName?.let { name ->
+        AlertDialog(
+            onDismissRequest = { confirmDeleteName = null },
+            title = { Text("Delete DuckyScript?") },
+            text = {
+                Text("Delete \"$name\"? This cannot be undone.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteScript(name)
+                        if (selectedName == name) selectedName = null
+                        confirmDeleteName = null
+                    },
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteName = null }) {
+                    Text("Cancel")
+                }
+            },
         )
     }
 

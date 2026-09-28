@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.platform.LocalContext
+import com.swp81x.nrsuite.ui.components.SavedItemDropdown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -83,9 +84,10 @@ fun BeaconScreen(
     var hidden by remember { mutableStateOf(false) }
     var randomBssid by remember { mutableStateOf(true) }
     var confirmStart by remember { mutableStateOf(false) }
-    var listMenuExpanded by remember { mutableStateOf(false) }
     var showSaveDialog by remember { mutableStateOf(false) }
     var newListName by remember { mutableStateOf("") }
+    var selectedListName by remember { mutableStateOf<String?>(null) }
+    var pendingDeleteList by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val importPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -123,12 +125,12 @@ fun BeaconScreen(
                 randomBssid = randomBssid,
                 parsedCount = parsedSsids.size,
                 savedLists = savedLists,
-                listMenuExpanded = listMenuExpanded,
+                selectedListName = selectedListName,
                 onToggle = { configExpanded = !configExpanded },
-                onListMenuChange = { listMenuExpanded = it },
                 onLoadList = { ssidsText = it.joinToString("\n") },
+                onListSelected = { selectedListName = it },
                 onSaveList = { showSaveDialog = true },
-                onDeleteList = onDeleteList,
+                onDeleteRequest = { pendingDeleteList = it },
                 onImportFile = { importPicker.launch(arrayOf("text/plain", "*/*")) },
                 onSsidsChange = { ssidsText = it },
                 onChannelChange = { channel = it.coerceIn(1, 13) },
@@ -171,6 +173,32 @@ fun BeaconScreen(
         }
     }
 
+    pendingDeleteList?.let { name ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteList = null },
+            title = { Text("Delete saved SSID list?") },
+            text = {
+                Text("Delete \"$name\"? This cannot be undone.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteList(name)
+                        if (selectedListName == name) selectedListName = null
+                        pendingDeleteList = null
+                    },
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteList = null }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
     if (showSaveDialog) {
         AlertDialog(
             onDismissRequest = { showSaveDialog = false },
@@ -186,7 +214,9 @@ fun BeaconScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        onSaveListAction(newListName, parsedSsids)
+                        val cleanName = newListName.trim()
+                        onSaveListAction(cleanName, parsedSsids)
+                        selectedListName = cleanName.takeIf { it.isNotBlank() }
                         newListName = ""
                         showSaveDialog = false
                     },
@@ -244,12 +274,12 @@ private fun ConfigZone(
     randomBssid: Boolean,
     parsedCount: Int,
     savedLists: Map<String, List<String>>,
-    listMenuExpanded: Boolean,
+    selectedListName: String?,
     onToggle: () -> Unit,
-    onListMenuChange: (Boolean) -> Unit,
     onLoadList: (List<String>) -> Unit,
+    onListSelected: (String) -> Unit,
     onSaveList: () -> Unit,
-    onDeleteList: (String) -> Unit,
+    onDeleteRequest: (String) -> Unit,
     onImportFile: () -> Unit,
     onSsidsChange: (String) -> Unit,
     onChannelChange: (Int) -> Unit,
@@ -313,51 +343,22 @@ private fun ConfigZone(
                     )
 
                     Spacer(Modifier.height(8.dp))
+                    SavedItemDropdown(
+                        label = "Saved SSID lists",
+                        selectedName = selectedListName,
+                        names = savedLists.keys.toList(),
+                        enabled = !running,
+                        onSelect = { name ->
+                            onLoadList(savedLists[name].orEmpty())
+                            onListSelected(name)
+                        },
+                    )
+
+                    Spacer(Modifier.height(8.dp))
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box {
-                            OutlinedButton(
-                                onClick = { onListMenuChange(true) },
-                                enabled = !running && savedLists.isNotEmpty(),
-                            ) {
-                                Text("Load")
-                                Spacer(Modifier.width(4.dp))
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = null,
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = listMenuExpanded,
-                                onDismissRequest = { onListMenuChange(false) },
-                            ) {
-                                savedLists.keys.sorted().forEach { name ->
-                                    DropdownMenuItem(
-                                        text = { Text(name) },
-                                        onClick = {
-                                            onLoadList(savedLists[name].orEmpty())
-                                            onListMenuChange(false)
-                                        },
-                                        trailingIcon = {
-                                            IconButton(
-                                                onClick = {
-                                                    onDeleteList(name)
-                                                    onListMenuChange(false)
-                                                },
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Delete,
-                                                    contentDescription = "Delete $name",
-                                                    tint = StatusRed,
-                                                )
-                                            }
-                                        },
-                                    )
-                                }
-                            }
-                        }
                         OutlinedButton(onClick = onSaveList, enabled = !running && parsedCount > 0) {
                             Text("Save")
                         }
@@ -366,6 +367,11 @@ private fun ConfigZone(
                                 imageVector = Icons.Default.FileUpload,
                                 contentDescription = "Import SSID file",
                             )
+                        }
+                        if (selectedListName != null) {
+                            OutlinedButton(onClick = { onDeleteRequest(selectedListName) }, enabled = !running) {
+                                Text("Delete")
+                            }
                         }
                     }
 
