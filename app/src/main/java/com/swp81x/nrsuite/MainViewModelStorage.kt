@@ -1,10 +1,12 @@
 package com.swp81x.nrsuite
 
+import android.hardware.usb.UsbDevice
 import android.net.Uri
 import android.util.Base64
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.storage.StorageFile
+import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -21,6 +23,7 @@ internal fun MainViewModel.setBadUsbPayloadImpl(uri: Uri, name: String?) {
     _badUsbPayloadUri.value = uri
     _badUsbPayloadName.value = name ?: uri.lastPathSegment ?: "payload.txt"
     _badUsbProgress.value = 0
+    _badUsbArmedFingerprints.value = emptySet()
     appendLog("BadUSB payload selected: ${_badUsbPayloadName.value}")
 }
 
@@ -29,6 +32,7 @@ internal fun MainViewModel.clearBadUsbPayloadImpl() {
     _badUsbPayloadName.value = null
     _badUsbSavedScriptText.value = null
     _badUsbProgress.value = 0
+    _badUsbArmedFingerprints.value = emptySet()
     appendLog("BadUSB payload cleared.")
 }
 
@@ -51,6 +55,7 @@ internal fun MainViewModel.useBadUsbSavedScriptImpl(name: String) {
     _badUsbPayloadUri.value = null
     _badUsbPayloadName.value = name
     _badUsbSavedScriptText.value = script
+    _badUsbArmedFingerprints.value = emptySet()
     appendLog("BadUSB script selected: $name")
 }
 
@@ -78,19 +83,49 @@ internal fun MainViewModel.persistDuckyScriptsImpl() {
     preferences.edit().putString(PREF_DUCKY_SCRIPTS, json.toString()).apply()
 }
 
+internal fun MainViewModel.selectBadUsbTargetImpl(device: UsbDevice) {
+    val entry = _devices.value.firstOrNull { it.device.deviceId == device.deviceId }
+        ?: UsbSerialDeviceCatalog.find(usbManager, device)
+    if (entry == null) {
+        appendLog("No supported USB serial driver for ${device.deviceName}.")
+        return
+    }
+    val previousDeviceId = _badUsbTargetDevice.value?.device?.deviceId
+    _badUsbTargetDevice.value = entry
+    if (previousDeviceId != entry.device.deviceId) {
+        _badUsbProgress.value = 0
+    }
+    appendLog("BadUSB target: ${entry.displayName}")
+}
+
 internal fun MainViewModel.armBadUsbImpl(mscMode: Boolean) {
-    val activeSession = session
-    if (activeSession == null) {
-        appendLog("Connect to a device before arming a BadUSB payload.")
+    val targetEntry = _badUsbTargetDevice.value
+    if (targetEntry == null) {
+        appendLog("Choose a BadUSB target device first.")
+        return
+    }
+
+    val targetFingerprint = deviceFingerprintImpl(targetEntry.device)
+    val targetSession = deviceSessions[targetFingerprint]?.session
+    if (targetSession == null) {
+        appendLog("Connect the selected BadUSB target first.")
+        return
+    }
+
+    val targetState = targetSession.state.value as? ConnectionState.Connected
+    if (targetState == null) {
+        appendLog("The selected BadUSB target is not connected.")
+        return
+    }
+    if (targetState.chip !in setOf("ESP32-S2", "ESP32-S3")) {
+        appendLog("BadUSB requires ESP32-S2 or ESP32-S3 (selected chip: ${targetState.chip ?: "unknown"}).")
+        return
+    }
+    if (targetState.features.isNotEmpty() && "badusb" !in targetState.features) {
+        appendLog("The selected firmware does not advertise BadUSB support.")
         return
     }
     if (_badUsbUploading.value) return
-
-    val chip = (_connectionState.value as? ConnectionState.Connected)?.chip
-    if (chip !in setOf("ESP32-S2", "ESP32-S3")) {
-        appendLog("BadUSB requires ESP32-S2 or ESP32-S3 (connected chip: ${chip ?: "unknown"}).")
-        return
-    }
 
     val payloadUri = _badUsbPayloadUri.value
     val savedScript = _badUsbSavedScriptText.value
@@ -132,7 +167,7 @@ internal fun MainViewModel.armBadUsbImpl(mscMode: Boolean) {
 
                 var success = false
                 for (attempt in 1..3) {
-                    val response = activeSession.sendCommand(
+                    val response = targetSession.sendCommand(
                         "SET_FILE_CHUNK",
                         JSONObject().apply {
                             put("filename", remoteFilename)
@@ -157,7 +192,7 @@ internal fun MainViewModel.armBadUsbImpl(mscMode: Boolean) {
                 _badUsbProgress.value = ((offset * 100) / bytes.size)
             }
 
-            val response = activeSession.sendCommand(
+            val response = targetSession.sendCommand(
                 "START_BADUSB",
                 JSONObject().apply {
                     put("filename", remoteFilename)
@@ -166,8 +201,12 @@ internal fun MainViewModel.armBadUsbImpl(mscMode: Boolean) {
                 timeoutMs = 10_000,
             )
             if (response?.optBoolean("ok") == true) {
-                appendLog("BadUSB payload armed. Unplug and re-plug the device to execute it once.")
-                addHistory("badusb", "Payload armed for next boot", HistoryLevel.SUCCESS)
+                _badUsbArmedFingerprints.update { it + targetFingerprint }
+                appendLog(
+                    "BadUSB payload armed on ${targetEntry.displayName}. " +
+                        "Unplug and re-plug the device to execute it once."
+                )
+                addHistory("badusb", "Payload armed for ${targetEntry.displayName}", HistoryLevel.SUCCESS)
             } else {
                 appendLog("Failed to arm BadUSB payload: ${response?.optString("msg") ?: "timeout"}")
             }

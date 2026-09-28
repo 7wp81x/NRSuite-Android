@@ -182,6 +182,9 @@ class MainViewModel(internal val app: Application) {
     internal val _firmwareTargetDevice = MutableStateFlow<UsbSerialDevice?>(null)
     val firmwareTargetDevice: StateFlow<UsbSerialDevice?> = _firmwareTargetDevice.asStateFlow()
 
+    internal val _badUsbTargetDevice = MutableStateFlow<UsbSerialDevice?>(null)
+    val badUsbTargetDevice: StateFlow<UsbSerialDevice?> = _badUsbTargetDevice.asStateFlow()
+
     private val _recentModuleIds = MutableStateFlow(
         preferences.getString(PREF_RECENT_MODULES, "")
             ?.split(",")
@@ -526,6 +529,9 @@ class MainViewModel(internal val app: Application) {
     internal val _badUsbProgress = MutableStateFlow(0)
     val badUsbProgress: StateFlow<Int> = _badUsbProgress.asStateFlow()
 
+    internal val _badUsbArmedFingerprints = MutableStateFlow<Set<String>>(emptySet())
+    val badUsbArmedFingerprints: StateFlow<Set<String>> = _badUsbArmedFingerprints.asStateFlow()
+
     internal val _bleAdvertising = MutableStateFlow(false)
     val bleAdvertising: StateFlow<Boolean> = _bleAdvertising.asStateFlow()
 
@@ -829,6 +835,8 @@ class MainViewModel(internal val app: Application) {
     fun clearFirmwareFlashFile() = this.clearFirmwareFlashFileImpl()
 
     fun selectFirmwareTarget(device: UsbDevice) = this.selectFirmwareTargetImpl(device)
+
+    fun selectBadUsbTarget(device: UsbDevice) = this.selectBadUsbTargetImpl(device)
 
     fun startFirmwareFlash(targetChip: String, skipReset: Boolean) = this.startFirmwareFlashImpl(targetChip, skipReset)
 

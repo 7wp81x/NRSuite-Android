@@ -48,6 +48,27 @@ internal fun MainViewModel.refreshDevicesImpl() {
             _firmwareTargetDevice.value = stillPresent
         }
     }
+
+    // BadUSB target selection is independent of the primary feature session.
+    // Keep it if the USB device is still attached; update it to the freshest
+    // catalog entry so its driver/UsbDevice references do not go stale.
+    val badUsbTarget = _badUsbTargetDevice.value
+    if (badUsbTarget != null) {
+        val stillAttached = usbManager.deviceList.values.any {
+            it.deviceId == badUsbTarget.device.deviceId
+        }
+        if (!stillAttached) {
+            val targetFingerprint = deviceFingerprintImpl(badUsbTarget.device)
+            _badUsbTargetDevice.value = null
+            _badUsbProgress.value = 0
+            _badUsbArmedFingerprints.update { it - targetFingerprint }
+            appendLog("BadUSB target disconnected; selection cleared.", tag = "USB")
+        } else {
+            _badUsbTargetDevice.value = found.firstOrNull {
+                it.device.deviceId == badUsbTarget.device.deviceId
+            } ?: badUsbTarget
+        }
+    }
 }
 
 internal fun MainViewModel.onUsbDeviceAttachedImpl() {
@@ -74,6 +95,9 @@ internal fun MainViewModel.deviceFingerprintImpl(device: UsbDevice): String {
 
 internal fun MainViewModel.onUsbDeviceDetachedImpl(device: UsbDevice) {
     clearPermissionRequestImpl(device.deviceId)
+    runCatching { deviceFingerprintImpl(device) }.getOrNull()?.let { fingerprint ->
+        _badUsbArmedFingerprints.update { it - fingerprint }
+    }
     refreshDevices()
     appendLog("USB device detached: ${device.deviceName}", level = LogLevel.USB)
 
@@ -93,6 +117,11 @@ internal fun MainViewModel.onUsbDeviceDetachedImpl(device: UsbDevice) {
 
     if (_firmwareTargetDevice.value?.device?.deviceId == device.deviceId) {
         _firmwareTargetDevice.value = null
+    }
+    if (_badUsbTargetDevice.value?.device?.deviceId == device.deviceId) {
+        _badUsbTargetDevice.value = null
+        _badUsbProgress.value = 0
+        appendLog("BadUSB target detached; selection cleared.", tag = "USB")
     }
 
     // Only the detached device's session is torn down. Every other session,

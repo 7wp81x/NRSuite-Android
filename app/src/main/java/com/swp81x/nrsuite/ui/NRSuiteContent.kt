@@ -267,6 +267,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val badUsbPayloadName by viewModel.badUsbPayloadName.collectAsState()
     val badUsbUploading by viewModel.badUsbUploading.collectAsState()
     val badUsbProgress by viewModel.badUsbProgress.collectAsState()
+    val badUsbArmedFingerprints by viewModel.badUsbArmedFingerprints.collectAsState()
+    val badUsbTargetDevice by viewModel.badUsbTargetDevice.collectAsState()
     val duckyScripts by viewModel.duckyScriptMap.collectAsState()
     val bleAdvertising by viewModel.bleAdvertising.collectAsState()
     val bleConnected by viewModel.bleConnected.collectAsState()
@@ -280,8 +282,14 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val connectedChip = connected?.chip
     val isDeviceConnected = connected != null
     val deviceFeatures = connected?.features.orEmpty()
+    val badUsbCapableConnected = deviceConnectionStates.values.any { state ->
+        state is ConnectionState.Connected &&
+            state.chip in setOf("ESP32-S2", "ESP32-S3") &&
+            (state.features.isEmpty() || "badusb" in state.features)
+    }
     val liveModules = remember(
         connectionState,
+        deviceConnectionStates,
         scanning,
         sniffing,
         beaconRunning,
@@ -295,7 +303,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         ouiDatabaseStatus,
     ) {
         modules.map { module ->
-        val runsWithoutDevice = module.id == "ducky" || module.id == "firmware" || module.id == "credential_manager" || module.id == "wpa_cracker" || module.id == "mac_lookup"
+        val runsWithoutDevice = module.id == "ducky" ||
+            module.id == "firmware" ||
+            module.id == "credential_manager" ||
+            module.id == "wpa_cracker" ||
+            module.id == "mac_lookup" ||
+            module.id == "badusb"
         val featureKey = when (module.id) {
             "wifi" -> "wifi"
             "sniff" -> "sniff"
@@ -315,10 +328,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "badusb" -> connectedChip in setOf("ESP32-S2", "ESP32-S3")
             else -> true
         }
-        val featureSupported = if (deviceFeatures.isEmpty() || featureKey == null) {
-            chipSupported
-        } else {
-            featureKey in deviceFeatures
+        val featureSupported = when {
+            module.id == "badusb" -> badUsbCapableConnected
+            deviceFeatures.isEmpty() || featureKey == null -> chipSupported
+            else -> featureKey in deviceFeatures
         }
         val supported = featureSupported
         val requiresOuiDb = module.id == "mac_lookup" && ouiDatabaseStatus !is OuiDatabaseStatus.Ready
@@ -330,7 +343,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             module.id == "mac_lookup" && requiresOuiDb -> "OUI DB required"
             !isDeviceConnected && !runsWithoutDevice -> null
             isDeviceConnected && !supported && module.id == "ble" -> "No BLE radio on this chip"
-            isDeviceConnected && !supported && module.id == "badusb" -> "Requires S2/S3 or matching firmware"
+            isDeviceConnected && !supported && module.id == "badusb" -> "Device not supported"
             isDeviceConnected && !supported && module.id == "evil_twin" -> "Firmware portal support required"
             isDeviceConnected && !supported && module.id == "deauth_detector" -> "Requires deauth_detect firmware"
             isDeviceConnected && !supported && module.id == "client_presence" -> "Requires client_detect firmware"
@@ -1006,12 +1019,30 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
 
             activeModuleId == "badusb" -> {
+                val badUsbFingerprint = badUsbTargetDevice?.let {
+                    viewModel.deviceFingerprintImpl(it.device)
+                }
                 BadUsbScreen(
-                    connected = connectionState is ConnectionState.Connected,
+                    devices = devices,
+                    selectedTarget = badUsbTargetDevice,
+                    selectedTargetState = badUsbFingerprint?.let { deviceConnectionStates[it] },
+                    targetFingerprint = { viewModel.deviceFingerprintImpl(it) },
+                    deviceConnectionStates = deviceConnectionStates,
+                    pendingPermissionRequests = pendingPermissionRequests,
                     uploading = badUsbUploading,
                     progress = badUsbProgress,
+                    armedFingerprints = badUsbArmedFingerprints,
                     selectedPayloadName = badUsbPayloadName,
                     savedScripts = duckyScripts,
+                    onSelectTarget = { device -> viewModel.selectBadUsbTarget(device) },
+                    onChooseTarget = { device ->
+                        viewModel.selectBadUsbTarget(device)
+                        if (usbManager.hasPermission(device)) {
+                            viewModel.connect(device)
+                        } else {
+                            requestPermission(device)
+                        }
+                    },
                     onUseSavedScript = viewModel::useBadUsbSavedScript,
                     onChoosePayload = { badUsbPicker.launch(arrayOf("text/plain", "*/*")) },
                     onClearPayload = viewModel::clearBadUsbPayload,
