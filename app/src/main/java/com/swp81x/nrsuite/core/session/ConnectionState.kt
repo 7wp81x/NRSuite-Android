@@ -7,6 +7,7 @@ sealed interface ConnectionState {
         val chip: String?,
         val firmwareVersion: String?,
         val features: Set<String> = emptySet(),
+        val deviceId: String? = null,
     ) : ConnectionState
 
     data class Failed(val message: String) : ConnectionState

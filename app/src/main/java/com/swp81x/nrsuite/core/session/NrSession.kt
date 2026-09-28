@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -71,8 +72,18 @@ class NrSession(
             withContext(Dispatchers.IO) { transport.open() }
             readerJob = scope.launch(Dispatchers.IO) { readLoop() }
 
-            val pong = sendCommand("PING", timeoutMs = 3_000)
+            // Native-S2 CDC can need a moment after a reconnect before it
+            // starts answering again. Retry a few times before declaring failure.
+            delay(150)
+            var pong: JSONObject? = null
+            val maxPingAttempts = 4
+            for (attempt in 0 until maxPingAttempts) {
+                if (attempt > 0) delay(400)
+                pong = sendCommand("PING", timeoutMs = 1_500)
+                if (pong?.optBoolean("ok") == true) break
+            }
             if (pong?.optBoolean("ok") != true) {
+                log("No valid PING response after $maxPingAttempts attempts")
                 disconnect()
                 _state.value = ConnectionState.Failed("No valid PING response from device")
                 return
@@ -81,6 +92,7 @@ class NrSession(
             val status = sendCommand("STATUS", timeoutMs = 5_000)
             val chip = status?.optString("chip")?.takeIf { it.isNotBlank() }
             val firmware = status?.optString("fw")?.takeIf { it.isNotBlank() }
+            val deviceId = status?.optString("device_id")?.takeIf { it.isNotBlank() }
             val features = mutableSetOf<String>()
             status?.optJSONArray("features")?.let { array ->
                 for (index in 0 until array.length()) {
@@ -92,13 +104,19 @@ class NrSession(
                 chip = chip,
                 firmwareVersion = firmware,
                 features = features,
+                deviceId = deviceId,
             )
-            log("Connected to ${chip ?: "NRSuite device"}")
+            log(
+                "Connected to ${chip ?: "NRSuite device"}" +
+                    (deviceId?.let { " ($it)" } ?: "")
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (t: Throwable) {
+            val message = t.message ?: "Connection failed"
+            log("Connection failed: $message")
             disconnect()
-            _state.value = ConnectionState.Failed(t.message ?: "Connection failed")
+            _state.value = ConnectionState.Failed(message)
         }
     }
 
@@ -170,8 +188,10 @@ class NrSession(
 
     private suspend fun sendFrame(type: FrameType, id: Int, payload: ByteArray) {
         val encoded = FrameCodec.encode(type, id, payload)
-        writeMutex.withLock {
-            transport.write(encoded, WRITE_TIMEOUT_MS)
+        withContext(Dispatchers.IO) {
+            writeMutex.withLock {
+                transport.write(encoded, WRITE_TIMEOUT_MS)
+            }
         }
     }
 

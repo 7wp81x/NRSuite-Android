@@ -166,6 +166,10 @@ internal fun HomeScreen(
     connectionState: ConnectionState,
     permissionRevision: Int,
     devices: List<UsbSerialDevice>,
+    deviceConnectionStates: Map<String, ConnectionState>,
+    deviceFingerprint: (UsbDevice) -> String,
+    pendingPermissionRequests: Set<Int>,
+    disconnectingFingerprints: Set<String>,
     usbManager: UsbManager,
     modules: List<ModuleCardSpec>,
     recentModuleIds: List<String>,
@@ -180,6 +184,10 @@ internal fun HomeScreen(
     onManageDevice: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val usbConnectBusy = deviceConnectionStates.values.any {
+        it is ConnectionState.Connecting
+    } || pendingPermissionRequests.isNotEmpty() || disconnectingFingerprints.isNotEmpty()
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -235,7 +243,12 @@ internal fun HomeScreen(
                         entry = device,
                         hasPermission = usbManager.hasPermission(device.device),
                         permissionRevision = permissionRevision,
+                        state = deviceConnectionStates[deviceFingerprint(device.device)],
+                        pendingPermission = device.device.deviceId in pendingPermissionRequests,
+                        disconnecting = deviceFingerprint(device.device) in disconnectingFingerprints,
+                        connectEnabled = !usbConnectBusy,
                         onConnect = { onConnect(device.device) },
+                        onDisconnect = {},
                     )
                 }
             }
@@ -534,6 +547,11 @@ internal fun DashboardDeviceCard(
                     Spacer(Modifier.height(8.dp))
                     Text(
                         text = "fw: ${state.firmwareVersion ?: "unknown"}  ·  USB serial / CDC",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = NrOnSurfaceVariant,
+                    )
+                    Text(
+                        text = "id: ${state.deviceId ?: "unknown"}",
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = NrOnSurfaceVariant,
                     )

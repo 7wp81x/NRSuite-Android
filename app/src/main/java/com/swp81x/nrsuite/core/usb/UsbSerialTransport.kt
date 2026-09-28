@@ -42,6 +42,34 @@ class UsbSerialTransport(
 
         try {
             openedPort.open(openedConnection)
+
+            // Host-side close/reopen can leave the bulk endpoints halted on
+            // some TinyUSB composite devices. Clear HALT on both endpoints
+            // before configuring the port so a software reconnect can recover
+            // without a physical unplug.
+            runCatching {
+                openedConnection.controlTransfer(
+                    0x02, // Host-to-device | standard | endpoint recipient
+                    0x01, // CLEAR_FEATURE
+                    0x00, // ENDPOINT_HALT
+                    openedPort.readEndpoint.address,
+                    null,
+                    0,
+                    500,
+                )
+            }
+            runCatching {
+                openedConnection.controlTransfer(
+                    0x02,
+                    0x01,
+                    0x00,
+                    openedPort.writeEndpoint.address,
+                    null,
+                    0,
+                    500,
+                )
+            }
+
             openedPort.setParameters(
                 baudRate,
                 UsbSerialPort.DATABITS_8,
@@ -77,6 +105,10 @@ class UsbSerialTransport(
 
     @Synchronized
     override fun close() {
+        // Deassert modem control lines before closing so native-USB CDC
+        // devices see a clean host disconnect and can reinitialize.
+        runCatching { port?.setDTR(false) }
+        runCatching { port?.setRTS(false) }
         runCatching { port?.close() }
         runCatching { connection?.close() }
         port = null

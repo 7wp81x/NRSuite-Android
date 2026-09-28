@@ -100,6 +100,14 @@ This document lists all current and planned features across the NRSuite ecosyste
 | **RFID/NFC** — Write/Clone | 📋 | To blank/magic tags |
 | **RFID/NFC** — Access Control Analyzer | 📋 | Identify tag type + known weaknesses (e.g., MIFARE Classic) |
 
+## 8. System / USB
+
+| Feature | Status | Notes |
+|---|---|---|
+| Multi-device USB sessions | ✅ | Multiple simultaneous USB serial sessions with per-device permission, connect/disconnect, and reconnect state. User-initiated disconnect uses idle-session reuse for S2 CDC stability. |
+| BadUSB device picker | 📋 | Select which connected device receives BadUSB independent of the primary Wireless/Flasher session. Multi-device session refactor is the prerequisite. |
+| Persistent firmware device ID | ✅ | Firmware generates/stores `NRxxxxxxx` in NVS and exposes it via `STATUS.device_id`; Android shows it on Home and Device manager. |
+
 ## Explicitly Out of Scope
 
 - **RF/Wi-Fi/BLE Jamming (transmission-based denial)** — illegal in most jurisdictions regardless of stated intent (US 47 U.S.C. §333 and equivalents). NRSuite implements **jam detection**, not jamming. This is a firm project boundary, not just a "not yet built" item.

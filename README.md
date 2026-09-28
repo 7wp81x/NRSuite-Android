@@ -47,8 +47,11 @@ check [screenshots](./Screenshots/) for more screenshots.
 | BadUSB | HID injection via Ducky Script editor |
 | Credential Manager | Local storage and management of captured credentials |
 | ESP32 Flasher | Flash NRSuite firmware directly from the app over USB |
+| Multi-device USB sessions | Connect and use multiple USB serial devices independently, with per-device permissions and connection state |
+| Persistent device ID | Firmware NVS ID (`NRxxxxxxx`) shown in the app so devices remain identifiable across reconnects |
 
 ### Planned (see [FEATURES.md](./FEATURES.md))
+- BadUSB device picker: choose which connected device receives BadUSB independently
 - Defense modules: rogue AP detector, AirTag/tracker detector
 - ESP-NOW mesh: multi-node coordination, distributed sensing, triangulation
 - Mesh chat: encrypted offline team messaging

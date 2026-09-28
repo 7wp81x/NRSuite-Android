@@ -7,7 +7,6 @@ import com.swp81x.nrsuite.core.flasher.Esp32Flasher
 import com.swp81x.nrsuite.core.flasher.UsbSerialFlasherTransport
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.log.LogLevel
-import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -126,15 +125,13 @@ internal fun MainViewModel.startFirmwareFlashImpl(targetChip: String, skipReset:
             }
 
             _firmwareFlashStatus.value = "Stopping active modules..."
-            stopActiveOperations()
-
-            val currentSession = session
-            sessionObservers.forEach { it.cancel() }
-            sessionObservers = emptyList()
-            session = null
-            activeDeviceFingerprint = null
-            _connectionState.value = ConnectionState.Disconnected
-            currentSession?.disconnect()
+            val targetFingerprint = deviceFingerprintImpl(entry.device)
+            if (targetFingerprint == activeDeviceFingerprint) {
+                stopActiveOperations()
+            }
+            // Tear down only the selected target's session. Other devices,
+            // including sessions used for Wireless/BLE/etc., stay connected.
+            disconnectSession(targetFingerprint, stopOperations = false)
 
             val resetMode = when {
                 skipReset -> Esp32Flasher.ResetMode.NONE
