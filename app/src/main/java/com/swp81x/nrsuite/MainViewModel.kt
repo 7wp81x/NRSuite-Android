@@ -758,6 +758,10 @@ class MainViewModel(internal val app: Application) {
         _hiddenApEventCount.value = 0
     }
 
+    fun clearHiddenApCandidates() = this.clearHiddenApCandidatesImpl()
+
+    fun clearHiddenApObservations() = this.clearHiddenApObservationsImpl()
+
     fun setHiddenApDeauthEnabled(enabled: Boolean) {
         _hiddenApDeauthEnabled.value = enabled
     }

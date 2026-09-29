@@ -873,7 +873,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onStart = viewModel::startHiddenAp,
                     onStop = viewModel::stopHiddenAp,
                     onForceReconnect = viewModel::forceHiddenApReconnect,
-                    onClear = viewModel::clearHiddenAp,
+                    onClearCandidates = viewModel::clearHiddenApCandidates,
+                    onClearObservations = viewModel::clearHiddenApObservations,
                     modifier = contentModifier,
                 )
             }

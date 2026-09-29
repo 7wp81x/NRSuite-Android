@@ -49,8 +49,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.HiddenApObservation
 import com.swp81x.nrsuite.core.defense.HiddenSsidCandidate
@@ -86,7 +89,8 @@ fun HiddenApScreen(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onForceReconnect: (HiddenApObservation) -> Unit,
-    onClear: () -> Unit,
+    onClearCandidates: () -> Unit,
+    onClearObservations: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by remember { mutableStateOf(true) }
@@ -134,27 +138,21 @@ fun HiddenApScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            HiddenApCandidateCard(candidates)
+            HiddenApCandidateCard(
+                candidates = candidates,
+                running = running || starting,
+                onClearCandidates = onClearCandidates,
+            )
 
             Spacer(Modifier.height(10.dp))
 
             HiddenApResultsCard(
                 observations = observations,
-                running = running,
+                running = running || starting,
                 deauthEnabled = deauthEnabled,
                 onForceReconnect = onForceReconnect,
+                onClearObservations = onClearObservations,
             )
-
-            Spacer(Modifier.height(8.dp))
-
-            Row(modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(
-                    onClick = onClear,
-                    enabled = observations.isNotEmpty() || candidates.isNotEmpty(),
-                ) {
-                    Text("Clear")
-                }
-            }
 
             Spacer(Modifier.height(80.dp))
         }
@@ -280,51 +278,31 @@ private fun HiddenApStatusCard(
                     )
                 }
             }
-            Spacer(Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                HiddenApStatTile("Candidates", candidateCount.toString(), StatusAmber, Modifier.weight(1f))
-                HiddenApStatTile("Resolved", resolvedCount.toString(), StatusGreen, Modifier.weight(1f))
-                HiddenApStatTile("Events", eventCount.toString(), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-            }
-            if (hiddenCount > 0) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "$hiddenCount hidden AP(s) observed",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun HiddenApStatTile(
-    label: String,
-    value: String,
-    tint: androidx.compose.ui.graphics.Color,
-    modifier: Modifier = Modifier,
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(
-            containerColor = tint.copy(alpha = 0.12f),
-        ),
-        border = BorderStroke(0.5.dp, tint.copy(alpha = 0.35f)),
-        shape = RoundedCornerShape(10.dp),
-    ) {
-        Column(Modifier.padding(10.dp)) {
+            Spacer(Modifier.height(8.dp))
             Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = tint,
-            )
-            Text(
-                text = label,
+                text = buildAnnotatedString {
+                    append("Hidden ")
+                    withStyle(SpanStyle(color = StatusAmber, fontWeight = FontWeight.SemiBold)) {
+                        append(hiddenCount.toString())
+                    }
+                    append(" · Resolved ")
+                    withStyle(SpanStyle(color = StatusGreen, fontWeight = FontWeight.SemiBold)) {
+                        append(resolvedCount.toString())
+                    }
+                    append(" · Candidates ")
+                    withStyle(SpanStyle(color = StatusAmber, fontWeight = FontWeight.SemiBold)) {
+                        append(candidateCount.toString())
+                    }
+                    append(" · Events ")
+                    withStyle(
+                        SpanStyle(
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                    ) {
+                        append(eventCount.toString())
+                    }
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
             )
@@ -458,7 +436,11 @@ private fun HiddenApConfigCard(
 }
 
 @Composable
-private fun HiddenApCandidateCard(candidates: List<HiddenSsidCandidate>) {
+private fun HiddenApCandidateCard(
+    candidates: List<HiddenSsidCandidate>,
+    running: Boolean,
+    onClearCandidates: () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
@@ -466,16 +448,35 @@ private fun HiddenApCandidateCard(candidates: List<HiddenSsidCandidate>) {
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
-            Text(
-                text = "Hidden SSID candidates",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = "SSIDs seen in client probe requests",
-                style = MaterialTheme.typography.bodySmall,
-                color = NrOnSurfaceVariant,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "Hidden SSID candidates",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = if (candidates.isEmpty()) {
+                            "SSIDs seen in client probe requests"
+                        } else {
+                            "SSIDs seen in client probe requests · ${candidates.size} candidate(s)"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+                if (candidates.isNotEmpty()) {
+                    OutlinedButton(
+                        onClick = onClearCandidates,
+                        enabled = !running,
+                    ) {
+                        Text("Clear")
+                    }
+                }
+            }
             Spacer(Modifier.height(8.dp))
 
             if (candidates.isEmpty()) {
@@ -566,7 +567,9 @@ private fun HiddenApResultsCard(
     running: Boolean,
     deauthEnabled: Boolean,
     onForceReconnect: (HiddenApObservation) -> Unit,
+    onClearObservations: () -> Unit,
 ) {
+    val resolvedCount = observations.count { !it.resolvedSsid.isNullOrBlank() }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
@@ -574,16 +577,34 @@ private fun HiddenApResultsCard(
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
-            Text(
-                text = "Detected Hidden APs",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = "Yellow = hidden. Green = SSID revealed.",
-                style = MaterialTheme.typography.bodySmall,
-                color = NrOnSurfaceVariant,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "Detected Hidden APs",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = when {
+                            observations.isEmpty() -> "Yellow = hidden. Green = SSID revealed."
+                            else -> "${observations.size} hidden AP(s) · $resolvedCount resolved"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+                if (observations.isNotEmpty()) {
+                    OutlinedButton(
+                        onClick = onClearObservations,
+                        enabled = !running,
+                    ) {
+                        Text("Clear")
+                    }
+                }
+            }
             Spacer(Modifier.height(8.dp))
 
             if (observations.isEmpty()) {

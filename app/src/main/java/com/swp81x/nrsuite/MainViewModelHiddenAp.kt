@@ -286,3 +286,12 @@ internal fun MainViewModel.applyResolvedSsidToScanTargetsImpl(bssid: String, ssi
         if (selected?.bssid.equals(bssid, ignoreCase = true)) selected?.copy(ssid = ssid) else selected
     }
 }
+
+
+internal fun MainViewModel.clearHiddenApCandidatesImpl() {
+    _hiddenApCandidates.value = emptyList()
+}
+
+internal fun MainViewModel.clearHiddenApObservationsImpl() {
+    _hiddenApObservations.value = emptyList()
+}
