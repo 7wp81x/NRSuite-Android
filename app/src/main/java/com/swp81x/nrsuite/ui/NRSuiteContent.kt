@@ -228,7 +228,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val hiddenApCurrentHopChannel by viewModel.hiddenApCurrentHopChannel.collectAsState()
     val hiddenApObservations by viewModel.hiddenApObservations.collectAsState()
     val hiddenApCandidates by viewModel.hiddenApCandidates.collectAsState()
-    val hiddenApEventCount by viewModel.hiddenApEventCount.collectAsState()
     val hiddenApDeauthEnabled by viewModel.hiddenApDeauthEnabled.collectAsState()
     val portalRunning by viewModel.portalRunning.collectAsState()
     val portalMode by viewModel.portalMode.collectAsState()
@@ -865,7 +864,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     currentHopChannel = hiddenApCurrentHopChannel,
                     observations = hiddenApObservations,
                     candidates = hiddenApCandidates,
-                    eventCount = hiddenApEventCount,
                     deauthEnabled = hiddenApDeauthEnabled,
                     onFixedChange = viewModel::setHiddenApFixed,
                     onChannelChange = viewModel::setHiddenApChannel,

@@ -49,11 +49,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.HiddenApObservation
 import com.swp81x.nrsuite.core.defense.HiddenSsidCandidate
@@ -81,7 +78,6 @@ fun HiddenApScreen(
     currentHopChannel: Int?,
     observations: List<HiddenApObservation>,
     candidates: List<HiddenSsidCandidate>,
-    eventCount: Long,
     deauthEnabled: Boolean,
     onFixedChange: (Boolean) -> Unit,
     onChannelChange: (Int) -> Unit,
@@ -100,7 +96,6 @@ fun HiddenApScreen(
         if (running) configExpanded = false
     }
 
-    val resolvedCount = observations.count { !it.resolvedSsid.isNullOrBlank() }
     val canStart = connected && !starting
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -116,10 +111,6 @@ fun HiddenApScreen(
                 fixed = fixed,
                 channel = channel,
                 currentHopChannel = currentHopChannel,
-                hiddenCount = observations.size,
-                resolvedCount = resolvedCount,
-                candidateCount = candidates.size,
-                eventCount = eventCount,
             )
 
             Spacer(Modifier.height(10.dp))
@@ -226,10 +217,6 @@ private fun HiddenApStatusCard(
     fixed: Boolean,
     channel: Int,
     currentHopChannel: Int?,
-    hiddenCount: Int,
-    resolvedCount: Int,
-    candidateCount: Int,
-    eventCount: Long,
 ) {
     val color = when {
         !connected -> StatusNeutral
@@ -278,34 +265,6 @@ private fun HiddenApStatusCard(
                     )
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = buildAnnotatedString {
-                    append("Hidden ")
-                    withStyle(SpanStyle(color = StatusAmber, fontWeight = FontWeight.SemiBold)) {
-                        append(hiddenCount.toString())
-                    }
-                    append(" · Resolved ")
-                    withStyle(SpanStyle(color = StatusGreen, fontWeight = FontWeight.SemiBold)) {
-                        append(resolvedCount.toString())
-                    }
-                    append(" · Candidates ")
-                    withStyle(SpanStyle(color = StatusAmber, fontWeight = FontWeight.SemiBold)) {
-                        append(candidateCount.toString())
-                    }
-                    append(" · Events ")
-                    withStyle(
-                        SpanStyle(
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold,
-                        ),
-                    ) {
-                        append(eventCount.toString())
-                    }
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = NrOnSurfaceVariant,
-            )
         }
     }
 }
@@ -460,9 +419,9 @@ private fun HiddenApCandidateCard(
                     )
                     Text(
                         text = if (candidates.isEmpty()) {
-                            "SSIDs seen in client probe requests"
+                            "No candidate SSID(s) seen in probe requests yet"
                         } else {
-                            "SSIDs seen in client probe requests · ${candidates.size} candidate(s)"
+                            "${candidates.size} candidate SSID(s) seen in probe requests"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
