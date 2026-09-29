@@ -318,7 +318,7 @@ private fun ConfigZone(
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "Client/Presence configuration",
+                        text = "Client Detector configuration",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )

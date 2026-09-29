@@ -18,6 +18,8 @@ import com.swp81x.nrsuite.core.defense.matchOuiRule
 import com.swp81x.nrsuite.core.defense.OuiRuleAction
 import com.swp81x.nrsuite.core.defense.ClientObservation
 import com.swp81x.nrsuite.core.defense.ClientPresenceMode
+import com.swp81x.nrsuite.core.defense.HiddenApObservation
+import com.swp81x.nrsuite.core.defense.HiddenSsidCandidate
 import com.swp81x.nrsuite.core.defense.NearbyAp
 import com.swp81x.nrsuite.core.defense.RogueApAlert
 import com.swp81x.nrsuite.core.defense.DeauthChannelMode
@@ -251,6 +253,38 @@ class MainViewModel(internal val app: Application) {
 
     internal var clientPresenceSavedChannel = 6
     internal var clientPresenceSavedTarget = ""
+
+    internal val _hiddenApRunning = MutableStateFlow(false)
+    val hiddenApRunning: StateFlow<Boolean> = _hiddenApRunning.asStateFlow()
+
+    internal val _hiddenApStarting = MutableStateFlow(false)
+    val hiddenApStarting: StateFlow<Boolean> = _hiddenApStarting.asStateFlow()
+
+    internal val _hiddenApFixed = MutableStateFlow(true)
+    val hiddenApFixed: StateFlow<Boolean> = _hiddenApFixed.asStateFlow()
+
+    internal val _hiddenApChannel = MutableStateFlow(6)
+    val hiddenApChannel: StateFlow<Int> = _hiddenApChannel.asStateFlow()
+
+    internal val _hiddenApCurrentHopChannel = MutableStateFlow<Int?>(null)
+    val hiddenApCurrentHopChannel: StateFlow<Int?> = _hiddenApCurrentHopChannel.asStateFlow()
+
+    internal val _hiddenApObservations = MutableStateFlow<List<HiddenApObservation>>(emptyList())
+    val hiddenApObservations: StateFlow<List<HiddenApObservation>> = _hiddenApObservations.asStateFlow()
+
+    internal val _hiddenApCandidates = MutableStateFlow<List<HiddenSsidCandidate>>(emptyList())
+    val hiddenApCandidates: StateFlow<List<HiddenSsidCandidate>> = _hiddenApCandidates.asStateFlow()
+
+    internal val _hiddenApEventCount = MutableStateFlow(0L)
+    val hiddenApEventCount: StateFlow<Long> = _hiddenApEventCount.asStateFlow()
+
+    internal val _hiddenApDeauthEnabled = MutableStateFlow(false)
+    val hiddenApDeauthEnabled: StateFlow<Boolean> = _hiddenApDeauthEnabled.asStateFlow()
+
+    /** BSSID -> SSID learned by the Hidden AP Revealer. */
+    internal val resolvedHiddenSsidByBssid = mutableMapOf<String, String>()
+
+    internal var hiddenApSavedChannel = 6
 
     internal val _rogueApLastScanAt = MutableStateFlow<String?>(null)
     val rogueApLastScanAt: StateFlow<String?> = _rogueApLastScanAt.asStateFlow()
@@ -703,6 +737,38 @@ class MainViewModel(internal val app: Application) {
         _clientPresenceFrameCount.value = 0
     }
 
+    fun startHiddenAp() = this.startHiddenApImpl(
+        _hiddenApFixed.value,
+        _hiddenApChannel.value,
+    )
+
+    fun stopHiddenAp() = this.stopHiddenApImpl()
+
+    fun setHiddenApFixed(fixed: Boolean) {
+        _hiddenApFixed.value = fixed
+    }
+
+    fun setHiddenApChannel(channel: Int) {
+        _hiddenApChannel.value = channel.coerceIn(1, 14)
+    }
+
+    fun clearHiddenAp() {
+        _hiddenApObservations.value = emptyList()
+        _hiddenApCandidates.value = emptyList()
+        _hiddenApEventCount.value = 0
+    }
+
+    fun clearHiddenApCandidates() = this.clearHiddenApCandidatesImpl()
+
+    fun clearHiddenApObservations() = this.clearHiddenApObservationsImpl()
+
+    fun setHiddenApDeauthEnabled(enabled: Boolean) {
+        _hiddenApDeauthEnabled.value = enabled
+    }
+
+    fun forceHiddenApReconnect(observation: HiddenApObservation) =
+        this.forceHiddenApReconnectImpl(observation)
+
 
 
     fun onRootDirectoryPromptShown() {
@@ -863,6 +929,9 @@ class MainViewModel(internal val app: Application) {
         _rogueApRunning.value = false
         _rogueApScanning.value = false
         _clientPresenceRunning.value = false
+        _hiddenApRunning.value = false
+        _hiddenApStarting.value = false
+        _hiddenApCurrentHopChannel.value = null
         deauthAlertClearJob?.cancel()
         deauthAlertClearJob = null
         deauthFpsResetJob?.cancel()
@@ -1065,7 +1134,9 @@ class MainViewModel(internal val app: Application) {
             _deauthDetectorRunning.value -> "Deauth Detector"
             _rogueApRunning.value -> "Rogue AP Detector"
             _rogueApScanning.value -> "Rogue AP baseline scan"
-            _clientPresenceRunning.value -> "Client/Presence Detector"
+            _clientPresenceRunning.value -> "Client Detector"
+            _hiddenApStarting.value -> "Hidden AP Revealer starting"
+            _hiddenApRunning.value -> "Hidden AP Revealer"
             _scanning.value -> "WiFi Scan"
             else -> null
         }
@@ -1093,7 +1164,9 @@ class MainViewModel(internal val app: Application) {
             _deauthRunning.value -> "Deauth burst active"
             _deauthDetectorRunning.value -> "Deauth detector active"
             _rogueApRunning.value -> "Rogue AP detector active"
-            _clientPresenceRunning.value -> "Client/Presence detector active"
+            _clientPresenceRunning.value -> "Client detector active"
+            _hiddenApStarting.value -> "Hidden AP Revealer scanning"
+            _hiddenApRunning.value -> "Hidden AP revealer active"
             _bleAdvertising.value || _bleConnected.value -> "BLE HID active"
             else -> null
         }
@@ -1173,6 +1246,11 @@ class MainViewModel(internal val app: Application) {
                     when (event.optString("type")) {
                         "scan_ap" -> {
                             val bssid = event.optString("bssid")
+                            val resolvedSsid = resolvedHiddenSsidByBssid[bssid.uppercase()]
+                            if (event.optString("ssid").isBlank() && !resolvedSsid.isNullOrBlank()) {
+                                event.put("ssid", resolvedSsid)
+                                event.put("hidden_resolved", true)
+                            }
                             val vendor = ouiDatabaseRepository.lookup(bssid)?.vendor
                             val ouiRule = matchOuiRule(bssid, _ouiRules.value)
                             val ouiWhitelisted = ouiRule?.action == OuiRuleAction.WHITELIST
@@ -1286,6 +1364,15 @@ class MainViewModel(internal val app: Application) {
                             }
                         }
                         "client_detected" -> this@MainViewModel.recordClientPresenceEvent(event)
+                        "hidden_ap" -> this@MainViewModel.recordHiddenApObservation(event)
+                        "hidden_ssid_candidate" -> this@MainViewModel.recordHiddenSsidCandidate(event)
+                        "hidden_ssid_resolved" -> this@MainViewModel.recordHiddenSsidResolved(event)
+                        "hidden_ap_hop" -> {
+                            _hiddenApCurrentHopChannel.value = event.optInt(
+                                "channel",
+                                _hiddenApCurrentHopChannel.value ?: 1,
+                            )
+                        }
                         "heartbeat" -> Unit
                     }
                 }
