@@ -72,6 +72,7 @@ import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.WifiFind
 import androidx.compose.material.icons.filled.Wifi
@@ -202,6 +203,15 @@ internal val modules = listOf(
         title = "Client/Presence Detector",
         description = "Passively detect client management frames, with optional active reconnection triggering.",
         icon = Icons.Default.PersonSearch,
+        category = "Detection",
+        radio = "2.4GHz",
+        available = true,
+    ),
+    ModuleCardSpec(
+        id = "hidden_ap",
+        title = "Hidden AP Enumerator",
+        description = "Reveal hidden SSIDs from beacon and client traffic.",
+        icon = Icons.Default.VisibilityOff,
         category = "Detection",
         radio = "2.4GHz",
         available = true,

@@ -221,6 +221,13 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val clientPresenceClients by viewModel.clientPresenceClients.collectAsState()
     val clientPresenceFrameCount by viewModel.clientPresenceFrameCount.collectAsState()
     val clientPresenceLastTriggerAt by viewModel.clientPresenceLastTriggerAt.collectAsState()
+    val hiddenApRunning by viewModel.hiddenApRunning.collectAsState()
+    val hiddenApFixed by viewModel.hiddenApFixed.collectAsState()
+    val hiddenApChannel by viewModel.hiddenApChannel.collectAsState()
+    val hiddenApCurrentHopChannel by viewModel.hiddenApCurrentHopChannel.collectAsState()
+    val hiddenApObservations by viewModel.hiddenApObservations.collectAsState()
+    val hiddenApCandidates by viewModel.hiddenApCandidates.collectAsState()
+    val hiddenApEventCount by viewModel.hiddenApEventCount.collectAsState()
     val portalRunning by viewModel.portalRunning.collectAsState()
     val portalMode by viewModel.portalMode.collectAsState()
     val portalHtmlSize by viewModel.portalHtmlSize.collectAsState()
@@ -297,6 +304,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         deauthDetectorRunning,
         rogueApRunning,
         clientPresenceRunning,
+        hiddenApRunning,
         portalRunning,
         portalMode,
         bleAdvertising,
@@ -316,6 +324,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "deauth" -> "deauth"
             "deauth_detector" -> "deauth_detect"
             "client_presence" -> "client_detect"
+            "hidden_ap" -> "hidden_ap"
             "portal" -> "portal"
             "evil_twin" -> "portal"
             "storage" -> "storage"
@@ -347,6 +356,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             isDeviceConnected && !supported && module.id == "evil_twin" -> "Firmware portal support required"
             isDeviceConnected && !supported && module.id == "deauth_detector" -> "Requires deauth_detect firmware"
             isDeviceConnected && !supported && module.id == "client_presence" -> "Requires client_detect firmware"
+            isDeviceConnected && !supported && module.id == "hidden_ap" -> "Requires hidden_ap firmware"
             else -> module.statusLabel
         }
         module.copy(
@@ -361,6 +371,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "deauth_detector" -> deauthDetectorRunning
                 "rogue_ap" -> rogueApRunning
                 "client_presence" -> clientPresenceRunning
+                "hidden_ap" -> hiddenApRunning
                 "portal" -> portalRunning && portalMode == "portal"
                 "evil_twin" -> portalRunning && portalMode == "evil_twin"
                 "ble" -> bleAdvertising
@@ -418,7 +429,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || rogueApRunning || clientPresenceRunning || portalRunning || bleAdvertising || crackerRunning
+    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || rogueApRunning || clientPresenceRunning || hiddenApRunning || portalRunning || bleAdvertising || crackerRunning
     val view = LocalView.current
     DisposableEffect(anyModuleRunning) {
         val window = (view.context as? Activity)?.window
@@ -838,6 +849,25 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onStop = viewModel::stopClientPresence,
                     onTriggerReconnect = viewModel::triggerClientReconnectBurst,
                     onClear = viewModel::clearClientPresence,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "hidden_ap" -> {
+                HiddenApScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    running = hiddenApRunning,
+                    fixed = hiddenApFixed,
+                    channel = hiddenApChannel,
+                    currentHopChannel = hiddenApCurrentHopChannel,
+                    observations = hiddenApObservations,
+                    candidates = hiddenApCandidates,
+                    eventCount = hiddenApEventCount,
+                    onFixedChange = viewModel::setHiddenApFixed,
+                    onChannelChange = viewModel::setHiddenApChannel,
+                    onStart = viewModel::startHiddenAp,
+                    onStop = viewModel::stopHiddenAp,
+                    onClear = viewModel::clearHiddenAp,
                     modifier = contentModifier,
                 )
             }
