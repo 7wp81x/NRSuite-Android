@@ -87,8 +87,6 @@ fun HiddenApScreen(
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val clipboard = LocalClipboardManager.current
-    val context = LocalContext.current
     var configExpanded by remember { mutableStateOf(true) }
     var confirmStart by remember { mutableStateOf(false) }
 
@@ -98,21 +96,6 @@ fun HiddenApScreen(
 
     val resolvedCount = observations.count { !it.resolvedSsid.isNullOrBlank() }
     val canStart = connected
-    val copyText = remember(observations, candidates) {
-        buildString {
-            observations.forEach { observation ->
-                appendLine(
-                    "${observation.bssid}  ch ${observation.channel}  " +
-                        "${observation.rssi} dBm  " +
-                        (observation.resolvedSsid?.let { "resolved: $it" } ?: "not yet revealed")
-                )
-            }
-            candidates.forEach { candidate ->
-                appendLine("candidate: ${candidate.ssid}  ch ${candidate.channel}  ${candidate.rssi} dBm")
-            }
-        }.trim()
-    }
-
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -161,18 +144,7 @@ fun HiddenApScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedButton(
-                    onClick = { clipboard.copyWithToast(context, copyText) },
-                    enabled = copyText.isNotBlank(),
-                ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Copy")
-                }
+            Row(modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
                     onClick = onClear,
                     enabled = observations.isNotEmpty() || candidates.isNotEmpty(),
@@ -285,11 +257,6 @@ private fun HiddenApStatusCard(
                     )
                 }
             }
-            Spacer(Modifier.height(10.dp))
-            StatusIndicator(
-                label = if (running) "Hidden AP detection active" else "Hidden AP detection idle",
-                color = color,
-            )
             Spacer(Modifier.height(10.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -512,6 +479,8 @@ private fun HiddenApCandidateCard(candidates: List<HiddenSsidCandidate>) {
 
 @Composable
 private fun HiddenSsidCandidateRow(candidate: HiddenSsidCandidate) {
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurfaceVariant),
@@ -519,11 +488,32 @@ private fun HiddenSsidCandidateRow(candidate: HiddenSsidCandidate) {
         shape = RoundedCornerShape(10.dp),
     ) {
         Column(Modifier.padding(10.dp)) {
-            Text(
-                text = candidate.ssid,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = candidate.ssid,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(
+                    onClick = {
+                        val text = buildString {
+                            appendLine("Candidate SSID: ${candidate.ssid}")
+                            appendLine("Channel: ${candidate.channel}")
+                            appendLine("RSSI: ${candidate.rssi} dBm")
+                            candidate.client?.let { appendLine("Client: $it") }
+                            append("Sightings: ${candidate.sightings}")
+                        }
+                        clipboard.copyWithToast(context, text, "Candidate copied")
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "Copy candidate SSID",
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
             Spacer(Modifier.height(2.dp))
             Text(
                 text = "ch ${candidate.channel} · ${candidate.rssi} dBm · " +
@@ -636,6 +626,28 @@ private fun HiddenApObservationRow(
                     style = MaterialTheme.typography.labelSmall,
                     color = NrOnSurfaceVariant,
                 )
+                val clipboard = LocalClipboardManager.current
+                val context = LocalContext.current
+                IconButton(
+                    onClick = {
+                        val text = buildString {
+                            appendLine("Hidden AP: ${observation.resolvedSsid ?: "not yet revealed"}")
+                            appendLine("BSSID: ${observation.bssid}")
+                            appendLine("Channel: ${observation.channel}")
+                            appendLine("RSSI: ${observation.rssi} dBm")
+                            appendLine("Sightings: ${observation.sightings}")
+                            observation.resolutionSource?.let { appendLine("Resolution: $it") }
+                            observation.vendor?.let { appendLine("Vendor: $it") }
+                        }
+                        clipboard.copyWithToast(context, text, "Hidden AP copied")
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "Copy hidden AP details",
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
 
             Spacer(Modifier.height(6.dp))

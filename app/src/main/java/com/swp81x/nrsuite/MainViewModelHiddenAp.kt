@@ -140,6 +140,9 @@ internal fun MainViewModel.recordHiddenSsidResolved(event: JSONObject) {
         else -> "Resolved by association request"
     }
 
+    resolvedHiddenSsidByBssid[bssid] = ssid
+    applyResolvedSsidToScanTargetsImpl(bssid, ssid)
+
     val existing = _hiddenApObservations.value.firstOrNull { it.bssid == bssid }
     val updated = existing?.copy(
         resolvedSsid = ssid,
@@ -197,5 +200,29 @@ internal fun MainViewModel.forceHiddenApReconnectImpl(observation: HiddenApObser
         } else {
             appendLog("Failed to force reconnect for ${observation.bssid}.")
         }
+    }
+}
+
+
+internal fun MainViewModel.applyResolvedSsidToScanTargetsImpl(bssid: String, ssid: String) {
+    if (bssid.isBlank() || ssid.isBlank()) return
+
+    _networks.update { current ->
+        current.map { network ->
+            if (network.optString("bssid").equals(bssid, ignoreCase = true)) {
+                network.put("ssid", ssid)
+                network.put("hidden_resolved", true)
+            }
+            network
+        }
+    }
+
+    _deauthDetectorTargets.update { current ->
+        current.map { target ->
+            if (target.bssid.equals(bssid, ignoreCase = true)) target.copy(ssid = ssid) else target
+        }
+    }
+    _deauthDetectorSelectedTarget.update { selected ->
+        if (selected?.bssid.equals(bssid, ignoreCase = true)) selected?.copy(ssid = ssid) else selected
     }
 }

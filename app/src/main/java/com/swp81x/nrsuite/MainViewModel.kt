@@ -278,6 +278,9 @@ class MainViewModel(internal val app: Application) {
     internal val _hiddenApDeauthEnabled = MutableStateFlow(false)
     val hiddenApDeauthEnabled: StateFlow<Boolean> = _hiddenApDeauthEnabled.asStateFlow()
 
+    /** BSSID -> SSID learned by the Hidden AP Enumerator. */
+    internal val resolvedHiddenSsidByBssid = mutableMapOf<String, String>()
+
     internal var hiddenApSavedChannel = 6
 
     internal val _rogueApLastScanAt = MutableStateFlow<String?>(null)
@@ -1123,7 +1126,7 @@ class MainViewModel(internal val app: Application) {
             _deauthDetectorRunning.value -> "Deauth Detector"
             _rogueApRunning.value -> "Rogue AP Detector"
             _rogueApScanning.value -> "Rogue AP baseline scan"
-            _clientPresenceRunning.value -> "Client/Presence Detector"
+            _clientPresenceRunning.value -> "Client Detector"
             _hiddenApRunning.value -> "Hidden AP Enumerator"
             _scanning.value -> "WiFi Scan"
             else -> null
@@ -1152,7 +1155,7 @@ class MainViewModel(internal val app: Application) {
             _deauthRunning.value -> "Deauth burst active"
             _deauthDetectorRunning.value -> "Deauth detector active"
             _rogueApRunning.value -> "Rogue AP detector active"
-            _clientPresenceRunning.value -> "Client/Presence detector active"
+            _clientPresenceRunning.value -> "Client detector active"
             _hiddenApRunning.value -> "Hidden AP enumerator active"
             _bleAdvertising.value || _bleConnected.value -> "BLE HID active"
             else -> null
@@ -1233,6 +1236,11 @@ class MainViewModel(internal val app: Application) {
                     when (event.optString("type")) {
                         "scan_ap" -> {
                             val bssid = event.optString("bssid")
+                            val resolvedSsid = resolvedHiddenSsidByBssid[bssid.uppercase()]
+                            if (event.optString("ssid").isBlank() && !resolvedSsid.isNullOrBlank()) {
+                                event.put("ssid", resolvedSsid)
+                                event.put("hidden_resolved", true)
+                            }
                             val vendor = ouiDatabaseRepository.lookup(bssid)?.vendor
                             val ouiRule = matchOuiRule(bssid, _ouiRules.value)
                             val ouiWhitelisted = ouiRule?.action == OuiRuleAction.WHITELIST

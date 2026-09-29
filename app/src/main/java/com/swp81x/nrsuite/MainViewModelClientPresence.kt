@@ -23,7 +23,7 @@ internal fun MainViewModel.startClientPresenceImpl(
         return
     }
     if (_clientPresenceRunning.value) return
-    if (!ensureRadioIdle("Client/Presence Detector")) return
+    if (!ensureRadioIdle("Client Detector")) return
 
     val cleanTarget = targetBssid.trim().uppercase()
     if (mode == ClientPresenceMode.ACTIVE) {

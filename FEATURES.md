@@ -31,7 +31,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 | Deauth Detector | ✅ | Passive deauth/disassoc monitoring with BSSID/client/RSSI/reason filters, async alerts, and live logs |
 | Deauth Locator | 📋 | RSSI-based direction/distance estimate; multi-node triangulation |
 | AirTag/Tracker Detector | 📋 | BLE "Find My"-style advert detection; cross-location persistence heuristic |
-| Client/Presence Detector | ✅ | Passive probe/assoc/reassoc/auth monitoring plus active deauth-trigger mode |
+| Client Detector | ✅ | Passive probe/assoc/reassoc/auth monitoring plus active deauth-trigger mode |
 | Hidden AP Enumerator | ✅ | Passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution |
 | Unauthorized RFID Reader Detector | 📋 | Detect unattended/skimmer-style RF field polling nearby |
 | Jam Detector (Sub-GHz / 2.4GHz) | 📋 | Wideband noise-floor anomaly detection (detection only — see Legal notes) |

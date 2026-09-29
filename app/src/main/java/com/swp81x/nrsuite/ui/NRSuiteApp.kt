@@ -200,7 +200,7 @@ internal val modules = listOf(
     ),
     ModuleCardSpec(
         id = "client_presence",
-        title = "Client/Presence Detector",
+        title = "Client Detector",
         description = "Passively detect client management frames, with optional active reconnection triggering.",
         icon = Icons.Default.PersonSearch,
         category = "Detection",
