@@ -297,6 +297,15 @@ internal val modules = listOf(
         available = true,
     ),
     ModuleCardSpec(
+        id = "ble_scanner",
+        title = "BLE Scanner",
+        description = "Discover nearby BLE devices, services, and manufacturer data.",
+        icon = Icons.Default.Bluetooth,
+        category = "BLE",
+        radio = "BLE",
+        available = true,
+    ),
+    ModuleCardSpec(
         id = "storage",
         title = "Mass Storage",
         description = "Browse and manage files on the device.",

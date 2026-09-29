@@ -12,6 +12,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
+import com.swp81x.nrsuite.core.ble.BleDeviceObservation
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.OuiRule
 import com.swp81x.nrsuite.core.defense.matchOuiRule
@@ -590,6 +591,15 @@ class MainViewModel(internal val app: Application) {
     internal val _bleScriptRunning = MutableStateFlow(false)
     val bleScriptRunning: StateFlow<Boolean> = _bleScriptRunning.asStateFlow()
 
+    internal val _bleScanRunning = MutableStateFlow(false)
+    val bleScanRunning: StateFlow<Boolean> = _bleScanRunning.asStateFlow()
+
+    internal val _bleScanActive = MutableStateFlow(true)
+    val bleScanActive: StateFlow<Boolean> = _bleScanActive.asStateFlow()
+
+    internal val _bleScanDevices = MutableStateFlow<List<BleDeviceObservation>>(emptyList())
+    val bleScanDevices: StateFlow<List<BleDeviceObservation>> = _bleScanDevices.asStateFlow()
+
     internal val bleTypeBuffer = StringBuilder()
     internal var bleTypeJob: Job? = null
 
@@ -942,6 +952,7 @@ class MainViewModel(internal val app: Application) {
         _bleAdvertising.value = false
         _bleConnected.value = false
         _bleScriptRunning.value = false
+        _bleScanRunning.value = false
         this.clearBleRealtimeStateImpl()
         _portalMode.value = null
 
@@ -1077,6 +1088,16 @@ class MainViewModel(internal val app: Application) {
 
     fun releaseBleMouseButtons() = this.releaseBleMouseButtonsImpl()
 
+    fun startBleScan(active: Boolean) = this.startBleScanImpl(active)
+
+    fun stopBleScan() = this.stopBleScanImpl()
+
+    fun clearBleScan() = this.clearBleScanImpl()
+
+    fun setBleScanActive(active: Boolean) {
+        _bleScanActive.value = active
+    }
+
 
     fun setBleModifier(key: String, down: Boolean) = this.setBleModifierImpl(key, down)
 
@@ -1124,6 +1145,9 @@ class MainViewModel(internal val app: Application) {
         if (includeBle && (_bleAdvertising.value || _bleConnected.value)) {
             return "BLE HID"
         }
+        if (includeBle && _bleScanRunning.value) {
+            return "BLE Scanner"
+        }
         return when {
             _portalRunning.value -> {
                 if (_portalMode.value == "evil_twin") "Evil Twin" else "Captive Portal"
@@ -1167,6 +1191,7 @@ class MainViewModel(internal val app: Application) {
             _clientPresenceRunning.value -> "Client detector active"
             _hiddenApStarting.value -> "Hidden AP Revealer scanning"
             _hiddenApRunning.value -> "Hidden AP revealer active"
+            _bleScanRunning.value -> "BLE scanner active"
             _bleAdvertising.value || _bleConnected.value -> "BLE HID active"
             else -> null
         }
@@ -1364,6 +1389,7 @@ class MainViewModel(internal val app: Application) {
                             }
                         }
                         "client_detected" -> this@MainViewModel.recordClientPresenceEvent(event)
+                        "ble_device" -> this@MainViewModel.recordBleDeviceEvent(event)
                         "hidden_ap" -> this@MainViewModel.recordHiddenApObservation(event)
                         "hidden_ssid_candidate" -> this@MainViewModel.recordHiddenSsidCandidate(event)
                         "hidden_ssid_resolved" -> this@MainViewModel.recordHiddenSsidResolved(event)
