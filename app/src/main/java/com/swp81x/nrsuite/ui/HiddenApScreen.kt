@@ -341,7 +341,7 @@ private fun HiddenApConfigCard(
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "Hidden AP configuration",
+                        text = "Hidden AP Revealer configuration",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )

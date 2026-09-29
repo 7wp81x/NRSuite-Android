@@ -278,8 +278,11 @@ class MainViewModel(internal val app: Application) {
     internal val _hiddenApDeauthEnabled = MutableStateFlow(false)
     val hiddenApDeauthEnabled: StateFlow<Boolean> = _hiddenApDeauthEnabled.asStateFlow()
 
-    /** BSSID -> SSID learned by the Hidden AP Enumerator. */
+    /** BSSID -> SSID learned by the Hidden AP Revealer. */
     internal val resolvedHiddenSsidByBssid = mutableMapOf<String, String>()
+
+    /** Visible BSSIDs from the one-time baseline scan, used only to filter known non-hidden APs. */
+    internal val hiddenApBaselineBssids = mutableSetOf<String>()
 
     internal var hiddenApSavedChannel = 6
 
@@ -1127,7 +1130,7 @@ class MainViewModel(internal val app: Application) {
             _rogueApRunning.value -> "Rogue AP Detector"
             _rogueApScanning.value -> "Rogue AP baseline scan"
             _clientPresenceRunning.value -> "Client Detector"
-            _hiddenApRunning.value -> "Hidden AP Enumerator"
+            _hiddenApRunning.value -> "Hidden AP Revealer"
             _scanning.value -> "WiFi Scan"
             else -> null
         }
@@ -1156,7 +1159,7 @@ class MainViewModel(internal val app: Application) {
             _deauthDetectorRunning.value -> "Deauth detector active"
             _rogueApRunning.value -> "Rogue AP detector active"
             _clientPresenceRunning.value -> "Client detector active"
-            _hiddenApRunning.value -> "Hidden AP enumerator active"
+            _hiddenApRunning.value -> "Hidden AP revealer active"
             _bleAdvertising.value || _bleConnected.value -> "BLE HID active"
             else -> null
         }

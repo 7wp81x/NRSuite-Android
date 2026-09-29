@@ -209,7 +209,7 @@ internal val modules = listOf(
     ),
     ModuleCardSpec(
         id = "hidden_ap",
-        title = "Hidden AP Enumerator",
+        title = "Hidden AP Revealer",
         description = "Reveal hidden SSIDs from beacon and client traffic.",
         icon = Icons.Default.VisibilityOff,
         category = "Detection",

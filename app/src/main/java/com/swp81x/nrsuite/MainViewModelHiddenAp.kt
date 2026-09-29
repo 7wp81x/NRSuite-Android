@@ -3,11 +3,12 @@ package com.swp81x.nrsuite
 import com.swp81x.nrsuite.core.defense.HiddenApObservation
 import com.swp81x.nrsuite.core.defense.HiddenSsidCandidate
 import com.swp81x.nrsuite.core.history.HistoryLevel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
-// Hidden AP enumerator: passive detection of zero-length SSID beacons/probe
+// Hidden AP Revealer: passive detection of zero-length SSID beacons/probe
 // responses, probe-request SSID candidates, and client association mappings.
 
 internal fun MainViewModel.startHiddenApImpl(fixed: Boolean, channel: Int) {
@@ -17,7 +18,7 @@ internal fun MainViewModel.startHiddenApImpl(fixed: Boolean, channel: Int) {
         return
     }
     if (_hiddenApRunning.value) return
-    if (!ensureRadioIdle("Hidden AP Enumerator")) return
+    if (!ensureRadioIdle("Hidden AP Revealer")) return
 
     val safeChannel = channel.coerceIn(1, 14)
     _hiddenApFixed.value = fixed
@@ -29,6 +30,24 @@ internal fun MainViewModel.startHiddenApImpl(fixed: Boolean, channel: Int) {
     _hiddenApEventCount.value = 0
 
     scope.launch {
+        // One-time baseline scan. This is best-effort: if it fails or the user
+        // moves, unknown BSSIDs still pass through to passive detection.
+        hiddenApBaselineBssids.clear()
+        appendLog("Running baseline WiFi scan for Hidden AP Revealer...")
+        val baselineCount = activeSession.scanWifi(timeoutMs = 30_000)
+        if (baselineCount != null && baselineCount >= 0) {
+            delay(150)
+            val visibleBssids = _networks.value.mapNotNull { network ->
+                val bssid = network.optString("bssid").uppercase()
+                val ssid = network.optString("ssid")
+                if (bssid.isNotBlank() && ssid.isNotBlank()) bssid else null
+            }.toSet()
+            hiddenApBaselineBssids.addAll(visibleBssids)
+            appendLog("Revealer baseline: ${visibleBssids.size} visible AP(s) from $baselineCount scan result(s).")
+        } else {
+            appendLog("Revealer baseline scan failed; continuing without visible-AP filtering.")
+        }
+
         val args = JSONObject().apply {
             put("mode", if (fixed) "fixed" else "hop")
             put("channel", safeChannel)
@@ -38,8 +57,8 @@ internal fun MainViewModel.startHiddenApImpl(fixed: Boolean, channel: Int) {
         if (response?.optBoolean("ok") == true) {
             _hiddenApRunning.value = true
             updateForegroundService()
-            appendLog("Hidden AP detection started (${if (fixed) "fixed" else "hopping"} channel).")
-            addHistory("hidden_ap", "Hidden AP detection started", HistoryLevel.SUCCESS)
+            appendLog("Hidden AP Revealer started (${if (fixed) "fixed" else "hopping"} channel).")
+            addHistory("hidden_ap", "Hidden AP Revealer started", HistoryLevel.SUCCESS)
         } else {
             _hiddenApCurrentHopChannel.value = null
             appendLog("Failed to start hidden AP detection: ${response?.optString("msg") ?: "timeout"}")
@@ -57,16 +76,17 @@ internal fun MainViewModel.stopHiddenApImpl() {
     scope.launch {
         val response = activeSession?.sendCommand("STOP_HIDDEN_AP", timeoutMs = 6_000)
         if (response?.optBoolean("ok") == true) {
-            appendLog("Hidden AP detection stopped.")
-            addHistory("hidden_ap", "Hidden AP detection stopped", HistoryLevel.INFO)
+            appendLog("Hidden AP Revealer stopped.")
+            addHistory("hidden_ap", "Hidden AP Revealer stopped", HistoryLevel.INFO)
         } else {
-            appendLog("Hidden AP stop request sent without confirmation.")
+            appendLog("Hidden AP Revealer stop request sent without confirmation.")
         }
     }
 }
 
 internal fun MainViewModel.recordHiddenApObservation(event: JSONObject) {
     val bssid = event.optString("bssid").uppercase().takeIf { it.isNotBlank() } ?: return
+    if (bssid in hiddenApBaselineBssids) return
     val now = timeHmNow()
     val channel = event.optInt("channel", _hiddenApChannel.value)
     val rssi = event.optInt("rssi", -127)
