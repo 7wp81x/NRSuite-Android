@@ -275,6 +275,9 @@ class MainViewModel(internal val app: Application) {
     internal val _hiddenApEventCount = MutableStateFlow(0L)
     val hiddenApEventCount: StateFlow<Long> = _hiddenApEventCount.asStateFlow()
 
+    internal val _hiddenApDeauthEnabled = MutableStateFlow(false)
+    val hiddenApDeauthEnabled: StateFlow<Boolean> = _hiddenApDeauthEnabled.asStateFlow()
+
     internal var hiddenApSavedChannel = 6
 
     internal val _rogueApLastScanAt = MutableStateFlow<String?>(null)
@@ -748,6 +751,13 @@ class MainViewModel(internal val app: Application) {
         _hiddenApCandidates.value = emptyList()
         _hiddenApEventCount.value = 0
     }
+
+    fun setHiddenApDeauthEnabled(enabled: Boolean) {
+        _hiddenApDeauthEnabled.value = enabled
+    }
+
+    fun forceHiddenApReconnect(observation: HiddenApObservation) =
+        this.forceHiddenApReconnectImpl(observation)
 
 
 

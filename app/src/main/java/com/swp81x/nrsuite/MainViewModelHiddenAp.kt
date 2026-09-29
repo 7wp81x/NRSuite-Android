@@ -165,3 +165,37 @@ internal fun MainViewModel.recordHiddenSsidResolved(event: JSONObject) {
     }
     _hiddenApEventCount.update { it + 1 }
 }
+
+
+internal fun MainViewModel.forceHiddenApReconnectImpl(observation: HiddenApObservation) {
+    if (!_hiddenApRunning.value) {
+        appendLog("Start hidden AP detection before forcing a reconnect.")
+        return
+    }
+    if (!_hiddenApDeauthEnabled.value) {
+        appendLog("Enable deauth reconnect in Hidden AP settings first.")
+        return
+    }
+    val activeSession = session ?: return
+
+    scope.launch {
+        val response = activeSession.sendCommand(
+            "HIDDEN_AP_FORCE_RECONNECT",
+            JSONObject().apply {
+                put("bssid", observation.bssid)
+                put("channel", observation.channel)
+                put("client", "FF:FF:FF:FF:FF:FF")
+                put("count", 5)
+                put("interval_ms", 60)
+                put("reason", 7)
+            },
+            timeoutMs = 8_000,
+        )
+        if (response?.optBoolean("ok") == true) {
+            appendLog("Reconnect burst sent to ${observation.bssid}; watching for hidden SSID resolution.")
+            addHistory("hidden_ap", "Forced reconnect for ${observation.bssid}", HistoryLevel.INFO)
+        } else {
+            appendLog("Failed to force reconnect for ${observation.bssid}.")
+        }
+    }
+}
