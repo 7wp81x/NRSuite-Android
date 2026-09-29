@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -71,6 +72,7 @@ import com.swp81x.nrsuite.ui.util.threatProximityColor
 fun HiddenApScreen(
     connected: Boolean,
     running: Boolean,
+    starting: Boolean,
     fixed: Boolean,
     channel: Int,
     currentHopChannel: Int?,
@@ -95,7 +97,7 @@ fun HiddenApScreen(
     }
 
     val resolvedCount = observations.count { !it.resolvedSsid.isNullOrBlank() }
-    val canStart = connected
+    val canStart = connected && !starting
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -106,6 +108,7 @@ fun HiddenApScreen(
             HiddenApStatusCard(
                 connected = connected,
                 running = running,
+                starting = starting,
                 fixed = fixed,
                 channel = channel,
                 currentHopChannel = currentHopChannel,
@@ -118,7 +121,7 @@ fun HiddenApScreen(
             Spacer(Modifier.height(10.dp))
 
             HiddenApConfigCard(
-                running = running,
+                running = running || starting,
                 expanded = configExpanded,
                 fixed = fixed,
                 channel = channel,
@@ -156,22 +159,38 @@ fun HiddenApScreen(
             Spacer(Modifier.height(80.dp))
         }
 
-        if (connected) {
+        if (connected || starting) {
             FloatingActionButton(
                 onClick = {
-                    if (running) onStop() else if (canStart) confirmStart = true
+                    when {
+                        starting -> Unit
+                        running -> onStop()
+                        canStart -> confirmStart = true
+                    }
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp)
-                    .alpha(if (!canStart && !running) 0.4f else 1f),
-                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
+                    .alpha(if (!canStart && !running && !starting) 0.4f else 1f),
+                containerColor = when {
+                    running -> StatusRed
+                    starting -> StatusAmber
+                    else -> MaterialTheme.colorScheme.primary
+                },
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                Icon(
-                    imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = null,
-                )
+                if (starting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        contentDescription = null,
+                    )
+                }
             }
         }
     }
@@ -182,8 +201,8 @@ fun HiddenApScreen(
             title = { Text("Start hidden AP detection?") },
             text = {
                 Text(
-                    "This passively monitors beacon, probe, association, and " +
-                        "reassociation frames. It does not transmit by itself."
+                    "A one-time baseline scan runs first, then passive monitoring " +
+                        "of beacon, probe, association, and reassociation frames begins."
                 )
             },
             confirmButton = {
@@ -205,6 +224,7 @@ fun HiddenApScreen(
 private fun HiddenApStatusCard(
     connected: Boolean,
     running: Boolean,
+    starting: Boolean,
     fixed: Boolean,
     channel: Int,
     currentHopChannel: Int?,
@@ -215,6 +235,7 @@ private fun HiddenApStatusCard(
 ) {
     val color = when {
         !connected -> StatusNeutral
+        starting -> StatusAmber
         running -> StatusGreen
         else -> StatusAmber
     }
@@ -237,6 +258,7 @@ private fun HiddenApStatusCard(
                     Text(
                         text = when {
                             !connected -> "Disconnected"
+                            starting -> "Scanning nearby..."
                             running -> "Monitoring"
                             else -> "Ready"
                         },
@@ -246,6 +268,7 @@ private fun HiddenApStatusCard(
                     Text(
                         text = when {
                             !connected -> "Connect a device to begin"
+                            starting -> "Running baseline scan before passive detection"
                             running -> buildString {
                                 append(if (fixed) "Fixed ch $channel" else "Hopping")
                                 currentHopChannel?.let { append(" · now ch $it") }

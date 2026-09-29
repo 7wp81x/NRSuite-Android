@@ -222,6 +222,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val clientPresenceFrameCount by viewModel.clientPresenceFrameCount.collectAsState()
     val clientPresenceLastTriggerAt by viewModel.clientPresenceLastTriggerAt.collectAsState()
     val hiddenApRunning by viewModel.hiddenApRunning.collectAsState()
+    val hiddenApStarting by viewModel.hiddenApStarting.collectAsState()
     val hiddenApFixed by viewModel.hiddenApFixed.collectAsState()
     val hiddenApChannel by viewModel.hiddenApChannel.collectAsState()
     val hiddenApCurrentHopChannel by viewModel.hiddenApCurrentHopChannel.collectAsState()
@@ -430,7 +431,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || rogueApRunning || clientPresenceRunning || hiddenApRunning || portalRunning || bleAdvertising || crackerRunning
+    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || rogueApRunning || clientPresenceRunning || hiddenApRunning || hiddenApStarting || portalRunning || bleAdvertising || crackerRunning
     val view = LocalView.current
     DisposableEffect(anyModuleRunning) {
         val window = (view.context as? Activity)?.window
@@ -858,6 +859,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 HiddenApScreen(
                     connected = connectionState is ConnectionState.Connected,
                     running = hiddenApRunning,
+                    starting = hiddenApStarting,
                     fixed = hiddenApFixed,
                     channel = hiddenApChannel,
                     currentHopChannel = hiddenApCurrentHopChannel,

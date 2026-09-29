@@ -17,7 +17,7 @@ internal fun MainViewModel.startHiddenApImpl(fixed: Boolean, channel: Int) {
         appendLog("Connect to a device before starting hidden AP detection.")
         return
     }
-    if (_hiddenApRunning.value) return
+    if (_hiddenApRunning.value || _hiddenApStarting.value) return
     if (!ensureRadioIdle("Hidden AP Revealer")) return
 
     val safeChannel = channel.coerceIn(1, 14)
@@ -28,40 +28,46 @@ internal fun MainViewModel.startHiddenApImpl(fixed: Boolean, channel: Int) {
     _hiddenApObservations.value = emptyList()
     _hiddenApCandidates.value = emptyList()
     _hiddenApEventCount.value = 0
+    _hiddenApStarting.value = true
+    updateForegroundService()
 
     scope.launch {
-        // One-time baseline scan. This is best-effort: if it fails or the user
-        // moves, unknown BSSIDs still pass through to passive detection.
-        hiddenApBaselineBssids.clear()
-        appendLog("Running baseline WiFi scan for Hidden AP Revealer...")
-        val baselineCount = activeSession.scanWifi(timeoutMs = 30_000)
-        if (baselineCount != null && baselineCount >= 0) {
-            delay(150)
-            val visibleBssids = _networks.value.mapNotNull { network ->
-                val bssid = network.optString("bssid").uppercase()
-                val ssid = network.optString("ssid")
-                if (bssid.isNotBlank() && ssid.isNotBlank()) bssid else null
-            }.toSet()
-            hiddenApBaselineBssids.addAll(visibleBssids)
-            appendLog("Revealer baseline: ${visibleBssids.size} visible AP(s) from $baselineCount scan result(s).")
-        } else {
-            appendLog("Revealer baseline scan failed; continuing without visible-AP filtering.")
-        }
+        try {
+            // One-time baseline scan. This is best-effort: if it fails or the
+            // user moves, passive detection still runs without filtering.
+            appendLog("Running baseline WiFi scan for Hidden AP Revealer...")
+            val baselineCount = activeSession.scanWifi(timeoutMs = 15_000)
+            if (baselineCount != null && baselineCount >= 0) {
+                delay(150)
+                val hiddenSeeds = _networks.value.count { network ->
+                    network.optString("bssid").isNotBlank() &&
+                        network.optString("ssid").isBlank()
+                }
+                seedHiddenApObservationsFromScan()
+                appendLog("Revealer baseline: $baselineCount scan result(s), $hiddenSeeds hidden seed(s).")
+            } else {
+                appendLog("Revealer baseline scan failed; continuing with passive detection only.")
+            }
 
-        val args = JSONObject().apply {
-            put("mode", if (fixed) "fixed" else "hop")
-            put("channel", safeChannel)
-            put("interval_ms", 300)
-        }
-        val response = activeSession.sendCommand("START_HIDDEN_AP", args, timeoutMs = 10_000)
-        if (response?.optBoolean("ok") == true) {
-            _hiddenApRunning.value = true
+            val args = JSONObject().apply {
+                put("mode", if (fixed) "fixed" else "hop")
+                put("channel", safeChannel)
+                put("interval_ms", 300)
+            }
+            val response = activeSession.sendCommand("START_HIDDEN_AP", args, timeoutMs = 10_000)
+            if (response?.optBoolean("ok") == true) {
+                _hiddenApRunning.value = true
+                appendLog("Hidden AP Revealer started (${if (fixed) "fixed" else "hopping"} channel).")
+                addHistory("hidden_ap", "Hidden AP Revealer started", HistoryLevel.SUCCESS)
+            } else {
+                _hiddenApCurrentHopChannel.value = null
+                appendLog("Failed to start hidden AP detection: ${response?.optString("msg") ?: "timeout"}")
+            }
+        } catch (t: Throwable) {
+            appendLog("Hidden AP Revealer start failed: ${t.message ?: t.javaClass.simpleName}")
+        } finally {
+            _hiddenApStarting.value = false
             updateForegroundService()
-            appendLog("Hidden AP Revealer started (${if (fixed) "fixed" else "hopping"} channel).")
-            addHistory("hidden_ap", "Hidden AP Revealer started", HistoryLevel.SUCCESS)
-        } else {
-            _hiddenApCurrentHopChannel.value = null
-            appendLog("Failed to start hidden AP detection: ${response?.optString("msg") ?: "timeout"}")
         }
     }
 }
@@ -84,9 +90,43 @@ internal fun MainViewModel.stopHiddenApImpl() {
     }
 }
 
+internal fun MainViewModel.seedHiddenApObservationsFromScan() {
+    val now = timeHmNow()
+    val seeded = _networks.value.mapNotNull { network ->
+        val bssid = network.optString("bssid").uppercase().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        if (network.optString("ssid").isNotBlank()) return@mapNotNull null
+        HiddenApObservation(
+            bssid = bssid,
+            channel = network.optInt("channel", _hiddenApChannel.value),
+            rssi = network.optInt("rssi", -127),
+            resolvedSsid = null,
+            resolutionSource = null,
+            firstSeen = now,
+            lastSeen = now,
+            sightings = 1,
+            vendor = ouiDatabaseRepository.lookup(bssid)?.vendor,
+        )
+    }
+    if (seeded.isEmpty()) return
+
+    _hiddenApObservations.update { current ->
+        val existingByBssid = current.associateBy { it.bssid }
+        val mergedSeeds = seeded.map { seed ->
+            existingByBssid[seed.bssid]?.copy(
+                channel = seed.channel,
+                rssi = seed.rssi,
+                lastSeen = now,
+                sightings = maxOf(existingByBssid[seed.bssid]?.sightings ?: 0, 1),
+                vendor = existingByBssid[seed.bssid]?.vendor ?: seed.vendor,
+            ) ?: seed
+        }
+        (mergedSeeds + current.filterNot { observation -> seeded.any { it.bssid == observation.bssid } })
+            .take(300)
+    }
+}
+
 internal fun MainViewModel.recordHiddenApObservation(event: JSONObject) {
     val bssid = event.optString("bssid").uppercase().takeIf { it.isNotBlank() } ?: return
-    if (bssid in hiddenApBaselineBssids) return
     val now = timeHmNow()
     val channel = event.optInt("channel", _hiddenApChannel.value)
     val rssi = event.optInt("rssi", -127)
