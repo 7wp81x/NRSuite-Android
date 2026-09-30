@@ -152,14 +152,20 @@ class MainViewModel(internal val app: Application) {
     internal val _serialMonitorBaud = MutableStateFlow(115200)
     val serialMonitorBaud: StateFlow<Int> = _serialMonitorBaud.asStateFlow()
 
-    internal val _serialMonitorLog = MutableStateFlow("")
-    val serialMonitorLog: StateFlow<String> = _serialMonitorLog.asStateFlow()
+    internal val _serialMonitorLogLines = MutableStateFlow<List<SerialLogLine>>(emptyList())
+    val serialMonitorLogLines: StateFlow<List<SerialLogLine>> = _serialMonitorLogLines.asStateFlow()
+
+    internal val _serialMonitorHexMode = MutableStateFlow(false)
+    val serialMonitorHexMode: StateFlow<Boolean> = _serialMonitorHexMode.asStateFlow()
 
     internal val _serialMonitorInput = MutableStateFlow("")
     val serialMonitorInput: StateFlow<String> = _serialMonitorInput.asStateFlow()
 
     internal val _serialMonitorLineEnding = MutableStateFlow("LF")
     val serialMonitorLineEnding: StateFlow<String> = _serialMonitorLineEnding.asStateFlow()
+
+    internal val _serialMonitorBlockingMessage = MutableStateFlow<String?>(null)
+    val serialMonitorBlockingMessage: StateFlow<String?> = _serialMonitorBlockingMessage.asStateFlow()
 
     internal val _serialMonitorError = MutableStateFlow<String?>(null)
     val serialMonitorError: StateFlow<String?> = _serialMonitorError.asStateFlow()
@@ -1131,6 +1137,10 @@ class MainViewModel(internal val app: Application) {
     fun setSerialMonitorInput(value: String) = this.setSerialMonitorInputImpl(value)
 
     fun setSerialMonitorLineEnding(value: String) = this.setSerialMonitorLineEndingImpl(value)
+
+    fun setSerialMonitorHexMode(enabled: Boolean) = this.setSerialMonitorHexModeImpl(enabled)
+
+    fun clearSerialMonitorLog() = this.clearSerialMonitorLogImpl()
 
     fun startSerialMonitor(device: UsbSerialDevice, baudRate: Int) = this.startSerialMonitorImpl(device, baudRate)
 

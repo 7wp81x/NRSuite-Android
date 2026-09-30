@@ -301,9 +301,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val serialMonitorConnected by viewModel.serialMonitorConnected.collectAsState()
     val serialMonitorConnecting by viewModel.serialMonitorConnecting.collectAsState()
     val serialMonitorBaud by viewModel.serialMonitorBaud.collectAsState()
-    val serialMonitorLog by viewModel.serialMonitorLog.collectAsState()
+    val serialMonitorLogLines by viewModel.serialMonitorLogLines.collectAsState()
+    val serialMonitorHexMode by viewModel.serialMonitorHexMode.collectAsState()
     val serialMonitorInput by viewModel.serialMonitorInput.collectAsState()
     val serialMonitorLineEnding by viewModel.serialMonitorLineEnding.collectAsState()
+    val serialMonitorBlockingMessage by viewModel.serialMonitorBlockingMessage.collectAsState()
     val serialMonitorError by viewModel.serialMonitorError.collectAsState()
 
     val connected = connectionState as? ConnectionState.Connected
@@ -1285,20 +1287,25 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     connected = serialMonitorConnected,
                     connecting = serialMonitorConnecting,
                     baudRate = serialMonitorBaud,
-                    logText = serialMonitorLog,
+                    logLines = serialMonitorLogLines,
+                    hexMode = serialMonitorHexMode,
                     inputText = serialMonitorInput,
                     lineEnding = serialMonitorLineEnding,
+                    blockingMessage = serialMonitorBlockingMessage,
                     errorMessage = serialMonitorError,
                     permissionRevision = permissionRevision,
                     hasPermission = { usbManager.hasPermission(it.device) },
+                    onRefreshDevices = viewModel::refreshDevices,
                     onSelectDevice = viewModel::selectSerialMonitorDevice,
                     onRequestPermission = { device -> requestSerialMonitorPermission(device.device) },
                     onConnect = { device, baud -> viewModel.startSerialMonitor(device, baud) },
                     onDisconnect = viewModel::stopSerialMonitor,
                     onBaudChange = viewModel::setSerialMonitorBaud,
+                    onHexModeChange = viewModel::setSerialMonitorHexMode,
                     onInputChange = viewModel::setSerialMonitorInput,
                     onLineEndingChange = viewModel::setSerialMonitorLineEnding,
                     onSend = viewModel::sendSerialMonitorInput,
+                    onClearLog = viewModel::clearSerialMonitorLog,
                     onExport = viewModel::exportSerialMonitorLog,
                     modifier = Modifier,
                 )

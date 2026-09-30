@@ -7,6 +7,7 @@ import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.core.usb.UsbSerialTransport
 import java.io.IOException
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.update
@@ -17,6 +18,14 @@ import kotlinx.coroutines.withContext
 // Raw USB serial monitor. This is intentionally independent of NrSession /
 // BridgeProtocol so it can be used with any ESP32 or USB-UART firmware.
 
+data class SerialLogLine(
+    val timestamp: String,
+    val text: String,
+    val level: LogLevel,
+)
+
+private val SERIAL_LOG_TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
+
 internal fun MainViewModel.markSerialMonitorPermissionRequestedImpl(device: UsbDevice) {
     serialMonitorPermissionDeviceId = device.deviceId
     markPermissionRequested(device)
@@ -25,6 +34,7 @@ internal fun MainViewModel.markSerialMonitorPermissionRequestedImpl(device: UsbD
 internal fun MainViewModel.selectSerialMonitorDeviceImpl(device: UsbSerialDevice?) {
     if (_serialMonitorConnected.value || _serialMonitorConnecting.value) return
     _serialMonitorSelected.value = device
+    _serialMonitorBlockingMessage.value = null
     _serialMonitorError.value = null
 }
 
@@ -43,6 +53,14 @@ internal fun MainViewModel.setSerialMonitorLineEndingImpl(value: String) {
     }
 }
 
+internal fun MainViewModel.setSerialMonitorHexModeImpl(enabled: Boolean) {
+    _serialMonitorHexMode.value = enabled
+}
+
+internal fun MainViewModel.clearSerialMonitorLogImpl() {
+    _serialMonitorLogLines.value = emptyList()
+}
+
 internal fun MainViewModel.startSerialMonitorImpl(device: UsbSerialDevice, baudRate: Int) {
     if (_serialMonitorConnected.value || _serialMonitorConnecting.value) return
 
@@ -55,13 +73,15 @@ internal fun MainViewModel.startSerialMonitorImpl(device: UsbSerialDevice, baudR
     val fingerprint = deviceFingerprintImpl(device.device)
     if (deviceSessions.containsKey(fingerprint) || idleDeviceSessions.containsKey(fingerprint)) {
         val message = "Disconnect the active NRSuite session before opening Serial Monitor."
-        _serialMonitorError.value = message
+        _serialMonitorBlockingMessage.value = message
+        _serialMonitorError.value = null
         appendLog(message, level = LogLevel.ERROR)
         return
     }
 
     _serialMonitorSelected.value = device
     _serialMonitorBaud.value = baudRate
+    _serialMonitorBlockingMessage.value = null
     _serialMonitorError.value = null
     _serialMonitorConnecting.value = true
 
@@ -74,6 +94,10 @@ internal fun MainViewModel.startSerialMonitorImpl(device: UsbSerialDevice, baudR
             withContext(Dispatchers.Main) {
                 _serialMonitorConnected.value = true
                 _serialMonitorConnecting.value = false
+                appendSerialMonitorLine(
+                    text = "Serial Monitor opened ${device.displayName} @ $baudRate baud.",
+                    level = LogLevel.USB,
+                )
                 appendLog("Serial Monitor opened ${device.displayName} @ $baudRate baud.", level = LogLevel.USB)
             }
 
@@ -84,16 +108,24 @@ internal fun MainViewModel.startSerialMonitorImpl(device: UsbSerialDevice, baudR
                 } catch (error: IOException) {
                     withContext(Dispatchers.Main) {
                         _serialMonitorError.value = "Serial read failed: ${error.message}"
+                        appendSerialMonitorLine(
+                            text = "Serial read failed: ${error.message}",
+                            level = LogLevel.ERROR,
+                        )
                     }
                     break
                 }
                 if (read > 0) {
-                    _serialMonitorLog.update { it + String(buffer, 0, read, Charsets.UTF_8) }
+                    appendSerialMonitorChunk(String(buffer, 0, read, Charsets.UTF_8))
                 }
             }
         } catch (error: Throwable) {
             withContext(Dispatchers.Main) {
                 _serialMonitorError.value = error.message ?: "Serial Monitor failed."
+                appendSerialMonitorLine(
+                    text = "Serial Monitor failed: ${error.message ?: "unknown error"}",
+                    level = LogLevel.ERROR,
+                )
                 appendLog("Serial Monitor failed: ${error.message}", level = LogLevel.ERROR)
             }
         } finally {
@@ -117,11 +149,13 @@ internal fun MainViewModel.stopSerialMonitorImpl() {
     serialMonitorTransport = null
     _serialMonitorConnected.value = false
     _serialMonitorConnecting.value = false
+    _serialMonitorBlockingMessage.value = null
 
     if (transport != null) {
         scope.launch(Dispatchers.IO) {
             runCatching { transport.close() }
         }
+        appendSerialMonitorLine(text = "Serial Monitor closed.", level = LogLevel.USB)
         appendLog("Serial Monitor closed.", level = LogLevel.USB)
     }
 }
@@ -148,14 +182,18 @@ internal fun MainViewModel.sendSerialMonitorInputImpl() {
         } catch (error: Throwable) {
             withContext(Dispatchers.Main) {
                 _serialMonitorError.value = "Serial write failed: ${error.message}"
+                appendSerialMonitorLine(
+                    text = "Serial write failed: ${error.message}",
+                    level = LogLevel.ERROR,
+                )
             }
         }
     }
 }
 
 internal fun MainViewModel.exportSerialMonitorLogImpl() {
-    val logText = _serialMonitorLog.value
-    if (logText.isBlank()) {
+    val lines = _serialMonitorLogLines.value
+    if (lines.isEmpty()) {
         _serialMonitorError.value = "There is no Serial Monitor log to export."
         return
     }
@@ -164,6 +202,10 @@ internal fun MainViewModel.exportSerialMonitorLogImpl() {
     if (rootUri == null) {
         _serialMonitorError.value = "Set an NRSuite root directory before exporting."
         return
+    }
+
+    val logText = lines.joinToString(separator = "\n") { line ->
+        "[${line.timestamp}] ${line.text}"
     }
 
     scope.launch(Dispatchers.IO) {
@@ -193,5 +235,37 @@ internal fun MainViewModel.exportSerialMonitorLogImpl() {
                 appendLog("Serial Monitor export failed: ${error.message}", level = LogLevel.ERROR)
             }
         }
+    }
+}
+
+private fun MainViewModel.appendSerialMonitorChunk(chunk: String) {
+    val normalized = chunk.replace("\r\n", "\n").replace('\r', '\n')
+    val parts = normalized.split('\n')
+    for ((index, part) in parts.withIndex()) {
+        if (part.isNotEmpty() || index < parts.lastIndex) {
+            appendSerialMonitorLine(text = part)
+        }
+    }
+}
+
+private fun MainViewModel.appendSerialMonitorLine(
+    text: String,
+    level: LogLevel = inferSerialLogLevel(text),
+) {
+    val line = SerialLogLine(
+        timestamp = LocalTime.now().format(SERIAL_LOG_TIME_FORMAT),
+        text = text,
+        level = level,
+    )
+    _serialMonitorLogLines.update { current -> current + line }
+}
+
+private fun inferSerialLogLevel(text: String): LogLevel {
+    val lower = text.lowercase()
+    return when {
+        "error" in lower || "fail" in lower -> LogLevel.ERROR
+        "success" in lower || "ok" in lower -> LogLevel.SUCCESS
+        "usb" in lower -> LogLevel.USB
+        else -> LogLevel.INFO
     }
 }
