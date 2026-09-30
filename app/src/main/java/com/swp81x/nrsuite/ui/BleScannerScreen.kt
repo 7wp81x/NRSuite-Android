@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +51,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.ble.BleDeviceObservation
+import com.swp81x.nrsuite.core.ble.MAX_BLE_SCAN_DEVICES
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -68,6 +70,8 @@ import com.swp81x.nrsuite.ui.util.signalQualityColor
 fun BleScannerScreen(
     connected: Boolean,
     running: Boolean,
+    starting: Boolean,
+    stopping: Boolean,
     active: Boolean,
     devices: List<BleDeviceObservation>,
     onActiveChange: (Boolean) -> Unit,
@@ -125,18 +129,34 @@ fun BleScannerScreen(
         if (connected) {
             FloatingActionButton(
                 onClick = {
-                    if (running) onStop() else confirmStart = true
+                    when {
+                        starting || stopping -> Unit
+                        running -> onStop()
+                        else -> confirmStart = true
+                    }
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
+                containerColor = when {
+                    starting || stopping -> StatusAmber
+                    running -> StatusRed
+                    else -> MaterialTheme.colorScheme.primary
+                },
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                Icon(
-                    imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = if (running) "Stop BLE scan" else "Start BLE scan",
-                )
+                if (starting || stopping) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        contentDescription = if (running) "Stop BLE scan" else "Start BLE scan",
+                    )
+                }
             }
         }
     }
@@ -328,6 +348,15 @@ private fun BleScannerResultsCard(
                 }
             }
 
+            if (totalCount >= MAX_BLE_SCAN_DEVICES) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "$MAX_BLE_SCAN_DEVICES devices — oldest entries are being replaced.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusAmber,
+                )
+            }
+
             Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -410,6 +439,7 @@ private fun BleDeviceRow(device: BleDeviceObservation) {
                                 appendLine("Services: ${device.services.joinToString(", ")}")
                             }
                             device.manufacturerData?.let { appendLine("Manufacturer: $it") }
+                            device.rawPayload?.let { appendLine("Raw payload: $it") }
                         }
                         clipboard.copyWithToast(context, text, "BLE device copied")
                     },
@@ -452,6 +482,14 @@ private fun BleDeviceRow(device: BleDeviceObservation) {
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = "Manufacturer: ${manufacturer.take(32)}",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                )
+            }
+            device.rawPayload?.let { rawPayload ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Raw: ${rawPayload.take(48)}",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
                 )

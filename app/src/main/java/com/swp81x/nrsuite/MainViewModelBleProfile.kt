@@ -12,8 +12,11 @@ import org.json.JSONObject
 
 internal fun MainViewModel.selectBleProfileTargetImpl(device: BleDeviceObservation?) {
     _bleProfileTarget.value = device
-    if (device != null) {
-        _bleProfileStatus.value = "Target selected: ${device.name ?: device.address}"
+    _bleProfileStatus.value = if (device != null) {
+        "Target selected: ${device.name ?: device.address}"
+    } else {
+        _bleProfileServices.value = emptyList()
+        "Select a discovered BLE device"
     }
 }
 
@@ -60,13 +63,26 @@ internal fun MainViewModel.startBleProfileImpl() {
 
 internal fun MainViewModel.stopBleProfileImpl() {
     if (!_bleProfileRunning.value) return
-    _bleProfileRunning.value = false
     _bleProfileStatus.value = "Stopping..."
     updateForegroundService()
 
     val activeSession = session
     scope.launch {
-        activeSession?.sendCommand("BLE_PROFILE_STOP", timeoutMs = 5_000)
+        val response = runCatching {
+            activeSession?.sendCommand("BLE_PROFILE_STOP", timeoutMs = 5_000)
+        }.getOrNull()
+
+        _bleProfileRunning.value = false
+        _bleProfileStatus.value = if (response?.optBoolean("ok") == true) {
+            "Profile stopped"
+        } else {
+            "Stop request sent without confirmation"
+        }
+        updateForegroundService()
+        appendLog(
+            if (response?.optBoolean("ok") == true) "BLE profile stopped."
+            else "BLE profile stop request sent without confirmation."
+        )
     }
 }
 

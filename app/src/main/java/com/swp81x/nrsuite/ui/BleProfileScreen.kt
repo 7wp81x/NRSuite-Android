@@ -26,20 +26,25 @@ import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -59,22 +64,31 @@ import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
 import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.util.rssiToProximity
+import kotlinx.coroutines.launch
 
 @Composable
 fun BleProfileScreen(
     connected: Boolean,
     running: Boolean,
+    scanStarting: Boolean,
+    scanRunning: Boolean,
+    scanStopping: Boolean,
     target: BleDeviceObservation?,
     devices: List<BleDeviceObservation>,
     services: List<BleServiceProfile>,
     status: String,
     onSelectTarget: (BleDeviceObservation) -> Unit,
+    onStartScan: () -> Unit,
+    onStopScan: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var confirmStart by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val scanBusy = scanStarting || scanRunning || scanStopping
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -93,10 +107,16 @@ fun BleProfileScreen(
             Spacer(Modifier.height(10.dp))
 
             BleProfileTargetCard(
+                connected = connected,
                 devices = devices,
                 selectedTarget = target,
-                running = running,
+                profileRunning = running,
+                scanStarting = scanStarting,
+                scanRunning = scanRunning,
+                scanStopping = scanStopping,
                 onSelectTarget = onSelectTarget,
+                onStartScan = onStartScan,
+                onStopScan = onStopScan,
             )
 
             Spacer(Modifier.height(10.dp))
@@ -113,19 +133,50 @@ fun BleProfileScreen(
         if (connected) {
             FloatingActionButton(
                 onClick = {
-                    if (running) onStop() else if (target != null) confirmStart = true
+                    when {
+                        scanBusy -> Unit
+                        running -> onStop()
+                        target == null -> scope.launch {
+                            snackbarHostState.showSnackbar("Select a discovered BLE device first.")
+                        }
+                        else -> confirmStart = true
+                    }
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(20.dp),
-                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
+                    .padding(20.dp)
+                    .alpha(if (!scanBusy && !running && target == null) 0.4f else 1f),
+                containerColor = when {
+                    running -> StatusRed
+                    scanBusy -> StatusAmber
+                    target == null -> StatusNeutral
+                    else -> MaterialTheme.colorScheme.primary
+                },
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                Icon(
-                    imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = if (running) "Stop BLE profile" else "Start BLE profile",
-                )
+                when {
+                    scanBusy -> CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                    running -> Icon(
+                        imageVector = Icons.Default.Stop,
+                        contentDescription = "Stop BLE profile",
+                    )
+                    else -> Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Start BLE profile",
+                    )
+                }
             }
+
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 96.dp),
+            )
         }
     }
 
@@ -217,11 +268,34 @@ private fun servicesStatus(status: String): Boolean =
 
 @Composable
 private fun BleProfileTargetCard(
+    connected: Boolean,
     devices: List<BleDeviceObservation>,
     selectedTarget: BleDeviceObservation?,
-    running: Boolean,
+    profileRunning: Boolean,
+    scanStarting: Boolean,
+    scanRunning: Boolean,
+    scanStopping: Boolean,
     onSelectTarget: (BleDeviceObservation) -> Unit,
+    onStartScan: () -> Unit,
+    onStopScan: () -> Unit,
 ) {
+    val scanBusy = scanStarting || scanRunning || scanStopping
+    val scanStatusText = when {
+        !connected -> "Connect an NRSuite device to scan."
+        profileRunning -> "Profiling in progress. Stop the profile before scanning again."
+        scanStarting -> "Starting BLE scan..."
+        scanRunning -> "Scanning... ${devices.size} device(s) found. Tap Stop when your target appears."
+        scanStopping -> "Stopping BLE scan..."
+        devices.isEmpty() -> "No discovered BLE devices yet. Start a scan."
+        else -> "${devices.size} discovered device(s). Select one to profile."
+    }
+    val scanStatusColor = when {
+        !connected -> StatusNeutral
+        scanStarting || scanRunning || scanStopping -> StatusAmber
+        devices.isEmpty() -> NrOnSurfaceVariant
+        else -> StatusGreen
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
@@ -235,17 +309,49 @@ private fun BleProfileTargetCard(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "Choose a device discovered by BLE Scanner.",
+                text = "Scan for nearby BLE devices, stop, then choose one to profile.",
                 style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
             )
             Spacer(Modifier.height(8.dp))
 
+            OutlinedButton(
+                onClick = {
+                    when {
+                        scanRunning -> onStopScan()
+                        scanStarting || scanStopping -> Unit
+                        else -> onStartScan()
+                    }
+                },
+                enabled = connected && !profileRunning && !scanStarting && !scanStopping,
+            ) {
+                Text(
+                    when {
+                        scanStarting -> "Starting BLE scan..."
+                        scanRunning -> "Stop BLE scan"
+                        scanStopping -> "Stopping BLE scan..."
+                        else -> "Scan for nearby BLE"
+                    }
+                )
+            }
+
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = scanStatusText,
+                style = MaterialTheme.typography.bodySmall,
+                color = scanStatusColor,
+            )
+            Spacer(Modifier.height(8.dp))
+
             if (devices.isEmpty()) {
                 Text(
-                    text = "No discovered BLE devices. Run BLE Scanner first.",
+                    text = if (scanBusy) {
+                        "Waiting for nearby BLE devices..."
+                    } else {
+                        "Devices discovered by the scanner will appear here."
+                    },
                     style = MaterialTheme.typography.bodySmall,
-                    color = StatusAmber,
+                    color = if (scanBusy) StatusAmber else NrOnSurfaceVariant,
                 )
             } else {
                 LazyColumn(
@@ -288,7 +394,7 @@ private fun BleProfileTargetCard(
                                 }
                                 OutlinedButton(
                                     onClick = { onSelectTarget(device) },
-                                    enabled = !running,
+                                    enabled = !profileRunning && !scanBusy,
                                 ) {
                                     Text(if (selectedTarget?.address == device.address) "Selected" else "Select")
                                 }

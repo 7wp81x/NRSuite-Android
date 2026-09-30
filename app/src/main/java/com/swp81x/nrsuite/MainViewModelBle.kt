@@ -78,7 +78,9 @@ internal fun MainViewModel.stopBleImpl() {
     val activeSession = session
     scope.launch {
         runCatching { activeSession?.sendCommand("BLE_RELEASE_ALL", timeoutMs = 3_000) }
+            .onFailure { e -> appendLog("BLE release failed: ${e.message}", level = LogLevel.ERROR) }
         runCatching { activeSession?.sendCommand("BLE_MOUSE_RELEASE", timeoutMs = 3_000) }
+            .onFailure { e -> appendLog("BLE mouse release failed: ${e.message}", level = LogLevel.ERROR) }
         val response = activeSession?.sendCommand("BLE_STOP", timeoutMs = 5_000)
         appendLog(
             if (response?.optBoolean("ok") == true) "BLE HID stopped."
@@ -150,11 +152,14 @@ internal fun MainViewModel.sendBleRealtimeInputImpl(inserted: String, backspaces
     if (!_bleConnected.value || session == null) return
     if (inserted.isEmpty() && backspaces <= 0) return
 
-    synchronized(bleTypeBuffer) {
-        repeat(backspaces.coerceAtLeast(0)) { bleTypeBuffer.append('\b') }
-        if (inserted.isNotEmpty()) bleTypeBuffer.append(inserted)
+    val payload = buildString {
+        repeat(backspaces.coerceAtLeast(0)) { append('\b') }
+        if (inserted.isNotEmpty()) append(inserted)
     }
-    scheduleBleTypeFlushImpl()
+    if (payload.isEmpty()) return
+
+    ensureBleTypeConsumerImpl()
+    bleTypeChannel.trySend(payload)
 }
 
 internal fun MainViewModel.sendBleSpecialKeyImpl(key: String) {
@@ -166,6 +171,8 @@ internal fun MainViewModel.sendBleSpecialKeyImpl(key: String) {
                 "BLE_KEY_TAP",
                 JSONObject().put("key", key),
             )
+        }.onFailure { e ->
+            appendLog("BLE command failed: ${e.message}", level = LogLevel.ERROR)
         }
         releaseMomentaryModifiersImpl(activeSession)
     }
@@ -184,6 +191,8 @@ internal fun MainViewModel.sendBleMouseMoveImpl(dx: Int, dy: Int) {
                 "BLE_MOUSE_MOVE",
                 JSONObject().put("dx", dx).put("dy", dy),
             )
+        }.onFailure { e ->
+            appendLog("BLE command failed: ${e.message}", level = LogLevel.ERROR)
         }
     }
 }
@@ -197,6 +206,8 @@ internal fun MainViewModel.sendBleMouseScrollImpl(wheel: Int) {
                 "BLE_MOUSE_SCROLL",
                 JSONObject().put("wheel", wheel),
             )
+        }.onFailure { e ->
+            appendLog("BLE command failed: ${e.message}", level = LogLevel.ERROR)
         }
     }
 }
@@ -210,6 +221,8 @@ internal fun MainViewModel.sendBleMouseButtonImpl(button: String, down: Boolean)
                 "BLE_MOUSE_BUTTON",
                 JSONObject().put("button", button).put("down", down),
             )
+        }.onFailure { e ->
+            appendLog("BLE command failed: ${e.message}", level = LogLevel.ERROR)
         }
     }
 }
@@ -219,6 +232,9 @@ internal fun MainViewModel.releaseBleMouseButtonsImpl() {
     if (!_bleConnected.value) return
     scope.launch {
         runCatching { activeSession.sendCommandNoWait("BLE_MOUSE_RELEASE") }
+            .onFailure { e ->
+                appendLog("BLE command failed: ${e.message}", level = LogLevel.ERROR)
+            }
     }
 }
 
@@ -233,6 +249,8 @@ internal suspend fun MainViewModel.releaseMomentaryModifiersImpl(activeSession: 
                 "BLE_KEY_UP",
                 JSONObject().put("key", key),
             )
+        }.onFailure { e ->
+            appendLog("BLE command failed: ${e.message}", level = LogLevel.ERROR)
         }
     }
 }
@@ -248,48 +266,38 @@ internal fun MainViewModel.setBleModifierImpl(key: String, down: Boolean) {
     scope.launch {
         runCatching {
             activeSession.sendCommandNoWait(cmd, JSONObject().put("key", key))
+        }.onFailure { e ->
+            appendLog("BLE command failed: ${e.message}", level = LogLevel.ERROR)
         }
     }
 }
 
-internal fun MainViewModel.scheduleBleTypeFlushImpl() {
-    if (bleTypeJob?.isActive == true) return
-    bleTypeJob = scope.launch {
-        try {
-            while (true) {
-                delay(25L)
-                val payload: String? = synchronized(bleTypeBuffer) {
-                    if (bleTypeBuffer.isEmpty()) {
-                        null
-                    } else {
-                        bleTypeBuffer.toString().also { bleTypeBuffer.setLength(0) }
-                    }
-                }
-                if (payload == null) return@launch
-
-                val activeSession = session ?: return@launch
-                if (!_bleConnected.value) return@launch
-                runCatching {
-                    activeSession.sendCommandNoWait(
-                        "BLE_TYPE_TEXT",
-                        JSONObject().put("text", payload),
-                    )
-                }
-                releaseMomentaryModifiersImpl(activeSession)
+private fun MainViewModel.ensureBleTypeConsumerImpl() {
+    if (bleTypeConsumerJob?.isActive == true) return
+    bleTypeConsumerJob = scope.launch {
+        for (payload in bleTypeChannel) {
+            val activeSession = session ?: continue
+            if (!_bleConnected.value) continue
+            runCatching {
+                activeSession.sendCommandNoWait(
+                    "BLE_TYPE_TEXT",
+                    JSONObject().put("text", payload),
+                )
+            }.onFailure { e ->
+                appendLog("BLE command failed: ${e.message}", level = LogLevel.ERROR)
             }
-        } finally {
-            bleTypeJob = null
+            releaseMomentaryModifiersImpl(activeSession)
         }
     }
 }
 
 internal fun MainViewModel.clearBleRealtimeStateImpl() {
     _bleModifiers.value = emptySet()
-    synchronized(bleTypeBuffer) {
-        bleTypeBuffer.setLength(0)
+    while (bleTypeChannel.tryReceive().isSuccess) {
+        // Drain queued keystrokes that belong to the previous BLE session.
     }
-    bleTypeJob?.cancel()
-    bleTypeJob = null
+    bleTypeConsumerJob?.cancel()
+    bleTypeConsumerJob = null
 }
 
 internal suspend fun MainViewModel.runBleScriptImpl(activeSession: NrSession, script: String) {

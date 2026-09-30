@@ -13,4 +13,5 @@ data class BleDeviceObservation(
     val firstSeen: String,
     val lastSeen: String,
     val sightings: Int,
+    val rawPayload: String? = null,
 )

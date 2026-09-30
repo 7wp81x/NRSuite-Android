@@ -70,6 +70,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -593,8 +594,14 @@ class MainViewModel(internal val app: Application) {
     internal val _bleScriptRunning = MutableStateFlow(false)
     val bleScriptRunning: StateFlow<Boolean> = _bleScriptRunning.asStateFlow()
 
+    internal val _bleScanStarting = MutableStateFlow(false)
+    val bleScanStarting: StateFlow<Boolean> = _bleScanStarting.asStateFlow()
+
     internal val _bleScanRunning = MutableStateFlow(false)
     val bleScanRunning: StateFlow<Boolean> = _bleScanRunning.asStateFlow()
+
+    internal val _bleScanStopping = MutableStateFlow(false)
+    val bleScanStopping: StateFlow<Boolean> = _bleScanStopping.asStateFlow()
 
     internal val _bleScanActive = MutableStateFlow(true)
     val bleScanActive: StateFlow<Boolean> = _bleScanActive.asStateFlow()
@@ -617,8 +624,8 @@ class MainViewModel(internal val app: Application) {
     internal val _bleProfileServices = MutableStateFlow<List<BleServiceProfile>>(emptyList())
     val bleProfileServices: StateFlow<List<BleServiceProfile>> = _bleProfileServices.asStateFlow()
 
-    internal val bleTypeBuffer = StringBuilder()
-    internal var bleTypeJob: Job? = null
+    internal val bleTypeChannel = Channel<String>(Channel.BUFFERED)
+    internal var bleTypeConsumerJob: Job? = null
 
     internal var bleStatusJob: Job? = null
 
@@ -969,7 +976,9 @@ class MainViewModel(internal val app: Application) {
         _bleAdvertising.value = false
         _bleConnected.value = false
         _bleScriptRunning.value = false
+        _bleScanStarting.value = false
         _bleScanRunning.value = false
+        _bleScanStopping.value = false
         _bleProfileRunning.value = false
         this.clearBleRealtimeStateImpl()
         _portalMode.value = null
@@ -1174,7 +1183,7 @@ class MainViewModel(internal val app: Application) {
         if (includeBle && (_bleAdvertising.value || _bleConnected.value)) {
             return "BLE HID"
         }
-        if (includeBle && _bleScanRunning.value) {
+        if (includeBle && (_bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value)) {
             return "BLE Scanner"
         }
         if (includeBle && _bleProfileRunning.value) {
@@ -1223,7 +1232,7 @@ class MainViewModel(internal val app: Application) {
             _clientPresenceRunning.value -> "Client detector active"
             _hiddenApStarting.value -> "Hidden AP Revealer scanning"
             _hiddenApRunning.value -> "Hidden AP revealer active"
-            _bleScanRunning.value -> "BLE scanner active"
+            _bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value -> "BLE scanner active"
             _bleProfileRunning.value -> "BLE profile active"
             _bleAdvertising.value || _bleConnected.value -> "BLE HID active"
             else -> null

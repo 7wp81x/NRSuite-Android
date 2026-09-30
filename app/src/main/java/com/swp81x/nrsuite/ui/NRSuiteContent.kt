@@ -285,7 +285,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val bleModifiers by viewModel.bleModifiers.collectAsState()
     val bleModifierHold by viewModel.bleModifierHold.collectAsState()
     val bleScriptRunning by viewModel.bleScriptRunning.collectAsState()
+    val bleScanStarting by viewModel.bleScanStarting.collectAsState()
     val bleScanRunning by viewModel.bleScanRunning.collectAsState()
+    val bleScanStopping by viewModel.bleScanStopping.collectAsState()
     val bleScanActive by viewModel.bleScanActive.collectAsState()
     val bleScanDevices by viewModel.bleScanDevices.collectAsState()
     val trackerObservations by viewModel.trackerObservations.collectAsState()
@@ -1141,11 +1143,16 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 BleProfileScreen(
                     connected = connectionState is ConnectionState.Connected,
                     running = bleProfileRunning,
+                    scanStarting = bleScanStarting,
+                    scanRunning = bleScanRunning,
+                    scanStopping = bleScanStopping,
                     target = bleProfileTarget,
                     devices = bleScanDevices,
                     services = bleProfileServices,
                     status = bleProfileStatus,
                     onSelectTarget = viewModel::selectBleProfileTarget,
+                    onStartScan = { viewModel.startBleScan(bleScanActive) },
+                    onStopScan = viewModel::stopBleScan,
                     onStart = viewModel::startBleProfile,
                     onStop = viewModel::stopBleProfile,
                     onClear = viewModel::clearBleProfile,
@@ -1157,6 +1164,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 BleScannerScreen(
                     connected = connectionState is ConnectionState.Connected,
                     running = bleScanRunning,
+                    starting = bleScanStarting,
+                    stopping = bleScanStopping,
                     active = bleScanActive,
                     devices = bleScanDevices,
                     onActiveChange = viewModel::setBleScanActive,

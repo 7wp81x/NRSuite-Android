@@ -8,4 +8,5 @@ data class TrackerObservation(
     val firstSeen: String,
     val lastSeen: String,
     val sightings: Int,
+    val trackerType: String? = null,
 )
