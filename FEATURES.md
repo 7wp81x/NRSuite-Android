@@ -19,7 +19,10 @@ This document lists all current and planned features across the NRSuite ecosyste
 | Captive Portal | ✅ | Credential harvesting UI |
 | Packet Sniffer | ✅ | Monitor-mode capture, pcap export |
 | WPA Handshake Capture/Crack | ✅ | Offline dictionary cracking |
-| BLE Scan/Interaction | ✅ | Bluetooth LE device interaction |
+| BLE HID | ✅ | Bluetooth LE keyboard/mouse HID and DuckyScript payloads |
+| BLE Scanner | ✅ | Device discovery with names, RSSI, manufacturer data, and service badges |
+| BLE GATT Profile | 📋 | Read-only service/characteristic enumeration; in review |
+| FastPair Model ID | 📋 | Map FastPair model IDs to known device names/types |
 | BadUSB | ✅ | HID injection via USB |
 | Credential Manager | ✅ | Local storage of harvested creds |
 
@@ -30,7 +33,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 | Rogue AP Detector | 📋 | Baseline SSID→BSSID/channel/security; flags mismatches, downgrades, duplicate SSIDs, KARMA-style probe-response behavior |
 | Deauth Detector | ✅ | Passive deauth/disassoc monitoring with BSSID/client/RSSI/reason filters, async alerts, and live logs |
 | Deauth Locator | 📋 | RSSI-based direction/distance estimate; multi-node triangulation |
-| AirTag/Tracker Detector | 📋 | BLE "Find My"-style advert detection; cross-location persistence heuristic |
+| Tracker Detector | ✅ | Find My-style advert detection, repeated sightings, alerts, and export |
 | Client Detector | ✅ | Passive probe/assoc/reassoc/auth monitoring plus active deauth-trigger mode |
 | Hidden AP Revealer | ✅ | Passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution |
 | Unauthorized RFID Reader Detector | 📋 | Detect unattended/skimmer-style RF field polling nearby |

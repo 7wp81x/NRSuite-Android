@@ -44,16 +44,18 @@ check [screenshots](./Screenshots/) for more screenshots.
 | Captive Portal | Custom HTML portal for credential capture |
 | Packet Sniffer | Monitor-mode pcap capture and export |
 | WPA Handshake Capture | Capture and crack WPA/WPA2 handshakes |
-| BLE Scan | Bluetooth LE device discovery and interaction |
+| BLE HID | Bluetooth LE keyboard/mouse HID and DuckyScript payloads |
+| BLE Scanner | BLE device discovery with names, RSSI, manufacturer data, and service badges |
+| Tracker Detector | Find My / AirTag-style advertisement detection with repeated sightings |
 | BadUSB | HID injection via Ducky Script editor |
 | Credential Manager | Local storage and management of captured credentials |
 | ESP32 Flasher | Flash NRSuite firmware directly from the app over USB |
 | Multi-device USB sessions | Connect and use multiple USB serial devices independently, with per-device permissions and connection state |
 | Persistent device ID | Firmware NVS ID (`NRxxxxxxx`) shown in the app so devices remain identifiable across reconnects |
 
-### Planned (see [FEATURES.md](./FEATURES.md))
-- BadUSB device picker: choose which connected device receives BadUSB independently
-- Defense modules: rogue AP detector, AirTag/tracker detector
+### Planned / in review (see [FEATURES.md](./FEATURES.md))
+- BLE GATT Profile: read-only service and characteristic enumeration (in review)
+- FastPair Model Identification: map FastPair model IDs to known device names/types
 - ESP-NOW mesh: multi-node coordination, distributed sensing, triangulation
 - Mesh chat: encrypted offline team messaging
 - Remote camera node support (ESP32-CAM)
