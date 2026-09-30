@@ -471,18 +471,18 @@ private fun SerialMonitorLogCard(
                         color = NrOnSurfaceVariant,
                     )
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        state = logListState,
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        items(logLines) { line ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(logHorizontalScroll),
-                            ) {
-                                SelectionContainer {
+                    SelectionContainer {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            state = logListState,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            items(logLines) { line ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(logHorizontalScroll),
+                                ) {
                                     Column {
                                         Text(
                                             text = "[${line.timestamp}]",
