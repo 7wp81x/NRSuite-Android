@@ -316,6 +316,15 @@ internal val modules = listOf(
         available = true,
     ),
     ModuleCardSpec(
+        id = "ble_profile",
+        title = "BLE GATT Profile",
+        description = "Read-only service and characteristic enumeration for a BLE device.",
+        icon = Icons.Default.DeveloperBoard,
+        category = "BLE",
+        radio = "BLE",
+        available = true,
+    ),
+    ModuleCardSpec(
         id = "storage",
         title = "Mass Storage",
         description = "Browse and manage files on the device.",
