@@ -15,26 +15,33 @@ internal fun MainViewModel.detectTrackerCandidate(
     name: String?,
     rssi: Int,
     manufacturerData: String?,
+    rawPayload: String?,
 ) {
-    if (address.isBlank() || manufacturerData.isNullOrBlank()) return
+    if (address.isBlank()) return
 
-    val payload = manufacturerData.uppercase().replace(" ", "")
-    val isTracker = payload.contains(TRACKER_PATTERN_A) || payload.contains(TRACKER_PATTERN_B)
+    val manufacturer = manufacturerData.orEmpty().uppercase().replace(" ", "")
+    val raw = rawPayload.orEmpty().uppercase().replace(" ", "")
+    val isTracker = manufacturer.contains(TRACKER_PATTERN_A) ||
+        manufacturer.contains(TRACKER_PATTERN_B) ||
+        raw.contains(TRACKER_PATTERN_A) ||
+        raw.contains(TRACKER_PATTERN_B)
     if (!isTracker) return
+
+    val payloadForDisplay = manufacturerData ?: rawPayload
 
     val now = timeHmNow()
     val existing = _trackerObservations.value.firstOrNull { it.address == address }
     val updated = existing?.copy(
         name = name ?: existing.name,
         rssi = rssi,
-        manufacturerData = manufacturerData,
+        manufacturerData = payloadForDisplay,
         lastSeen = now,
         sightings = existing.sightings + 1,
     ) ?: TrackerObservation(
         address = address,
         name = name,
         rssi = rssi,
-        manufacturerData = manufacturerData,
+        manufacturerData = payloadForDisplay,
         firstSeen = now,
         lastSeen = now,
         sightings = 1,

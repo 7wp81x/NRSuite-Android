@@ -72,6 +72,7 @@ internal fun MainViewModel.recordBleDeviceEvent(event: JSONObject) {
     val txPower = event.optInt("tx_power", 0)
     val appearance = event.optInt("appearance", 0)
     val manufacturerData = event.optString("manufacturer_data").takeIf { it.isNotBlank() }
+    val rawPayload = event.optString("raw_payload").takeIf { it.isNotBlank() }
     val services = mutableListOf<String>()
     event.optJSONArray("services")?.let { array ->
         for (i in 0 until array.length()) {
@@ -118,5 +119,6 @@ internal fun MainViewModel.recordBleDeviceEvent(event: JSONObject) {
         name = updated.name,
         rssi = rssi,
         manufacturerData = updated.manufacturerData,
+        rawPayload = rawPayload,
     )
 }
