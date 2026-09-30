@@ -1,8 +1,10 @@
 package com.swp81x.nrsuite.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -42,7 +45,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,10 +60,12 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.SerialLogLine
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
+import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.LogColorError
 import com.swp81x.nrsuite.ui.theme.LogColorInfo
@@ -210,9 +214,14 @@ private fun SerialMonitorConnectionCard(
 ) {
     var deviceMenuExpanded by remember { mutableStateOf(false) }
     var baudMenuExpanded by remember { mutableStateOf(false) }
+    val currentSelected = selectedDevice?.takeIf { selected ->
+        devices.any { it.device.deviceId == selected.device.deviceId }
+    }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
         border = BorderStroke(0.5.dp, if (connected) StatusGreen else NrOutline),
         shape = RoundedCornerShape(12.dp),
@@ -238,10 +247,10 @@ private fun SerialMonitorConnectionCard(
                     Text(
                         text = when {
                             connecting -> "Opening serial port..."
-                            connected -> "${selectedDevice?.displayName ?: "Serial device"} @ $baudRate baud"
-                            selectedDevice == null -> "Select a USB serial device"
-                            !hasPermission(selectedDevice) -> "USB permission required"
-                            else -> "Ready to open ${selectedDevice.displayName}"
+                            connected -> "${currentSelected?.displayName ?: "Serial device"} @ $baudRate baud"
+                            currentSelected == null -> "Select a USB serial device"
+                            !hasPermission(currentSelected) -> "USB permission required"
+                            else -> "Ready to open ${currentSelected.displayName}"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = if (connected) StatusGreen else NrOnSurfaceVariant,
@@ -265,109 +274,117 @@ private fun SerialMonitorConnectionCard(
                 }
             }
 
-            if (!expanded) return@Column
+            if (expanded) {
+                Spacer(Modifier.height(10.dp))
 
-            Spacer(Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                DropdownField(
-                    modifier = Modifier.weight(1f),
-                    label = "Device",
-                    value = selectedDevice?.displayName ?: "Select a device",
-                    enabled = !connected && devices.isNotEmpty(),
-                    expanded = deviceMenuExpanded,
-                    onToggle = { deviceMenuExpanded = true },
-                    onDismiss = { deviceMenuExpanded = false },
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    devices.forEach { device ->
-                        DropdownMenuItem(
-                            text = { Text(device.displayName) },
-                            onClick = {
-                                onSelectDevice(device)
-                                deviceMenuExpanded = false
-                            },
-                        )
-                    }
-                }
-                IconButton(onClick = onRefreshDevices) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Refresh USB serial devices",
-                        tint = NrOnSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                Button(
-                    onClick = {
-                        when {
-                            connected -> onDisconnect()
-                            connecting -> Unit
-                            selectedDevice == null -> Unit
-                            !hasPermission(selectedDevice) -> onRequestPermission(selectedDevice)
-                            else -> onConnect(selectedDevice, baudRate)
+                    DropdownField(
+                        modifier = Modifier.weight(1f),
+                        label = "Device",
+                        value = currentSelected?.displayName ?: "Select a device",
+                        enabled = !connected && devices.isNotEmpty(),
+                        expanded = deviceMenuExpanded,
+                        onToggle = { deviceMenuExpanded = true },
+                        onDismiss = { deviceMenuExpanded = false },
+                    ) {
+                        devices.forEach { device ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = device.displayName,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                                onClick = {
+                                    onSelectDevice(device)
+                                    deviceMenuExpanded = false
+                                },
+                            )
                         }
-                    },
-                    enabled = connected || (!connecting && selectedDevice != null),
-                ) {
-                    Text(
-                        text = when {
-                            connected -> "Disconnect"
-                            connecting -> "Connecting..."
-                            selectedDevice == null -> "Connect"
-                            !hasPermission(selectedDevice) -> "Allow USB"
-                            else -> "Connect"
+                    }
+                    IconButton(onClick = onRefreshDevices) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh USB serial devices",
+                            tint = NrOnSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            when {
+                                connected -> onDisconnect()
+                                connecting -> Unit
+                                currentSelected == null -> Unit
+                                !hasPermission(currentSelected) -> onRequestPermission(currentSelected)
+                                else -> onConnect(currentSelected, baudRate)
+                            }
                         },
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                DropdownField(
-                    modifier = Modifier.weight(1f),
-                    label = "Baud rate",
-                    value = baudRate.toString(),
-                    enabled = !connected,
-                    expanded = baudMenuExpanded,
-                    onToggle = { baudMenuExpanded = true },
-                    onDismiss = { baudMenuExpanded = false },
-                ) {
-                    BAUD_RATES.forEach { rate ->
-                        DropdownMenuItem(
-                            text = { Text(rate.toString()) },
-                            onClick = {
-                                onBaudChange(rate)
-                                baudMenuExpanded = false
+                        enabled = connected || (!connecting && currentSelected != null),
+                    ) {
+                        Text(
+                            text = when {
+                                connected -> "Disconnect"
+                                connecting -> "Connecting..."
+                                currentSelected == null -> "Connect"
+                                !hasPermission(currentSelected) -> "Allow USB"
+                                else -> "Connect"
                             },
                         )
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(
-                        selected = !hexMode,
-                        onClick = { onHexModeChange(false) },
-                    )
-                    Text("Text", style = MaterialTheme.typography.bodySmall)
-                    RadioButton(
-                        selected = hexMode,
-                        onClick = { onHexModeChange(true) },
-                    )
-                    Text("Hex", style = MaterialTheme.typography.bodySmall)
-                }
-            }
+                Spacer(Modifier.height(10.dp))
 
-            // TODO: Add DTR/RTS outline NrFilterChip toggles here once the
-            // ViewModel exposes modem-control state and actions.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    DropdownField(
+                        modifier = Modifier.weight(1f),
+                        label = "Baud rate",
+                        value = baudRate.toString(),
+                        enabled = !connected,
+                        expanded = baudMenuExpanded,
+                        onToggle = { baudMenuExpanded = true },
+                        onDismiss = { baudMenuExpanded = false },
+                    ) {
+                        BAUD_RATES.forEach { rate ->
+                            DropdownMenuItem(
+                                text = { Text(rate.toString()) },
+                                onClick = {
+                                    onBaudChange(rate)
+                                    baudMenuExpanded = false
+                                },
+                            )
+                        }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        NrFilterChip(
+                            selected = !hexMode,
+                            onClick = { onHexModeChange(false) },
+                            label = "Text",
+                            selectedColor = MaterialTheme.colorScheme.primary,
+                        )
+                        NrFilterChip(
+                            selected = hexMode,
+                            onClick = { onHexModeChange(true) },
+                            label = "Hex",
+                            selectedColor = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+
+                // TODO: Add DTR/RTS outline NrFilterChip toggles here once the
+                // ViewModel exposes modem-control state and actions.
+            }
         }
     }
 }
@@ -440,22 +457,32 @@ private fun SerialMonitorLogCard(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         items(logLines) { line ->
-                            SelectionContainer {
-                                Column {
-                                    Text(
-                                        text = "[${line.timestamp}]",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                        color = NrOnSurfaceVariant,
-                                    )
-                                    Text(
-                                        text = if (hexMode) line.text.toByteArray().joinToString(" ") {
-                                            "%02X".format(it.toInt() and 0xFF)
-                                        } else {
-                                            line.text
-                                        },
-                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                        color = logLevelColor(line.level),
-                                    )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                            ) {
+                                SelectionContainer {
+                                    Column {
+                                        Text(
+                                            text = "[${line.timestamp}]",
+                                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                            color = NrOnSurfaceVariant,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                        )
+                                        Text(
+                                            text = if (hexMode) line.text.toByteArray().joinToString(" ") {
+                                                "%02X".format(it.toInt() and 0xFF)
+                                            } else {
+                                                line.text
+                                            },
+                                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                            color = logLevelColor(line.level),
+                                            maxLines = 1,
+                                            softWrap = false,
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -480,9 +507,9 @@ private fun SerialMonitorLogCard(
                 )
                 DropdownField(
                     modifier = Modifier.width(110.dp),
-                    label = "Line ending",
+                    label = "",
                     value = lineEnding,
-                    enabled = connected,
+                    enabled = true,
                     expanded = lineEndingExpanded,
                     onToggle = { lineEndingExpanded = true },
                     onDismiss = { lineEndingExpanded = false },
@@ -535,15 +562,19 @@ private fun DropdownField(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NrOnSurfaceVariant,
-                    )
+                    if (label.isNotBlank()) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
                     Text(
                         text = value,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 Icon(
