@@ -285,6 +285,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val bleModifiers by viewModel.bleModifiers.collectAsState()
     val bleModifierHold by viewModel.bleModifierHold.collectAsState()
     val bleScriptRunning by viewModel.bleScriptRunning.collectAsState()
+    val bleScanRunning by viewModel.bleScanRunning.collectAsState()
+    val bleScanActive by viewModel.bleScanActive.collectAsState()
+    val bleScanDevices by viewModel.bleScanDevices.collectAsState()
 
     val connected = connectionState as? ConnectionState.Connected
     val connectedChip = connected?.chip
@@ -309,6 +312,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         portalRunning,
         portalMode,
         bleAdvertising,
+        bleScanRunning,
         ouiDatabaseStatus,
     ) {
         modules.map { module ->
@@ -326,6 +330,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "deauth_detector" -> "deauth_detect"
             "client_presence" -> "client_detect"
             "hidden_ap" -> "hidden_ap"
+            "ble_scanner" -> "ble_scan"
             "portal" -> "portal"
             "evil_twin" -> "portal"
             "storage" -> "storage"
@@ -335,6 +340,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
         val chipSupported = when (module.id) {
             "ble" -> connectedChip in setOf("ESP32-C3", "ESP32-S3", "ESP32")
+            "ble_scanner" -> connectedChip in setOf("ESP32-C3", "ESP32-S3", "ESP32")
             "badusb" -> connectedChip in setOf("ESP32-S2", "ESP32-S3")
             else -> true
         }
@@ -358,6 +364,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             isDeviceConnected && !supported && module.id == "deauth_detector" -> "Requires deauth_detect firmware"
             isDeviceConnected && !supported && module.id == "client_presence" -> "Requires client_detect firmware"
             isDeviceConnected && !supported && module.id == "hidden_ap" -> "Requires hidden_ap firmware"
+            isDeviceConnected && !supported && module.id == "ble_scanner" -> when {
+                connectedChip == "ESP32-S2" -> "No BLE radio on this chip"
+                else -> "Requires ble_scan firmware"
+            }
             else -> module.statusLabel
         }
         module.copy(
@@ -376,6 +386,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "portal" -> portalRunning && portalMode == "portal"
                 "evil_twin" -> portalRunning && portalMode == "evil_twin"
                 "ble" -> bleAdvertising
+                "ble_scanner" -> bleScanRunning
                 else -> false
             },
         )
@@ -430,7 +441,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || rogueApRunning || clientPresenceRunning || hiddenApRunning || hiddenApStarting || portalRunning || bleAdvertising || crackerRunning
+    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || rogueApRunning || clientPresenceRunning || hiddenApRunning || hiddenApStarting || portalRunning || bleAdvertising || bleScanRunning || crackerRunning
     val view = LocalView.current
     DisposableEffect(anyModuleRunning) {
         val window = (view.context as? Activity)?.window
@@ -1091,6 +1102,20 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     savedScripts = duckyScripts,
                     onSaveScript = viewModel::saveDuckyScript,
                     onDeleteScript = viewModel::deleteDuckyScript,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "ble_scanner" -> {
+                BleScannerScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    running = bleScanRunning,
+                    active = bleScanActive,
+                    devices = bleScanDevices,
+                    onActiveChange = viewModel::setBleScanActive,
+                    onStart = { viewModel.startBleScan(bleScanActive) },
+                    onStop = viewModel::stopBleScan,
+                    onClear = viewModel::clearBleScan,
                     modifier = contentModifier,
                 )
             }
