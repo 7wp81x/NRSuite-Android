@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.ble.BleDeviceObservation
+import com.swp81x.nrsuite.core.ble.TrackerObservation
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.OuiRule
 import com.swp81x.nrsuite.core.defense.matchOuiRule
@@ -600,6 +601,9 @@ class MainViewModel(internal val app: Application) {
     internal val _bleScanDevices = MutableStateFlow<List<BleDeviceObservation>>(emptyList())
     val bleScanDevices: StateFlow<List<BleDeviceObservation>> = _bleScanDevices.asStateFlow()
 
+    internal val _trackerObservations = MutableStateFlow<List<TrackerObservation>>(emptyList())
+    val trackerObservations: StateFlow<List<TrackerObservation>> = _trackerObservations.asStateFlow()
+
     internal val bleTypeBuffer = StringBuilder()
     internal var bleTypeJob: Job? = null
 
@@ -1093,6 +1097,8 @@ class MainViewModel(internal val app: Application) {
     fun stopBleScan() = this.stopBleScanImpl()
 
     fun clearBleScan() = this.clearBleScanImpl()
+
+    fun clearTrackers() = this.clearTrackersImpl()
 
     fun setBleScanActive(active: Boolean) {
         _bleScanActive.value = active

@@ -313,7 +313,7 @@ internal fun HomeScreen(
                     name = "Detection",
                     icon = Icons.Default.Shield,
                     iconTint = categoryColor("Detection"),
-                    moduleIds = listOf("deauth_detector", "client_presence", "rogue_ap", "mac_lookup", "hidden_ap"),
+                    moduleIds = listOf("deauth_detector", "client_presence", "tracker_detector", "rogue_ap", "mac_lookup", "hidden_ap"),
                     available = firmwareConnected,
                 ),
                 CategorySpec(

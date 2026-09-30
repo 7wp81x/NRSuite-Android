@@ -112,4 +112,11 @@ internal fun MainViewModel.recordBleDeviceEvent(event: JSONObject) {
             .sortedByDescending { it.rssi }
             .take(300)
     }
+
+    detectTrackerCandidate(
+        address = address,
+        name = updated.name,
+        rssi = rssi,
+        manufacturerData = updated.manufacturerData,
+    )
 }

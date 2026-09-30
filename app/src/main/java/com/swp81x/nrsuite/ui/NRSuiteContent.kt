@@ -288,6 +288,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val bleScanRunning by viewModel.bleScanRunning.collectAsState()
     val bleScanActive by viewModel.bleScanActive.collectAsState()
     val bleScanDevices by viewModel.bleScanDevices.collectAsState()
+    val trackerObservations by viewModel.trackerObservations.collectAsState()
 
     val connected = connectionState as? ConnectionState.Connected
     val connectedChip = connected?.chip
@@ -331,6 +332,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "client_presence" -> "client_detect"
             "hidden_ap" -> "hidden_ap"
             "ble_scanner" -> "ble_scan"
+            "tracker_detector" -> "ble_scan"
             "portal" -> "portal"
             "evil_twin" -> "portal"
             "storage" -> "storage"
@@ -341,6 +343,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         val chipSupported = when (module.id) {
             "ble" -> connectedChip in setOf("ESP32-C3", "ESP32-S3", "ESP32")
             "ble_scanner" -> connectedChip in setOf("ESP32-C3", "ESP32-S3", "ESP32")
+            "tracker_detector" -> connectedChip in setOf("ESP32-C3", "ESP32-S3", "ESP32")
             "badusb" -> connectedChip in setOf("ESP32-S2", "ESP32-S3")
             else -> true
         }
@@ -368,6 +371,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 connectedChip == "ESP32-S2" -> "No BLE radio on this chip"
                 else -> "Requires ble_scan firmware"
             }
+            isDeviceConnected && !supported && module.id == "tracker_detector" -> when {
+                connectedChip == "ESP32-S2" -> "No BLE radio on this chip"
+                else -> "Requires ble_scan firmware"
+            }
             else -> module.statusLabel
         }
         module.copy(
@@ -387,6 +394,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "evil_twin" -> portalRunning && portalMode == "evil_twin"
                 "ble" -> bleAdvertising
                 "ble_scanner" -> bleScanRunning
+                "tracker_detector" -> bleScanRunning
                 else -> false
             },
         )
@@ -1102,6 +1110,18 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     savedScripts = duckyScripts,
                     onSaveScript = viewModel::saveDuckyScript,
                     onDeleteScript = viewModel::deleteDuckyScript,
+                    modifier = contentModifier,
+                )
+            }
+
+            activeModuleId == "tracker_detector" -> {
+                TrackerDetectorScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    scanning = bleScanRunning,
+                    trackers = trackerObservations,
+                    onStart = { viewModel.startBleScan(true) },
+                    onStop = viewModel::stopBleScan,
+                    onClear = viewModel::clearTrackers,
                     modifier = contentModifier,
                 )
             }
