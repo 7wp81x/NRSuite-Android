@@ -140,6 +140,35 @@ class MainViewModel(internal val app: Application) {
     internal val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()
 
+    internal val _serialMonitorSelected = MutableStateFlow<UsbSerialDevice?>(null)
+    val serialMonitorSelected: StateFlow<UsbSerialDevice?> = _serialMonitorSelected.asStateFlow()
+
+    internal val _serialMonitorConnected = MutableStateFlow(false)
+    val serialMonitorConnected: StateFlow<Boolean> = _serialMonitorConnected.asStateFlow()
+
+    internal val _serialMonitorConnecting = MutableStateFlow(false)
+    val serialMonitorConnecting: StateFlow<Boolean> = _serialMonitorConnecting.asStateFlow()
+
+    internal val _serialMonitorBaud = MutableStateFlow(115200)
+    val serialMonitorBaud: StateFlow<Int> = _serialMonitorBaud.asStateFlow()
+
+    internal val _serialMonitorLog = MutableStateFlow("")
+    val serialMonitorLog: StateFlow<String> = _serialMonitorLog.asStateFlow()
+
+    internal val _serialMonitorInput = MutableStateFlow("")
+    val serialMonitorInput: StateFlow<String> = _serialMonitorInput.asStateFlow()
+
+    internal val _serialMonitorLineEnding = MutableStateFlow("LF")
+    val serialMonitorLineEnding: StateFlow<String> = _serialMonitorLineEnding.asStateFlow()
+
+    internal val _serialMonitorError = MutableStateFlow<String?>(null)
+    val serialMonitorError: StateFlow<String?> = _serialMonitorError.asStateFlow()
+
+    internal var serialMonitorTransport: UsbSerialTransport? = null
+    internal var serialMonitorReadJob: Job? = null
+    internal val serialMonitorOperationMutex = Mutex()
+    internal var serialMonitorPermissionDeviceId: Int? = null
+
     internal val _connectionState =
         MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
@@ -1094,6 +1123,24 @@ class MainViewModel(internal val app: Application) {
     fun stopBle() = this.stopBleImpl()
 
     fun runBlePayload() = this.runBlePayloadImpl()
+
+    fun selectSerialMonitorDevice(device: UsbSerialDevice?) = this.selectSerialMonitorDeviceImpl(device)
+
+    fun setSerialMonitorBaud(baudRate: Int) = this.setSerialMonitorBaudImpl(baudRate)
+
+    fun setSerialMonitorInput(value: String) = this.setSerialMonitorInputImpl(value)
+
+    fun setSerialMonitorLineEnding(value: String) = this.setSerialMonitorLineEndingImpl(value)
+
+    fun startSerialMonitor(device: UsbSerialDevice, baudRate: Int) = this.startSerialMonitorImpl(device, baudRate)
+
+    fun stopSerialMonitor() = this.stopSerialMonitorImpl()
+
+    fun sendSerialMonitorInput() = this.sendSerialMonitorInputImpl()
+
+    fun exportSerialMonitorLog() = this.exportSerialMonitorLogImpl()
+
+    fun markSerialMonitorPermissionRequested(device: UsbDevice) = this.markSerialMonitorPermissionRequestedImpl(device)
 
 
     /**
