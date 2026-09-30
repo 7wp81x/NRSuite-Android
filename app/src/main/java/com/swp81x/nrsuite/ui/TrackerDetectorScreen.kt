@@ -22,7 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -185,7 +185,7 @@ private fun TrackerStatusCard(
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = Icons.Default.WarningAmber,
+                    imageVector = Icons.Default.Radar,
                     contentDescription = null,
                     tint = color,
                     modifier = Modifier.size(22.dp),
