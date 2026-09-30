@@ -1095,7 +1095,6 @@ class MainViewModel(internal val app: Application) {
 
     fun runBlePayload() = this.runBlePayloadImpl()
 
-    fun sendBleKeyboardText(text: String) = this.sendBleKeyboardTextImpl(text)
 
     /**
      * Realtime keyboard stream. [backspaces] are emitted first, then [inserted]

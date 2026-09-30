@@ -163,149 +163,107 @@ internal data class CategorySpec(
 )
 
 internal val modules = listOf(
+
     ModuleCardSpec(
         id = "wifi",
         title = "WiFi Scan",
         description = "Active 2.4 GHz scan with SSID, BSSID, channel, RSSI, and security.",
         icon = Icons.Default.Wifi,
-        category = "Wireless",
+        category = "WiFi Recon",
         radio = "2.4GHz",
         available = true,
     ),
+
     ModuleCardSpec(
         id = "sniff",
         title = "Packet Sniffer",
         description = "Capture 802.11 frames and export PCAP.",
         icon = Icons.Default.FilterCenterFocus,
-        category = "Wireless",
+        category = "WiFi Recon",
         radio = "2.4GHz",
         available = true,
     ),
-    ModuleCardSpec(
-        id = "beacon",
-        title = "Beacon",
-        description = "Broadcast custom or hidden SSIDs.",
-        icon = Icons.Default.SettingsInputAntenna,
-        category = "Wireless",
-        radio = "2.4GHz",
-        available = true,
-    ),
-    ModuleCardSpec(
-        id = "deauth",
-        title = "Deauth",
-        description = "Send a targeted deauth burst to a BSSID.",
-        icon = Icons.Default.WifiOff,
-        category = "Wireless",
-        radio = "2.4GHz",
-        available = true,
-    ),
-    ModuleCardSpec(
-        id = "client_presence",
-        title = "Client Detector",
-        description = "Passively detect client management frames, with optional active reconnection triggering.",
-        icon = Icons.Default.PersonSearch,
-        category = "Detection",
-        radio = "2.4GHz",
-        available = true,
-    ),
+
     ModuleCardSpec(
         id = "hidden_ap",
         title = "Hidden AP Revealer",
         description = "Reveal hidden SSIDs from beacon and client traffic.",
         icon = Icons.Default.VisibilityOff,
-        category = "Detection",
+        category = "WiFi Recon",
         radio = "2.4GHz",
         available = true,
     ),
+
     ModuleCardSpec(
-        id = "tracker_detector",
-        title = "Tracker Detector",
-        description = "Detect Find My / AirTag-style BLE tracker advertisements.",
-        icon = Icons.Default.Radar,
-        category = "Detection",
-        radio = "BLE",
-        available = true,
-    ),
-    ModuleCardSpec(
-        id = "deauth_detector",
-        title = "Deauth Detector",
-        description = "Passively detect deauth and disassoc frames around you.",
-        icon = Icons.Default.WifiFind,
-        category = "Detection",
+        id = "beacon",
+        title = "Beacon",
+        description = "Broadcast custom or hidden SSIDs.",
+        icon = Icons.Default.SettingsInputAntenna,
+        category = "WiFi Attacks",
         radio = "2.4GHz",
         available = true,
     ),
+
     ModuleCardSpec(
-        id = "rogue_ap",
-        title = "Rogue AP Detector",
-        description = "Compare visible APs against a trusted baseline and OUI rules.",
-        icon = Icons.Default.Router,
-        category = "Detection",
+        id = "deauth",
+        title = "Deauth",
+        description = "Send a targeted deauth burst to a BSSID.",
+        icon = Icons.Default.WifiOff,
+        category = "WiFi Attacks",
         radio = "2.4GHz",
         available = true,
     ),
-    ModuleCardSpec(
-        id = "mac_lookup",
-        title = "MAC Lookup",
-        description = "Offline OUI and vendor lookup for any MAC address.",
-        icon = Icons.Default.Search,
-        category = "Detection",
-        radio = "2.4GHz",
-        available = true,
-    ),
-    ModuleCardSpec(
-        id = "evil_twin",
-        title = "Evil Twin",
-        description = "Portal + deauth + EAPOL capture workflow.",
-        icon = Icons.Default.ContentCopy,
-        category = "Wireless",
-        radio = "2.4GHz",
-        available = true,
-    ),
-    ModuleCardSpec(
-        id = "credential_manager",
-        title = "Credential Manager",
-        description = "Review Evil Twin captures, offline crack results, and saved credentials.",
-        icon = Icons.Default.Lock,
-        category = "Credentials",
-        available = true,
-    ),
-    ModuleCardSpec(
-        id = "wpa_cracker",
-        title = "WPA/WPA2 Cracker",
-        description = "Offline handshake verification against a wordlist.",
-        icon = Icons.Default.Key,
-        category = "Credentials",
-        radio = "2.4GHz",
-        available = true,
-    ),
+
     ModuleCardSpec(
         id = "portal",
         title = "Captive Portal",
         description = "Start an AP and serve a custom HTML page.",
         icon = Icons.Default.Language,
-        category = "Wireless",
+        category = "WiFi Attacks",
         radio = "2.4GHz",
         available = true,
     ),
+
     ModuleCardSpec(
-        id = "ducky",
-        title = "Ducky Editor",
-        description = "Create, import, and export DuckyScript payloads.",
-        icon = Icons.Default.Code,
-        category = "HID",
-        radio = "USB",
+        id = "evil_twin",
+        title = "Evil Twin",
+        description = "Portal + deauth + EAPOL capture workflow.",
+        icon = Icons.Default.ContentCopy,
+        category = "WiFi Attacks",
+        radio = "2.4GHz",
         available = true,
     ),
+
     ModuleCardSpec(
-        id = "ble",
-        title = "BLE HID",
-        description = "BadBLE payloads and realtime keyboard input.",
-        icon = Icons.Default.Bluetooth,
-        category = "HID",
-        radio = "BLE",
+        id = "deauth_detector",
+        title = "Deauth Detector",
+        description = "Passively detect deauth and disassoc frames around you.",
+        icon = Icons.Default.WifiFind,
+        category = "WiFi Defense",
+        radio = "2.4GHz",
         available = true,
     ),
+
+    ModuleCardSpec(
+        id = "rogue_ap",
+        title = "Rogue AP Detector",
+        description = "Compare visible APs against a trusted baseline and OUI rules.",
+        icon = Icons.Default.Router,
+        category = "WiFi Defense",
+        radio = "2.4GHz",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "client_presence",
+        title = "Client Detector",
+        description = "Passively detect client management frames, with optional active reconnection triggering.",
+        icon = Icons.Default.PersonSearch,
+        category = "WiFi Defense",
+        radio = "2.4GHz",
+        available = true,
+    ),
+
     ModuleCardSpec(
         id = "ble_scanner",
         title = "BLE Scanner",
@@ -315,6 +273,7 @@ internal val modules = listOf(
         radio = "BLE",
         available = true,
     ),
+
     ModuleCardSpec(
         id = "ble_profile",
         title = "BLE GATT Profile",
@@ -324,15 +283,56 @@ internal val modules = listOf(
         radio = "BLE",
         available = true,
     ),
+
     ModuleCardSpec(
-        id = "storage",
-        title = "Mass Storage",
-        description = "Browse and manage files on the device.",
-        icon = Icons.Default.Folder,
-        category = "Storage",
+        id = "tracker_detector",
+        title = "Tracker Detector",
+        description = "Detect Find My / AirTag-style BLE tracker advertisements.",
+        icon = Icons.Default.Radar,
+        category = "BLE",
+        radio = "BLE",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "mac_lookup",
+        title = "MAC Lookup",
+        description = "Offline OUI and vendor lookup for any MAC address.",
+        icon = Icons.Default.Search,
+        category = "Tools",
+        radio = "2.4GHz",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "credential_manager",
+        title = "Credential Manager",
+        description = "Review Evil Twin captures, offline crack results, and saved credentials.",
+        icon = Icons.Default.Lock,
+        category = "Credentials",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "wpa_cracker",
+        title = "WPA/WPA2 Cracker",
+        description = "Offline handshake verification against a wordlist.",
+        icon = Icons.Default.Key,
+        category = "Credentials",
+        radio = "2.4GHz",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "ducky",
+        title = "Ducky Editor",
+        description = "Create, import, and export DuckyScript payloads.",
+        icon = Icons.Default.Code,
+        category = "HID",
         radio = "USB",
         available = true,
     ),
+
     ModuleCardSpec(
         id = "badusb",
         title = "BadUSB",
@@ -342,6 +342,27 @@ internal val modules = listOf(
         radio = "USB",
         available = true,
     ),
+
+    ModuleCardSpec(
+        id = "ble",
+        title = "BLE HID",
+        description = "BadBLE payloads and realtime keyboard input.",
+        icon = Icons.Default.Bluetooth,
+        category = "HID",
+        radio = "BLE",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "storage",
+        title = "Mass Storage",
+        description = "Browse and manage files on the device.",
+        icon = Icons.Default.Folder,
+        category = "Storage",
+        radio = "USB",
+        available = true,
+    ),
+
     ModuleCardSpec(
         id = "firmware",
         title = "Firmware Flasher",
@@ -351,6 +372,7 @@ internal val modules = listOf(
         radio = "USB",
         available = true,
     ),
+
     ModuleCardSpec(
         id = "serial_debugger",
         title = "Serial Debugger",
@@ -359,8 +381,9 @@ internal val modules = listOf(
         category = "Firmware",
         radio = "USB",
         available = false,
-        statusLabel = "Planned",
+        statusLabel = "Unavailable",
     ),
+
     ModuleCardSpec(
         id = "ir",
         title = "IR",
@@ -369,8 +392,9 @@ internal val modules = listOf(
         category = "IR",
         radio = "IR",
         available = false,
-        statusLabel = "Planned",
+        statusLabel = "Unavailable",
     ),
+
     ModuleCardSpec(
         id = "rf",
         title = "RF",
@@ -379,8 +403,9 @@ internal val modules = listOf(
         category = "RF",
         radio = "Sub-1GHz",
         available = false,
-        statusLabel = "Planned",
+        statusLabel = "Unavailable",
     ),
+
     ModuleCardSpec(
         id = "rfid",
         title = "RFID",
@@ -389,7 +414,7 @@ internal val modules = listOf(
         category = "RFID",
         radio = "13.56MHz",
         available = false,
-        statusLabel = "Planned",
+        statusLabel = "Unavailable",
     ),
 )
 

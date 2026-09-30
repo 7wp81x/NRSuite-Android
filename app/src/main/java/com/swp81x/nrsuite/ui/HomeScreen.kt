@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -75,6 +76,7 @@ import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.filled.WifiFind
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -129,6 +131,7 @@ import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.theme.CategoryDetectionBlue
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
@@ -147,18 +150,67 @@ import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.ui.theme.LogBgError
 
 @Composable
-internal fun ConnectionStatusIndicator(state: ConnectionState) {
-    val (label, color) = when (state) {
-        ConnectionState.Disconnected -> "Offline" to StatusNeutral
-        ConnectionState.Connecting -> "Connecting" to StatusAmber
-        is ConnectionState.Connected -> (state.chip ?: "Online") to StatusGreen
-        is ConnectionState.Failed -> "Error" to StatusRed
+internal fun ConnectionStatusIndicator(
+    state: ConnectionState,
+    hasDevices: Boolean,
+    hasPermission: Boolean,
+    onConnect: () -> Unit,
+    onRequestPermission: () -> Unit,
+) {
+    val label: String
+    val color: Color
+    var onClick: (() -> Unit)? = null
+
+    when (state) {
+        ConnectionState.Disconnected -> {
+            if (hasDevices) {
+                if (hasPermission) {
+                    label = "Connect"
+                    color = CategoryDetectionBlue
+                    onClick = onConnect
+                } else {
+                    label = "Allow USB"
+                    color = CategoryDetectionBlue
+                    onClick = onRequestPermission
+                }
+            } else {
+                label = "Offline"
+                color = StatusNeutral
+            }
+        }
+        ConnectionState.Connecting -> {
+            label = "Connecting…"
+            color = StatusAmber
+        }
+        is ConnectionState.Connected -> {
+            label = state.chip ?: "Online"
+            color = StatusGreen
+        }
+        is ConnectionState.Failed -> {
+            label = "Error"
+            color = StatusRed
+            if (hasDevices) {
+                onClick = if (hasPermission) onConnect else onRequestPermission
+            }
+        }
     }
-    StatusIndicator(
-        label = label,
-        color = color,
-        modifier = Modifier.padding(end = 12.dp),
-    )
+
+    Box(
+        modifier = Modifier
+            .padding(end = 12.dp)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable { onClick?.invoke() }
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
+        StatusIndicator(
+            label = label,
+            color = color,
+        )
+    }
 }
 
 @Composable
@@ -172,6 +224,7 @@ internal fun HomeScreen(
     disconnectingFingerprints: Set<String>,
     usbManager: UsbManager,
     modules: List<ModuleCardSpec>,
+    listState: LazyListState,
     recentModuleIds: List<String>,
     ouiDatabaseStatus: OuiDatabaseStatus,
     ouiDatabaseProgress: Float?,
@@ -190,6 +243,7 @@ internal fun HomeScreen(
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
+        state = listState,
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -307,21 +361,41 @@ internal fun HomeScreen(
         }
 
         item {
-            val firmwareConnected = connectionState is ConnectionState.Connected
             val categories = listOf(
                 CategorySpec(
-                    name = "Detection",
-                    icon = Icons.Default.Shield,
-                    iconTint = categoryColor("Detection"),
-                    moduleIds = listOf("deauth_detector", "client_presence", "tracker_detector", "rogue_ap", "mac_lookup", "hidden_ap"),
-                    available = firmwareConnected,
+                    name = "WiFi Recon",
+                    icon = Icons.Default.WifiFind,
+                    iconTint = categoryColor("WiFi Recon"),
+                    moduleIds = listOf("wifi", "sniff", "hidden_ap"),
+                    available = true,
                 ),
                 CategorySpec(
-                    name = "Wireless",
-                    icon = Icons.Default.Wifi,
-                    iconTint = categoryColor("Wireless"),
-                    moduleIds = listOf("wifi", "sniff", "beacon", "deauth", "evil_twin", "portal"),
-                    available = firmwareConnected,
+                    name = "WiFi Attacks",
+                    icon = Icons.Default.WifiOff,
+                    iconTint = categoryColor("WiFi Attacks"),
+                    moduleIds = listOf("beacon", "deauth", "evil_twin", "portal"),
+                    available = true,
+                ),
+                CategorySpec(
+                    name = "WiFi Defense",
+                    icon = Icons.Default.Shield,
+                    iconTint = categoryColor("WiFi Defense"),
+                    moduleIds = listOf("deauth_detector", "rogue_ap", "client_presence"),
+                    available = true,
+                ),
+                CategorySpec(
+                    name = "BLE",
+                    icon = Icons.Default.Bluetooth,
+                    iconTint = categoryColor("BLE"),
+                    moduleIds = listOf("ble_scanner", "ble_profile", "tracker_detector"),
+                    available = true,
+                ),
+                CategorySpec(
+                    name = "Tools",
+                    icon = Icons.Default.Search,
+                    iconTint = categoryColor("Tools"),
+                    moduleIds = listOf("mac_lookup"),
+                    available = true,
                 ),
                 CategorySpec(
                     name = "Credentials",
@@ -342,14 +416,7 @@ internal fun HomeScreen(
                     icon = Icons.Default.Folder,
                     iconTint = categoryColor("Storage"),
                     moduleIds = listOf("storage"),
-                    available = firmwareConnected,
-                ),
-                CategorySpec(
-                    name = "BLE",
-                    icon = Icons.Default.Bluetooth,
-                    iconTint = categoryColor("BLE"),
-                    moduleIds = listOf("ble_scanner", "ble_profile"),
-                    available = firmwareConnected,
+                    available = true,
                 ),
                 CategorySpec(
                     name = "Firmware",
@@ -364,7 +431,7 @@ internal fun HomeScreen(
                     iconTint = categoryColor("IR"),
                     moduleIds = listOf("ir"),
                     available = false,
-                    statusLabel = "Planned",
+                    statusLabel = "Unavailable",
                 ),
                 CategorySpec(
                     name = "RF",
@@ -372,7 +439,7 @@ internal fun HomeScreen(
                     iconTint = categoryColor("RF"),
                     moduleIds = listOf("rf"),
                     available = false,
-                    statusLabel = "Planned",
+                    statusLabel = "Unavailable",
                 ),
                 CategorySpec(
                     name = "RFID",
@@ -380,7 +447,7 @@ internal fun HomeScreen(
                     iconTint = categoryColor("RFID"),
                     moduleIds = listOf("rfid"),
                     available = false,
-                    statusLabel = "Planned",
+                    statusLabel = "Unavailable",
                 ),
             )
             CategoryGrid(
@@ -463,7 +530,7 @@ internal fun CategoryCard(
                 color = NrOnSurface,
             )
             Text(
-                text = if (availabilityLabel != null) "$countLabel · $availabilityLabel" else countLabel,
+                text = availabilityLabel ?: countLabel,
                 fontSize = 11.sp,
                 color = NrOnSurfaceVariant,
             )
@@ -654,13 +721,13 @@ private fun OuiDatabaseDashboardWarning(
     val error = status is OuiDatabaseStatus.Error
     val borderColor = when {
         error -> StatusRed
-        downloading -> categoryColor("Detection")
+        downloading -> categoryColor("Tools")
         else -> StatusAmber
     }
     val icon = if (downloading) Icons.Default.Download else Icons.Default.WarningAmber
     val iconTint = when {
         error -> StatusRed
-        downloading -> categoryColor("Detection")
+        downloading -> categoryColor("Tools")
         else -> StatusAmber
     }
     val title = when (status) {

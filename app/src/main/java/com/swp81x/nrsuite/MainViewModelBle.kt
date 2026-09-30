@@ -128,25 +128,6 @@ internal fun MainViewModel.runBlePayloadImpl() {
     }
 }
 
-internal fun MainViewModel.sendBleKeyboardTextImpl(text: String) {
-    val activeSession = session ?: run {
-        appendLog("Connect to a device before sending keyboard input.")
-        return
-    }
-    if (text.isBlank()) return
-    val script = if (text.startsWith("STRING", ignoreCase = true) ||
-        text.startsWith("DELAY", ignoreCase = true) ||
-        text.startsWith("CTRL", ignoreCase = true) ||
-        text.startsWith("ALT", ignoreCase = true) ||
-        text.startsWith("GUI", ignoreCase = true) ||
-        text.startsWith("SHIFT", ignoreCase = true)
-    ) {
-        text
-    } else {
-        "STRINGLN $text"
-    }
-    scope.launch { runBleScriptImpl(activeSession, script) }
-}
 
 internal fun MainViewModel.sendBleRealtimeInputImpl(inserted: String, backspaces: Int) {
     if (!_bleConnected.value || session == null) return

@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -154,6 +155,7 @@ private const val ACTION_USB_PERMISSION = "com.swp81x.nrsuite.USB_PERMISSION"
 internal fun NRSuiteContent(viewModel: MainViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val uiScope = rememberCoroutineScope()
+    val homeListState = rememberLazyListState()
     val usbManager = remember {
         context.getSystemService(Context.USB_SERVICE) as UsbManager
     }
@@ -324,11 +326,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     ) {
         modules.map { module ->
         val runsWithoutDevice = module.id == "ducky" ||
-            module.id == "firmware" ||
             module.id == "credential_manager" ||
             module.id == "wpa_cracker" ||
-            module.id == "mac_lookup" ||
-            module.id == "badusb"
+            module.id == "mac_lookup"
+        val requiresDevice = !runsWithoutDevice
         val featureKey = when (module.id) {
             "wifi" -> "wifi"
             "sniff" -> "sniff"
@@ -362,37 +363,28 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
         val supported = featureSupported
         val requiresOuiDb = module.id == "mac_lookup" && ouiDatabaseStatus !is OuiDatabaseStatus.Ready
-        val available = module.available &&
-            !requiresOuiDb &&
-            (runsWithoutDevice || (isDeviceConnected && supported))
-        val supportLabel = when {
-            !module.available -> module.statusLabel
-            module.id == "mac_lookup" && requiresOuiDb -> "OUI DB required"
-            !isDeviceConnected && !runsWithoutDevice -> null
-            isDeviceConnected && !supported && module.id == "ble" -> "No BLE radio on this chip"
-            isDeviceConnected && !supported && module.id == "badusb" -> "Device not supported"
-            isDeviceConnected && !supported && module.id == "evil_twin" -> "Firmware portal support required"
-            isDeviceConnected && !supported && module.id == "deauth_detector" -> "Requires deauth_detect firmware"
-            isDeviceConnected && !supported && module.id == "client_presence" -> "Requires client_detect firmware"
-            isDeviceConnected && !supported && module.id == "hidden_ap" -> "Requires hidden_ap firmware"
-            isDeviceConnected && !supported && module.id == "ble_scanner" -> when {
-                connectedChip == "ESP32-S2" -> "No BLE radio on this chip"
-                else -> "Requires ble_scan firmware"
+        val availabilityLabel = when {
+            !module.available -> module.statusLabel ?: "Unavailable"
+            requiresOuiDb -> "OUI DB required"
+            !isDeviceConnected && requiresDevice -> "Device needed"
+            isDeviceConnected && !supported -> when {
+                module.id in setOf("ble", "ble_scanner", "tracker_detector", "ble_profile", "badusb") -> "Not supported"
+                else -> "Firmware required"
             }
-            isDeviceConnected && !supported && module.id == "tracker_detector" -> when {
-                connectedChip == "ESP32-S2" -> "No BLE radio on this chip"
-                else -> "Requires ble_scan firmware"
-            }
-            isDeviceConnected && !supported && module.id == "ble_profile" -> when {
-                connectedChip == "ESP32-S2" -> "No BLE radio on this chip"
-                else -> "Requires ble_profile firmware"
-            }
-            else -> module.statusLabel
+            else -> null
+        }
+        val availabilityColor = when (availabilityLabel) {
+            null -> null
+            "Device needed" -> StatusNeutral
+            "Unavailable" -> StatusNeutral.copy(alpha = 0.5f)
+            "Not supported" -> StatusRed
+            else -> StatusAmber
         }
         module.copy(
-            available = available,
+            available = module.available,
             iconTint = categoryColor(module.category),
-            statusLabel = supportLabel,
+            statusLabel = availabilityLabel,
+            statusColor = availabilityColor,
             isRunning = when (module.id) {
                 "wifi" -> scanning
                 "sniff" -> sniffing
@@ -623,6 +615,22 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     }
 
     val activeModule = liveModules.firstOrNull { it.id == activeModuleId }
+    val moduleUnavailableMessage = activeModule?.let { module ->
+        when (module.statusLabel) {
+            "Device needed" ->
+                "No device connected. Connect your NRSuite ESP32 to run ${module.title}."
+            "Not supported" ->
+                "${module.title} is not supported by the connected ESP32" +
+                    (connectedChip?.let { " ($it)" } ?: "") + "."
+            "Firmware required" ->
+                "The connected firmware is missing the required feature for ${module.title}."
+            "OUI DB required" ->
+                "Download the OUI/vendor database before using ${module.title}."
+            "Unavailable" ->
+                "${module.title} is not available yet."
+            else -> null
+        }
+    }
     val showBack = activeModuleId != null || selectedCategory != null
     val activeTitle = when {
         activeModuleId == "firmware" -> "Flasher"
@@ -663,7 +671,19 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     }
                 },
                 actions = {
-                    ConnectionStatusIndicator(connectionState)
+                    ConnectionStatusIndicator(
+                        state = connectionState,
+                        hasDevices = devices.isNotEmpty(),
+                        hasPermission = devices.firstOrNull()?.let {
+                            usbManager.hasPermission(it.device)
+                        } == true,
+                        onConnect = {
+                            devices.firstOrNull()?.let { viewModel.connect(it.device) }
+                        },
+                        onRequestPermission = {
+                            devices.firstOrNull()?.let { requestPermission(it.device) }
+                        },
+                    )
                     IconButton(onClick = { activeModuleId = "settings" }) {
                         Icon(
                             imageVector = Icons.Default.Settings,
@@ -801,13 +821,17 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
 
         CategoryAccentTheme(activeModule?.category) {
-        when {
+            ModuleScreenScaffold(
+                modifier = contentModifier,
+                unavailableMessage = moduleUnavailableMessage,
+            ) {
+            when {
             activeModuleId == "wifi" -> {
                 WifiScanScreen(
                     scanning = scanning,
                     networks = networks,
                     onScan = viewModel::scanWifi,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -825,7 +849,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onScanWifi = viewModel::scanWifi,
                     onStart = viewModel::startSniff,
                     onStop = viewModel::stopSniff,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -841,7 +865,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onDeleteList = viewModel::deleteBeaconList,
                     onStart = viewModel::startBeacon,
                     onStop = viewModel::stopBeacon,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -856,7 +880,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     networks = networks,
                     onScanWifi = viewModel::scanWifi,
                     onStart = viewModel::startDeauth,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -882,7 +906,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onStop = viewModel::stopClientPresence,
                     onTriggerReconnect = viewModel::triggerClientReconnectBurst,
                     onClear = viewModel::clearClientPresence,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -905,7 +929,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onForceReconnect = viewModel::forceHiddenApReconnect,
                     onClearCandidates = viewModel::clearHiddenApCandidates,
                     onClearObservations = viewModel::clearHiddenApObservations,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -942,7 +966,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onClearFeed = viewModel::clearDeauthDetectorFeed,
                     onStart = viewModel::startDeauthDetector,
                     onStop = viewModel::stopDeauthDetector,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -951,7 +975,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     result = macLookupResult,
                     onLookup = viewModel::lookupMac,
                     onClear = viewModel::clearMacLookup,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -968,7 +992,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onStart = viewModel::startRogueApDetector,
                     onStop = viewModel::stopRogueApDetector,
                     onClearAlerts = viewModel::clearRogueApAlerts,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -992,7 +1016,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onStop = viewModel::stopPortal,
                     onClearPasswords = viewModel::clearEvilTwinPasswords,
                     onClearEventLog = viewModel::clearEvilTwinEventLog,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -1001,7 +1025,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     sessions = credentialSessions,
                     onDeleteSession = viewModel::deleteCredentialSession,
                     onClearAll = viewModel::clearCredentialSessions,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -1041,7 +1065,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onClearWordlist = viewModel::clearCrackerWordlist,
                     onStart = viewModel::startCracker,
                     onStop = viewModel::stopCracker,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -1066,7 +1090,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onClearEventLog = viewModel::clearPortalEventLog,
                     onStart = viewModel::startPortal,
                     onStop = viewModel::stopPortal,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -1081,7 +1105,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onRefresh = viewModel::refreshStorage,
                     onDelete = viewModel::deleteStorageFile,
                     onStartMassStorage = viewModel::startMassStorage,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -1114,7 +1138,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onChoosePayload = { badUsbPicker.launch(arrayOf("text/plain", "*/*")) },
                     onClearPayload = viewModel::clearBadUsbPayload,
                     onArm = viewModel::armBadUsb,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -1123,7 +1147,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     savedScripts = duckyScripts,
                     onSaveScript = viewModel::saveDuckyScript,
                     onDeleteScript = viewModel::deleteDuckyScript,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -1135,7 +1159,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onStart = { viewModel.startBleScan(true) },
                     onStop = viewModel::stopBleScan,
                     onClear = viewModel::clearTrackers,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -1156,7 +1180,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onStart = viewModel::startBleProfile,
                     onStop = viewModel::stopBleProfile,
                     onClear = viewModel::clearBleProfile,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -1172,7 +1196,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onStart = { viewModel.startBleScan(bleScanActive) },
                     onStop = viewModel::stopBleScan,
                     onClear = viewModel::clearBleScan,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -1193,7 +1217,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onStartAdvertising = viewModel::startBle,
                     onStop = viewModel::stopBle,
                     onRunPayload = viewModel::runBlePayload,
-                    onSendText = viewModel::sendBleKeyboardText,
                     onRealtimeInput = viewModel::sendBleRealtimeInput,
                     onSpecialKey = viewModel::sendBleSpecialKey,
                     onModifierChange = viewModel::setBleModifier,
@@ -1201,7 +1224,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onMouseMove = viewModel::sendBleMouseMove,
                     onMouseScroll = viewModel::sendBleMouseScroll,
                     onMouseButton = viewModel::sendBleMouseButton,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -1224,7 +1247,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     },
                     onDisconnect = viewModel::disconnect,
                     onDisconnectDevice = viewModel::disconnectDevice,
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -1248,7 +1271,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onSelectFlashTarget = viewModel::selectFirmwareTarget,
                 onStartFirmwareFlash = viewModel::startFirmwareFlash,
                 flasherOnly = true,
-                modifier = contentModifier,
+                modifier = Modifier,
             )
 
             activeModuleId == "settings" -> SettingsScreen(
@@ -1276,7 +1299,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 ouiDatabaseStatus = ouiDatabaseStatus,
                 ouiDatabaseProgress = ouiDatabaseProgress,
                 onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
-                modifier = contentModifier,
+                modifier = Modifier,
             )
 
             selectedCategory != null && selectedTab == AppTab.HOME -> {
@@ -1286,7 +1309,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                         viewModel.onModuleOpened(moduleId)
                         activeModuleId = moduleId
                     },
-                    modifier = contentModifier,
+                    modifier = Modifier,
                 )
             }
 
@@ -1300,6 +1323,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 disconnectingFingerprints = disconnectingFingerprints,
                 usbManager = usbManager,
                 modules = liveModules,
+                listState = homeListState,
                 ouiDatabaseStatus = ouiDatabaseStatus,
                 ouiDatabaseProgress = ouiDatabaseProgress,
                 onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
@@ -1319,7 +1343,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 },
                 onDisconnect = viewModel::disconnect,
                 onManageDevice = { activeModuleId = "devices" },
-                modifier = contentModifier,
+                modifier = Modifier,
             )
 
             selectedTab == AppTab.MODULES -> ModulesScreen(
@@ -1328,7 +1352,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     viewModel.onModuleOpened(it)
                     activeModuleId = it
                 },
-                modifier = contentModifier,
+                modifier = Modifier,
             )
 
             selectedTab == AppTab.LOGS -> LogsScreen(
@@ -1336,9 +1360,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 history = history,
                 onClearLogs = viewModel::clearLogs,
                 onClearHistory = viewModel::clearHistory,
-                modifier = contentModifier,
+                modifier = Modifier,
             )
-        }
+            }
+            }
         }
     }
 }

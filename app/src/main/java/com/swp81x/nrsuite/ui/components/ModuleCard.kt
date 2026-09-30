@@ -51,6 +51,7 @@ data class ModuleCardSpec(
     val iconTint: Color? = null,
     val available: Boolean = true,
     val statusLabel: String? = null,
+    val statusColor: Color? = null,
     val isRunning: Boolean = false,
 )
 
@@ -105,15 +106,16 @@ fun ModuleCard(
                         fontWeight = FontWeight.SemiBold,
                         style = MaterialTheme.typography.titleMedium,
                     )
-                    if (!module.available && module.statusLabel != null) {
+                    val statusLabel = module.statusLabel?.takeIf { it.isNotBlank() }
+                    if (statusLabel != null) {
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = module.statusLabel,
+                            text = statusLabel,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier
                                 .background(
-                                    color = NrOnSurfaceVariant.copy(alpha = 0.35f),
+                                    color = module.statusColor ?: NrOnSurfaceVariant.copy(alpha = 0.35f),
                                     shape = RoundedCornerShape(6.dp),
                                 )
                                 .padding(horizontal = 6.dp, vertical = 2.dp),

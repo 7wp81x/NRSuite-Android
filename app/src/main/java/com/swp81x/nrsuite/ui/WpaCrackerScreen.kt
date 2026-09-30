@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -392,7 +391,7 @@ fun WpaCrackerScreen(
             Spacer(Modifier.height(80.dp))
         }
 
-        FloatingActionButton(
+        ModuleActionFab(
             onClick = { if (running) onStop() else onStart() },
             modifier = Modifier
                 .align(Alignment.BottomEnd)

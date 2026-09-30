@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -26,7 +27,6 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -84,7 +85,6 @@ fun BleScreen(
     onStartAdvertising: (String) -> Unit,
     onStop: () -> Unit,
     onRunPayload: () -> Unit,
-    onSendText: (String) -> Unit,
     onRealtimeInput: (inserted: String, backspaces: Int) -> Unit,
     onSpecialKey: (String) -> Unit,
     onModifierChange: (String, Boolean) -> Unit,
@@ -97,11 +97,10 @@ fun BleScreen(
     var advertiseName by rememberSaveable { mutableStateOf("NRSuite Keyboard") }
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var realtimeText by rememberSaveable { mutableStateOf("") }
+    val canRealtime = connected && bleConnected
+    val context = LocalContext.current
 
     LaunchedEffect(bleConnected) {
-        if (!bleConnected && selectedTab == 1) {
-            selectedTab = 0
-        }
         if (!bleConnected) {
             realtimeText = ""
         }
@@ -121,9 +120,26 @@ fun BleScreen(
                 )
                 Tab(
                     selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    enabled = connected && bleConnected,
-                    text = { Text("Realtime HID") },
+                    onClick = {
+                        selectedTab = 1
+                        if (!canRealtime) {
+                            Toast.makeText(
+                                context,
+                                "Connect and pair to a BLE host to use Realtime HID.",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    },
+                    text = {
+                        Text(
+                            text = "Realtime HID",
+                            color = if (canRealtime) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                NrOnSurfaceVariant.copy(alpha = 0.65f)
+                            },
+                        )
+                    },
                 )
             }
 
@@ -144,7 +160,6 @@ fun BleScreen(
                     onChoosePayload = onChoosePayload,
                     onClearPayload = onClearPayload,
                     onRunPayload = onRunPayload,
-                    onSendText = onSendText,
                 )
             } else {
                 RealtimeHidTab(
@@ -173,7 +188,7 @@ fun BleScreen(
         }
 
         if (connected && advertising) {
-            FloatingActionButton(
+            ModuleActionFab(
                 onClick = onStop,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -184,7 +199,7 @@ fun BleScreen(
                 Icon(Icons.Default.Stop, contentDescription = "Stop BLE")
             }
         } else if (connected) {
-            FloatingActionButton(
+            ModuleActionFab(
                 onClick = { onStartAdvertising(advertiseName) },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -213,10 +228,7 @@ private fun PayloadTab(
     onChoosePayload: () -> Unit,
     onClearPayload: () -> Unit,
     onRunPayload: () -> Unit,
-    onSendText: (String) -> Unit,
 ) {
-    var sendText by rememberSaveable { mutableStateOf("") }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -239,38 +251,6 @@ private fun PayloadTab(
         )
 
         StatusCard(connected = connected, advertising = advertising, bleConnected = bleConnected, peer = peer)
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(0.5.dp, NrOutline),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Column(Modifier.padding(14.dp)) {
-                Text("Send line", fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = sendText,
-                    onValueChange = { sendText = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = connected && bleConnected,
-                    label = { Text("Text or DuckyScript line") },
-                    singleLine = true,
-                )
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        if (sendText.isNotBlank()) {
-                            onSendText(sendText)
-                            sendText = ""
-                        }
-                    },
-                    enabled = connected && bleConnected && sendText.isNotBlank() && !bleScriptRunning,
-                ) {
-                    Text(if (bleScriptRunning) "Busy..." else "Send")
-                }
-            }
-        }
     }
 }
 

@@ -18,6 +18,7 @@ val StatusRed = Color(0xFFEF4444)
 val StatusNeutral = Color(0xFF8B949E)
 
 val CategoryDetectionBlue = Color(0xFF60A5FA)
+val CategoryAttackOrange = Color(0xFFFB923C)
 val CategoryHidPurple = Color(0xFFA78BFA)
 val CategoryStorageTeal = Color(0xFF14B8A6)
 val CategoryFirmwareGreen = Color(0xFF22C55E) // green, separated from storage teal
