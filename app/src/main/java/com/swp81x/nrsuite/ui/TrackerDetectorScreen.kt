@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.core.ble.MAX_TRACKER_OBSERVATIONS
 import com.swp81x.nrsuite.core.ble.TrackerObservation
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -241,7 +242,7 @@ private fun TrackerResultsCard(
                     )
                     Text(
                         text = if (trackers.isEmpty()) {
-                            "No Find My / AirTag-style payloads detected"
+                            "No tracker signatures detected"
                         } else {
                             "${trackers.size} candidate(s) detected"
                         },
@@ -257,6 +258,15 @@ private fun TrackerResultsCard(
                         Text("Clear")
                     }
                 }
+            }
+
+            if (trackers.size >= MAX_TRACKER_OBSERVATIONS) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "$MAX_TRACKER_OBSERVATIONS tracker observations — oldest entries are being replaced.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusAmber,
+                )
             }
 
             if (trackers.isNotEmpty()) {
@@ -294,7 +304,7 @@ private fun TrackerRow(tracker: TrackerObservation) {
                         .padding(end = 8.dp),
                 ) {
                     Text(
-                        text = "Find My candidate",
+                        text = tracker.trackerType ?: "Tracker candidate",
                         style = MaterialTheme.typography.labelSmall,
                         color = StatusAmber,
                     )
@@ -304,6 +314,7 @@ private fun TrackerRow(tracker: TrackerObservation) {
                     onClick = {
                         val text = buildString {
                             appendLine("Tracker candidate: ${tracker.name ?: "unnamed"}")
+                            appendLine("Type: ${tracker.trackerType ?: "unknown"}")
                             appendLine("Address: ${tracker.address}")
                             appendLine("RSSI: ${tracker.rssi} dBm")
                             tracker.manufacturerData?.let { appendLine("Manufacturer: $it") }

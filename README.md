@@ -46,6 +46,7 @@ check [screenshots](./Screenshots/) for more screenshots.
 | WPA Handshake Capture | Capture and crack WPA/WPA2 handshakes |
 | BLE HID | Bluetooth LE keyboard/mouse HID and DuckyScript payloads |
 | BLE Scanner | BLE device discovery with names, RSSI, manufacturer data, and service badges |
+| BLE GATT Profile | Read-only GATT service/characteristic enumeration with integrated BLE target scanner |
 | Tracker Detector | Find My / AirTag-style advertisement detection with repeated sightings |
 | BadUSB | HID injection via Ducky Script editor |
 | Credential Manager | Local storage and management of captured credentials |
@@ -53,8 +54,7 @@ check [screenshots](./Screenshots/) for more screenshots.
 | Multi-device USB sessions | Connect and use multiple USB serial devices independently, with per-device permissions and connection state |
 | Persistent device ID | Firmware NVS ID (`NRxxxxxxx`) shown in the app so devices remain identifiable across reconnects |
 
-### Planned / in review (see [FEATURES.md](./FEATURES.md))
-- BLE GATT Profile: read-only service and characteristic enumeration (in review)
+### Planned (see [FEATURES.md](./FEATURES.md))
 - FastPair Model Identification: map FastPair model IDs to known device names/types
 - ESP-NOW mesh: multi-node coordination, distributed sensing, triangulation
 - Mesh chat: encrypted offline team messaging

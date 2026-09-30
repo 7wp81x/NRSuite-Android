@@ -1,7 +1,9 @@
 package com.swp81x.nrsuite
 
 import com.swp81x.nrsuite.core.ble.BleDeviceObservation
+import com.swp81x.nrsuite.core.ble.MAX_BLE_SCAN_DEVICES
 import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.log.LogLevel
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -14,41 +16,65 @@ internal fun MainViewModel.startBleScanImpl(active: Boolean) {
         appendLog("Connect to a device before starting BLE scan.")
         return
     }
-    if (_bleScanRunning.value) return
+    if (_bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value) return
     if (!ensureRadioIdle("BLE Scanner")) return
 
     _bleScanActive.value = active
+    _bleScanStarting.value = true
+    updateForegroundService()
+
     scope.launch {
-        val response = activeSession.sendCommand(
-            "BLE_SCAN_START",
-            JSONObject().apply {
-                put("active", active)
-                put("interval_ms", 100)
-                put("window_ms", 99)
-                put("min_emit_ms", 1000)
-            },
-            timeoutMs = 10_000,
-        )
+        val response = runCatching {
+            activeSession.sendCommand(
+                "BLE_SCAN_START",
+                JSONObject().apply {
+                    put("active", active)
+                    put("interval_ms", 100)
+                    put("window_ms", 99)
+                    put("min_emit_ms", 1000)
+                },
+                timeoutMs = 10_000,
+            )
+        }.onFailure { e ->
+            appendLog("BLE scan start failed: ${e.message}", level = LogLevel.ERROR)
+        }.getOrNull()
+
+        _bleScanStarting.value = false
         if (response?.optBoolean("ok") == true) {
             _bleScanDevices.value = emptyList()
+            _bleProfileTarget.value = null
+            _bleProfileStatus.value = "Select a discovered BLE device"
+            _bleProfileServices.value = emptyList()
             _bleScanRunning.value = true
+            _bleScanStopping.value = false
             updateForegroundService()
             appendLog("BLE scan started (${if (active) "active" else "passive"} mode).")
             addHistory("ble_scanner", "BLE scan started", HistoryLevel.SUCCESS)
         } else {
+            _bleScanRunning.value = false
+            _bleScanStopping.value = false
+            updateForegroundService()
             appendLog("Failed to start BLE scan: ${response?.optString("msg") ?: "timeout"}")
         }
     }
 }
 
 internal fun MainViewModel.stopBleScanImpl() {
-    if (!_bleScanRunning.value) return
-    _bleScanRunning.value = false
+    if (!_bleScanRunning.value || _bleScanStopping.value) return
+    _bleScanStopping.value = true
     updateForegroundService()
 
     val activeSession = session
     scope.launch {
-        val response = activeSession?.sendCommand("BLE_SCAN_STOP", timeoutMs = 6_000)
+        val response = runCatching {
+            activeSession?.sendCommand("BLE_SCAN_STOP", timeoutMs = 6_000)
+        }.onFailure { e ->
+            appendLog("BLE scan stop failed: ${e.message}", level = LogLevel.ERROR)
+        }.getOrNull()
+
+        _bleScanRunning.value = false
+        _bleScanStopping.value = false
+        updateForegroundService()
         if (response?.optBoolean("ok") == true) {
             appendLog("BLE scan stopped.")
             addHistory("ble_scanner", "BLE scan stopped", HistoryLevel.INFO)
@@ -90,6 +116,7 @@ internal fun MainViewModel.recordBleDeviceEvent(event: JSONObject) {
         txPower = txPower,
         appearance = appearance,
         manufacturerData = manufacturerData ?: existing.manufacturerData,
+        rawPayload = rawPayload ?: existing.rawPayload,
         services = if (services.isEmpty()) existing.services else services,
         lastSeen = now,
         sightings = existing.sightings + 1,
@@ -106,12 +133,13 @@ internal fun MainViewModel.recordBleDeviceEvent(event: JSONObject) {
         firstSeen = now,
         lastSeen = now,
         sightings = 1,
+        rawPayload = rawPayload,
     )
 
     _bleScanDevices.update { current ->
         (listOf(updated) + current.filterNot { it.address == address })
             .sortedByDescending { it.rssi }
-            .take(300)
+            .take(MAX_BLE_SCAN_DEVICES)
     }
 
     detectTrackerCandidate(
@@ -119,6 +147,6 @@ internal fun MainViewModel.recordBleDeviceEvent(event: JSONObject) {
         name = updated.name,
         rssi = rssi,
         manufacturerData = updated.manufacturerData,
-        rawPayload = rawPayload,
+        rawPayload = updated.rawPayload,
     )
 }

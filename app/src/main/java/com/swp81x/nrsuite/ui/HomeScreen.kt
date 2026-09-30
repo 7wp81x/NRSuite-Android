@@ -348,7 +348,7 @@ internal fun HomeScreen(
                     name = "BLE",
                     icon = Icons.Default.Bluetooth,
                     iconTint = categoryColor("BLE"),
-                    moduleIds = listOf("ble_scanner"),
+                    moduleIds = listOf("ble_scanner", "ble_profile"),
                     available = firmwareConnected,
                 ),
                 CategorySpec(

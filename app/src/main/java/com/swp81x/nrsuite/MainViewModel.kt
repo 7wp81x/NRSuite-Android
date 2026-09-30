@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.ble.BleDeviceObservation
+import com.swp81x.nrsuite.core.ble.BleServiceProfile
 import com.swp81x.nrsuite.core.ble.TrackerObservation
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.OuiRule
@@ -69,6 +70,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -592,8 +594,14 @@ class MainViewModel(internal val app: Application) {
     internal val _bleScriptRunning = MutableStateFlow(false)
     val bleScriptRunning: StateFlow<Boolean> = _bleScriptRunning.asStateFlow()
 
+    internal val _bleScanStarting = MutableStateFlow(false)
+    val bleScanStarting: StateFlow<Boolean> = _bleScanStarting.asStateFlow()
+
     internal val _bleScanRunning = MutableStateFlow(false)
     val bleScanRunning: StateFlow<Boolean> = _bleScanRunning.asStateFlow()
+
+    internal val _bleScanStopping = MutableStateFlow(false)
+    val bleScanStopping: StateFlow<Boolean> = _bleScanStopping.asStateFlow()
 
     internal val _bleScanActive = MutableStateFlow(true)
     val bleScanActive: StateFlow<Boolean> = _bleScanActive.asStateFlow()
@@ -604,8 +612,20 @@ class MainViewModel(internal val app: Application) {
     internal val _trackerObservations = MutableStateFlow<List<TrackerObservation>>(emptyList())
     val trackerObservations: StateFlow<List<TrackerObservation>> = _trackerObservations.asStateFlow()
 
-    internal val bleTypeBuffer = StringBuilder()
-    internal var bleTypeJob: Job? = null
+    internal val _bleProfileTarget = MutableStateFlow<BleDeviceObservation?>(null)
+    val bleProfileTarget: StateFlow<BleDeviceObservation?> = _bleProfileTarget.asStateFlow()
+
+    internal val _bleProfileRunning = MutableStateFlow(false)
+    val bleProfileRunning: StateFlow<Boolean> = _bleProfileRunning.asStateFlow()
+
+    internal val _bleProfileStatus = MutableStateFlow("Select a discovered BLE device")
+    val bleProfileStatus: StateFlow<String> = _bleProfileStatus.asStateFlow()
+
+    internal val _bleProfileServices = MutableStateFlow<List<BleServiceProfile>>(emptyList())
+    val bleProfileServices: StateFlow<List<BleServiceProfile>> = _bleProfileServices.asStateFlow()
+
+    internal val bleTypeChannel = Channel<String>(Channel.BUFFERED)
+    internal var bleTypeConsumerJob: Job? = null
 
     internal var bleStatusJob: Job? = null
 
@@ -956,7 +976,10 @@ class MainViewModel(internal val app: Application) {
         _bleAdvertising.value = false
         _bleConnected.value = false
         _bleScriptRunning.value = false
+        _bleScanStarting.value = false
         _bleScanRunning.value = false
+        _bleScanStopping.value = false
+        _bleProfileRunning.value = false
         this.clearBleRealtimeStateImpl()
         _portalMode.value = null
 
@@ -1100,6 +1123,15 @@ class MainViewModel(internal val app: Application) {
 
     fun clearTrackers() = this.clearTrackersImpl()
 
+    fun selectBleProfileTarget(device: BleDeviceObservation?) =
+        this.selectBleProfileTargetImpl(device)
+
+    fun startBleProfile() = this.startBleProfileImpl()
+
+    fun stopBleProfile() = this.stopBleProfileImpl()
+
+    fun clearBleProfile() = this.clearBleProfileImpl()
+
     fun setBleScanActive(active: Boolean) {
         _bleScanActive.value = active
     }
@@ -1151,8 +1183,11 @@ class MainViewModel(internal val app: Application) {
         if (includeBle && (_bleAdvertising.value || _bleConnected.value)) {
             return "BLE HID"
         }
-        if (includeBle && _bleScanRunning.value) {
+        if (includeBle && (_bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value)) {
             return "BLE Scanner"
+        }
+        if (includeBle && _bleProfileRunning.value) {
+            return "BLE GATT Profile"
         }
         return when {
             _portalRunning.value -> {
@@ -1197,7 +1232,8 @@ class MainViewModel(internal val app: Application) {
             _clientPresenceRunning.value -> "Client detector active"
             _hiddenApStarting.value -> "Hidden AP Revealer scanning"
             _hiddenApRunning.value -> "Hidden AP revealer active"
-            _bleScanRunning.value -> "BLE scanner active"
+            _bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value -> "BLE scanner active"
+            _bleProfileRunning.value -> "BLE profile active"
             _bleAdvertising.value || _bleConnected.value -> "BLE HID active"
             else -> null
         }
@@ -1396,6 +1432,9 @@ class MainViewModel(internal val app: Application) {
                         }
                         "client_detected" -> this@MainViewModel.recordClientPresenceEvent(event)
                         "ble_device" -> this@MainViewModel.recordBleDeviceEvent(event)
+                        "ble_profile" -> this@MainViewModel.recordBleProfileEvent(event)
+                        "ble_service" -> this@MainViewModel.recordBleServiceEvent(event)
+                        "ble_characteristic" -> this@MainViewModel.recordBleCharacteristicEvent(event)
                         "hidden_ap" -> this@MainViewModel.recordHiddenApObservation(event)
                         "hidden_ssid_candidate" -> this@MainViewModel.recordHiddenSsidCandidate(event)
                         "hidden_ssid_resolved" -> this@MainViewModel.recordHiddenSsidResolved(event)

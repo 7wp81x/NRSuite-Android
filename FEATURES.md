@@ -21,7 +21,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 | WPA Handshake Capture/Crack | ✅ | Offline dictionary cracking |
 | BLE HID | ✅ | Bluetooth LE keyboard/mouse HID and DuckyScript payloads |
 | BLE Scanner | ✅ | Device discovery with names, RSSI, manufacturer data, and service badges |
-| BLE GATT Profile | 📋 | Read-only service/characteristic enumeration; in review |
+| BLE GATT Profile | ✅ | Read-only GATT service/characteristic enumeration with integrated BLE target scanner |
 | FastPair Model ID | 📋 | Map FastPair model IDs to known device names/types |
 | BadUSB | ✅ | HID injection via USB |
 | Credential Manager | ✅ | Local storage of harvested creds |
