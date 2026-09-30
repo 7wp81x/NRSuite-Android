@@ -427,6 +427,7 @@ private fun SerialMonitorLogCard(
     onExport: () -> Unit,
 ) {
     var lineEndingExpanded by remember { mutableStateOf(false) }
+    val logHorizontalScroll = rememberScrollState()
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -479,7 +480,7 @@ private fun SerialMonitorLogCard(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
+                                    .horizontalScroll(logHorizontalScroll),
                             ) {
                                 SelectionContainer {
                                     Column {
