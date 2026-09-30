@@ -72,6 +72,7 @@ import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.WifiFind
@@ -214,6 +215,15 @@ internal val modules = listOf(
         icon = Icons.Default.VisibilityOff,
         category = "Detection",
         radio = "2.4GHz",
+        available = true,
+    ),
+    ModuleCardSpec(
+        id = "tracker_detector",
+        title = "Tracker Detector",
+        description = "Detect Find My / AirTag-style BLE tracker advertisements.",
+        icon = Icons.Default.Radar,
+        category = "Detection",
+        radio = "BLE",
         available = true,
     ),
     ModuleCardSpec(
