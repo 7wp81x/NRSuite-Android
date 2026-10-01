@@ -160,7 +160,7 @@ internal fun ConnectionStatusIndicator(
         ConnectionState.Disconnected -> when {
             hasPendingPermissions -> "Connect" to StatusAmber
             hasDevices && hasPermission -> "Connect" to CategoryDetectionBlue
-            hasDevices -> "Allow USB" to CategoryDetectionBlue
+            hasDevices -> "Unpaired" to CategoryDetectionBlue
             else -> "Offline" to StatusNeutral
         }
         ConnectionState.Connecting -> "Connecting…" to StatusAmber
