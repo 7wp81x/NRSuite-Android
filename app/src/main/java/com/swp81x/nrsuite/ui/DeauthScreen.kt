@@ -361,7 +361,7 @@ private fun ConfigZone(
                     if (!connected) {
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            text = "Connect a device from the Device tab before sending deauth frames.",
+                            text = "Connect a device before starting deauth.",
                             style = MaterialTheme.typography.bodySmall,
                             color = StatusAmber,
                         )
@@ -481,7 +481,7 @@ private fun ResultZone(
             if (!connected) {
                 Spacer(Modifier.height(24.dp))
                 Text(
-                    text = "Connect an ESP32 to send a deauth burst.",
+                    text = "Connect a device before starting deauth.",
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )

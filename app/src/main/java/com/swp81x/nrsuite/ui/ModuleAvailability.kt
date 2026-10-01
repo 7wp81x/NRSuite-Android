@@ -91,6 +91,7 @@ private fun ModuleAvailabilityBanner() {
 internal fun ModuleActionFab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     containerColor: Color = MaterialTheme.colorScheme.primary,
     contentColor: Color = MaterialTheme.colorScheme.onPrimary,
     content: @Composable () -> Unit,
@@ -100,13 +101,21 @@ internal fun ModuleActionFab(
 
     FloatingActionButton(
         onClick = {
-            if (unavailableMessage != null) {
-                Toast.makeText(context, unavailableMessage, Toast.LENGTH_SHORT).show()
-            } else {
-                onClick()
+            when {
+                !enabled -> Unit
+                unavailableMessage != null -> {
+                    Toast.makeText(context, unavailableMessage, Toast.LENGTH_SHORT).show()
+                }
+                else -> onClick()
             }
         },
-        modifier = modifier.alpha(if (unavailableMessage != null) 0.55f else 1f),
+        modifier = modifier.alpha(
+            when {
+                !enabled -> 0.4f
+                unavailableMessage != null -> 0.55f
+                else -> 1f
+            },
+        ),
         containerColor = if (unavailableMessage != null) StatusNeutral else containerColor,
         contentColor = if (unavailableMessage != null) {
             MaterialTheme.colorScheme.onSurfaceVariant

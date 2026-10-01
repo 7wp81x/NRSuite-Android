@@ -61,6 +61,9 @@ import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.ui.util.rssiToProximity
 import com.swp81x.nrsuite.ui.util.threatProximityColor
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
+import com.swp81x.nrsuite.ui.components.ChannelModeToggle
+import com.swp81x.nrsuite.ui.components.ModuleStatusCard
+import com.swp81x.nrsuite.ui.components.ModuleStatusState
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -176,8 +179,8 @@ fun DeauthDetectorScreen(
             },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(16.dp)
-                .alpha(if (!connected || (!running && !canStart)) 0.4f else 1f),
+                .padding(16.dp),
+            enabled = connected && (running || canStart),
             containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
         ) {
@@ -229,146 +232,71 @@ private fun DetectorStatusCard(
     alert: DeauthAlert?,
     onLocateClick: () -> Unit,
 ) {
-    val border = when {
-        alert != null && alert.confidence == AlertConfidence.HIGH ->
-            BorderStroke(1.dp, StatusRed)
-        alert != null ->
-            BorderStroke(0.5.dp, StatusAmber)
-        else ->
-            BorderStroke(0.5.dp, NrOutline)
+    val state = when {
+        alert != null && alert.confidence == AlertConfidence.HIGH -> ModuleStatusState.ALERT
+        alert != null -> ModuleStatusState.RUNNING
+        !connected -> ModuleStatusState.DISCONNECTED
+        running -> ModuleStatusState.RUNNING
+        else -> ModuleStatusState.READY
     }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = NrSurface),
-        border = border,
-        shape = RoundedCornerShape(12.dp),
+    ModuleStatusCard(
+        icon = Icons.Default.Shield,
+        title = when {
+            alert != null -> "Deauth attack detected"
+            !connected -> "Disconnected"
+            running -> "No attack detected"
+            else -> "Ready"
+        },
+        subtitle = when {
+            alert != null -> "${alert.ssid} · ch ${alert.channel}"
+            !connected -> "Connect a device before starting the detector."
+            running -> "Monitoring for deauth activity"
+            else -> "Start monitoring to watch for deauth activity"
+        },
+        state = state,
     ) {
-        Column(Modifier.padding(14.dp)) {
-            when {
-                alert != null -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Shield,
-                            contentDescription = null,
-                            tint = StatusRed,
-                            modifier = Modifier.size(22.dp),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "Deauth attack detected",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = StatusRed,
-                        )
-                    }
-
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "${alert.ssid} · ch ${alert.channel}",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontFamily = FontFamily.Monospace,
-                        ),
-                        color = NrOnSurfaceVariant,
+        if (alert != null) {
+            if (alert.possiblySpoofed) {
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.WarningAmber,
+                        contentDescription = null,
+                        tint = StatusAmber,
+                        modifier = Modifier.size(16.dp),
                     )
-
-                    if (alert.possiblySpoofed) {
-                        Spacer(Modifier.height(6.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.WarningAmber,
-                                contentDescription = null,
-                                tint = StatusAmber,
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = "Source MAC may be spoofed",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = StatusAmber,
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.width(6.dp))
                     Text(
-                        text = "${rssiToProximity(alert.dominantSourceRssi).label} " +
-                            "(${alert.dominantSourceRssi} dBm)",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontFamily = FontFamily.Monospace,
-                        ),
-                        color = threatProximityColor(alert.dominantSourceRssi),
-                    )
-
-                    Spacer(Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        OutlinedButton(
-                            onClick = onLocateClick,
-                            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.primary,
-                            ),
-                        ) {
-                            Text("Locate")
-                        }
-                        Spacer(Modifier.weight(1f))
-                        ConfidenceBadge(alert.confidence)
-                    }
-                }
-
-                running -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Shield,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "No attack detected",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "Monitoring for deauth activity",
+                        text = "Source MAC may be spoofed",
                         style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
+                        color = StatusAmber,
                     )
                 }
+            }
 
-                else -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Shield,
-                            contentDescription = null,
-                            tint = if (!connected) StatusAmber else NrOnSurfaceVariant,
-                            modifier = Modifier.size(22.dp),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "No attack detected",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = NrOnSurfaceVariant,
-                        )
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = if (!connected) {
-                            "Connect a device to begin"
-                        } else {
-                            "Start monitoring to watch for deauth activity"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "${rssiToProximity(alert.dominantSourceRssi).label} " +
+                    "(${alert.dominantSourceRssi} dBm)",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = threatProximityColor(alert.dominantSourceRssi),
+            )
+
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedButton(
+                    onClick = onLocateClick,
+                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.primary,
+                    ),
+                ) {
+                    Text("Locate")
                 }
+                Spacer(Modifier.weight(1f))
+                ConfidenceBadge(alert.confidence)
             }
         }
     }
@@ -528,20 +456,15 @@ private fun ConfigZone(
                         style = MaterialTheme.typography.labelLarge,
                     )
                     Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        NrFilterChip(
-                            selected = channelMode == DeauthChannelMode.TARGETED,
-                            onClick = { onChannelModeChange(DeauthChannelMode.TARGETED) },
-                            label = "Targeted",
-                            enabled = controlsEnabled,
-                        )
-                        NrFilterChip(
-                            selected = channelMode == DeauthChannelMode.HOPPING,
-                            onClick = { onChannelModeChange(DeauthChannelMode.HOPPING) },
-                            label = "Hopping",
-                            enabled = controlsEnabled,
-                        )
-                    }
+                    ChannelModeToggle(
+                        fixed = channelMode == DeauthChannelMode.TARGETED,
+                        enabled = controlsEnabled,
+                        onFixedChange = { fixed ->
+                            onChannelModeChange(
+                                if (fixed) DeauthChannelMode.TARGETED else DeauthChannelMode.HOPPING,
+                            )
+                        },
+                    )
                     Spacer(Modifier.height(10.dp))
 
                     if (channelMode == DeauthChannelMode.TARGETED) {

@@ -49,6 +49,8 @@ import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.defense.NearbyAp
 import com.swp81x.nrsuite.core.defense.RogueApAlert
 import com.swp81x.nrsuite.core.defense.RogueApCategory
+import com.swp81x.nrsuite.ui.components.ModuleStatusCard
+import com.swp81x.nrsuite.ui.components.ModuleStatusState
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.util.rssiToProximity
 import com.swp81x.nrsuite.ui.util.signalQualityColor
@@ -152,8 +154,8 @@ fun RogueApScreen(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(16.dp)
-                    .alpha(if (!connected) 0.4f else 1f),
+                    .padding(16.dp),
+                enabled = connected,
                 containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
@@ -206,52 +208,32 @@ private fun RogueApStatusCard(
     scanning: Boolean,
     lastScanAt: String?,
 ) {
-    val border = if (running) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else BorderStroke(0.5.dp, NrOutline)
-    val title = when {
-        !connected -> "Disconnected"
-        running -> "Monitoring"
-        else -> "Ready"
+    val state = when {
+        !connected -> ModuleStatusState.DISCONNECTED
+        running -> ModuleStatusState.RUNNING
+        else -> ModuleStatusState.READY
     }
-    val subtitle = when {
-        !connected -> "Connect a device to begin"
-        running && scanning -> "Scanning for rogue APs..."
-        running -> "Last scan ${lastScanAt ?: "pending"}"
-        else -> "Capture a baseline, then start monitoring"
-    }
-    val iconColor = when {
-        !connected -> StatusAmber
-        running -> MaterialTheme.colorScheme.primary
-        else -> NrOnSurfaceVariant
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = NrSurface),
-        border = border,
-        shape = RoundedCornerShape(12.dp),
+    ModuleStatusCard(
+        icon = Icons.Default.Router,
+        title = when {
+            !connected -> "Disconnected"
+            running -> "Monitoring"
+            else -> "Ready"
+        },
+        subtitle = when {
+            !connected -> "Connect a device before starting the detector."
+            running && scanning -> "Scanning for rogue APs..."
+            running -> "Monitoring rogue AP activity"
+            else -> "Capture a baseline, then start monitoring"
+        },
+        state = state,
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Router,
-                    contentDescription = null,
-                    tint = iconColor,
-                    modifier = Modifier.size(22.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                }
-            }
+        if (lastScanAt != null) {
+            Text(
+                text = "Last scan: $lastScanAt",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = NrOnSurfaceVariant,
+            )
         }
     }
 }

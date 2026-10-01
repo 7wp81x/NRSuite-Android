@@ -53,6 +53,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.HiddenApObservation
 import com.swp81x.nrsuite.core.defense.HiddenSsidCandidate
+import com.swp81x.nrsuite.ui.components.ChannelModeToggle
+import com.swp81x.nrsuite.ui.components.ChannelStepper
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -251,7 +253,7 @@ private fun HiddenApStatusCard(
                     )
                     Text(
                         text = when {
-                            !connected -> "Connect a device to begin"
+                            !connected -> "Connect a device before starting hidden AP detection."
                             starting -> "Running baseline scan before passive detection"
                             running -> buildString {
                                 append(if (fixed) "Fixed ch $channel" else "Hopping")
@@ -320,50 +322,27 @@ private fun HiddenApConfigCard(
 
             if (expanded) {
                 Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NrFilterChip(
-                        selected = fixed,
-                        onClick = { onFixedChange(true) },
-                        label = "Fixed",
-                        enabled = !running,
-                    )
-                    NrFilterChip(
-                        selected = !fixed,
-                        onClick = { onFixedChange(false) },
-                        label = "Hopping",
-                        enabled = !running,
-                    )
-                }
+                ChannelModeToggle(
+                    fixed = fixed,
+                    enabled = !running,
+                    onFixedChange = onFixedChange,
+                )
 
                 if (fixed) {
                     Spacer(Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Channel",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f),
-                        )
-                        OutlinedButton(
-                            onClick = { onChannelChange((channel - 1).coerceAtLeast(1)) },
-                            enabled = !running && channel > 1,
-                        ) {
-                            Text("-")
-                        }
-                        Text(
-                            text = "$channel",
-                            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
-                            modifier = Modifier.padding(horizontal = 14.dp),
-                        )
-                        OutlinedButton(
-                            onClick = { onChannelChange((channel + 1).coerceAtMost(14)) },
-                            enabled = !running && channel < 14,
-                        ) {
-                            Text("+")
-                        }
-                    }
+                    Text(
+                        text = "Channel",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    ChannelStepper(
+                        value = channel,
+                        min = 1,
+                        max = 14,
+                        enabled = !running,
+                        onDecrease = { onChannelChange((channel - 1).coerceAtLeast(1)) },
+                        onIncrease = { onChannelChange((channel + 1).coerceAtMost(14)) },
+                    )
                 }
 
                 Spacer(Modifier.height(12.dp))
