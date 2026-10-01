@@ -96,7 +96,11 @@ internal fun MainViewModel.selectFirmwareTargetImpl(device: UsbDevice) {
     appendLog("Firmware flash target: ${entry.displayName}")
 }
 
-internal fun MainViewModel.startFirmwareFlashImpl(targetChip: String, skipReset: Boolean) {
+internal fun MainViewModel.startFirmwareFlashImpl(
+    targetChip: String,
+    skipReset: Boolean,
+    eraseBeforeFlash: Boolean = false,
+) {
     val uri = _firmwareFlashUri.value
     if (uri == null) {
         appendLog("Choose a merged firmware .bin before flashing.")
@@ -161,6 +165,7 @@ internal fun MainViewModel.startFirmwareFlashImpl(targetChip: String, skipReset:
                     firmware = bytes,
                     offset = 0,
                     resetMode = resetMode,
+                    eraseBeforeFlash = eraseBeforeFlash,
                     onStage = { stage -> _firmwareFlashStatus.value = stage },
                 ) { percent ->
                     val written = (bytes.size.toLong() * percent / 100L).toInt()

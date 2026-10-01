@@ -977,7 +977,11 @@ class MainViewModel(internal val app: Application) {
 
     fun selectBadUsbTarget(device: UsbDevice) = this.selectBadUsbTargetImpl(device)
 
-    fun startFirmwareFlash(targetChip: String, skipReset: Boolean) = this.startFirmwareFlashImpl(targetChip, skipReset)
+    fun startFirmwareFlash(
+        targetChip: String,
+        skipReset: Boolean,
+        eraseBeforeFlash: Boolean = false,
+    ) = this.startFirmwareFlashImpl(targetChip, skipReset, eraseBeforeFlash)
 
     internal fun stopActiveOperations() {
         finishActiveCredentialSession()

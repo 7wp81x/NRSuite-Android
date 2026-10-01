@@ -165,7 +165,7 @@ internal fun SettingsScreen(
     onRefreshDevices: () -> Unit,
     onRequestPermission: (UsbDevice) -> Unit,
     onSelectFlashTarget: (UsbDevice) -> Unit,
-    onStartFirmwareFlash: (targetChip: String, skipReset: Boolean) -> Unit,
+    onStartFirmwareFlash: (targetChip: String, skipReset: Boolean, eraseBeforeFlash: Boolean) -> Unit,
     ouiRules: List<OuiRule> = emptyList(),
     onAddOuiRule: (ouiPrefix: String, label: String, action: OuiRuleAction) -> Unit = { _, _, _ -> },
     onDeleteOuiRule: (id: String) -> Unit = {},
@@ -191,6 +191,7 @@ internal fun SettingsScreen(
     @Suppress("UNUSED_EXPRESSION")
     permissionRevision
     var manualBootloader by remember { mutableStateOf(false) }
+    var eraseBeforeFlash by remember { mutableStateOf(false) }
     var showFlashConfirm by remember { mutableStateOf(false) }
     LaunchedEffect(chip) {
         if (!chip.isNullOrBlank()) selectedTargetChip = chip
@@ -398,6 +399,25 @@ internal fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = eraseBeforeFlash,
+                        onCheckedChange = { eraseBeforeFlash = it },
+                        enabled = !firmwareFlashing,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Erase entire flash before writing",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Full-chip erase can take several minutes depending on flash size and chip. Usually not needed for a normal firmware update.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                )
                 Spacer(Modifier.height(10.dp))
                 Button(
                     onClick = { showFlashConfirm = true },
@@ -418,9 +438,16 @@ internal fun SettingsScreen(
                         title = { Text("Flash firmware?") },
                         text = {
                             Text(
-                                "This will erase the entire flash and write the firmware on " +
-                                    "${selectedFlashTarget?.displayName ?: "the device"}. " +
-                                    "The device will reboot. Do not unplug during the process.",
+                                if (eraseBeforeFlash) {
+                                    "This will erase the entire flash and write the firmware on " +
+                                        "${selectedFlashTarget?.displayName ?: "the device"}. " +
+                                        "The device will reboot. Do not unplug during the process."
+                                } else {
+                                    "This will write the firmware on " +
+                                        "${selectedFlashTarget?.displayName ?: "the device"} " +
+                                        "and erase the flash blocks being written. " +
+                                        "The device will reboot. Do not unplug during the process."
+                                },
                                 color = NrOnSurfaceVariant,
                             )
                         },
@@ -428,7 +455,7 @@ internal fun SettingsScreen(
                             Button(
                                 onClick = {
                                     showFlashConfirm = false
-                                    onStartFirmwareFlash(selectedTargetChip, manualBootloader)
+                                    onStartFirmwareFlash(selectedTargetChip, manualBootloader, eraseBeforeFlash)
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = StatusAmber,

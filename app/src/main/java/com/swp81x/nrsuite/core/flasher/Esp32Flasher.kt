@@ -36,7 +36,7 @@ class Esp32Flasher(
         firmware: ByteArray,
         offset: Int = 0,
         resetMode: ResetMode = ResetMode.CLASSIC,
-        eraseBeforeFlash: Boolean = true,
+        eraseBeforeFlash: Boolean = false,
         onStage: (String) -> Unit = {},
         onProgress: (Int) -> Unit = {},
     ) {
@@ -52,7 +52,7 @@ class Esp32Flasher(
 
             if (eraseBeforeFlash) {
                 onStage("Erasing flash...")
-                eraseFlash()
+                eraseFlash(onStage)
             }
             onStage("Writing firmware...")
             flashBegin(firmware.size, offset)
@@ -146,13 +146,33 @@ class Esp32Flasher(
         )
     }
 
-    private fun eraseFlash() {
-        checkCommand(
-            description = "erase flash",
-            op = OP_ERASE_FLASH,
-            data = ByteArray(0),
-            timeoutMs = ERASE_TIMEOUT_MS,
-        )
+    private fun eraseFlash(onStage: (String) -> Unit) {
+        val progressThread = Thread {
+            var elapsedSeconds = 0L
+            try {
+                while (!Thread.currentThread().isInterrupted) {
+                    Thread.sleep(5_000)
+                    elapsedSeconds += 5
+                    onStage("Erasing flash... (${elapsedSeconds}s elapsed)")
+                }
+            } catch (_: InterruptedException) {
+                // Erase finished or failed; stop ticking.
+            }
+        }.apply {
+            isDaemon = true
+            start()
+        }
+
+        try {
+            checkCommand(
+                description = "erase flash",
+                op = OP_ERASE_FLASH,
+                data = ByteArray(0),
+                timeoutMs = ERASE_TIMEOUT_MS,
+            )
+        } finally {
+            progressThread.interrupt()
+        }
     }
 
     private fun flashBegin(size: Int, offset: Int) {
@@ -354,7 +374,7 @@ class Esp32Flasher(
         private const val DEFAULT_COMMAND_TIMEOUT_MS = 5_000
         private const val DEFAULT_BEGIN_TIMEOUT_MS = 40_000
         private const val FLASH_BLOCK_TIMEOUT_MS = 10_000
-        private const val ERASE_TIMEOUT_MS = 120_000
+        private const val ERASE_TIMEOUT_MS = 300_000
         private const val READ_BUFFER_SIZE = 4096
         private const val MAX_READ_TIMEOUT_MS = 250
 
