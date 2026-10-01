@@ -408,13 +408,13 @@ internal fun SettingsScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "Erase entire flash before writing",
+                        text = "Explicitly erase firmware region before writing",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Full-chip erase can take several minutes depending on flash size and chip. Usually not needed for a normal firmware update.",
+                    text = "Region erase is normally redundant; FLASH_BEGIN erases the blocks it writes. Enable it only for diagnostics or flaky flash chips.",
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
@@ -439,7 +439,7 @@ internal fun SettingsScreen(
                         text = {
                             Text(
                                 if (eraseBeforeFlash) {
-                                    "This will erase the entire flash and write the firmware on " +
+                                    "This will explicitly erase the firmware region and write the firmware on " +
                                         "${selectedFlashTarget?.displayName ?: "the device"}. " +
                                         "The device will reboot. Do not unplug during the process."
                                 } else {

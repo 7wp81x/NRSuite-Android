@@ -28,7 +28,7 @@ class Esp32FlasherTest {
     }
 
     @Test
-    fun `can opt into full erase when requested`() {
+    fun `can opt into region erase when requested`() {
         val transport = FakeFlasherTransport()
         val flasher = Esp32Flasher(transport, supportsEncryptedFlash = false)
 
@@ -42,7 +42,7 @@ class Esp32FlasherTest {
         val ops = transport.writtenPackets.map { encoded ->
             SlipDecoder().feed(encoded).first()[1].toInt() and 0xFF
         }
-        assertEquals(listOf(0x08, 0x0D, 0xD0, 0x02, 0x03, 0x04), ops)
+        assertEquals(listOf(0x08, 0x0D, 0xD1, 0x08, 0x02, 0x03, 0x04), ops)
     }
 
     private class FakeFlasherTransport : FlasherTransport {
