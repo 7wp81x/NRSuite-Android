@@ -694,6 +694,14 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         )) ||
         (activeModuleId == null && selectedCategory == null && selectedTab == AppTab.HOME)
 
+    // If a device snackbar is already showing, dismiss it when navigating to
+    // a screen that has its own device connect/target flow.
+    LaunchedEffect(suppressDeviceSnackbar) {
+        if (suppressDeviceSnackbar) {
+            snackbarHostState.currentSnackbarData?.dismiss()
+        }
+    }
+
     if (!suppressDeviceSnackbar) {
         LaunchedEffect(unacknowledgedDevices) {
             val current = unacknowledgedDevices
