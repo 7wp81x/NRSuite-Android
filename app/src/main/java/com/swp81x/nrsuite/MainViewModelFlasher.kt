@@ -16,6 +16,11 @@ import kotlinx.coroutines.withContext
 
 // Firmware image selection, flash-target selection, and ROM-bootloader flashing.
 
+internal fun MainViewModel.markFirmwarePermissionRequestedImpl(device: UsbDevice) {
+    firmwarePermissionDeviceId = device.deviceId
+    markPermissionRequested(device)
+}
+
 internal fun MainViewModel.setFirmwareFlashFileImpl(uri: Uri, name: String?) {
     _firmwareFlashUri.value = uri
     val resolvedName = queryDocumentDisplayNameImpl(uri)

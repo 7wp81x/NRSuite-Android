@@ -346,7 +346,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             module.id == "credential_manager" ||
             module.id == "wpa_cracker" ||
             module.id == "mac_lookup" ||
-            module.id == "serial_monitor"
+            module.id == "serial_monitor" ||
+            module.id == "firmware"
         val requiresDevice = !runsWithoutDevice
         val featureKey = when (module.id) {
             "wifi" -> "wifi"
@@ -637,6 +638,24 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         val intent = Intent(ACTION_USB_PERMISSION).setPackage(context.packageName)
         val pendingIntent = PendingIntent.getBroadcast(context, device.deviceId, intent, flags)
         viewModel.markSerialMonitorPermissionRequested(device)
+        usbManager.requestPermission(device, pendingIntent)
+
+        uiScope.launch {
+            repeat(40) {
+                kotlinx.coroutines.delay(250)
+                if (usbManager.hasPermission(device)) {
+                    permissionRevision++
+                    return@launch
+                }
+            }
+        }
+    }
+
+    fun requestFirmwarePermission(device: UsbDevice) {
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        val intent = Intent(ACTION_USB_PERMISSION).setPackage(context.packageName)
+        val pendingIntent = PendingIntent.getBroadcast(context, device.deviceId, intent, flags)
+        viewModel.markFirmwarePermissionRequested(device)
         usbManager.requestPermission(device, pendingIntent)
 
         uiScope.launch {
@@ -1361,7 +1380,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "*/*")) },
                 onClearFirmware = viewModel::clearFirmwareFlashFile,
                 onRefreshDevices = viewModel::refreshDevices,
-                onRequestPermission = { device -> requestPermission(device) },
+                onRequestPermission = { device -> requestFirmwarePermission(device) },
                 onSelectFlashTarget = viewModel::selectFirmwareTarget,
                 onStartFirmwareFlash = viewModel::startFirmwareFlash,
                 flasherOnly = true,
@@ -1384,7 +1403,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "*/*")) },
                 onClearFirmware = viewModel::clearFirmwareFlashFile,
                 onRefreshDevices = viewModel::refreshDevices,
-                onRequestPermission = { device -> requestPermission(device) },
+                onRequestPermission = { device -> requestFirmwarePermission(device) },
                 onSelectFlashTarget = viewModel::selectFirmwareTarget,
                 onStartFirmwareFlash = viewModel::startFirmwareFlash,
                 ouiRules = ouiRules,

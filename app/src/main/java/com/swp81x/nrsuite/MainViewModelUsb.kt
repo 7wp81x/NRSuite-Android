@@ -165,6 +165,15 @@ internal fun MainViewModel.onPermissionResultImpl(device: UsbDevice, granted: Bo
         return
     }
 
+    if (firmwarePermissionDeviceId == device.deviceId) {
+        firmwarePermissionDeviceId = null
+        if (reallyGranted) {
+            refreshDevicesImpl()
+            selectFirmwareTargetImpl(device)
+        }
+        return
+    }
+
     if (reallyGranted) {
         refreshDevices()
         connect(device)

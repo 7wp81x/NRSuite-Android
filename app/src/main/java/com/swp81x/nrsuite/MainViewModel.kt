@@ -174,6 +174,7 @@ class MainViewModel(internal val app: Application) {
     internal var serialMonitorReadJob: Job? = null
     internal val serialMonitorOperationMutex = Mutex()
     internal var serialMonitorPermissionDeviceId: Int? = null
+    internal var firmwarePermissionDeviceId: Int? = null
 
     internal val _connectionState =
         MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
@@ -1154,6 +1155,7 @@ class MainViewModel(internal val app: Application) {
     fun exportSerialMonitorLog() = this.exportSerialMonitorLogImpl()
 
     fun markSerialMonitorPermissionRequested(device: UsbDevice) = this.markSerialMonitorPermissionRequestedImpl(device)
+    fun markFirmwarePermissionRequested(device: UsbDevice) = this.markFirmwarePermissionRequestedImpl(device)
 
 
     /**
