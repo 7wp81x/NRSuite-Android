@@ -431,6 +431,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     var selectedCategory by rememberSaveable { mutableStateOf<String?>(null) }
     var showRootDirectoryDialog by rememberSaveable { mutableStateOf(false) }
     var showOuiDatabaseDialog by rememberSaveable { mutableStateOf(false) }
+    var rootDirectoryPickerActive by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(enabled = firmwareFlashing) {
         // Swallow back while a firmware flash is in progress.
@@ -488,6 +489,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val folderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
     ) { uri: Uri? ->
+        rootDirectoryPickerActive = false
         if (uri != null) {
             viewModel.setExportDirectory(uri)
         }
@@ -500,8 +502,13 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    LaunchedEffect(requiresOuiDatabase) {
-        if (requiresOuiDatabase) {
+    // On a fresh install the NRSuite root directory prompt takes priority.
+    // Queue the OUI database prompt until that dialog is no longer visible.
+    LaunchedEffect(requiresOuiDatabase, showRootDirectoryDialog, rootDirectoryPickerActive) {
+        if (requiresOuiDatabase &&
+            !showRootDirectoryDialog &&
+            !rootDirectoryPickerActive
+        ) {
             showOuiDatabaseDialog = true
             viewModel.onOuiDatabasePromptShown()
         }
@@ -873,6 +880,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 confirmButton = {
                     Button(onClick = {
                         showRootDirectoryDialog = false
+                        rootDirectoryPickerActive = true
                         folderPicker.launch(null)
                     }) {
                         Text("Choose folder")
@@ -886,7 +894,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             )
         }
 
-        if (showOuiDatabaseDialog) {
+        if (showOuiDatabaseDialog && !showRootDirectoryDialog && !rootDirectoryPickerActive) {
             AlertDialog(
                 onDismissRequest = { showOuiDatabaseDialog = false },
                 title = { Text("MAC vendor database") },
