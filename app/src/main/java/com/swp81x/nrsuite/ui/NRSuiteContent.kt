@@ -161,7 +161,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val uiScope = rememberCoroutineScope()
     val homeListState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var previousPendingPermissionRequests by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var previousUnacknowledgedDevices by remember { mutableStateOf<Set<Int>>(emptySet()) }
     val usbManager = remember {
         context.getSystemService(Context.USB_SERVICE) as UsbManager
     }
@@ -170,6 +170,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val connectionState by viewModel.connectionState.collectAsState()
     val deviceConnectionStates by viewModel.deviceConnectionStates.collectAsState()
     val pendingPermissionRequests by viewModel.pendingPermissionRequests.collectAsState()
+    val unacknowledgedDevices by viewModel.unacknowledgedDevices.collectAsState()
     val disconnectingFingerprints by viewModel.disconnectingFingerprints.collectAsState()
     val logs by viewModel.logs.collectAsState()
     val history by viewModel.history.collectAsState()
@@ -650,6 +651,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     }
 
     fun connectOrRequestPermission(device: UsbDevice) {
+        if (device.deviceId in pendingPermissionRequests) return
         if (usbManager.hasPermission(device)) {
             viewModel.connect(device)
         } else {
@@ -660,10 +662,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     fun isSerialMonitorActiveDevice(deviceId: Int): Boolean =
         serialMonitorConnected && serialMonitorSelected?.device?.deviceId == deviceId
 
-    LaunchedEffect(pendingPermissionRequests) {
-        val current = pendingPermissionRequests
-        val newDeviceIds = current - previousPendingPermissionRequests
-        previousPendingPermissionRequests = current
+    LaunchedEffect(unacknowledgedDevices) {
+        val current = unacknowledgedDevices
+        val newDeviceIds = current - previousUnacknowledgedDevices
+        previousUnacknowledgedDevices = current
 
         newDeviceIds.forEach { deviceId ->
             val device = devices.firstOrNull { it.device.deviceId == deviceId } ?: return@forEach
@@ -749,13 +751,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                         hasPendingPermissions = pendingPermissionRequests.any { deviceId ->
                             !isSerialMonitorActiveDevice(deviceId)
                         },
-                        onConnect = {
-                            devices.firstOrNull()?.let { viewModel.connect(it.device) }
-                        },
-                        onRequestPermission = {
-                            devices.firstOrNull()?.let { requestPermission(it.device) }
-                        },
-                        onOpenDevices = { activeModuleId = "devices" },
                     )
                     IconButton(onClick = { activeModuleId = "settings" }) {
                         Icon(

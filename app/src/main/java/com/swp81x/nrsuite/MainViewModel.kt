@@ -188,6 +188,9 @@ class MainViewModel(internal val app: Application) {
     internal val _pendingPermissionRequests = MutableStateFlow<Set<Int>>(emptySet())
     val pendingPermissionRequests: StateFlow<Set<Int>> = _pendingPermissionRequests.asStateFlow()
 
+    internal val _unacknowledgedDevices = MutableStateFlow<Set<Int>>(emptySet())
+    val unacknowledgedDevices: StateFlow<Set<Int>> = _unacknowledgedDevices.asStateFlow()
+
     /** Device fingerprints currently being gracefully stopped/closed. */
     internal val _disconnectingFingerprints = MutableStateFlow<Set<String>>(emptySet())
     val disconnectingFingerprints: StateFlow<Set<String>> = _disconnectingFingerprints.asStateFlow()

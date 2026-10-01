@@ -155,68 +155,24 @@ internal fun ConnectionStatusIndicator(
     hasDevices: Boolean,
     hasPermission: Boolean,
     hasPendingPermissions: Boolean,
-    onConnect: () -> Unit,
-    onRequestPermission: () -> Unit,
-    onOpenDevices: () -> Unit,
 ) {
-    val label: String
-    val color: Color
-    var onClick: (() -> Unit)? = null
-
-    when (state) {
-        ConnectionState.Disconnected -> {
-            if (hasPendingPermissions) {
-                label = "Connect"
-                color = StatusAmber
-                onClick = onOpenDevices
-            } else if (hasDevices) {
-                if (hasPermission) {
-                    label = "Connect"
-                    color = CategoryDetectionBlue
-                    onClick = onConnect
-                } else {
-                    label = "Allow USB"
-                    color = CategoryDetectionBlue
-                    onClick = onRequestPermission
-                }
-            } else {
-                label = "Offline"
-                color = StatusNeutral
-            }
+    val (label, color) = when (state) {
+        ConnectionState.Disconnected -> when {
+            hasPendingPermissions -> "Connect" to StatusAmber
+            hasDevices && hasPermission -> "Connect" to CategoryDetectionBlue
+            hasDevices -> "Allow USB" to CategoryDetectionBlue
+            else -> "Offline" to StatusNeutral
         }
-        ConnectionState.Connecting -> {
-            label = "Connecting…"
-            color = StatusAmber
-        }
-        is ConnectionState.Connected -> {
-            label = state.chip ?: "Online"
-            color = StatusGreen
-        }
-        is ConnectionState.Failed -> {
-            label = "Error"
-            color = StatusRed
-            if (hasDevices) {
-                onClick = if (hasPermission) onConnect else onRequestPermission
-            }
-        }
+        ConnectionState.Connecting -> "Connecting…" to StatusAmber
+        is ConnectionState.Connected -> (state.chip ?: "Online") to StatusGreen
+        is ConnectionState.Failed -> "Error" to StatusRed
     }
 
-    Box(
-        modifier = Modifier
-            .padding(end = 12.dp)
-            .then(
-                if (onClick != null) {
-                    Modifier.clickable { onClick?.invoke() }
-                } else {
-                    Modifier
-                },
-            ),
-    ) {
-        StatusIndicator(
-            label = label,
-            color = color,
-        )
-    }
+    StatusIndicator(
+        label = label,
+        color = color,
+        modifier = Modifier.padding(end = 12.dp),
+    )
 }
 
 @Composable

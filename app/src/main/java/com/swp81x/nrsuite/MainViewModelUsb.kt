@@ -16,6 +16,15 @@ import kotlinx.coroutines.sync.withLock
 internal fun MainViewModel.refreshDevicesImpl() {
     val found = UsbSerialDeviceCatalog.list(usbManager)
     _devices.value = found
+
+    val busyDeviceIds = (deviceSessions + idleDeviceSessions).values
+        .map { it.device.device.deviceId }
+        .toSet()
+    _unacknowledgedDevices.value = found
+        .filter { !usbManager.hasPermission(it.device) && it.device.deviceId !in busyDeviceIds }
+        .map { it.device.deviceId }
+        .toSet()
+
     appendLog("Found ${found.size} supported USB serial device(s).")
 
     // Reconcile active sessions against Android's authoritative attached-device

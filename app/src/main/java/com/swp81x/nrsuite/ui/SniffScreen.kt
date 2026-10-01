@@ -268,7 +268,7 @@ private fun ConfigZone(
                     if (fixedMode) {
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            text = "Channel: $channel",
+                            text = "Channel",
                             style = MaterialTheme.typography.labelLarge,
                         )
                         Spacer(Modifier.height(6.dp))
