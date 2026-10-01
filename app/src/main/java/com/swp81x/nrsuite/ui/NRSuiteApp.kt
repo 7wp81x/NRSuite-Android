@@ -374,14 +374,13 @@ internal val modules = listOf(
     ),
 
     ModuleCardSpec(
-        id = "serial_debugger",
-        title = "Serial Debugger",
-        description = "NRSuite serial monitor and debugger (planned).",
+        id = "serial_monitor",
+        title = "Serial Monitor",
+        description = "Raw USB serial monitor for any ESP32 or USB-UART firmware.",
         icon = Icons.Default.DeveloperBoard,
         category = "Firmware",
         radio = "USB",
-        available = false,
-        statusLabel = "Unavailable",
+        available = true,
     ),
 
     ModuleCardSpec(

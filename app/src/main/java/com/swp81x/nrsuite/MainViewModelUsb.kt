@@ -140,6 +140,22 @@ internal fun MainViewModel.onPermissionResultImpl(device: UsbDevice, granted: Bo
         else "USB permission denied for ${device.deviceName}.",
         level = LogLevel.USB,
     )
+
+    if (serialMonitorPermissionDeviceId == device.deviceId) {
+        serialMonitorPermissionDeviceId = null
+        if (reallyGranted) {
+            refreshDevicesImpl()
+            val entry = _devices.value.firstOrNull { it.device.deviceId == device.deviceId }
+                ?: UsbSerialDeviceCatalog.find(usbManager, device)
+            if (entry != null) {
+                startSerialMonitorImpl(entry, _serialMonitorBaud.value)
+            } else {
+                appendLog("No supported USB serial driver for Serial Monitor.", level = LogLevel.ERROR)
+            }
+        }
+        return
+    }
+
     if (reallyGranted) {
         refreshDevices()
         connect(device)

@@ -297,6 +297,16 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val bleProfileRunning by viewModel.bleProfileRunning.collectAsState()
     val bleProfileStatus by viewModel.bleProfileStatus.collectAsState()
     val bleProfileServices by viewModel.bleProfileServices.collectAsState()
+    val serialMonitorSelected by viewModel.serialMonitorSelected.collectAsState()
+    val serialMonitorConnected by viewModel.serialMonitorConnected.collectAsState()
+    val serialMonitorConnecting by viewModel.serialMonitorConnecting.collectAsState()
+    val serialMonitorBaud by viewModel.serialMonitorBaud.collectAsState()
+    val serialMonitorLogLines by viewModel.serialMonitorLogLines.collectAsState()
+    val serialMonitorHexMode by viewModel.serialMonitorHexMode.collectAsState()
+    val serialMonitorInput by viewModel.serialMonitorInput.collectAsState()
+    val serialMonitorLineEnding by viewModel.serialMonitorLineEnding.collectAsState()
+    val serialMonitorBlockingMessage by viewModel.serialMonitorBlockingMessage.collectAsState()
+    val serialMonitorError by viewModel.serialMonitorError.collectAsState()
 
     val connected = connectionState as? ConnectionState.Connected
     val connectedChip = connected?.chip
@@ -328,7 +338,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         val runsWithoutDevice = module.id == "ducky" ||
             module.id == "credential_manager" ||
             module.id == "wpa_cracker" ||
-            module.id == "mac_lookup"
+            module.id == "mac_lookup" ||
+            module.id == "serial_monitor"
         val requiresDevice = !runsWithoutDevice
         val featureKey = when (module.id) {
             "wifi" -> "wifi"
@@ -603,6 +614,24 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
         // Fallback for devices/OEMs that do not deliver the permission
         // broadcast reliably: poll hasPermission() and force a recompose.
+        uiScope.launch {
+            repeat(40) {
+                kotlinx.coroutines.delay(250)
+                if (usbManager.hasPermission(device)) {
+                    permissionRevision++
+                    return@launch
+                }
+            }
+        }
+    }
+
+    fun requestSerialMonitorPermission(device: UsbDevice) {
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        val intent = Intent(ACTION_USB_PERMISSION).setPackage(context.packageName)
+        val pendingIntent = PendingIntent.getBroadcast(context, device.deviceId, intent, flags)
+        viewModel.markSerialMonitorPermissionRequested(device)
+        usbManager.requestPermission(device, pendingIntent)
+
         uiScope.launch {
             repeat(40) {
                 kotlinx.coroutines.delay(250)
@@ -1247,6 +1276,37 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     },
                     onDisconnect = viewModel::disconnect,
                     onDisconnectDevice = viewModel::disconnectDevice,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "serial_monitor" -> {
+                SerialMonitorScreen(
+                    devices = devices,
+                    selectedDevice = serialMonitorSelected,
+                    connected = serialMonitorConnected,
+                    connecting = serialMonitorConnecting,
+                    baudRate = serialMonitorBaud,
+                    logLines = serialMonitorLogLines,
+                    hexMode = serialMonitorHexMode,
+                    inputText = serialMonitorInput,
+                    lineEnding = serialMonitorLineEnding,
+                    blockingMessage = serialMonitorBlockingMessage,
+                    errorMessage = serialMonitorError,
+                    permissionRevision = permissionRevision,
+                    hasPermission = { usbManager.hasPermission(it.device) },
+                    onRefreshDevices = viewModel::refreshDevices,
+                    onSelectDevice = viewModel::selectSerialMonitorDevice,
+                    onRequestPermission = { device -> requestSerialMonitorPermission(device.device) },
+                    onConnect = { device, baud -> viewModel.startSerialMonitor(device, baud) },
+                    onDisconnect = viewModel::stopSerialMonitor,
+                    onBaudChange = viewModel::setSerialMonitorBaud,
+                    onHexModeChange = viewModel::setSerialMonitorHexMode,
+                    onInputChange = viewModel::setSerialMonitorInput,
+                    onLineEndingChange = viewModel::setSerialMonitorLineEnding,
+                    onSend = viewModel::sendSerialMonitorInput,
+                    onClearLog = viewModel::clearSerialMonitorLog,
+                    onExport = viewModel::exportSerialMonitorLog,
                     modifier = Modifier,
                 )
             }

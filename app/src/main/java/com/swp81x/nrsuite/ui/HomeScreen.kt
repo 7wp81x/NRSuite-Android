@@ -422,7 +422,7 @@ internal fun HomeScreen(
                     name = "Firmware",
                     icon = Icons.Default.Memory,
                     iconTint = categoryColor("Firmware"),
-                    moduleIds = listOf("firmware", "serial_debugger"),
+                    moduleIds = listOf("firmware", "serial_monitor"),
                     available = true,
                 ),
                 CategorySpec(
