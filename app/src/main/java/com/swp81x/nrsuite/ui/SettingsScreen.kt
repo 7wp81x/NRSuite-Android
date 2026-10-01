@@ -146,6 +146,18 @@ import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.ui.theme.LogBgError
 
+private fun inferChipFromFirmwareName(name: String?): String? {
+    val normalized = name?.lowercase() ?: return null
+    return when {
+        "esp32s3" in normalized || "esp32-s3" in normalized -> "ESP32-S3"
+        "esp32c3" in normalized || "esp32-c3" in normalized -> "ESP32-C3"
+        "esp32s2" in normalized || "esp32-s2" in normalized -> "ESP32-S2"
+        "esp32-generic" in normalized || "esp32dev" in normalized || "esp32_dev" in normalized -> "ESP32"
+        "esp32" in normalized -> "ESP32"
+        else -> null
+    }
+}
+
 @Composable
 internal fun SettingsScreen(
     connectionState: ConnectionState,
@@ -191,10 +203,14 @@ internal fun SettingsScreen(
     @Suppress("UNUSED_EXPRESSION")
     permissionRevision
     var manualBootloader by remember { mutableStateOf(false) }
-    var eraseBeforeFlash by remember { mutableStateOf(false) }
+    var advancedExpanded by remember { mutableStateOf(false) }
     var showFlashConfirm by remember { mutableStateOf(false) }
-    LaunchedEffect(chip) {
-        if (!chip.isNullOrBlank()) selectedTargetChip = chip
+    LaunchedEffect(firmwareFileName, chip) {
+        val inferred = inferChipFromFirmwareName(firmwareFileName)
+        when {
+            inferred != null -> selectedTargetChip = inferred
+            !chip.isNullOrBlank() -> selectedTargetChip = chip
+        }
     }
     LaunchedEffect(devices) {
         if (devices.size == 1 &&
@@ -258,66 +274,19 @@ internal fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
                 )
+                Spacer(Modifier.height(12.dp))
+
                 Text(
-                    text = "Flash offset: 0x0",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "This erases the target flash first, then writes the complete merged .bin image. It is not an OTA/incremental update.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = StatusAmber,
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = if (firmwareFileName != null && firmwareFlashSize > 0) {
-                        "$firmwareFileName  (${firmwareFlashSize / 1024} KB)"
-                    } else {
-                        firmwareFileName ?: "No merged firmware .bin selected"
-                    },
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
-                )
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = onChooseFirmware,
-                        enabled = !firmwareFlashing,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
-                    ) {
-                        Text("Choose firmware .bin")
-                    }
-                    if (firmwareFileName != null && !firmwareFlashing) {
-                        OutlinedButton(
-                            onClick = onClearFirmware,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
-                        ) {
-                            Text("Clear")
-                        }
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = "Target chip",
+                    text = "1. Target device",
                     fontWeight = FontWeight.SemiBold,
                 )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    listOf("ESP32", "ESP32-S2", "ESP32-S3", "ESP32-C3").forEach { option ->
-                        NrFilterChip(
-                            selected = selectedTargetChip == option,
-                            onClick = { selectedTargetChip = option },
-                            enabled = !firmwareFlashing,
-                            label = option,
-                        )
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Select the board to flash and grant USB permission.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "Flash target",
@@ -379,44 +348,125 @@ internal fun SettingsScreen(
                         }
                     }
                 }
+                Spacer(Modifier.height(12.dp))
+
+                Text(
+                    text = "2. Firmware image",
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = if (firmwareFileName != null && firmwareFlashSize > 0) {
+                        "$firmwareFileName  (${firmwareFlashSize / 1024} KB)"
+                    } else {
+                        firmwareFileName ?: "No merged firmware .bin selected"
+                    },
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                )
                 Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(
-                        checked = manualBootloader,
-                        onCheckedChange = { manualBootloader = it },
-                        enabled = !firmwareFlashing,
-                    )
-                    Spacer(Modifier.width(8.dp))
+                if (firmwareFileName == null) {
+                    Button(
+                        onClick = onChooseFirmware,
+                        enabled = targetHasPermission && !firmwareFlashing,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = accent,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                    ) {
+                        Text("Choose firmware .bin")
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = onChooseFirmware,
+                            enabled = targetHasPermission && !firmwareFlashing,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
+                        ) {
+                            Text("Change")
+                        }
+                        TextButton(
+                            onClick = onClearFirmware,
+                            enabled = !firmwareFlashing,
+                        ) {
+                            Text("Clear")
+                        }
+                    }
+                }
+                if (!targetHasPermission) {
+                    Spacer(Modifier.height(4.dp))
                     Text(
-                        text = "Device is already in ROM bootloader mode",
+                        text = "Select a device above to choose firmware.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusAmber,
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+
+                Text(
+                    text = "3. Review",
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Target chip",
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf("ESP32", "ESP32-S2", "ESP32-S3", "ESP32-C3").forEach { option ->
+                        NrFilterChip(
+                            selected = selectedTargetChip == option,
+                            onClick = { selectedTargetChip = option },
+                            enabled = !firmwareFlashing,
+                            label = option,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Flash offset: 0x0",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                TextButton(onClick = { advancedExpanded = !advancedExpanded }) {
+                    Text(if (advancedExpanded) "Hide advanced options" else "Advanced options")
+                }
+                if (advancedExpanded) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(
+                            checked = manualBootloader,
+                            onCheckedChange = { manualBootloader = it },
+                            enabled = !firmwareFlashing,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Skip auto-reset (already in ROM bootloader)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Use this only if the board is already in ROM bootloader mode. " +
+                            "Otherwise hold BOOT, tap RESET, then enable this option and flash.",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Automatic reset works on CP210x/CH340-style UART boards and some USB-JTAG boards. Otherwise hold BOOT, tap RESET, enable the switch above, then flash.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
                 Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(
-                        checked = eraseBeforeFlash,
-                        onCheckedChange = { eraseBeforeFlash = it },
-                        enabled = !firmwareFlashing,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Explicitly erase firmware region before writing",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Region erase is normally redundant; FLASH_BEGIN erases the blocks it writes. Enable it only for diagnostics or flaky flash chips.",
+                    text = "This writes the complete merged .bin at offset 0x0. " +
+                        "The flash blocks being written are erased automatically. " +
+                        "It is not an OTA/incremental update.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
+                    color = StatusAmber,
                 )
                 Spacer(Modifier.height(10.dp))
                 Button(
@@ -438,16 +488,9 @@ internal fun SettingsScreen(
                         title = { Text("Flash firmware?") },
                         text = {
                             Text(
-                                if (eraseBeforeFlash) {
-                                    "This will explicitly erase the firmware region and write the firmware on " +
-                                        "${selectedFlashTarget?.displayName ?: "the device"}. " +
-                                        "The device will reboot. Do not unplug during the process."
-                                } else {
-                                    "This will write the firmware on " +
-                                        "${selectedFlashTarget?.displayName ?: "the device"} " +
-                                        "and erase the flash blocks being written. " +
-                                        "The device will reboot. Do not unplug during the process."
-                                },
+                                "This will write the selected firmware on " +
+                                    "${selectedFlashTarget?.displayName ?: "the device"} " +
+                                    "and reboot it. Do not unplug during the process.",
                                 color = NrOnSurfaceVariant,
                             )
                         },
@@ -455,7 +498,7 @@ internal fun SettingsScreen(
                             Button(
                                 onClick = {
                                     showFlashConfirm = false
-                                    onStartFirmwareFlash(selectedTargetChip, manualBootloader, eraseBeforeFlash)
+                                    onStartFirmwareFlash(selectedTargetChip, manualBootloader, false)
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = StatusAmber,

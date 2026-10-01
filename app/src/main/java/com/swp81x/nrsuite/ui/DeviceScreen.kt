@@ -232,7 +232,7 @@ internal fun DeviceScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "Firmware update/flashing is not implemented in this app yet. The current firmware version is reported by the device STATUS command.",
+                        text = "Use the in-app Firmware Flasher to write a complete merged .bin over USB. The current firmware version is reported by the device STATUS command.",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )

@@ -681,24 +681,39 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     fun isSerialMonitorActiveDevice(deviceId: Int): Boolean =
         serialMonitorConnected && serialMonitorSelected?.device?.deviceId == deviceId
 
-    LaunchedEffect(unacknowledgedDevices) {
-        val current = unacknowledgedDevices
-        val newDeviceIds = current - previousUnacknowledgedDevices
-        previousUnacknowledgedDevices = current
+    // Some screens already have an explicit device connect/target flow.
+    // Showing the global "tap to connect" snackbar there is redundant and can
+    // conflict with the dedicated flow, so suppress it in those cases.
+    val suppressDeviceSnackbar =
+        (activeModuleId != null && activeModuleId in setOf(
+            "devices",
+            "firmware",
+            "settings",
+            "serial_monitor",
+            "badusb",
+        )) ||
+        (activeModuleId == null && selectedCategory == null && selectedTab == AppTab.HOME)
 
-        newDeviceIds.forEach { deviceId ->
-            val device = devices.firstOrNull { it.device.deviceId == deviceId } ?: return@forEach
-            if (isSerialMonitorActiveDevice(deviceId)) return@forEach
+    if (!suppressDeviceSnackbar) {
+        LaunchedEffect(unacknowledgedDevices) {
+            val current = unacknowledgedDevices
+            val newDeviceIds = current - previousUnacknowledgedDevices
+            previousUnacknowledgedDevices = current
 
-            uiScope.launch {
-                val result = snackbarHostState.showSnackbar(
-                    message = "${device.displayName} detected — tap to connect",
-                    actionLabel = "Connect",
-                    withDismissAction = false,
-                    duration = SnackbarDuration.Short,
-                )
-                if (result == SnackbarResult.ActionPerformed) {
-                    connectOrRequestPermission(device.device)
+            newDeviceIds.forEach { deviceId ->
+                val device = devices.firstOrNull { it.device.deviceId == deviceId } ?: return@forEach
+                if (isSerialMonitorActiveDevice(deviceId)) return@forEach
+
+                uiScope.launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = "${device.displayName} detected - tap to connect",
+                        actionLabel = "Connect",
+                        withDismissAction = false,
+                        duration = SnackbarDuration.Short,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        connectOrRequestPermission(device.device)
+                    }
                 }
             }
         }
