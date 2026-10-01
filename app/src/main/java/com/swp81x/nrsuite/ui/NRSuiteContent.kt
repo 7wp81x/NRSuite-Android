@@ -98,6 +98,10 @@ import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.history.HistoryEntry
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Tab
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -156,6 +160,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val uiScope = rememberCoroutineScope()
     val homeListState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var previousUnacknowledgedDevices by remember { mutableStateOf<Set<Int>>(emptySet()) }
     val usbManager = remember {
         context.getSystemService(Context.USB_SERVICE) as UsbManager
     }
@@ -164,6 +170,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val connectionState by viewModel.connectionState.collectAsState()
     val deviceConnectionStates by viewModel.deviceConnectionStates.collectAsState()
     val pendingPermissionRequests by viewModel.pendingPermissionRequests.collectAsState()
+    val unacknowledgedDevices by viewModel.unacknowledgedDevices.collectAsState()
     val disconnectingFingerprints by viewModel.disconnectingFingerprints.collectAsState()
     val logs by viewModel.logs.collectAsState()
     val history by viewModel.history.collectAsState()
@@ -339,7 +346,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             module.id == "credential_manager" ||
             module.id == "wpa_cracker" ||
             module.id == "mac_lookup" ||
-            module.id == "serial_monitor"
+            module.id == "serial_monitor" ||
+            module.id == "firmware"
         val requiresDevice = !runsWithoutDevice
         val featureKey = when (module.id) {
             "wifi" -> "wifi"
@@ -423,6 +431,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     var selectedCategory by rememberSaveable { mutableStateOf<String?>(null) }
     var showRootDirectoryDialog by rememberSaveable { mutableStateOf(false) }
     var showOuiDatabaseDialog by rememberSaveable { mutableStateOf(false) }
+    var rootDirectoryPickerActive by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(enabled = firmwareFlashing) {
         // Swallow back while a firmware flash is in progress.
@@ -480,6 +489,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val folderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
     ) { uri: Uri? ->
+        rootDirectoryPickerActive = false
         if (uri != null) {
             viewModel.setExportDirectory(uri)
         }
@@ -492,8 +502,13 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    LaunchedEffect(requiresOuiDatabase) {
-        if (requiresOuiDatabase) {
+    // On a fresh install the NRSuite root directory prompt takes priority.
+    // Queue the OUI database prompt until that dialog is no longer visible.
+    LaunchedEffect(requiresOuiDatabase, showRootDirectoryDialog, rootDirectoryPickerActive) {
+        if (requiresOuiDatabase &&
+            !showRootDirectoryDialog &&
+            !rootDirectoryPickerActive
+        ) {
             showOuiDatabaseDialog = true
             viewModel.onOuiDatabasePromptShown()
         }
@@ -643,6 +658,82 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
+    fun requestFirmwarePermission(device: UsbDevice) {
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        val intent = Intent(ACTION_USB_PERMISSION).setPackage(context.packageName)
+        val pendingIntent = PendingIntent.getBroadcast(context, device.deviceId, intent, flags)
+        viewModel.markFirmwarePermissionRequested(device)
+        usbManager.requestPermission(device, pendingIntent)
+
+        uiScope.launch {
+            repeat(40) {
+                kotlinx.coroutines.delay(250)
+                if (usbManager.hasPermission(device)) {
+                    permissionRevision++
+                    return@launch
+                }
+            }
+        }
+    }
+
+    fun connectOrRequestPermission(device: UsbDevice) {
+        if (device.deviceId in pendingPermissionRequests) return
+        if (usbManager.hasPermission(device)) {
+            viewModel.connect(device)
+        } else {
+            requestPermission(device)
+        }
+    }
+
+    fun isSerialMonitorActiveDevice(deviceId: Int): Boolean =
+        serialMonitorConnected && serialMonitorSelected?.device?.deviceId == deviceId
+
+    // Some screens already have an explicit device connect/target flow.
+    // Showing the global "tap to connect" snackbar there is redundant and can
+    // conflict with the dedicated flow, so suppress it in those cases.
+    val suppressDeviceSnackbar =
+        (activeModuleId != null && activeModuleId in setOf(
+            "devices",
+            "firmware",
+            "settings",
+            "serial_monitor",
+            "badusb",
+        )) ||
+        (activeModuleId == null && selectedCategory == null && selectedTab == AppTab.HOME)
+
+    // If a device snackbar is already showing, dismiss it when navigating to
+    // a screen that has its own device connect/target flow.
+    LaunchedEffect(suppressDeviceSnackbar) {
+        if (suppressDeviceSnackbar) {
+            snackbarHostState.currentSnackbarData?.dismiss()
+        }
+    }
+
+    if (!suppressDeviceSnackbar) {
+        LaunchedEffect(unacknowledgedDevices) {
+            val current = unacknowledgedDevices
+            val newDeviceIds = current - previousUnacknowledgedDevices
+            previousUnacknowledgedDevices = current
+
+            newDeviceIds.forEach { deviceId ->
+                val device = devices.firstOrNull { it.device.deviceId == deviceId } ?: return@forEach
+                if (isSerialMonitorActiveDevice(deviceId)) return@forEach
+
+                uiScope.launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = "${device.displayName} detected - tap to connect",
+                        actionLabel = "Connect",
+                        withDismissAction = false,
+                        duration = SnackbarDuration.Short,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        connectOrRequestPermission(device.device)
+                    }
+                }
+            }
+        }
+    }
+
     val activeModule = liveModules.firstOrNull { it.id == activeModuleId }
     val moduleUnavailableMessage = activeModule?.let { module ->
         when (module.statusLabel) {
@@ -706,11 +797,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                         hasPermission = devices.firstOrNull()?.let {
                             usbManager.hasPermission(it.device)
                         } == true,
-                        onConnect = {
-                            devices.firstOrNull()?.let { viewModel.connect(it.device) }
-                        },
-                        onRequestPermission = {
-                            devices.firstOrNull()?.let { requestPermission(it.device) }
+                        hasPendingPermissions = pendingPermissionRequests.any { deviceId ->
+                            !isSerialMonitorActiveDevice(deviceId)
                         },
                     )
                     IconButton(onClick = { activeModuleId = "settings" }) {
@@ -773,6 +861,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 }
             }
         },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
     ) { innerPadding ->
         val contentModifier = Modifier.padding(innerPadding)
 
@@ -791,6 +880,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 confirmButton = {
                     Button(onClick = {
                         showRootDirectoryDialog = false
+                        rootDirectoryPickerActive = true
                         folderPicker.launch(null)
                     }) {
                         Text("Choose folder")
@@ -804,7 +894,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             )
         }
 
-        if (showOuiDatabaseDialog) {
+        if (showOuiDatabaseDialog && !showRootDirectoryDialog && !rootDirectoryPickerActive) {
             AlertDialog(
                 onDismissRequest = { showOuiDatabaseDialog = false },
                 title = { Text("MAC vendor database") },
@@ -1267,13 +1357,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     disconnectingFingerprints = disconnectingFingerprints,
                     usbManager = usbManager,
                     onRefresh = viewModel::refreshDevices,
-                    onConnect = { device ->
-                        if (usbManager.hasPermission(device)) {
-                            viewModel.connect(device)
-                        } else {
-                            requestPermission(device)
-                        }
-                    },
+                    onConnect = { device -> connectOrRequestPermission(device) },
                     onDisconnect = viewModel::disconnect,
                     onDisconnectDevice = viewModel::disconnectDevice,
                     modifier = Modifier,
@@ -1327,7 +1411,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "*/*")) },
                 onClearFirmware = viewModel::clearFirmwareFlashFile,
                 onRefreshDevices = viewModel::refreshDevices,
-                onRequestPermission = { device -> requestPermission(device) },
+                onRequestPermission = { device -> requestFirmwarePermission(device) },
                 onSelectFlashTarget = viewModel::selectFirmwareTarget,
                 onStartFirmwareFlash = viewModel::startFirmwareFlash,
                 flasherOnly = true,
@@ -1350,7 +1434,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "*/*")) },
                 onClearFirmware = viewModel::clearFirmwareFlashFile,
                 onRefreshDevices = viewModel::refreshDevices,
-                onRequestPermission = { device -> requestPermission(device) },
+                onRequestPermission = { device -> requestFirmwarePermission(device) },
                 onSelectFlashTarget = viewModel::selectFirmwareTarget,
                 onStartFirmwareFlash = viewModel::startFirmwareFlash,
                 ouiRules = ouiRules,

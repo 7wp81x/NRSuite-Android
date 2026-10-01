@@ -16,6 +16,15 @@ import kotlinx.coroutines.sync.withLock
 internal fun MainViewModel.refreshDevicesImpl() {
     val found = UsbSerialDeviceCatalog.list(usbManager)
     _devices.value = found
+
+    val busyDeviceIds = (deviceSessions + idleDeviceSessions).values
+        .map { it.device.device.deviceId }
+        .toSet()
+    _unacknowledgedDevices.value = found
+        .filter { !usbManager.hasPermission(it.device) && it.device.deviceId !in busyDeviceIds }
+        .map { it.device.deviceId }
+        .toSet()
+
     appendLog("Found ${found.size} supported USB serial device(s).")
 
     // Reconcile active sessions against Android's authoritative attached-device
@@ -152,6 +161,15 @@ internal fun MainViewModel.onPermissionResultImpl(device: UsbDevice, granted: Bo
             } else {
                 appendLog("No supported USB serial driver for Serial Monitor.", level = LogLevel.ERROR)
             }
+        }
+        return
+    }
+
+    if (firmwarePermissionDeviceId == device.deviceId) {
+        firmwarePermissionDeviceId = null
+        if (reallyGranted) {
+            refreshDevicesImpl()
+            selectFirmwareTargetImpl(device)
         }
         return
     }

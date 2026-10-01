@@ -36,7 +36,7 @@ class Esp32Flasher(
         firmware: ByteArray,
         offset: Int = 0,
         resetMode: ResetMode = ResetMode.CLASSIC,
-        eraseBeforeFlash: Boolean = true,
+        eraseBeforeFlash: Boolean = false,
         onStage: (String) -> Unit = {},
         onProgress: (Int) -> Unit = {},
     ) {
@@ -51,8 +51,26 @@ class Esp32Flasher(
             flashSpiAttach()
 
             if (eraseBeforeFlash) {
+                // Region erase (ROM op 0xD1), scoped to [offset, offset+size),
+                // not a full-chip erase. The ROM aligns this to sector
+                // boundaries internally, same as esptool.py's erase_region /
+                // the implicit erase FLASH_BEGIN already does. This is
+                // normally redundant with FLASH_BEGIN's own erase-as-you-go
+                // behavior, but some setups want an explicit erase pass
+                // first (e.g. to confirm a clean region before a verify
+                // step); unlike the old full-chip erase, its duration scales
+                // with the firmware size being written, not total flash size.
                 onStage("Erasing flash...")
-                eraseFlash()
+                eraseRegion(offset, firmware.size, onStage)
+
+                // A long erase is still possible for big images on slow
+                // flash. On native-USB chips (S2/S3/C3) the ROM doesn't
+                // service the USB peripheral while blocked on an erase, so
+                // re-sync instead of assuming the link survived — this fails
+                // fast with a clear error if the connection dropped, rather
+                // than hanging silently on the first post-erase command.
+                onStage("Reconnecting after erase...")
+                sync()
             }
             onStage("Writing firmware...")
             flashBegin(firmware.size, offset)
@@ -146,13 +164,45 @@ class Esp32Flasher(
         )
     }
 
-    private fun eraseFlash() {
-        checkCommand(
-            description = "erase flash",
-            op = OP_ERASE_FLASH,
-            data = ByteArray(0),
-            timeoutMs = ERASE_TIMEOUT_MS,
+    private fun eraseRegion(offset: Int, size: Int, onStage: (String) -> Unit) {
+        val params = ByteArray(8)
+        writeIntLe(params, 0, offset)
+        writeIntLe(params, 4, size)
+
+        // Mirrors esptool.py's ERASE_REGION_TIMEOUT_PER_MB scaling: budget
+        // time proportional to the region being erased, with a sane floor
+        // for small images.
+        val timeoutMs = max(
+            ERASE_REGION_MIN_TIMEOUT_MS,
+            ((size.toLong() * ERASE_REGION_TIMEOUT_PER_MB_MS) / (1024 * 1024)).toInt(),
         )
+
+        val progressThread = Thread {
+            var elapsedSeconds = 0L
+            try {
+                while (!Thread.currentThread().isInterrupted) {
+                    Thread.sleep(5_000)
+                    elapsedSeconds += 5
+                    onStage("Erasing flash... (${elapsedSeconds}s elapsed)")
+                }
+            } catch (_: InterruptedException) {
+                // Erase finished or failed; stop ticking.
+            }
+        }.apply {
+            isDaemon = true
+            start()
+        }
+
+        try {
+            checkCommand(
+                description = "erase flash region",
+                op = OP_ERASE_REGION,
+                data = params,
+                timeoutMs = timeoutMs,
+            )
+        } finally {
+            progressThread.interrupt()
+        }
     }
 
     private fun flashBegin(size: Int, offset: Int) {
@@ -341,7 +391,7 @@ class Esp32Flasher(
         private const val OP_FLASH_END = 0x04
         private const val OP_SYNC = 0x08
         private const val OP_SPI_ATTACH = 0x0D
-        private const val OP_ERASE_FLASH = 0xD0
+        private const val OP_ERASE_REGION = 0xD1
 
         private const val RESPONSE_DIRECTION = 0x01
         private const val HEADER_LENGTH = 8
@@ -354,7 +404,8 @@ class Esp32Flasher(
         private const val DEFAULT_COMMAND_TIMEOUT_MS = 5_000
         private const val DEFAULT_BEGIN_TIMEOUT_MS = 40_000
         private const val FLASH_BLOCK_TIMEOUT_MS = 10_000
-        private const val ERASE_TIMEOUT_MS = 120_000
+        private const val ERASE_REGION_TIMEOUT_PER_MB_MS = 30_000L
+        private const val ERASE_REGION_MIN_TIMEOUT_MS = 10_000
         private const val READ_BUFFER_SIZE = 4096
         private const val MAX_READ_TIMEOUT_MS = 250
 

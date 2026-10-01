@@ -61,6 +61,12 @@ fun ModuleCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val statusLabel = module.statusLabel?.takeIf { it.isNotBlank() }
+    val attentionLabel = statusLabel?.takeIf {
+        it in setOf("Firmware required", "Not supported", "OUI DB required", "Unavailable")
+    }
+    val deviceNeededLabel = statusLabel?.takeIf { it == "Device needed" }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -106,11 +112,10 @@ fun ModuleCard(
                         fontWeight = FontWeight.SemiBold,
                         style = MaterialTheme.typography.titleMedium,
                     )
-                    val statusLabel = module.statusLabel?.takeIf { it.isNotBlank() }
-                    if (statusLabel != null) {
+                    if (attentionLabel != null) {
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = statusLabel,
+                            text = attentionLabel,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier
@@ -128,16 +133,33 @@ fun ModuleCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
-                if (module.radio.isNotBlank()) {
+                if (module.radio.isNotBlank() || deviceNeededLabel != null) {
                     Spacer(Modifier.size(5.dp))
-                    Text(
-                        text = module.radio,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NrOnSurfaceVariant,
-                        modifier = Modifier
-                            .border(0.5.dp, NrOutline, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (module.radio.isNotBlank()) {
+                            Text(
+                                text = module.radio,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NrOnSurfaceVariant,
+                                modifier = Modifier
+                                    .border(0.5.dp, NrOutline, RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                        if (deviceNeededLabel != null) {
+                            if (module.radio.isNotBlank()) {
+                                Spacer(Modifier.width(6.dp))
+                            }
+                            Text(
+                                text = deviceNeededLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NrOnSurfaceVariant,
+                                modifier = Modifier
+                                    .border(0.5.dp, NrOutline, RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
                 }
             }
 

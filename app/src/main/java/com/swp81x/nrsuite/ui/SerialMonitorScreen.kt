@@ -241,11 +241,6 @@ private fun SerialMonitorConnectionCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    OutlinedButton(onClick = onDisconnect) {
-                        Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Disconnect")
-                    }
                     IconButton(onClick = onToggle) {
                         Icon(Icons.Default.ExpandMore, contentDescription = "Expand")
                     }
@@ -350,7 +345,7 @@ private fun SerialMonitorConnectionCard(
                                     connected -> "Disconnect"
                                     connecting -> "Connecting..."
                                     currentSelected == null -> "Connect"
-                                    !hasPermission(currentSelected) -> "Allow USB"
+                                    !hasPermission(currentSelected) -> "Unpaired"
                                     else -> "Connect"
                                 },
                             )

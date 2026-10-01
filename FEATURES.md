@@ -1,141 +1,126 @@
-# NRSuite — Features & Roadmap
+# NRSuite - Features & Roadmap
 
 This document lists all current and planned features across the NRSuite ecosystem (Android app + ESP32 firmware + mesh network). Status legend:
 
-- ✅ Implemented
-- 🚧 In progress
-- 📋 Planned
+- [x] Implemented
+- [ ] Planned / in progress
 
 ---
 
 ## 1. Offense Modules (Wi-Fi / BLE)
 
-| Feature | Status | Notes |
-|---|---|---|
-| Wi-Fi Scan | ✅ | Passive AP/channel discovery |
-| Beacon Injection | ✅ | Beacon frame injection/spoofing |
-| Deauthentication | ✅ | Deauth frame injection |
-| Evil Twin | ✅ | Rogue AP with captive portal |
-| Captive Portal | ✅ | Credential harvesting UI |
-| Packet Sniffer | ✅ | Monitor-mode capture, pcap export |
-| WPA Handshake Capture/Crack | ✅ | Offline dictionary cracking |
-| BLE HID | ✅ | Bluetooth LE keyboard/mouse HID and DuckyScript payloads |
-| BLE Scanner | ✅ | Device discovery with names, RSSI, manufacturer data, and service badges |
-| BLE GATT Profile | ✅ | Read-only GATT service/characteristic enumeration with integrated BLE target scanner |
-| FastPair Model ID | 📋 | Map FastPair model IDs to known device names/types |
-| BadUSB | ✅ | HID injection via USB |
-| Credential Manager | ✅ | Local storage of harvested creds |
+- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags
+- [x] **Beacon Spam** - Broadcast custom or hidden SSIDs
+- [x] **Deauthentication** - Deauth frame injection
+- [x] **Evil Twin** - Rogue AP with captive portal
+- [x] **Captive Portal** - Credential harvesting UI
+- [x] **Packet Sniffer** - Monitor-mode capture, pcap export
+- [x] **WPA Handshake Capture/Crack** - Offline dictionary cracking
+- [x] **BLE HID** - Bluetooth LE keyboard/mouse HID and DuckyScript payloads
+- [x] **BLE Scanner** - Device discovery with names, RSSI, manufacturer data, and service badges
+- [x] **BLE GATT Profile** - Read-only GATT service/characteristic enumeration with integrated BLE target scanner
+- [ ] **FastPair Model ID** - Map FastPair model IDs to known device names/types
+- [x] **BadUSB** - HID injection via USB
+- [x] **Credential Manager** - Local storage of harvested creds
 
 ## 2. Defense Modules
 
-| Feature | Status | Notes |
-|---|---|---|
-| Rogue AP Detector | 📋 | Baseline SSID→BSSID/channel/security; flags mismatches, downgrades, duplicate SSIDs, KARMA-style probe-response behavior |
-| Deauth Detector | ✅ | Passive deauth/disassoc monitoring with BSSID/client/RSSI/reason filters, async alerts, and live logs |
-| Deauth Locator | 📋 | RSSI-based direction/distance estimate; multi-node triangulation |
-| Tracker Detector | ✅ | Find My-style advert detection, repeated sightings, alerts, and export |
-| Client Detector | ✅ | Passive probe/assoc/reassoc/auth monitoring plus active deauth-trigger mode |
-| Hidden AP Revealer | ✅ | Passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution |
-| Unauthorized RFID Reader Detector | 📋 | Detect unattended/skimmer-style RF field polling nearby |
-| Jam Detector (Sub-GHz / 2.4GHz) | 📋 | Wideband noise-floor anomaly detection (detection only — see Legal notes) |
+- [x] **Rogue AP Detector** - Autonomous nearby AP comparison with OUI rules; flags duplicate SSIDs, security downgrades, and suspicious APs
+- [x] **Deauth Detector** - Passive deauth/disassoc monitoring with BSSID/client/RSSI/reason filters, async alerts, and live logs
+- [ ] **Deauth Locator** - RSSI-based direction/distance estimate; multi-node triangulation
+- [x] **Tracker Detector** - Find My-style advert detection, repeated sightings, alerts, and export
+- [x] **Client Detector** - Passive probe/assoc/reassoc/auth monitoring plus active deauth-trigger mode
+- [x] **Hidden AP Revealer** - Passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution
+- [ ] **Unauthorized RFID Reader Detector** - Detect unattended/skimmer-style RF field polling nearby
+- [ ] **Jam Detector (Sub-GHz / 2.4GHz)** - Wideband noise-floor anomaly detection (detection only - see Legal notes)
 
-## 3. Mesh Network (ESP-NOW)
+## 3. Tools & Firmware Utilities
 
-| Feature | Status | Notes |
-|---|---|---|
-| Shared Group Key Provisioning | 📋 | Key pushed to node via USB/serial, stored in NVS |
-| Dynamic Master Election | 📋 | Whichever node is USB-plugged into the app becomes master |
-| Client Idle/Standby Mode | 📋 | Unplugged nodes idle until valid activation request |
-| Encrypted ESP-NOW Transport | 📋 | AES-CCM link encryption + HMAC payload auth |
-| Activation Handshake | 📋 | Decrypt → HMAC check → nonce/replay check → timestamp window |
-| Session Locking | 📋 | First-valid-master-wins per session, ignores competing requests |
-| Heartbeat/Auto-Timeout | 📋 | Clients revert to idle if master goes silent |
-| Distributed Sensor Reporting | 📋 | Active clients run local detectors, report to master |
-| Triangulation Engine (app-side) | 📋 | Log-distance path-loss + trilateration from 3+ node RSSI reports |
+- [x] **MAC Lookup** - Offline OUI/vendor lookup for any MAC address; also backs vendor heuristics in defense modules
+- [x] **Serial Monitor** - Raw USB serial monitor for any ESP32 or USB-UART firmware, independent of the NRSuite wire protocol
 
-## 4. Mesh Chat
+## 4. Mesh Network (ESP-NOW)
 
-| Feature | Status | Notes |
-|---|---|---|
-| ESP-NOW Chat Transport | 📋 | Reuses mesh group-key infra |
-| Multi-hop Relay | 📋 | Flood-fill with message-ID dedup |
-| Store-and-Forward | 📋 | Hold messages for out-of-range recipients |
-| Message Fragmentation | 📋 | Handles ESP-NOW's ~250 byte payload cap |
-| Sender Aliases | 📋 | Human-readable operator names instead of raw MAC |
-| Quick/Canned Messages | 📋 | Preset messages for fast field use |
-| Chat/Sensor Traffic Prioritization | 📋 | Alerts pre-empt chat traffic on shared channel |
+- [ ] **Shared Group Key Provisioning** - Key pushed to node via USB/serial, stored in NVS
+- [ ] **Dynamic Master Election** - Whichever node is USB-plugged into the app becomes master
+- [ ] **Client Idle/Standby Mode** - Unplugged nodes idle until valid activation request
+- [ ] **Encrypted ESP-NOW Transport** - AES-CCM link encryption + HMAC payload auth
+- [ ] **Activation Handshake** - Decrypt → HMAC check → nonce/replay check → timestamp window
+- [ ] **Session Locking** - First-valid-master-wins per session, ignores competing requests
+- [ ] **Heartbeat/Auto-Timeout** - Clients revert to idle if master goes silent
+- [ ] **Distributed Sensor Reporting** - Active clients run local detectors, report to master
+- [ ] **Triangulation Engine (app-side)** - Log-distance path-loss + trilateration from 3+ node RSSI reports
 
-## 5. Remote Camera Node (ESP32-CAM)
+## 5. Mesh Chat
 
-| Feature | Status | Notes |
-|---|---|---|
-| Live Feed Streaming | 📋 | Separate Wi-Fi link (not over ESP-NOW — bandwidth) |
-| Snapshot-on-Trigger | 📋 | Captures still on detection events from other modules |
-| Motion Detection | 📋 | Frame-diff trigger, reduces idle streaming |
-| Deep-sleep/Low-power Mode | 📋 | Timer or PIR-interrupt wake |
-| SD Card Buffering | 📋 | Local storage if master link is down |
-| Mesh Manager Integration | 📋 | Camera nodes shown alongside sensor/chat nodes |
+- [ ] **ESP-NOW Chat Transport** - Reuses mesh group-key infra
+- [ ] **Multi-hop Relay** - Flood-fill with message-ID dedup
+- [ ] **Store-and-Forward** - Hold messages for out-of-range recipients
+- [ ] **Message Fragmentation** - Handles ESP-NOW's ~250 byte payload cap
+- [ ] **Sender Aliases** - Human-readable operator names instead of raw MAC
+- [ ] **Quick/Canned Messages** - Preset messages for fast field use
+- [ ] **Chat/Sensor Traffic Prioritization** - Alerts pre-empt chat traffic on shared channel
 
-## 6. Long-Range Relay (LoRa)
+## 6. Remote Camera Node (ESP32-CAM)
 
-| Feature | Status | Notes |
-|---|---|---|
-| LoRa Node-to-Node Link | 📋 | SX1276/78, kilometers of range, requires soldering |
-| LoRa Chat Bridge | 📋 | Bridges distant node clusters into mesh chat |
-| Low-bandwidth Telemetry | 📋 | Alerts, GPS, heartbeats — not video |
-| Long-baseline Locator Beacon | 📋 | Improves triangulation geometry via wider node spacing |
-| Multi-hop Routing | 📋 | Beyond simple flood-relay, given larger distances/node counts |
+- [ ] **Live Feed Streaming** - Separate Wi-Fi link (not over ESP-NOW - bandwidth)
+- [ ] **Snapshot-on-Trigger** - Captures still on detection events from other modules
+- [ ] **Motion Detection** - Frame-diff trigger, reduces idle streaming
+- [ ] **Deep-sleep/Low-power Mode** - Timer or PIR-interrupt wake
+- [ ] **SD Card Buffering** - Local storage if master link is down
+- [ ] **Mesh Manager Integration** - Camera nodes shown alongside sensor/chat nodes
 
-## 7. Peripheral Radios (planned expansion modules)
+## 7. Long-Range Relay (LoRa)
 
-| Feature | Status | Notes |
-|---|---|---|
-| **IR** — Capture/Replay | 📋 | IR LED + receiver, cheap GPIO add-on |
-| **IR** — Universal Remote DB | 📋 | Common protocol library (NEC, SIRC, RC5) |
-| **IR** — TV-off Brute-force | 📋 | TV-B-Gone style |
-| **Sub-GHz (CC1101)** — Scanner | 📋 | 315/433/868/915MHz sweep |
-| **Sub-GHz** — Capture/Replay | 📋 | Fixed-code devices; rolling-code explicitly not supported/replayable |
-| **Sub-GHz** — Protocol Decoder | 📋 | Identifies fixed vs. rolling code |
-| **nRF24** — RC/Device Scanner | 📋 | Detect nearby nRF24-based peripherals |
-| **nRF24** — MouseJack-style Analysis | 📋 | Detection/analysis of known-vulnerable wireless HID dongles |
-| **nRF24** — Packet Sniffer | 📋 | Promiscuous capture for research |
-| **RFID/NFC** — Read (125kHz + 13.56MHz) | 📋 | RC522 + LF reader modules |
-| **RFID/NFC** — Emulate | 📋 | Replay previously-read tag |
-| **RFID/NFC** — Write/Clone | 📋 | To blank/magic tags |
-| **RFID/NFC** — Access Control Analyzer | 📋 | Identify tag type + known weaknesses (e.g., MIFARE Classic) |
+- [ ] **LoRa Node-to-Node Link** - SX1276/78, kilometers of range, requires soldering
+- [ ] **LoRa Chat Bridge** - Bridges distant node clusters into mesh chat
+- [ ] **Low-bandwidth Telemetry** - Alerts, GPS, heartbeats - not video
+- [ ] **Long-baseline Locator Beacon** - Improves triangulation geometry via wider node spacing
+- [ ] **Multi-hop Routing** - Beyond simple flood-relay, given larger distances/node counts
 
-## 8. System / USB
+## 8. Peripheral Radios (planned expansion modules)
 
-| Feature | Status | Notes |
-|---|---|---|
-| Multi-device USB sessions | ✅ | Multiple simultaneous USB serial sessions with per-device permission, connect/disconnect, and reconnect state. User-initiated disconnect uses idle-session reuse for S2 CDC stability. |
-| BadUSB device picker | 📋 | Select which connected device receives BadUSB independent of the primary Wireless/Flasher session. Multi-device session refactor is the prerequisite. |
-| Persistent firmware device ID | ✅ | Firmware generates/stores `NRxxxxxxx` in NVS and exposes it via `STATUS.device_id`; Android shows it on Home and Device manager. |
+- [ ] **IR** - Capture/Replay - IR LED + receiver, cheap GPIO add-on
+- [ ] **IR** - Universal Remote DB - Common protocol library (NEC, SIRC, RC5)
+- [ ] **IR** - TV-off Brute-force - TV-B-Gone style
+- [ ] **Sub-GHz (CC1101)** - Scanner - 315/433/868/915MHz sweep
+- [ ] **Sub-GHz** - Capture/Replay - Fixed-code devices; rolling-code explicitly not supported/replayable
+- [ ] **Sub-GHz** - Protocol Decoder - Identifies fixed vs. rolling code
+- [ ] **nRF24** - RC/Device Scanner - Detect nearby nRF24-based peripherals
+- [ ] **nRF24** - MouseJack-style Analysis - Detection/analysis of known-vulnerable wireless HID dongles
+- [ ] **nRF24** - Packet Sniffer - Promiscuous capture for research
+- [ ] **RFID/NFC** - Read (125kHz + 13.56MHz) - RC522 + LF reader modules
+- [ ] **RFID/NFC** - Emulate - Replay previously-read tag
+- [ ] **RFID/NFC** - Write/Clone - To blank/magic tags
+- [ ] **RFID/NFC** - Access Control Analyzer - Identify tag type + known weaknesses (e.g., MIFARE Classic)
+
+## 9. System / USB
+
+- [x] **Multi-device USB sessions** - Multiple simultaneous USB serial sessions with per-device permission, connect/disconnect, and reconnect state. User-initiated disconnect uses idle-session reuse for S2 CDC stability.
+- [x] **BadUSB device picker** - Select which connected device receives BadUSB independent of the primary Wireless/Flasher session.
+- [x] **Persistent firmware device ID** - Firmware generates/stores `NRxxxxxxx` in NVS and exposes it via `STATUS.device_id`; Android shows it on Home and Device manager.
 
 ## Explicitly Out of Scope
 
-- **RF/Wi-Fi/BLE Jamming (transmission-based denial)** — illegal in most jurisdictions regardless of stated intent (US 47 U.S.C. §333 and equivalents). NRSuite implements **jam detection**, not jamming. This is a firm project boundary, not just a "not yet built" item.
+- **RF/Wi-Fi/BLE Jamming (transmission-based denial)** - illegal in most jurisdictions regardless of stated intent (US 47 U.S.C. §333 and equivalents). NRSuite implements **jam detection**, not jamming. This is a firm project boundary, not just a "not yet built" item.
 
 ---
 
 ## Roadmap Phasing
 
-### v1 — Near-term
-Builds on existing offense infrastructure (sniff/pcap/frame codec).
-- Rogue AP Detector
-- Deauth Detector
-- AirTag/Tracker Detector
+### v1 - Near-term
+Builds on existing offense infrastructure (sniff/pcap/frame codec). Rogue AP Detector, Deauth Detector, and Tracker Detector shipped in beta.2 - remaining:
 - Mesh Chat (single-hop, basic)
 
-### v2 — Mesh & Camera
+### v2 - Mesh & Camera
 - Mesh master/client election + activation handshake
 - Distributed sensor reporting + triangulation
 - Deauth Locator
 - ESP32-CAM node integration
 
-### v3 — Peripheral & Long-range Expansion
+### v3 - Peripheral & Long-range Expansion
 - Sub-GHz, nRF24, RFID/NFC, IR modules
 - LoRa long-range relay node
 - Multi-hop mesh routing
 
-Contributions toward any phase are welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md). If you want to pick up a 📋 item, open an issue first so work isn't duplicated.
+Contributions toward any phase are welcome - see [CONTRIBUTING.md](./CONTRIBUTING.md). If you want to pick up an unchecked item, open an issue first so work isn't duplicated.

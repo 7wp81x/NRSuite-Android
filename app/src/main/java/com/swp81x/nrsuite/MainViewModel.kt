@@ -174,6 +174,7 @@ class MainViewModel(internal val app: Application) {
     internal var serialMonitorReadJob: Job? = null
     internal val serialMonitorOperationMutex = Mutex()
     internal var serialMonitorPermissionDeviceId: Int? = null
+    internal var firmwarePermissionDeviceId: Int? = null
 
     internal val _connectionState =
         MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
@@ -187,6 +188,9 @@ class MainViewModel(internal val app: Application) {
     /** Device IDs with a USB permission dialog currently in flight. */
     internal val _pendingPermissionRequests = MutableStateFlow<Set<Int>>(emptySet())
     val pendingPermissionRequests: StateFlow<Set<Int>> = _pendingPermissionRequests.asStateFlow()
+
+    internal val _unacknowledgedDevices = MutableStateFlow<Set<Int>>(emptySet())
+    val unacknowledgedDevices: StateFlow<Set<Int>> = _unacknowledgedDevices.asStateFlow()
 
     /** Device fingerprints currently being gracefully stopped/closed. */
     internal val _disconnectingFingerprints = MutableStateFlow<Set<String>>(emptySet())
@@ -973,7 +977,11 @@ class MainViewModel(internal val app: Application) {
 
     fun selectBadUsbTarget(device: UsbDevice) = this.selectBadUsbTargetImpl(device)
 
-    fun startFirmwareFlash(targetChip: String, skipReset: Boolean) = this.startFirmwareFlashImpl(targetChip, skipReset)
+    fun startFirmwareFlash(
+        targetChip: String,
+        skipReset: Boolean,
+        eraseBeforeFlash: Boolean = false,
+    ) = this.startFirmwareFlashImpl(targetChip, skipReset, eraseBeforeFlash)
 
     internal fun stopActiveOperations() {
         finishActiveCredentialSession()
@@ -1151,6 +1159,7 @@ class MainViewModel(internal val app: Application) {
     fun exportSerialMonitorLog() = this.exportSerialMonitorLogImpl()
 
     fun markSerialMonitorPermissionRequested(device: UsbDevice) = this.markSerialMonitorPermissionRequestedImpl(device)
+    fun markFirmwarePermissionRequested(device: UsbDevice) = this.markFirmwarePermissionRequestedImpl(device)
 
 
     /**
@@ -1550,6 +1559,35 @@ class MainViewModel(internal val app: Application) {
         }
     }
 
+    /**
+     * Disconnect a session and wait for the asynchronous port teardown to finish.
+     * This is required before opening the same physical USB device through a
+     * different transport, such as the ROM-bootloader flasher.
+     */
+    internal suspend fun disconnectSessionAndAwait(
+        fingerprint: String,
+        stopOperations: Boolean = false,
+        sendStopAll: Boolean = false,
+    ) {
+        disconnectSession(fingerprint, stopOperations, sendStopAll)
+
+        val deadlineMs = System.currentTimeMillis() + DISCONNECT_TEARDOWN_WAIT_MS
+        while (fingerprint in _disconnectingFingerprints.value &&
+            System.currentTimeMillis() < deadlineMs
+        ) {
+            delay(50)
+        }
+
+        if (fingerprint in _disconnectingFingerprints.value) {
+            appendLog(
+                "Timed out waiting for USB teardown of $fingerprint; " +
+                    "continuing may race the old connection.",
+                level = LogLevel.ERROR,
+                tag = "USB",
+            )
+        }
+    }
+
     internal fun disconnectSession(
         fingerprint: String,
         stopOperations: Boolean = false,
@@ -1734,6 +1772,7 @@ class MainViewModel(internal val app: Application) {
         private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
         private const val PREF_HISTORY = "session_history"
         private const val PREF_RECENT_MODULES = "recent_modules"
+        private const val DISCONNECT_TEARDOWN_WAIT_MS = 8_000L
         internal val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
     }
 }

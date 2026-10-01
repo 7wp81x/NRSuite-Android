@@ -57,6 +57,10 @@ import com.swp81x.nrsuite.core.defense.ClientPresenceMode
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
+import com.swp81x.nrsuite.ui.components.ChannelModeToggle
+import com.swp81x.nrsuite.ui.components.ChannelStepper
+import com.swp81x.nrsuite.ui.components.ModuleStatusCard
+import com.swp81x.nrsuite.ui.components.ModuleStatusState
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -218,61 +222,38 @@ private fun ClientPresenceStatusCard(
     frameCount: Long,
     lastTriggerAt: String?,
 ) {
-    val color = when {
-        !connected -> StatusNeutral
-        running -> StatusGreen
-        else -> StatusAmber
+    val state = when {
+        !connected -> ModuleStatusState.DISCONNECTED
+        running -> ModuleStatusState.RUNNING
+        else -> ModuleStatusState.READY
     }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = NrSurface),
-        border = BorderStroke(0.5.dp, if (running) MaterialTheme.colorScheme.primary else NrOutline),
-        shape = RoundedCornerShape(12.dp),
+    ModuleStatusCard(
+        icon = Icons.Default.PersonSearch,
+        title = when {
+            !connected -> "Disconnected"
+            running -> "Monitoring"
+            else -> "Ready"
+        },
+        subtitle = when {
+            !connected -> "Connect a device before starting client detection."
+            running -> "${mode.name.lowercase().replaceFirstChar { it.uppercase() }} mode · $frameCount frames"
+            else -> "Passive or active client detection"
+        },
+        state = state,
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.PersonSearch,
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.size(22.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = when {
-                            !connected -> "Disconnected"
-                            running -> "Monitoring"
-                            else -> "Ready"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = when {
-                            !connected -> "Connect a device to begin"
-                            running -> "${mode.name.lowercase().replaceFirstChar { it.uppercase() }} mode · $frameCount frames"
-                            else -> "Passive or active client detection"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                    if (mode == ClientPresenceMode.ACTIVE && targetBssid.isNotBlank()) {
-                        Text(
-                            text = "Target: $targetBssid",
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = NrOnSurfaceVariant,
-                        )
-                    }
-                    if (running && lastTriggerAt != null) {
-                        Text(
-                            text = "Last force trigger: $lastTriggerAt",
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = NrOnSurfaceVariant,
-                        )
-                    }
-                }
-            }
+        if (mode == ClientPresenceMode.ACTIVE && targetBssid.isNotBlank()) {
+            Text(
+                text = "Target: $targetBssid",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = NrOnSurfaceVariant,
+            )
+        }
+        if (running && lastTriggerAt != null) {
+            Text(
+                text = "Last force trigger: $lastTriggerAt",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = NrOnSurfaceVariant,
+            )
         }
     }
 }
@@ -410,25 +391,19 @@ private fun ConfigZone(
                         Spacer(Modifier.height(10.dp))
                         Text("Channel mode", style = MaterialTheme.typography.labelLarge)
                         Spacer(Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            NrFilterChip(
-                                selected = fixed,
-                                onClick = { onFixedChange(true) },
-                                label = "Fixed",
-                                enabled = controlsEnabled,
-                            )
-                            NrFilterChip(
-                                selected = !fixed,
-                                onClick = { onFixedChange(false) },
-                                label = "Hop",
-                                enabled = controlsEnabled,
-                            )
-                        }
+                        ChannelModeToggle(
+                            fixed = fixed,
+                            enabled = controlsEnabled,
+                            onFixedChange = onFixedChange,
+                        )
                         if (fixed) {
                             Spacer(Modifier.height(4.dp))
-                            NumberStepper(
-                                label = "Channel",
-                                valueText = channel.toString(),
+                            Text("Channel", style = MaterialTheme.typography.labelLarge)
+                            Spacer(Modifier.height(4.dp))
+                            ChannelStepper(
+                                value = channel,
+                                min = 1,
+                                max = 14,
                                 enabled = controlsEnabled,
                                 onDecrease = { onChannelChange((channel - 1).coerceAtLeast(1)) },
                                 onIncrease = { onChannelChange((channel + 1).coerceAtMost(14)) },

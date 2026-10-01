@@ -51,7 +51,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
-import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
@@ -155,7 +154,7 @@ fun DeauthScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = if (running) StatusAmber else NrAccent,
+                containerColor = if (running) StatusAmber else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 if (running) {
@@ -242,7 +241,7 @@ private fun ConfigZone(
                 Icon(
                     imageVector = Icons.Default.Wifi,
                     contentDescription = null,
-                    tint = NrAccent,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.width(10.dp))
@@ -361,7 +360,7 @@ private fun ConfigZone(
                     if (!connected) {
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            text = "Connect a device from the Device tab before sending deauth frames.",
+                            text = "Connect a device before starting deauth.",
                             style = MaterialTheme.typography.bodySmall,
                             color = StatusAmber,
                         )
@@ -481,7 +480,7 @@ private fun ResultZone(
             if (!connected) {
                 Spacer(Modifier.height(24.dp))
                 Text(
-                    text = "Connect an ESP32 to send a deauth burst.",
+                    text = "Connect a device before starting deauth.",
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )

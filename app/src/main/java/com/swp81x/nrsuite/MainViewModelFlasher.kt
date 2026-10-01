@@ -16,6 +16,11 @@ import kotlinx.coroutines.withContext
 
 // Firmware image selection, flash-target selection, and ROM-bootloader flashing.
 
+internal fun MainViewModel.markFirmwarePermissionRequestedImpl(device: UsbDevice) {
+    firmwarePermissionDeviceId = device.deviceId
+    markPermissionRequested(device)
+}
+
 internal fun MainViewModel.setFirmwareFlashFileImpl(uri: Uri, name: String?) {
     _firmwareFlashUri.value = uri
     val resolvedName = queryDocumentDisplayNameImpl(uri)
@@ -91,7 +96,11 @@ internal fun MainViewModel.selectFirmwareTargetImpl(device: UsbDevice) {
     appendLog("Firmware flash target: ${entry.displayName}")
 }
 
-internal fun MainViewModel.startFirmwareFlashImpl(targetChip: String, skipReset: Boolean) {
+internal fun MainViewModel.startFirmwareFlashImpl(
+    targetChip: String,
+    skipReset: Boolean,
+    eraseBeforeFlash: Boolean = false,
+) {
     val uri = _firmwareFlashUri.value
     if (uri == null) {
         appendLog("Choose a merged firmware .bin before flashing.")
@@ -131,7 +140,7 @@ internal fun MainViewModel.startFirmwareFlashImpl(targetChip: String, skipReset:
             }
             // Tear down only the selected target's session. Other devices,
             // including sessions used for Wireless/BLE/etc., stay connected.
-            disconnectSession(targetFingerprint, stopOperations = false)
+            disconnectSessionAndAwait(targetFingerprint, stopOperations = false)
 
             val resetMode = when {
                 skipReset -> Esp32Flasher.ResetMode.NONE
@@ -156,6 +165,7 @@ internal fun MainViewModel.startFirmwareFlashImpl(targetChip: String, skipReset:
                     firmware = bytes,
                     offset = 0,
                     resetMode = resetMode,
+                    eraseBeforeFlash = eraseBeforeFlash,
                     onStage = { stage -> _firmwareFlashStatus.value = stage },
                 ) { percent ->
                     val written = (bytes.size.toLong() * percent / 100L).toInt()

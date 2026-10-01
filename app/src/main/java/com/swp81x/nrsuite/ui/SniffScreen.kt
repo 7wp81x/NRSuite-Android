@@ -45,10 +45,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.sniff.SniffRequest
+import com.swp81x.nrsuite.ui.components.ChannelModeToggle
+import com.swp81x.nrsuite.ui.components.ChannelStepper
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
-import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
@@ -166,7 +167,7 @@ fun SniffScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = if (sniffing) StatusRed else NrAccent,
+                containerColor = if (sniffing) StatusRed else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(
@@ -226,7 +227,7 @@ private fun ConfigZone(
                 Icon(
                     imageVector = Icons.Default.Wifi,
                     contentDescription = null,
-                    tint = NrAccent,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.width(10.dp))
@@ -258,51 +259,31 @@ private fun ConfigZone(
                         style = MaterialTheme.typography.labelLarge,
                     )
                     Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        NrFilterChip(
-                            selected = fixedMode,
-                            onClick = { onModeChange(true) },
-                            label = "Fixed",
-                            enabled = !sniffing,
-                        )
-                        NrFilterChip(
-                            selected = !fixedMode,
-                            onClick = { onModeChange(false) },
-                            label = "Channel hop",
-                            enabled = !sniffing,
-                        )
-                    }
+                    ChannelModeToggle(
+                        fixed = fixedMode,
+                        enabled = !sniffing,
+                        onFixedChange = onModeChange,
+                    )
 
                     if (fixedMode) {
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            text = "Channel: $channel",
+                            text = "Channel",
                             style = MaterialTheme.typography.labelLarge,
                         )
                         Spacer(Modifier.height(6.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = { onChannelChange(channel - 1) },
-                                enabled = !sniffing && channel > 1,
-                            ) {
-                                Text("-", style = MaterialTheme.typography.titleLarge)
-                            }
-                            Text(
-                                text = channel.toString(),
-                                style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
-                                modifier = Modifier.padding(horizontal = 12.dp),
-                            )
-                            IconButton(
-                                onClick = { onChannelChange(channel + 1) },
-                                enabled = !sniffing && channel < 13,
-                            ) {
-                                Text("+", style = MaterialTheme.typography.titleLarge)
-                            }
-                        }
+                        ChannelStepper(
+                            value = channel,
+                            min = 1,
+                            max = 13,
+                            enabled = !sniffing,
+                            onDecrease = { onChannelChange(channel - 1) },
+                            onIncrease = { onChannelChange(channel + 1) },
+                        )
                     } else {
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            text = "Hop interval: ${intervalMs} ms",
+                            text = "Hop interval",
                             style = MaterialTheme.typography.labelLarge,
                         )
                         Spacer(Modifier.height(6.dp))
@@ -497,7 +478,7 @@ private fun ConfigZone(
                     if (!connected) {
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            text = "Connect a device from the Device tab before starting a capture.",
+                            text = "Connect a device before starting a capture.",
                             style = MaterialTheme.typography.bodySmall,
                             color = StatusAmber,
                         )
@@ -594,7 +575,7 @@ private fun ResultZone(
             if (!connected) {
                 Spacer(Modifier.height(24.dp))
                 Text(
-                    text = "Connect an ESP32 to start packet capture.",
+                    text = "Connect a device before starting a capture.",
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
