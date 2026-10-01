@@ -60,7 +60,6 @@ import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.components.HtmlUploadSection
 import com.swp81x.nrsuite.ui.components.StatusIndicator
-import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
@@ -250,7 +249,7 @@ fun PortalScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = if (running) StatusRed else NrAccent,
+                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(
@@ -330,7 +329,7 @@ private fun ConfigZone(
                 Icon(
                     imageVector = Icons.Default.Lock,
                     contentDescription = null,
-                    tint = NrAccent,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.width(10.dp))
@@ -455,7 +454,7 @@ private fun CapturedCredentialsZone(credentials: List<CapturedCredential>) {
                 Icon(
                     imageVector = Icons.Default.Lock,
                     contentDescription = null,
-                    tint = NrAccent,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(Modifier.width(8.dp))

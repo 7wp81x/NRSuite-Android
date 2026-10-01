@@ -176,7 +176,7 @@ fun EvilTwinScreen(
                     Icon(
                         imageVector = Icons.Default.Wifi,
                         contentDescription = null,
-                        tint = NrAccent,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp),
                     )
                     Spacer(Modifier.width(10.dp))
@@ -478,7 +478,7 @@ fun EvilTwinScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
-                containerColor = if (running) StatusRed else NrAccent,
+                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(

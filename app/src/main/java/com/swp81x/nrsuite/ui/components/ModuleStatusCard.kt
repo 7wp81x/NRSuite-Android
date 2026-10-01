@@ -47,7 +47,7 @@ fun ModuleStatusCard(
 ) {
     val iconColor = when (state) {
         ModuleStatusState.DISCONNECTED -> StatusNeutral
-        ModuleStatusState.READY -> NrOnSurfaceVariant
+        ModuleStatusState.READY -> MaterialTheme.colorScheme.primary
         ModuleStatusState.RUNNING -> StatusGreen
         ModuleStatusState.ALERT -> StatusRed
     }

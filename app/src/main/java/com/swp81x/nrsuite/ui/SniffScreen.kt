@@ -50,7 +50,6 @@ import com.swp81x.nrsuite.ui.components.ChannelStepper
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
-import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
@@ -168,7 +167,7 @@ fun SniffScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = if (sniffing) StatusRed else NrAccent,
+                containerColor = if (sniffing) StatusRed else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(
@@ -228,7 +227,7 @@ private fun ConfigZone(
                 Icon(
                     imageVector = Icons.Default.Wifi,
                     contentDescription = null,
-                    tint = NrAccent,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.width(10.dp))
@@ -284,7 +283,7 @@ private fun ConfigZone(
                     } else {
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            text = "Hop interval: ${intervalMs} ms",
+                            text = "Hop interval",
                             style = MaterialTheme.typography.labelLarge,
                         )
                         Spacer(Modifier.height(6.dp))
