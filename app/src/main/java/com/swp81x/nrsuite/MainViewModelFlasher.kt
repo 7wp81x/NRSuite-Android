@@ -140,7 +140,7 @@ internal fun MainViewModel.startFirmwareFlashImpl(
             }
             // Tear down only the selected target's session. Other devices,
             // including sessions used for Wireless/BLE/etc., stay connected.
-            disconnectSession(targetFingerprint, stopOperations = false)
+            disconnectSessionAndAwait(targetFingerprint, stopOperations = false)
 
             val resetMode = when {
                 skipReset -> Esp32Flasher.ResetMode.NONE
