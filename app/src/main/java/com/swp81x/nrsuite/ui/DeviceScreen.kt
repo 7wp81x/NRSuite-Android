@@ -353,7 +353,7 @@ internal fun DeviceRow(
                     disconnecting -> "Disconnecting..."
                     state is ConnectionState.Connected -> "Connected"
                     state is ConnectionState.Connecting -> "Connecting..."
-                    pendingPermission -> "Requesting permission..."
+                    pendingPermission -> "Permission requested"
                     state is ConnectionState.Failed -> "Connection failed"
                     hasPermission -> "Permission granted"
                     else -> "Permission required"
@@ -402,7 +402,7 @@ internal fun DeviceRow(
                     }
                 }
 
-                state is ConnectionState.Connecting || pendingPermission -> {
+                state is ConnectionState.Connecting -> {
                     Button(
                         onClick = {},
                         enabled = false,
@@ -411,7 +411,20 @@ internal fun DeviceRow(
                             contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
                         ),
                     ) {
-                        Text(if (pendingPermission) "Requesting..." else "Connecting...")
+                        Text("Connecting...")
+                    }
+                }
+
+                pendingPermission -> {
+                    Button(
+                        onClick = onConnect,
+                        enabled = connectEnabled,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                    ) {
+                        Text("Connect")
                     }
                 }
 

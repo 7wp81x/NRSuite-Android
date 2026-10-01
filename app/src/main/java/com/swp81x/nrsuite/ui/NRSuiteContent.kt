@@ -98,6 +98,10 @@ import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.history.HistoryEntry
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Tab
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -156,6 +160,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val uiScope = rememberCoroutineScope()
     val homeListState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var previousPendingPermissionRequests by remember { mutableStateOf<Set<Int>>(emptySet()) }
     val usbManager = remember {
         context.getSystemService(Context.USB_SERVICE) as UsbManager
     }
@@ -643,6 +649,40 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
+    fun connectOrRequestPermission(device: UsbDevice) {
+        if (usbManager.hasPermission(device)) {
+            viewModel.connect(device)
+        } else {
+            requestPermission(device)
+        }
+    }
+
+    fun isSerialMonitorActiveDevice(deviceId: Int): Boolean =
+        serialMonitorConnected && serialMonitorSelected?.device?.deviceId == deviceId
+
+    LaunchedEffect(pendingPermissionRequests) {
+        val current = pendingPermissionRequests
+        val newDeviceIds = current - previousPendingPermissionRequests
+        previousPendingPermissionRequests = current
+
+        newDeviceIds.forEach { deviceId ->
+            val device = devices.firstOrNull { it.device.deviceId == deviceId } ?: return@forEach
+            if (isSerialMonitorActiveDevice(deviceId)) return@forEach
+
+            uiScope.launch {
+                val result = snackbarHostState.showSnackbar(
+                    message = "${device.displayName} detected — tap to connect",
+                    actionLabel = "Connect",
+                    withDismissAction = false,
+                    duration = SnackbarDuration.Short,
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    connectOrRequestPermission(device.device)
+                }
+            }
+        }
+    }
+
     val activeModule = liveModules.firstOrNull { it.id == activeModuleId }
     val moduleUnavailableMessage = activeModule?.let { module ->
         when (module.statusLabel) {
@@ -706,12 +746,16 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                         hasPermission = devices.firstOrNull()?.let {
                             usbManager.hasPermission(it.device)
                         } == true,
+                        hasPendingPermissions = pendingPermissionRequests.any { deviceId ->
+                            !isSerialMonitorActiveDevice(deviceId)
+                        },
                         onConnect = {
                             devices.firstOrNull()?.let { viewModel.connect(it.device) }
                         },
                         onRequestPermission = {
                             devices.firstOrNull()?.let { requestPermission(it.device) }
                         },
+                        onOpenDevices = { activeModuleId = "devices" },
                     )
                     IconButton(onClick = { activeModuleId = "settings" }) {
                         Icon(
@@ -773,6 +817,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 }
             }
         },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
     ) { innerPadding ->
         val contentModifier = Modifier.padding(innerPadding)
 
@@ -1267,13 +1312,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     disconnectingFingerprints = disconnectingFingerprints,
                     usbManager = usbManager,
                     onRefresh = viewModel::refreshDevices,
-                    onConnect = { device ->
-                        if (usbManager.hasPermission(device)) {
-                            viewModel.connect(device)
-                        } else {
-                            requestPermission(device)
-                        }
-                    },
+                    onConnect = { device -> connectOrRequestPermission(device) },
                     onDisconnect = viewModel::disconnect,
                     onDisconnectDevice = viewModel::disconnectDevice,
                     modifier = Modifier,

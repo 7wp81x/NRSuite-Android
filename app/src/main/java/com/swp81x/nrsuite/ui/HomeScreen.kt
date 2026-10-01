@@ -154,8 +154,10 @@ internal fun ConnectionStatusIndicator(
     state: ConnectionState,
     hasDevices: Boolean,
     hasPermission: Boolean,
+    hasPendingPermissions: Boolean,
     onConnect: () -> Unit,
     onRequestPermission: () -> Unit,
+    onOpenDevices: () -> Unit,
 ) {
     val label: String
     val color: Color
@@ -163,7 +165,11 @@ internal fun ConnectionStatusIndicator(
 
     when (state) {
         ConnectionState.Disconnected -> {
-            if (hasDevices) {
+            if (hasPendingPermissions) {
+                label = "Connect"
+                color = StatusAmber
+                onClick = onOpenDevices
+            } else if (hasDevices) {
                 if (hasPermission) {
                     label = "Connect"
                     color = CategoryDetectionBlue

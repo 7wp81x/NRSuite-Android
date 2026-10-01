@@ -64,7 +64,6 @@ import com.swp81x.nrsuite.ui.components.HtmlUploadSection
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.util.copyWithToast
-import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
@@ -495,16 +494,16 @@ fun EvilTwinScreen(
 private fun EapolBadge(label: String, captured: Boolean) {
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (captured) NrAccent.copy(alpha = 0.16f) else NrSurfaceVariant,
+            containerColor = if (captured) StatusGreen.copy(alpha = 0.16f) else NrSurfaceVariant,
         ),
         shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(0.5.dp, if (captured) NrAccent else NrOutline),
+        border = BorderStroke(0.5.dp, if (captured) StatusGreen else NrOutline),
     ) {
         Text(
             text = if (captured) "$label ✓" else label,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-            color = if (captured) NrAccent else NrOnSurfaceVariant,
+            color = if (captured) StatusGreen else NrOnSurfaceVariant,
         )
     }
 }
