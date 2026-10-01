@@ -363,7 +363,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide: branching model, PR
 
 | App version | Firmware version | Protocol spec |
 |---|---|---|
-| v1.0.0-beta.2 | v1.0.0-beta.1 (verify against [nrsuite-firmware](https://github.com/7wp81x/nrsuite-firmware) at release time) | v1.0 |
+| v1.0.0-beta.2 | v1.0.0-beta.2 | v1.0 |
 
 This table is updated with each release. Always check compatibility before mixing app and firmware versions.
 
