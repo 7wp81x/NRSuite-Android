@@ -56,21 +56,26 @@ jobs:
       - name: Build release APK and AAB
         run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
 
-      - name: Generate SHA256 checksums
+      - name: Prepare release assets
         run: |
-          sha256sum \
-            app/build/outputs/apk/release/app-release.apk \
-            app/build/outputs/bundle/release/app-release.aab \
-            > checksums.txt
+          set -eu
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk \
+            "dist/NRSuite-Android-${VERSION}-release.apk"
+          cp app/build/outputs/bundle/release/app-release.aab \
+            "dist/NRSuite-Android-${VERSION}-release.aab"
+          cd dist
+          sha256sum NRSuite-Android-*.apk NRSuite-Android-*.aab > checksums.txt
           cat checksums.txt
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            app/build/outputs/apk/release/app-release.apk
-            app/build/outputs/bundle/release/app-release.aab
-            checksums.txt
+            dist/NRSuite-Android-*-release.apk
+            dist/NRSuite-Android-*-release.aab
+            dist/checksums.txt
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
