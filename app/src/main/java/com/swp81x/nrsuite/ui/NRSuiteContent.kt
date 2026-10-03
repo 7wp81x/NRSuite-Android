@@ -379,7 +379,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "ble_scanner" -> "ble_scan"
             "tracker_detector" -> "ble_scan"
             "ble_profile" -> "ble_profile"
-            "mesh_setup" -> "mesh_provision"
             "mesh" -> "mesh_provision"
             "portal" -> "portal"
             "evil_twin" -> "portal"
@@ -440,7 +439,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "ble_scanner" -> bleScanRunning
                 "tracker_detector" -> bleScanRunning
                 "ble_profile" -> bleProfileRunning
-                "mesh_setup" -> meshProvisioning
                 "mesh" -> meshActive
                 else -> false
             },
@@ -1387,12 +1385,13 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 )
             }
 
-            activeModuleId == "mesh_setup" -> {
-                MeshSetupScreen(
+            activeModuleId == "mesh" -> {
+                MeshScreen(
                     connected = isDeviceConnected,
                     initialized = meshInitialized,
                     role = meshRole,
                     active = meshActive,
+                    sessionId = meshSessionId,
                     nodeId = meshNodeId,
                     passphrase = meshPassphrase,
                     keyId = meshKeyId,
@@ -1405,6 +1404,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     storedKeyId = meshStoredKeyId,
                     hasGlobalCredentials = meshHasGlobalCredentials,
                     globalKeyId = meshGlobalKeyId,
+                    nodes = meshNodes,
                     onRefresh = viewModel::refreshMeshStatus,
                     onPassphraseChange = viewModel::setMeshPassphrase,
                     onKeyIdChange = viewModel::setMeshKeyId,
@@ -1413,33 +1413,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onProvisionWithSavedCredentials = viewModel::provisionMeshWithSavedCredentials,
                     onAuthenticateAndActivate = viewModel::authenticateAndActivateMesh,
                     onAuthenticateStored = viewModel::authenticateAndActivateStoredMesh,
+                    onDeactivate = viewModel::deactivateMesh,
                     onForgetPassphrase = viewModel::forgetMeshPassphrase,
                     onClearKeys = viewModel::clearMeshKeys,
-                    onOpenNetwork = { activeModuleId = "mesh" },
-                    onClearSetupMessage = viewModel::clearMeshSetupMessage,
-                    onClearError = viewModel::clearMeshError,
-                    modifier = Modifier,
-                )
-            }
-
-            activeModuleId == "mesh" -> {
-                MeshScreen(
-                    connected = isDeviceConnected,
-                    initialized = meshInitialized,
-                    role = meshRole,
-                    sessionId = meshSessionId,
-                    nodeId = meshNodeId,
-                    peerCount = meshPeerCount,
-                    active = meshActive,
-                    nodes = meshNodes,
-                    lastError = meshLastError,
-                    hasStoredCredentials = meshHasStoredCredentials,
-                    storedKeyId = meshStoredKeyId,
-                    onRefresh = viewModel::refreshMeshStatus,
-                    onDeactivate = viewModel::deactivateMesh,
-                    onAuthenticateStored = viewModel::authenticateAndActivateStoredMesh,
-                    onOpenSetup = { activeModuleId = "mesh_setup" },
                     onClearNodes = viewModel::clearMeshNodes,
+                    onClearSetupMessage = viewModel::clearMeshSetupMessage,
                     onClearError = viewModel::clearMeshError,
                     modifier = Modifier,
                 )

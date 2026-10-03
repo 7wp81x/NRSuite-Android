@@ -295,19 +295,9 @@ internal val modules = listOf(
     ),
 
     ModuleCardSpec(
-        id = "mesh_setup",
-        title = "Mesh Setup",
-        description = "Provision the shared mesh passphrase and manage this device's mesh keys.",
-        icon = Icons.Default.Key,
-        category = "Mesh",
-        radio = "2.4GHz",
-        available = true,
-    ),
-
-    ModuleCardSpec(
         id = "mesh",
-        title = "Mesh Network",
-        description = "Monitor mesh role, session, peers, and node health.",
+        title = "Mesh",
+        description = "Provision, monitor, and control the ESP-NOW mesh.",
         icon = Icons.Default.SettingsInputAntenna,
         category = "Mesh",
         radio = "2.4GHz",

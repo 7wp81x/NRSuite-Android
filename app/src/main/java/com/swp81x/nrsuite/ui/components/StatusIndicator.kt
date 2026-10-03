@@ -2,6 +2,7 @@ package com.swp81x.nrsuite.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
@@ -15,8 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 
 @Composable
 fun StatusIndicator(
@@ -24,6 +27,9 @@ fun StatusIndicator(
     color: Color,
     modifier: Modifier = Modifier,
     monospace: Boolean = false,
+    subtitle: String? = null,
+    trailingBadge: String? = null,
+    trailingBadgeColor: Color = color,
 ) {
     Row(
         modifier = modifier,
@@ -37,16 +43,32 @@ fun StatusIndicator(
                 .semantics { contentDescription = "$label status indicator" },
         )
         Spacer(Modifier.width(8.dp))
-        Text(
-            text = label,
-            style = if (monospace) {
-                MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+        ) {
+            Text(
+                text = label,
+                style = if (monospace) {
+                    MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                } else {
+                    MaterialTheme.typography.bodyMedium
+                },
+                fontWeight = FontWeight.Medium,
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
                 )
-            } else {
-                MaterialTheme.typography.bodyMedium
-            },
-            fontWeight = FontWeight.Medium,
-        )
+            }
+        }
+        if (!trailingBadge.isNullOrBlank()) {
+            NetworkStatusBadge(
+                text = trailingBadge,
+                color = trailingBadgeColor,
+            )
+        }
     }
 }

@@ -23,6 +23,7 @@ val CategoryHidPurple = Color(0xFFA78BFA)
 val CategoryStorageTeal = Color(0xFF14B8A6)
 val CategoryFirmwareGreen = Color(0xFF22C55E) // green, separated from storage teal
 val CategoryBleBlue = Color(0xFF22D3EE) // cyan, kept distinct from detection blue and dark storage teal
+val CategoryMeshIndigo = Color(0xFF7C6FF0) // mesh identity, distinct from NrAccent and BLE cyan
 
 // Log level tints.
 val LogColorInfo = Color(0xFF8B949E)

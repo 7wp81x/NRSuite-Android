@@ -16,7 +16,7 @@ fun categoryColor(category: String): Color = when (category) {
     "Storage" -> CategoryStorageTeal
     "Firmware" -> CategoryFirmwareGreen
     "BLE" -> CategoryBleBlue
-    "Mesh" -> CategoryBleBlue
+    "Mesh" -> CategoryMeshIndigo
     else -> StatusNeutral
 }
 
