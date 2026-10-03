@@ -43,6 +43,43 @@ internal fun MainViewModel.setMeshKeyIdImpl(value: String) {
     _meshKeyId.value = value
 }
 
+internal fun MainViewModel.setMeshChannelImpl(value: Int) {
+    _meshChannel.value = value.coerceIn(1, 13)
+}
+
+internal fun MainViewModel.changeMeshChannelImpl(channel: Int) {
+    val safeChannel = channel.coerceIn(1, 13)
+    val activeSession = session ?: run {
+        val message = "Connect to a device before changing the mesh channel."
+        _meshLastError.value = message
+        appendLog(message, tag = "mesh")
+        return
+    }
+
+    _meshActionInProgress.value = true
+    _meshLastError.value = null
+    scope.launch {
+        try {
+            val response = activeSession.sendCommand(
+                "MESH_SET_CHANNEL",
+                JSONObject().put("channel", safeChannel),
+                timeoutMs = MESH_COMMAND_TIMEOUT_MS,
+            )
+            if (response?.optBoolean("ok") == true) {
+                _meshChannel.value = safeChannel
+                _meshSetupMessage.value = "Mesh channel change requested."
+                appendLog("Mesh channel change requested: $safeChannel", tag = "mesh")
+            } else {
+                val message = response?.optString("msg") ?: "timeout"
+                _meshLastError.value = message
+                appendLog("Mesh channel change failed: $message", tag = "mesh")
+            }
+        } finally {
+            _meshActionInProgress.value = false
+        }
+    }
+}
+
 internal fun MainViewModel.forgetMeshPassphraseImpl() {
     removeStoredCredentialsForNodeImpl()
     removeGlobalCredentialsImpl()
@@ -118,8 +155,9 @@ internal fun MainViewModel.verifyMeshPassphraseImpl(passphrase: String) {
     }
 }
 
-internal fun MainViewModel.provisionMeshImpl(passphrase: String, keyId: String?) {
+internal fun MainViewModel.provisionMeshImpl(passphrase: String, keyId: String?, channel: Int) {
     val cleanPassphrase = passphrase.trim()
+    val safeChannel = channel.coerceIn(1, 13)
     if (cleanPassphrase.length < MIN_MESH_PASSPHRASE_LENGTH) {
         val message = "Mesh passphrase must be at least $MIN_MESH_PASSPHRASE_LENGTH characters."
         _meshLastError.value = message
@@ -149,6 +187,7 @@ internal fun MainViewModel.provisionMeshImpl(passphrase: String, keyId: String?)
             val args = JSONObject().apply {
                 put("auth_key", MeshCrypto.base64Encode(keys.authKey))
                 put("transport_key", MeshCrypto.base64Encode(keys.transportKey))
+                put("channel", safeChannel)
                 if (!keyId.isNullOrBlank()) put("key_id", keyId.trim())
             }
             val response = activeSession.sendCommand(
@@ -161,7 +200,9 @@ internal fun MainViewModel.provisionMeshImpl(passphrase: String, keyId: String?)
                     authKey = keys.authKey,
                     transportKey = keys.transportKey,
                     keyId = keyId?.trim()?.takeIf { it.isNotBlank() },
+                    channel = safeChannel,
                 )
+                _meshChannel.value = safeChannel
                 persistProvisionedCredentialsImpl(stored)
                 persistGlobalCredentialsImpl(stored)
                 _meshPassphraseMatch.value = true
@@ -211,6 +252,7 @@ internal fun MainViewModel.provisionMeshWithSavedCredentialsImpl() {
             val args = JSONObject().apply {
                 put("auth_key", MeshCrypto.base64Encode(credentials.authKey))
                 put("transport_key", MeshCrypto.base64Encode(credentials.transportKey))
+                put("channel", credentials.channel.coerceIn(1, 13))
                 credentials.keyId?.takeIf { it.isNotBlank() }?.let { put("key_id", it) }
             }
             val response = activeSession.sendCommand(
@@ -219,6 +261,7 @@ internal fun MainViewModel.provisionMeshWithSavedCredentialsImpl() {
                 timeoutMs = MESH_COMMAND_TIMEOUT_MS,
             )
             if (response?.optBoolean("ok") == true) {
+                _meshChannel.value = credentials.channel.coerceIn(1, 13)
                 persistProvisionedCredentialsImpl(credentials)
                 _meshPassphraseMatch.value = true
                 _meshSetupMessage.value = "Device set up using the saved mesh credentials."
@@ -586,6 +629,7 @@ private fun MainViewModel.updateMeshStatusFromJsonImpl(json: JSONObject) {
     )
     _meshSessionId.value = json.optLong("session_id", 0L).takeIf { it > 0L }
     _meshNodeId.value = json.optString("node_id", _meshNodeId.value).ifBlank { _meshNodeId.value }
+    _meshChannel.value = json.optInt("channel", _meshChannel.value).coerceIn(1, 13)
     _meshPeerCount.value = json.optInt("peer_count", _meshPeerCount.value)
 
     json.optJSONArray("peers")?.let { peersArray ->

@@ -15,6 +15,7 @@ data class StoredMeshCredentials(
     val authKey: ByteArray,
     val transportKey: ByteArray,
     val keyId: String?,
+    val channel: Int = 1,
 )
 
 /**
@@ -38,6 +39,7 @@ class MeshCredentialStore(context: Context) {
             val json = JSONObject(String(plain, Charsets.UTF_8))
             val authKey = MeshCrypto.base64Decode(json.optString("auth_key"))
             val transportKey = MeshCrypto.base64Decode(json.optString("transport_key"))
+            val channel = json.optInt("channel", 1).coerceIn(1, 13)
             if (authKey == null || transportKey == null ||
                 authKey.size != MeshCrypto.KEY_LENGTH ||
                 transportKey.size != MeshCrypto.KEY_LENGTH
@@ -48,6 +50,7 @@ class MeshCredentialStore(context: Context) {
                     authKey = authKey,
                     transportKey = transportKey,
                     keyId = json.optString("key_id").takeIf { it.isNotBlank() },
+                    channel = channel,
                 )
             }
         }.getOrNull()
@@ -61,6 +64,7 @@ class MeshCredentialStore(context: Context) {
                 if (!credentials.keyId.isNullOrBlank()) {
                     put("key_id", credentials.keyId)
                 }
+                put("channel", credentials.channel.coerceIn(1, 13))
             }
             val encrypted = encrypt(json.toString().toByteArray(Charsets.UTF_8))
             prefs.edit().putString(nodeKey(nodeId), encrypted).apply()
