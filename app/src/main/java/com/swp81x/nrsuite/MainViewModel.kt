@@ -693,6 +693,9 @@ class MainViewModel(internal val app: Application) {
     internal val _meshProvisioning = MutableStateFlow(false)
     val meshProvisioning: StateFlow<Boolean> = _meshProvisioning.asStateFlow()
 
+    internal val _meshActionInProgress = MutableStateFlow(false)
+    val meshActionInProgress: StateFlow<Boolean> = _meshActionInProgress.asStateFlow()
+
     internal val _meshPassphrase = MutableStateFlow("")
     val meshPassphrase: StateFlow<String> = _meshPassphrase.asStateFlow()
 

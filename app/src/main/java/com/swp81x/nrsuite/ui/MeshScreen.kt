@@ -124,6 +124,7 @@ fun MeshScreen(
     passphraseMatch: Boolean?,
     checkingPassphrase: Boolean,
     provisioning: Boolean,
+    actionInProgress: Boolean,
     setupMessage: String?,
     lastError: String?,
     hasStoredCredentials: Boolean,
@@ -163,7 +164,7 @@ fun MeshScreen(
     val canProvision = connected && !provisioning && passphraseValid && passphrasesMatch
     val canCheck = connected && initialized && passphraseValid && !checkingPassphrase && !provisioning
     val sessionActive = role == "master" || role == "client" || role == "candidate"
-    val busy = checkingPassphrase || provisioning
+    val busy = checkingPassphrase || provisioning || actionInProgress
     val canActivateStored = connected && initialized && useSavedCredentials && !provisioning && !sessionActive
     val canActivateWithPassphrase = connected && initialized && passphraseMatch == true &&
         passphraseValid && !provisioning && !sessionActive

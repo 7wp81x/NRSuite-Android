@@ -287,8 +287,10 @@ private fun MainViewModel.authenticateAndActivateWithAuthKey(
     val nonce = ByteArray(32).also { SecureRandom().nextBytes(it) }
     _meshLastError.value = null
     _meshSetupMessage.value = null
+    _meshActionInProgress.value = true
 
     scope.launch {
+        try {
         val challenge = activeSession.sendCommand(
             "MESH_AUTH_CHALLENGE",
             JSONObject().put("nonce", MeshCrypto.base64Encode(nonce)),
@@ -341,19 +343,27 @@ private fun MainViewModel.authenticateAndActivateWithAuthKey(
             _meshSetupMessage.value = "Mesh activation failed: $message"
             appendLog("Mesh activation failed: $message", tag = "mesh")
         }
+        } finally {
+            _meshActionInProgress.value = false
+        }
     }
 }
 
 internal fun MainViewModel.deactivateMeshImpl() {
     val activeSession = session
+    _meshActionInProgress.value = true
     scope.launch {
-        val response = activeSession?.sendCommand("MESH_DEACTIVATE", timeoutMs = 5_000)
-        if (response?.optBoolean("ok") == true) {
-            appendLog("Mesh deactivated; stored keys remain provisioned.", tag = "mesh")
-            resetMeshRuntimeStateImpl()
-        } else {
-            appendLog("Mesh deactivate request failed or timed out.", tag = "mesh")
-            refreshMeshStatusImpl()
+        try {
+            val response = activeSession?.sendCommand("MESH_DEACTIVATE", timeoutMs = 5_000)
+            if (response?.optBoolean("ok") == true) {
+                appendLog("Mesh deactivated; stored keys remain provisioned.", tag = "mesh")
+                resetMeshRuntimeStateImpl()
+            } else {
+                appendLog("Mesh deactivate request failed or timed out.", tag = "mesh")
+                refreshMeshStatusImpl()
+            }
+        } finally {
+            _meshActionInProgress.value = false
         }
     }
 }

@@ -311,6 +311,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val meshPeerCount by viewModel.meshPeerCount.collectAsState()
     val meshActive by viewModel.meshActive.collectAsState()
     val meshProvisioning by viewModel.meshProvisioning.collectAsState()
+    val meshActionInProgress by viewModel.meshActionInProgress.collectAsState()
     val meshPassphrase by viewModel.meshPassphrase.collectAsState()
     val meshKeyId by viewModel.meshKeyId.collectAsState()
     val meshCheckingPassphrase by viewModel.meshCheckingPassphrase.collectAsState()
@@ -1398,6 +1399,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     passphraseMatch = meshPassphraseMatch,
                     checkingPassphrase = meshCheckingPassphrase,
                     provisioning = meshProvisioning,
+                    actionInProgress = meshActionInProgress,
                     setupMessage = meshSetupMessage,
                     lastError = meshLastError,
                     hasStoredCredentials = meshHasStoredCredentials,
