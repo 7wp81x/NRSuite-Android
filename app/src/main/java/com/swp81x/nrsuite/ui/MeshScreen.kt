@@ -42,13 +42,17 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,7 +68,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.mesh.MeshNodeStatus
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
-import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.CategoryBleBlue
 import com.swp81x.nrsuite.ui.theme.CategoryMeshIndigo
@@ -143,13 +146,14 @@ fun MeshScreen(
     onClearError: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var tab by remember { mutableStateOf(MeshTab.Setup) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var confirmPassphrase by remember { mutableStateOf("") }
     var showPassphrase by remember { mutableStateOf(false) }
     var confirmReplace by remember { mutableStateOf(false) }
     var confirmClearKeys by remember { mutableStateOf(false) }
     var advancedExpanded by remember { mutableStateOf(false) }
 
+    val tab = if (selectedTab == 0) MeshTab.Setup else MeshTab.Network
     val step = currentMeshStep(connected, initialized)
     val useSavedCredentials = initialized && hasStoredCredentials && passphrase.isBlank()
     val passphraseValid = passphrase.length >= 8
@@ -209,6 +213,21 @@ fun MeshScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp),
         ) {
+            TabRow(selectedTabIndex = selectedTab) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("Setup") },
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text("Network") },
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+
             StatusIndicator(
                 label = nodeId.ifBlank { "-" },
                 subtitle = if (active) "active · session #${sessionId ?: "-"}" else "inactive",
@@ -219,23 +238,6 @@ fun MeshScreen(
                 trailingBadgeColor = statusColor,
                 monospace = true,
             )
-
-            Spacer(Modifier.height(10.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                NrFilterChip(
-                    selected = tab == MeshTab.Setup,
-                    label = "Setup",
-                    selectedColor = CategoryMeshIndigo,
-                    onClick = { tab = MeshTab.Setup },
-                )
-                NrFilterChip(
-                    selected = tab == MeshTab.Network,
-                    label = "Network",
-                    selectedColor = CategoryMeshIndigo,
-                    onClick = { tab = MeshTab.Network },
-                )
-            }
 
             Spacer(Modifier.height(10.dp))
 
@@ -272,7 +274,7 @@ fun MeshScreen(
                     onGeneratePassphrase = { generatePassphrase() },
                     onReplaceKeys = { confirmReplace = true },
                     onRefresh = onRefresh,
-                    onSwitchToNetwork = { tab = MeshTab.Network },
+                    onSwitchToNetwork = { selectedTab = 1 },
                     onClearSetupMessage = onClearSetupMessage,
                 )
             } else {
@@ -284,7 +286,7 @@ fun MeshScreen(
                     onRefresh = onRefresh,
                     onClearNodes = onClearNodes,
                     onCopyStatus = { clipboard.setText(AnnotatedString(statusSummary)) },
-                    onSwitchToSetup = { tab = MeshTab.Setup },
+                    onSwitchToSetup = { selectedTab = 0 },
                 )
             }
 

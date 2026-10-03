@@ -202,7 +202,6 @@ internal fun HomeScreen(
     val usbConnectBusy = deviceConnectionStates.values.any {
         it is ConnectionState.Connecting
     } || pendingPermissionRequests.isNotEmpty() || disconnectingFingerprints.isNotEmpty()
-    val firmwareConnected = connectionState is ConnectionState.Connected
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -358,7 +357,7 @@ internal fun HomeScreen(
                     icon = Icons.Default.SettingsInputAntenna,
                     iconTint = categoryColor("Mesh"),
                     moduleIds = listOf("mesh"),
-                    available = firmwareConnected,
+                    available = true,
                 ),
                 CategorySpec(
                     name = "Tools",
