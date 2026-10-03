@@ -321,6 +321,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val meshStoredKeyId by viewModel.meshStoredKeyId.collectAsState()
     val meshHasGlobalCredentials by viewModel.meshHasGlobalCredentials.collectAsState()
     val meshGlobalKeyId by viewModel.meshGlobalKeyId.collectAsState()
+    val meshChannel by viewModel.meshChannel.collectAsState()
     val meshNodes by viewModel.meshNodes.collectAsState()
     val meshLastError by viewModel.meshLastError.collectAsState()
     val serialMonitorSelected by viewModel.serialMonitorSelected.collectAsState()
@@ -1394,6 +1395,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     active = meshActive,
                     sessionId = meshSessionId,
                     nodeId = meshNodeId,
+                    channel = meshChannel,
                     passphrase = meshPassphrase,
                     keyId = meshKeyId,
                     passphraseMatch = meshPassphraseMatch,
@@ -1410,12 +1412,14 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onRefresh = viewModel::refreshMeshStatus,
                     onPassphraseChange = viewModel::setMeshPassphrase,
                     onKeyIdChange = viewModel::setMeshKeyId,
+                    onChannelChange = viewModel::setMeshChannel,
                     onCheckPassphrase = viewModel::verifyMeshPassphrase,
                     onProvision = viewModel::provisionMesh,
                     onProvisionWithSavedCredentials = viewModel::provisionMeshWithSavedCredentials,
                     onAuthenticateAndActivate = viewModel::authenticateAndActivateMesh,
                     onAuthenticateStored = viewModel::authenticateAndActivateStoredMesh,
                     onDeactivate = viewModel::deactivateMesh,
+                    onApplyChannel = viewModel::changeMeshChannel,
                     onForgetPassphrase = viewModel::forgetMeshPassphrase,
                     onClearKeys = viewModel::clearMeshKeys,
                     onClearNodes = viewModel::clearMeshNodes,

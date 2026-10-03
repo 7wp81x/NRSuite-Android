@@ -68,6 +68,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.mesh.MeshNodeStatus
+import com.swp81x.nrsuite.ui.components.ChannelStepper
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.CategoryBleBlue
@@ -119,6 +120,7 @@ fun MeshScreen(
     active: Boolean,
     sessionId: Long?,
     nodeId: String,
+    channel: Int,
     passphrase: String,
     keyId: String,
     passphraseMatch: Boolean?,
@@ -135,12 +137,14 @@ fun MeshScreen(
     onRefresh: () -> Unit,
     onPassphraseChange: (String) -> Unit,
     onKeyIdChange: (String) -> Unit,
+    onChannelChange: (Int) -> Unit,
     onCheckPassphrase: (String) -> Unit,
-    onProvision: (passphrase: String, keyId: String?) -> Unit,
+    onProvision: (passphrase: String, keyId: String?, channel: Int) -> Unit,
     onProvisionWithSavedCredentials: () -> Unit,
     onAuthenticateAndActivate: (String) -> Unit,
     onAuthenticateStored: () -> Unit,
     onDeactivate: () -> Unit,
+    onApplyChannel: (Int) -> Unit,
     onForgetPassphrase: () -> Unit,
     onClearKeys: () -> Unit,
     onClearNodes: () -> Unit,
@@ -246,6 +250,7 @@ fun MeshScreen(
                     initialized = initialized,
                     active = sessionActive,
                     busy = busy,
+                    channel = channel,
                     passphrase = passphrase,
                     keyId = keyId,
                     confirmPassphrase = confirmPassphrase,
@@ -267,6 +272,7 @@ fun MeshScreen(
                     canCheck = canCheck,
                     onPassphraseChange = onPassphraseChange,
                     onKeyIdChange = onKeyIdChange,
+                    onChannelChange = onChannelChange,
                     onCheckPassphrase = onCheckPassphrase,
                     onProvision = onProvision,
                     onProvisionWithSavedCredentials = onProvisionWithSavedCredentials,
@@ -283,11 +289,13 @@ fun MeshScreen(
                     sessionActive = sessionActive,
                     sessionId = sessionId,
                     nodeId = nodeId,
+                    channel = channel,
                     busy = busy,
                     nodes = remoteNodes,
                     statusSummary = statusSummary,
                     onRefresh = onRefresh,
                     onClearNodes = onClearNodes,
+                    onApplyChannel = onApplyChannel,
                     onCopyStatus = { clipboard.setText(AnnotatedString(statusSummary)) },
                     onSwitchToSetup = { selectedTab = 0 },
                 )
@@ -436,7 +444,7 @@ fun MeshScreen(
                 TextButton(
                     onClick = {
                         confirmReplace = false
-                        onProvision(passphrase, keyId.ifBlank { null })
+                        onProvision(passphrase, keyId.ifBlank { null }, channel)
                     },
                 ) {
                     Text("Replace keys", color = StatusRed)
@@ -514,6 +522,7 @@ private fun MeshSetupTab(
     initialized: Boolean,
     active: Boolean,
     busy: Boolean,
+    channel: Int,
     passphrase: String,
     keyId: String,
     confirmPassphrase: String,
@@ -535,8 +544,9 @@ private fun MeshSetupTab(
     canCheck: Boolean,
     onPassphraseChange: (String) -> Unit,
     onKeyIdChange: (String) -> Unit,
+    onChannelChange: (Int) -> Unit,
     onCheckPassphrase: (String) -> Unit,
-    onProvision: (passphrase: String, keyId: String?) -> Unit,
+    onProvision: (passphrase: String, keyId: String?, channel: Int) -> Unit,
     onProvisionWithSavedCredentials: () -> Unit,
     onGeneratePassphrase: () -> Unit,
     onReplaceKeys: () -> Unit,
@@ -593,8 +603,28 @@ private fun MeshSetupTab(
                 onGeneratePassphrase = onGeneratePassphrase,
             )
 
+            Text(
+                text = "Mesh channel",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = NrOnSurface,
+            )
+            ChannelStepper(
+                value = channel,
+                enabled = connected && !provisioning && !checkingPassphrase,
+                onDecrease = { onChannelChange((channel - 1).coerceAtLeast(1)) },
+                onIncrease = { onChannelChange((channel + 1).coerceAtMost(13)) },
+            )
+            if (channel >= 12) {
+                Text(
+                    text = "Channels 12-13 are region-dependent. Use only where authorized.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusAmber,
+                )
+            }
+
             Button(
-                onClick = { onProvision(passphrase, keyId.ifBlank { null }) },
+                onClick = { onProvision(passphrase, keyId.ifBlank { null }, channel) },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = canProvision,
                 colors = ButtonDefaults.buttonColors(containerColor = NrAccent),
@@ -727,14 +757,18 @@ private fun MeshNetworkTab(
     sessionActive: Boolean,
     sessionId: Long?,
     nodeId: String,
+    channel: Int,
     busy: Boolean,
     nodes: List<MeshNodeStatus>,
     statusSummary: String,
     onRefresh: () -> Unit,
     onClearNodes: () -> Unit,
+    onApplyChannel: (Int) -> Unit,
     onCopyStatus: () -> Unit,
     onSwitchToSetup: () -> Unit,
 ) {
+    var selectedChannel by remember(channel) { mutableStateOf(channel) }
+    var confirmChannelChange by remember { mutableStateOf(false) }
     if (!initialized) {
         MeshStepCard {
             Column(
@@ -798,6 +832,43 @@ private fun MeshNetworkTab(
                 style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
             )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Mesh channel",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = NrOnSurface,
+            )
+            if (role == "master") {
+                ChannelStepper(
+                    value = selectedChannel,
+                    enabled = connected && !busy,
+                    onDecrease = { selectedChannel = (selectedChannel - 1).coerceAtLeast(1) },
+                    onIncrease = { selectedChannel = (selectedChannel + 1).coerceAtMost(13) },
+                )
+                if (selectedChannel != channel) {
+                    OutlinedButton(
+                        onClick = { confirmChannelChange = true },
+                        enabled = connected && !busy,
+                    ) {
+                        Text("Apply channel $selectedChannel")
+                    }
+                }
+            } else {
+                Text(
+                    text = channel.toString(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = FontFamily.Monospace,
+                    color = NrOnSurface,
+                )
+            }
+            if (selectedChannel >= 12) {
+                Text(
+                    text = "Channels 12-13 are region-dependent. Use only where authorized.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusAmber,
+                )
+            }
         }
     }
 
@@ -855,6 +926,34 @@ private fun MeshNetworkTab(
                 }
             }
         }
+    }
+
+    if (confirmChannelChange) {
+        AlertDialog(
+            onDismissRequest = { confirmChannelChange = false },
+            title = { Text("Change mesh channel?") },
+            text = {
+                Text(
+                    "All nodes will be asked to move to channel $selectedChannel. " +
+                        "Any node that misses the switch will recover by scanning for the master."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmChannelChange = false
+                        onApplyChannel(selectedChannel)
+                    },
+                ) {
+                    Text("Change channel")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmChannelChange = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 }
 

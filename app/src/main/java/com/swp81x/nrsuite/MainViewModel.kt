@@ -696,6 +696,9 @@ class MainViewModel(internal val app: Application) {
     internal val _meshActionInProgress = MutableStateFlow(false)
     val meshActionInProgress: StateFlow<Boolean> = _meshActionInProgress.asStateFlow()
 
+    internal val _meshChannel = MutableStateFlow(1)
+    val meshChannel: StateFlow<Int> = _meshChannel.asStateFlow()
+
     internal val _meshPassphrase = MutableStateFlow("")
     val meshPassphrase: StateFlow<String> = _meshPassphrase.asStateFlow()
 
@@ -1283,10 +1286,14 @@ class MainViewModel(internal val app: Application) {
 
     fun setMeshKeyId(value: String) = this.setMeshKeyIdImpl(value)
 
+    fun setMeshChannel(value: Int) = this.setMeshChannelImpl(value)
+
+    fun changeMeshChannel(channel: Int) = this.changeMeshChannelImpl(channel)
+
     fun verifyMeshPassphrase(passphrase: String) = this.verifyMeshPassphraseImpl(passphrase)
 
-    fun provisionMesh(passphrase: String, keyId: String? = null) =
-        this.provisionMeshImpl(passphrase, keyId)
+    fun provisionMesh(passphrase: String, keyId: String? = null, channel: Int = 1) =
+        this.provisionMeshImpl(passphrase, keyId, channel)
 
     fun provisionMeshWithSavedCredentials() =
         this.provisionMeshWithSavedCredentialsImpl()
