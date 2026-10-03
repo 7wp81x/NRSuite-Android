@@ -35,6 +35,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -161,11 +162,13 @@ fun MeshScreen(
     val passphrasesMatch = confirmPassphrase.isNotBlank() && passphrase == confirmPassphrase
     val canProvision = connected && !provisioning && passphraseValid && passphrasesMatch
     val canCheck = connected && initialized && passphraseValid && !checkingPassphrase && !provisioning
-    val canActivateStored = connected && initialized && useSavedCredentials && !provisioning && !active
+    val sessionActive = role == "master" || role == "client" || role == "candidate"
+    val busy = checkingPassphrase || provisioning
+    val canActivateStored = connected && initialized && useSavedCredentials && !provisioning && !sessionActive
     val canActivateWithPassphrase = connected && initialized && passphraseMatch == true &&
-        passphraseValid && !provisioning && !active
-    val canActivate = active || canActivateStored || canActivateWithPassphrase
-    val fabEnabled = connected && canActivate
+        passphraseValid && !provisioning && !sessionActive
+    val canActivate = sessionActive || canActivateStored || canActivateWithPassphrase
+    val fabEnabled = connected && !busy && canActivate
     val statusColor = meshRoleColor(role)
     val remoteNodes = remember(nodes, nodeId) {
         nodes.filterNot { it.nodeId.equals(nodeId, ignoreCase = true) }
@@ -178,7 +181,7 @@ fun MeshScreen(
         role,
         sessionId,
         nodeId,
-        active,
+        sessionActive,
         remoteNodes,
     ) {
         buildString {
@@ -186,7 +189,7 @@ fun MeshScreen(
             appendLine("connected=$connected")
             appendLine("initialized=$initialized")
             appendLine("role=$role")
-            appendLine("active=$active")
+            appendLine("active=$sessionActive")
             appendLine("node_id=${nodeId.ifBlank { "-" }}")
             appendLine("session_id=${sessionId ?: "-"}")
             appendLine("peer_count=${remoteNodes.count { it.online }}")
@@ -232,25 +235,13 @@ fun MeshScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            StatusIndicator(
-                label = nodeId.ifBlank { "-" },
-                subtitle = if (active) "active · session #${sessionId ?: "-"}" else "inactive",
-                color = statusColor,
-                trailingBadge = role
-                    .takeIf { it in setOf("master", "client", "candidate") }
-                    ?.uppercase(),
-                trailingBadgeColor = statusColor,
-                monospace = true,
-            )
-
-            Spacer(Modifier.height(10.dp))
-
             if (tab == MeshTab.Setup) {
                 MeshSetupTab(
                     step = step,
                     connected = connected,
                     initialized = initialized,
-                    active = active,
+                    active = sessionActive,
+                    busy = busy,
                     passphrase = passphrase,
                     keyId = keyId,
                     confirmPassphrase = confirmPassphrase,
@@ -278,13 +269,17 @@ fun MeshScreen(
                     onGeneratePassphrase = { generatePassphrase() },
                     onReplaceKeys = { confirmReplace = true },
                     onRefresh = onRefresh,
-                    onSwitchToNetwork = { selectedTab = 1 },
                     onClearSetupMessage = onClearSetupMessage,
                 )
             } else {
                 MeshNetworkTab(
                     connected = connected,
                     initialized = initialized,
+                    role = role,
+                    sessionActive = sessionActive,
+                    sessionId = sessionId,
+                    nodeId = nodeId,
+                    busy = busy,
                     nodes = remoteNodes,
                     statusSummary = statusSummary,
                     onRefresh = onRefresh,
@@ -397,7 +392,7 @@ fun MeshScreen(
             onClick = {
                 if (!fabEnabled) return@FloatingActionButton
                 when {
-                    active -> onDeactivate()
+                    sessionActive -> onDeactivate()
                     useSavedCredentials -> onAuthenticateStored()
                     else -> onAuthenticateAndActivate(passphrase)
                 }
@@ -406,12 +401,20 @@ fun MeshScreen(
                 .align(Alignment.BottomEnd)
                 .padding(16.dp)
                 .alpha(if (fabEnabled) 1f else 0.4f),
-            containerColor = if (active) StatusRed else NrAccent,
+            containerColor = if (sessionActive) StatusRed else NrAccent,
         ) {
-            Icon(
-                imageVector = if (active) Icons.Default.Stop else Icons.Default.PlayArrow,
-                contentDescription = if (active) "Deactivate mesh" else "Authenticate and activate mesh",
-            )
+            if (busy) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = NrBackground,
+                )
+            } else {
+                Icon(
+                    imageVector = if (sessionActive) Icons.Default.Stop else Icons.Default.PlayArrow,
+                    contentDescription = if (sessionActive) "Deactivate mesh" else "Authenticate and activate mesh",
+                )
+            }
         }
     }
 
@@ -506,6 +509,7 @@ private fun MeshSetupTab(
     connected: Boolean,
     initialized: Boolean,
     active: Boolean,
+    busy: Boolean,
     passphrase: String,
     keyId: String,
     confirmPassphrase: String,
@@ -533,7 +537,6 @@ private fun MeshSetupTab(
     onGeneratePassphrase: () -> Unit,
     onReplaceKeys: () -> Unit,
     onRefresh: () -> Unit,
-    onSwitchToNetwork: () -> Unit,
     onClearSetupMessage: () -> Unit,
 ) {
     MeshStepIndicator(step)
@@ -598,20 +601,39 @@ private fun MeshSetupTab(
             }
 
             if (!setupMessage.isNullOrBlank()) {
-                MeshSetupMessage(message = setupMessage, onDismiss = onClearSetupMessage)
+                MeshSetupMessage(message = setupMessage)
             }
         }
 
         MeshSetupStep.Activate -> {
-            if (active) {
-                MeshActionCard(
-                    title = "Activated",
-                    description = "Switch to the Network tab to view nodes.",
-                    tone = ActionTone.Positive,
-                    buttonLabel = "View Network",
-                    buttonEnabled = true,
-                    onClick = onSwitchToNetwork,
-                )
+            if (busy) {
+                MeshStepCard {
+                    Text(
+                        text = "Identifying key…",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = StatusAmber,
+                    )
+                    Text(
+                        text = "Verifying the saved/entered passphrase against this device.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+            } else if (active) {
+                MeshStepCard {
+                    Text(
+                        text = "Activated",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = StatusGreen,
+                    )
+                    Text(
+                        text = "Use the Network tab to view nodes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
             } else {
                 val tone: ActionTone
                 val title: String
@@ -632,8 +654,8 @@ private fun MeshSetupTab(
                     }
                     passphraseMatch == true -> {
                         tone = ActionTone.Positive
-                        title = "Ready to activate"
-                        description = "Identity verified with this passphrase. Use the FAB to activate."
+                        title = "Identified"
+                        description = "Passphrase and stored key match. Use the FAB to activate."
                         buttonLabel = "Refresh status"
                         buttonEnabled = connected
                         buttonAction = onRefresh
@@ -686,7 +708,7 @@ private fun MeshSetupTab(
 
                 if (!setupMessage.isNullOrBlank()) {
                     Spacer(Modifier.height(8.dp))
-                    MeshSetupMessage(message = setupMessage, onDismiss = onClearSetupMessage)
+                    MeshSetupMessage(message = setupMessage)
                 }
             }
         }
@@ -697,6 +719,11 @@ private fun MeshSetupTab(
 private fun MeshNetworkTab(
     connected: Boolean,
     initialized: Boolean,
+    role: String,
+    sessionActive: Boolean,
+    sessionId: Long?,
+    nodeId: String,
+    busy: Boolean,
     nodes: List<MeshNodeStatus>,
     statusSummary: String,
     onRefresh: () -> Unit,
@@ -741,6 +768,21 @@ private fun MeshNetworkTab(
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val localColor = meshRoleColor(role)
+            StatusIndicator(
+                label = nodeId.ifBlank { "-" },
+                subtitle = if (sessionActive) {
+                    "active · session #${sessionId ?: "-"}"
+                } else {
+                    "inactive"
+                },
+                color = localColor,
+                trailingBadge = role
+                    .takeIf { it in setOf("master", "client", "candidate") }
+                    ?.uppercase(),
+                trailingBadgeColor = localColor,
+                monospace = true,
+            )
             Text(
                 text = "Network control",
                 style = MaterialTheme.typography.titleMedium,
@@ -777,7 +819,7 @@ private fun MeshNetworkTab(
                 )
                 IconButton(
                     onClick = onRefresh,
-                    enabled = connected,
+                    enabled = connected && !busy,
                 ) {
                     Icon(Icons.Default.Refresh, contentDescription = "Refresh mesh status")
                 }
@@ -1075,23 +1117,19 @@ private fun MeshActionCard(
 }
 
 @Composable
-private fun MeshSetupMessage(message: String, onDismiss: () -> Unit) {
+private fun MeshSetupMessage(message: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
         border = BorderStroke(0.5.dp, NrOutline),
         shape = RoundedCornerShape(10.dp),
     ) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodySmall,
-                color = NrOnSurface,
-            )
-            TextButton(onClick = onDismiss) {
-                Text("Dismiss")
-            }
-        }
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodySmall,
+            color = NrOnSurface,
+            modifier = Modifier.padding(10.dp),
+        )
     }
 }
 
