@@ -44,7 +44,6 @@ fun StatusIndicator(
         )
         Spacer(Modifier.width(8.dp))
         Column(
-            modifier = Modifier.weight(1f),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
         ) {
             Text(
@@ -65,6 +64,7 @@ fun StatusIndicator(
             }
         }
         if (!trailingBadge.isNullOrBlank()) {
+            Spacer(Modifier.width(8.dp))
             NetworkStatusBadge(
                 text = trailingBadge,
                 color = trailingBadgeColor,
