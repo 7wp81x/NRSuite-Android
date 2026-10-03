@@ -151,6 +151,7 @@ fun MeshScreen(
     var showPassphrase by remember { mutableStateOf(false) }
     var confirmReplace by remember { mutableStateOf(false) }
     var confirmClearKeys by remember { mutableStateOf(false) }
+    var confirmForgetCredentials by remember { mutableStateOf(false) }
     var advancedExpanded by remember { mutableStateOf(false) }
 
     val tab = if (selectedTab == 0) MeshTab.Setup else MeshTab.Network
@@ -166,6 +167,9 @@ fun MeshScreen(
     val canActivate = active || canActivateStored || canActivateWithPassphrase
     val fabEnabled = connected && canActivate
     val statusColor = meshRoleColor(role)
+    val remoteNodes = remember(nodes, nodeId) {
+        nodes.filterNot { it.nodeId.equals(nodeId, ignoreCase = true) }
+    }
 
     val clipboard = LocalClipboardManager.current
     val statusSummary = remember(
@@ -175,7 +179,7 @@ fun MeshScreen(
         sessionId,
         nodeId,
         active,
-        nodes,
+        remoteNodes,
     ) {
         buildString {
             appendLine("NRSuite Mesh")
@@ -185,10 +189,10 @@ fun MeshScreen(
             appendLine("active=$active")
             appendLine("node_id=${nodeId.ifBlank { "-" }}")
             appendLine("session_id=${sessionId ?: "-"}")
-            appendLine("peer_count=${nodes.count { it.online && it.role == "client" }}")
-            if (nodes.isNotEmpty()) {
+            appendLine("peer_count=${remoteNodes.count { it.online }}")
+            if (remoteNodes.isNotEmpty()) {
                 appendLine("nodes=")
-                nodes.forEach { node ->
+                remoteNodes.forEach { node ->
                     appendLine("  ${node.nodeId} ${node.role} online=${node.online} rssi=${node.rssi ?: "-"}")
                 }
             }
@@ -281,7 +285,7 @@ fun MeshScreen(
                 MeshNetworkTab(
                     connected = connected,
                     initialized = initialized,
-                    nodes = nodes,
+                    nodes = remoteNodes,
                     statusSummary = statusSummary,
                     onRefresh = onRefresh,
                     onClearNodes = onClearNodes,
@@ -290,6 +294,7 @@ fun MeshScreen(
                 )
             }
 
+            if (tab == MeshTab.Setup) {
             Spacer(Modifier.height(10.dp))
 
             Row(
@@ -342,7 +347,7 @@ fun MeshScreen(
                             Text("Clear device keys")
                         }
                         OutlinedButton(
-                            onClick = onForgetPassphrase,
+                            onClick = { confirmForgetCredentials = true },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = hasGlobalCredentials || hasStoredCredentials ||
                                 passphrase.isNotBlank() || keyId.isNotBlank(),
@@ -351,6 +356,8 @@ fun MeshScreen(
                         }
                     }
                 }
+            }
+
             }
 
             if (!lastError.isNullOrBlank()) {
@@ -458,6 +465,34 @@ fun MeshScreen(
             },
             dismissButton = {
                 TextButton(onClick = { confirmClearKeys = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    if (confirmForgetCredentials) {
+        AlertDialog(
+            onDismissRequest = { confirmForgetCredentials = false },
+            title = { Text("Forget saved credentials?") },
+            text = {
+                Text(
+                    "This removes the encrypted mesh credentials from this phone. The ESP32 keeps its NVS keys, " +
+                        "but you will need the passphrase again to authenticate this node."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmForgetCredentials = false
+                        onForgetPassphrase()
+                    },
+                ) {
+                    Text("Forget credentials", color = StatusRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmForgetCredentials = false }) {
                     Text("Cancel")
                 }
             },
@@ -1076,13 +1111,13 @@ private fun MeshEmptyNodesState() {
             modifier = Modifier.size(28.dp),
         )
         Text(
-            text = "No nodes yet",
+            text = "No remote nodes yet",
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
             color = NrOnSurface,
         )
         Text(
-            text = "The elected master appears here after activation.",
+            text = "Provisioned peers appear here after they join the mesh.",
             style = MaterialTheme.typography.bodySmall,
             color = NrOnSurfaceVariant,
             textAlign = TextAlign.Center,
