@@ -16,4 +16,5 @@ data class MeshNodeStatus(
     val rssi: Int?,
     val online: Boolean,
     val lastSeenAtMs: Long,
+    val chip: String? = null,
 )

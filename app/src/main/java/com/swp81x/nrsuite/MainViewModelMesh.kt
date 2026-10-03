@@ -419,6 +419,7 @@ internal fun MainViewModel.handleMeshEventImpl(event: JSONObject) {
             val role = event.optString("role", "unknown")
             val sessionId = event.optLong("session_id", 0L).takeIf { it > 0L }
             val rssi = if (event.has("rssi")) event.optInt("rssi") else null
+            val chip = event.optString("chip").takeIf { it.isNotBlank() }
             val now = System.currentTimeMillis()
             _meshNodes.update { current ->
                 (current.filterNot { it.nodeId == nodeId } + MeshNodeStatus(
@@ -428,6 +429,7 @@ internal fun MainViewModel.handleMeshEventImpl(event: JSONObject) {
                     rssi = rssi,
                     online = true,
                     lastSeenAtMs = now,
+                    chip = chip,
                 )).sortedByDescending { it.lastSeenAtMs }
             }
         }
@@ -437,6 +439,7 @@ internal fun MainViewModel.handleMeshEventImpl(event: JSONObject) {
             if (nodeId.isBlank()) return
             val sessionId = event.optLong("session_id", 0L).takeIf { it > 0L }
             val rssi = if (event.has("rssi")) event.optInt("rssi") else null
+            val chip = event.optString("chip").takeIf { it.isNotBlank() }
             _meshNodes.update { current ->
                 (current.filterNot { it.nodeId == nodeId } + MeshNodeStatus(
                     nodeId = nodeId,
@@ -445,6 +448,7 @@ internal fun MainViewModel.handleMeshEventImpl(event: JSONObject) {
                     rssi = rssi,
                     online = true,
                     lastSeenAtMs = System.currentTimeMillis(),
+                    chip = chip,
                 )).sortedByDescending { it.lastSeenAtMs }
             }
             appendLog("Mesh node joined: $nodeId", tag = "mesh")
@@ -599,6 +603,7 @@ private fun MainViewModel.updateMeshStatusFromJsonImpl(json: JSONObject) {
                     online = peer.optBoolean("online", true),
                     lastSeenAtMs = System.currentTimeMillis() -
                         peer.optLong("last_seen_ms", 0L).coerceAtLeast(0L),
+                    chip = peer.optString("chip").takeIf { it.isNotBlank() },
                 )
             }
             merged.values.sortedByDescending { it.lastSeenAtMs }

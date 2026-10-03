@@ -197,7 +197,10 @@ fun MeshScreen(
             if (remoteNodes.isNotEmpty()) {
                 appendLine("nodes=")
                 remoteNodes.forEach { node ->
-                    appendLine("  ${node.nodeId} ${node.role} online=${node.online} rssi=${node.rssi ?: "-"}")
+                    appendLine(
+                        "  ${node.nodeId} ${node.chip ?: "-"} ${node.role} " +
+                            "online=${node.online} rssi=${node.rssi ?: "-"}"
+                    )
                 }
             }
         }.trimEnd()
@@ -1186,7 +1189,13 @@ private fun MeshNodeRow(node: MeshNodeStatus) {
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = node.nodeId,
+                    text = buildString {
+                        append(node.nodeId)
+                        node.chip?.takeIf { it.isNotBlank() }?.let { chip ->
+                            append(" - ")
+                            append(chip)
+                        }
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
                     color = NrOnSurface,
