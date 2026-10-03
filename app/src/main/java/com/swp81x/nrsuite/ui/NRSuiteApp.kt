@@ -295,6 +295,26 @@ internal val modules = listOf(
     ),
 
     ModuleCardSpec(
+        id = "mesh_setup",
+        title = "Mesh Setup",
+        description = "Provision the shared mesh passphrase and manage this device's mesh keys.",
+        icon = Icons.Default.Key,
+        category = "Mesh",
+        radio = "2.4GHz",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "mesh",
+        title = "Mesh Network",
+        description = "Monitor mesh role, session, peers, and node health.",
+        icon = Icons.Default.SettingsInputAntenna,
+        category = "Mesh",
+        radio = "2.4GHz",
+        available = true,
+    ),
+
+    ModuleCardSpec(
         id = "mac_lookup",
         title = "MAC Lookup",
         description = "Offline OUI and vendor lookup for any MAC address.",

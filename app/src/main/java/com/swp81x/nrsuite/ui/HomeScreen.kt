@@ -353,6 +353,13 @@ internal fun HomeScreen(
                     available = true,
                 ),
                 CategorySpec(
+                    name = "Mesh",
+                    icon = Icons.Default.SettingsInputAntenna,
+                    iconTint = categoryColor("Mesh"),
+                    moduleIds = listOf("mesh_setup", "mesh"),
+                    available = true,
+                ),
+                CategorySpec(
                     name = "Tools",
                     icon = Icons.Default.Search,
                     iconTint = categoryColor("Tools"),
