@@ -304,6 +304,25 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val bleProfileRunning by viewModel.bleProfileRunning.collectAsState()
     val bleProfileStatus by viewModel.bleProfileStatus.collectAsState()
     val bleProfileServices by viewModel.bleProfileServices.collectAsState()
+    val meshInitialized by viewModel.meshInitialized.collectAsState()
+    val meshRole by viewModel.meshRole.collectAsState()
+    val meshSessionId by viewModel.meshSessionId.collectAsState()
+    val meshNodeId by viewModel.meshNodeId.collectAsState()
+    val meshPeerCount by viewModel.meshPeerCount.collectAsState()
+    val meshActive by viewModel.meshActive.collectAsState()
+    val meshProvisioning by viewModel.meshProvisioning.collectAsState()
+    val meshActionInProgress by viewModel.meshActionInProgress.collectAsState()
+    val meshPassphrase by viewModel.meshPassphrase.collectAsState()
+    val meshKeyId by viewModel.meshKeyId.collectAsState()
+    val meshCheckingPassphrase by viewModel.meshCheckingPassphrase.collectAsState()
+    val meshPassphraseMatch by viewModel.meshPassphraseMatch.collectAsState()
+    val meshSetupMessage by viewModel.meshSetupMessage.collectAsState()
+    val meshHasStoredCredentials by viewModel.meshHasStoredCredentials.collectAsState()
+    val meshStoredKeyId by viewModel.meshStoredKeyId.collectAsState()
+    val meshHasGlobalCredentials by viewModel.meshHasGlobalCredentials.collectAsState()
+    val meshGlobalKeyId by viewModel.meshGlobalKeyId.collectAsState()
+    val meshNodes by viewModel.meshNodes.collectAsState()
+    val meshLastError by viewModel.meshLastError.collectAsState()
     val serialMonitorSelected by viewModel.serialMonitorSelected.collectAsState()
     val serialMonitorConnected by viewModel.serialMonitorConnected.collectAsState()
     val serialMonitorConnecting by viewModel.serialMonitorConnecting.collectAsState()
@@ -340,6 +359,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         bleAdvertising,
         bleScanRunning,
         ouiDatabaseStatus,
+        meshActive,
     ) {
         modules.map { module ->
         val runsWithoutDevice = module.id == "ducky" ||
@@ -360,6 +380,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "ble_scanner" -> "ble_scan"
             "tracker_detector" -> "ble_scan"
             "ble_profile" -> "ble_profile"
+            "mesh" -> "mesh_provision"
             "portal" -> "portal"
             "evil_twin" -> "portal"
             "storage" -> "storage"
@@ -419,6 +440,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "ble_scanner" -> bleScanRunning
                 "tracker_detector" -> bleScanRunning
                 "ble_profile" -> bleProfileRunning
+                "mesh" -> meshActive
                 else -> false
             },
         )
@@ -474,7 +496,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || rogueApRunning || clientPresenceRunning || hiddenApRunning || hiddenApStarting || portalRunning || bleAdvertising || bleScanRunning || bleProfileRunning || crackerRunning
+    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || rogueApRunning || clientPresenceRunning || hiddenApRunning || hiddenApStarting || portalRunning || bleAdvertising || bleScanRunning || bleProfileRunning || meshActive || crackerRunning
     val view = LocalView.current
     DisposableEffect(anyModuleRunning) {
         val window = (view.context as? Activity)?.window
@@ -1360,6 +1382,45 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onConnect = { device -> connectOrRequestPermission(device) },
                     onDisconnect = viewModel::disconnect,
                     onDisconnectDevice = viewModel::disconnectDevice,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "mesh" -> {
+                MeshScreen(
+                    connected = isDeviceConnected,
+                    initialized = meshInitialized,
+                    role = meshRole,
+                    active = meshActive,
+                    sessionId = meshSessionId,
+                    nodeId = meshNodeId,
+                    passphrase = meshPassphrase,
+                    keyId = meshKeyId,
+                    passphraseMatch = meshPassphraseMatch,
+                    checkingPassphrase = meshCheckingPassphrase,
+                    provisioning = meshProvisioning,
+                    actionInProgress = meshActionInProgress,
+                    setupMessage = meshSetupMessage,
+                    lastError = meshLastError,
+                    hasStoredCredentials = meshHasStoredCredentials,
+                    storedKeyId = meshStoredKeyId,
+                    hasGlobalCredentials = meshHasGlobalCredentials,
+                    globalKeyId = meshGlobalKeyId,
+                    nodes = meshNodes,
+                    onRefresh = viewModel::refreshMeshStatus,
+                    onPassphraseChange = viewModel::setMeshPassphrase,
+                    onKeyIdChange = viewModel::setMeshKeyId,
+                    onCheckPassphrase = viewModel::verifyMeshPassphrase,
+                    onProvision = viewModel::provisionMesh,
+                    onProvisionWithSavedCredentials = viewModel::provisionMeshWithSavedCredentials,
+                    onAuthenticateAndActivate = viewModel::authenticateAndActivateMesh,
+                    onAuthenticateStored = viewModel::authenticateAndActivateStoredMesh,
+                    onDeactivate = viewModel::deactivateMesh,
+                    onForgetPassphrase = viewModel::forgetMeshPassphrase,
+                    onClearKeys = viewModel::clearMeshKeys,
+                    onClearNodes = viewModel::clearMeshNodes,
+                    onClearSetupMessage = viewModel::clearMeshSetupMessage,
+                    onClearError = viewModel::clearMeshError,
                     modifier = Modifier,
                 )
             }

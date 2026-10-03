@@ -40,6 +40,9 @@ import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.history.HistoryEntry
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
+import com.swp81x.nrsuite.core.mesh.MeshCredentialStore
+import com.swp81x.nrsuite.core.mesh.MeshNodeStatus
+import com.swp81x.nrsuite.core.mesh.StoredMeshCredentials
 import com.swp81x.nrsuite.core.oui.MacLookupResult
 import com.swp81x.nrsuite.core.oui.OuiDatabaseRepository
 import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
@@ -668,6 +671,70 @@ class MainViewModel(internal val app: Application) {
 
     internal var bleStatusJob: Job? = null
 
+    // ── Mesh Foundation Phase 1 ───────────────────────────────────────────
+    internal val _meshInitialized = MutableStateFlow(false)
+    val meshInitialized: StateFlow<Boolean> = _meshInitialized.asStateFlow()
+
+    internal val _meshRole = MutableStateFlow("disabled")
+    val meshRole: StateFlow<String> = _meshRole.asStateFlow()
+
+    internal val _meshSessionId = MutableStateFlow<Long?>(null)
+    val meshSessionId: StateFlow<Long?> = _meshSessionId.asStateFlow()
+
+    internal val _meshNodeId = MutableStateFlow("")
+    val meshNodeId: StateFlow<String> = _meshNodeId.asStateFlow()
+
+    internal val _meshPeerCount = MutableStateFlow(0)
+    val meshPeerCount: StateFlow<Int> = _meshPeerCount.asStateFlow()
+
+    internal val _meshActive = MutableStateFlow(false)
+    val meshActive: StateFlow<Boolean> = _meshActive.asStateFlow()
+
+    internal val _meshProvisioning = MutableStateFlow(false)
+    val meshProvisioning: StateFlow<Boolean> = _meshProvisioning.asStateFlow()
+
+    internal val _meshActionInProgress = MutableStateFlow(false)
+    val meshActionInProgress: StateFlow<Boolean> = _meshActionInProgress.asStateFlow()
+
+    internal val _meshPassphrase = MutableStateFlow("")
+    val meshPassphrase: StateFlow<String> = _meshPassphrase.asStateFlow()
+
+    internal val _meshKeyId = MutableStateFlow("")
+    val meshKeyId: StateFlow<String> = _meshKeyId.asStateFlow()
+
+    internal val _meshCheckingPassphrase = MutableStateFlow(false)
+    val meshCheckingPassphrase: StateFlow<Boolean> = _meshCheckingPassphrase.asStateFlow()
+
+    /** null = not checked, true = matches stored keys, false = different passphrase. */
+    internal val _meshPassphraseMatch = MutableStateFlow<Boolean?>(null)
+    val meshPassphraseMatch: StateFlow<Boolean?> = _meshPassphraseMatch.asStateFlow()
+
+    internal val _meshSetupMessage = MutableStateFlow<String?>(null)
+    val meshSetupMessage: StateFlow<String?> = _meshSetupMessage.asStateFlow()
+
+    internal val _meshHasStoredCredentials = MutableStateFlow(false)
+    val meshHasStoredCredentials: StateFlow<Boolean> = _meshHasStoredCredentials.asStateFlow()
+
+    internal val _meshStoredKeyId = MutableStateFlow<String?>(null)
+    val meshStoredKeyId: StateFlow<String?> = _meshStoredKeyId.asStateFlow()
+
+    internal val _meshHasGlobalCredentials = MutableStateFlow(false)
+    val meshHasGlobalCredentials: StateFlow<Boolean> = _meshHasGlobalCredentials.asStateFlow()
+
+    internal val _meshGlobalKeyId = MutableStateFlow<String?>(null)
+    val meshGlobalKeyId: StateFlow<String?> = _meshGlobalKeyId.asStateFlow()
+
+    internal val meshCredentialStore = MeshCredentialStore(app)
+    internal var meshGlobalCredentials: StoredMeshCredentials? = null
+    internal var meshStoredCredentials: StoredMeshCredentials? = null
+    internal var pendingMeshCredentials: StoredMeshCredentials? = null
+
+    internal val _meshNodes = MutableStateFlow<List<MeshNodeStatus>>(emptyList())
+    val meshNodes: StateFlow<List<MeshNodeStatus>> = _meshNodes.asStateFlow()
+
+    internal val _meshLastError = MutableStateFlow<String?>(null)
+    val meshLastError: StateFlow<String?> = _meshLastError.asStateFlow()
+
     /** All open device sessions, keyed by fingerprint. */
     internal val deviceSessions = linkedMapOf<String, DeviceSession>()
 
@@ -705,6 +772,7 @@ class MainViewModel(internal val app: Application) {
         this.loadDuckyScriptsImpl()
         loadHistory()
         this.loadCredentialSessionsImpl()
+        this.refreshMeshGlobalCredentialsImpl()
         this.refreshDevicesImpl()
     }
 
@@ -734,6 +802,13 @@ class MainViewModel(internal val app: Application) {
 
             "rogue_ap" -> {
                 _rogueApNearby.value = emptyList()
+            }
+
+            "mesh" -> {
+                if (!_meshActive.value) {
+                    _meshNodes.value = emptyList()
+                    _meshPeerCount.value = 0
+                }
             }
         }
     }
@@ -1034,6 +1109,7 @@ class MainViewModel(internal val app: Application) {
         runCatching { pcapWriter?.close() }
         pcapWriter = null
         _evilTwinCapturePath.value = null
+        resetMeshRuntimeStateImpl()
         updateForegroundService()
     }
 
@@ -1201,6 +1277,49 @@ class MainViewModel(internal val app: Application) {
         _bleScanActive.value = active
     }
 
+    fun refreshMeshStatus() = this.refreshMeshStatusImpl()
+
+    fun setMeshPassphrase(value: String) = this.setMeshPassphraseImpl(value)
+
+    fun setMeshKeyId(value: String) = this.setMeshKeyIdImpl(value)
+
+    fun verifyMeshPassphrase(passphrase: String) = this.verifyMeshPassphraseImpl(passphrase)
+
+    fun provisionMesh(passphrase: String, keyId: String? = null) =
+        this.provisionMeshImpl(passphrase, keyId)
+
+    fun provisionMeshWithSavedCredentials() =
+        this.provisionMeshWithSavedCredentialsImpl()
+
+    fun authenticateAndActivateMesh(passphrase: String) =
+        this.authenticateAndActivateMeshImpl(passphrase)
+
+    fun authenticateAndActivateStoredMesh() =
+        this.authenticateAndActivateStoredMeshImpl()
+
+    fun forgetMeshPassphrase() = this.forgetMeshPassphraseImpl()
+
+    fun deactivateMesh() = this.deactivateMeshImpl()
+
+    fun clearMeshKeys() = this.clearMeshKeysImpl()
+
+    fun clearMeshNodes() {
+        _meshNodes.value = emptyList()
+        _meshPeerCount.value = 0
+        // Rebuild from the firmware's authoritative peer snapshot so online
+        // nodes return immediately instead of waiting for another join event.
+        if (session != null) {
+            refreshMeshStatusImpl()
+        }
+    }
+
+    fun clearMeshError() {
+        _meshLastError.value = null
+    }
+
+    fun clearMeshSetupMessage() {
+        _meshSetupMessage.value = null
+    }
 
     fun setBleModifier(key: String, down: Boolean) = this.setBleModifierImpl(key, down)
 
@@ -1288,6 +1407,7 @@ class MainViewModel(internal val app: Application) {
     internal fun updateForegroundService() {
         val context = app
         val activeText = when {
+            _meshActive.value -> "Mesh active"
             _sniffing.value -> "Packet capture active"
             _beaconRunning.value -> "Beacon broadcast active"
             _portalRunning.value -> "Captive portal active"
@@ -1376,6 +1496,15 @@ class MainViewModel(internal val app: Application) {
                     if (fingerprint != activeDeviceFingerprint) return@collect
                     _events.update { (it + event).takeLast(100) }
                     when (event.optString("type")) {
+                        "mesh_status",
+                        "mesh_heartbeat",
+                        "mesh_node_joined",
+                        "mesh_node_left",
+                        "mesh_activation_result",
+                        "mesh_error" -> {
+                            this@MainViewModel.handleMeshEventImpl(event)
+                        }
+
                         "scan_ap" -> {
                             val bssid = event.optString("bssid")
                             val resolvedSsid = resolvedHiddenSsidByBssid[bssid.uppercase()]
