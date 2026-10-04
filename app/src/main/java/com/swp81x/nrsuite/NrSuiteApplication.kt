@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
+import android.util.Log
 import androidx.core.content.ContextCompat
 
 /**
@@ -40,17 +41,25 @@ class NrSuiteApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        ContextCompat.registerReceiver(
-            this,
-            attachReceiver,
-            IntentFilter(UsbManager.ACTION_USB_DEVICE_ATTACHED),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
-        ContextCompat.registerReceiver(
-            this,
-            detachReceiver,
-            IntentFilter(UsbManager.ACTION_USB_DEVICE_DETACHED),
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
+        runCatching {
+            ContextCompat.registerReceiver(
+                this,
+                attachReceiver,
+                IntentFilter(UsbManager.ACTION_USB_DEVICE_ATTACHED),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        }.onFailure { error ->
+            Log.w("NRSuite", "USB attach receiver registration failed", error)
+        }
+        runCatching {
+            ContextCompat.registerReceiver(
+                this,
+                detachReceiver,
+                IntentFilter(UsbManager.ACTION_USB_DEVICE_DETACHED),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        }.onFailure { error ->
+            Log.w("NRSuite", "USB detach receiver registration failed", error)
+        }
     }
 }
