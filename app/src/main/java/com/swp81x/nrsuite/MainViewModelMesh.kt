@@ -528,7 +528,11 @@ internal fun MainViewModel.resetMeshRuntimeStateImpl() {
 }
 
 internal fun MainViewModel.refreshMeshGlobalCredentialsImpl() {
-    val credentials = meshCredentialStore.loadGlobal()
+    val credentials = runCatching { meshCredentialStore.loadGlobal() }
+        .onFailure { error ->
+            android.util.Log.w("NRSuite", "Mesh credential load failed during startup", error)
+        }
+        .getOrNull()
     meshGlobalCredentials = credentials
     _meshHasGlobalCredentials.value = credentials != null
     _meshGlobalKeyId.value = credentials?.keyId
