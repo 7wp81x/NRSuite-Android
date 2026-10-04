@@ -28,12 +28,17 @@ data class StoredMeshCredentials(
  * The raw passphrase is never persisted.
  */
 class MeshCredentialStore(context: Context) {
-    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs by lazy {
+        runCatching {
+            appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        }.getOrNull()
+    }
 
     fun load(nodeId: String): StoredMeshCredentials? {
-        val nodeKey = nodeKey(nodeId)
-        val encrypted = prefs.getString(nodeKey, null) ?: return null
         return runCatching {
+            val store = prefs ?: return@runCatching null
+            val encrypted = store.getString(nodeKey(nodeId), null) ?: return@runCatching null
             val plain = decrypt(encrypted)
             val json = JSONObject(String(plain, Charsets.UTF_8))
             val authKey = MeshCrypto.base64Decode(json.optString("auth_key"))
@@ -55,6 +60,7 @@ class MeshCredentialStore(context: Context) {
 
     fun save(nodeId: String, credentials: StoredMeshCredentials): Boolean {
         return runCatching {
+            val store = prefs ?: return@runCatching false
             val json = JSONObject().apply {
                 put("auth_key", MeshCrypto.base64Encode(credentials.authKey))
                 put("transport_key", MeshCrypto.base64Encode(credentials.transportKey))
@@ -63,13 +69,15 @@ class MeshCredentialStore(context: Context) {
                 }
             }
             val encrypted = encrypt(json.toString().toByteArray(Charsets.UTF_8))
-            prefs.edit().putString(nodeKey(nodeId), encrypted).apply()
+            store.edit().putString(nodeKey(nodeId), encrypted).apply()
             true
         }.getOrDefault(false)
     }
 
     fun remove(nodeId: String) {
-        prefs.edit().remove(nodeKey(nodeId)).apply()
+        runCatching {
+            prefs?.edit()?.remove(nodeKey(nodeId))?.apply()
+        }
     }
 
     fun loadGlobal(): StoredMeshCredentials? = load(GLOBAL_NODE_ID)

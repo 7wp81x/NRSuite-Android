@@ -234,11 +234,13 @@ class MainViewModel(internal val app: Application) {
     val badUsbTargetDevice: StateFlow<UsbSerialDevice?> = _badUsbTargetDevice.asStateFlow()
 
     private val _recentModuleIds = MutableStateFlow(
-        preferences.getString(PREF_RECENT_MODULES, "")
-            ?.split(",")
-            ?.map { it.trim() }
-            ?.filter { it.isNotBlank() }
-            ?: emptyList()
+        runCatching {
+            preferences.getString(PREF_RECENT_MODULES, "")
+                ?.split(",")
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() }
+                ?: emptyList()
+        }.getOrDefault(emptyList())
     )
     val recentModuleIds: StateFlow<List<String>> = _recentModuleIds.asStateFlow()
 
@@ -764,16 +766,22 @@ class MainViewModel(internal val app: Application) {
     internal var pcapWriter: PcapWriter? = null
     internal var pcapJob: Job? = null
 
+    private fun initSafely(name: String, block: () -> Unit) {
+        runCatching(block).onFailure { error ->
+            android.util.Log.w("NRSuite", "Startup init failed: $name", error)
+        }
+    }
+
     init {
-        loadExportDirectory()
-        this.loadBeaconListsImpl()
-        this.loadOuiRulesImpl()
-        this.loadOuiDatabaseImpl()
-        this.loadDuckyScriptsImpl()
-        loadHistory()
-        this.loadCredentialSessionsImpl()
-        this.refreshMeshGlobalCredentialsImpl()
-        this.refreshDevicesImpl()
+        initSafely("exportDirectory") { loadExportDirectory() }
+        initSafely("beaconLists") { this.loadBeaconListsImpl() }
+        initSafely("ouiRules") { this.loadOuiRulesImpl() }
+        initSafely("ouiDatabase") { this.loadOuiDatabaseImpl() }
+        initSafely("duckyScripts") { this.loadDuckyScriptsImpl() }
+        initSafely("history") { loadHistory() }
+        initSafely("credentialSessions") { this.loadCredentialSessionsImpl() }
+        initSafely("meshCredentials") { this.refreshMeshGlobalCredentialsImpl() }
+        initSafely("usbDevices") { this.refreshDevicesImpl() }
     }
 
     fun onModuleOpened(moduleId: String) {
