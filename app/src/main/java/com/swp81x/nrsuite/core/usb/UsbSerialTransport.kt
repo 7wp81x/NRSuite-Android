@@ -4,6 +4,9 @@ import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
 import com.hoho.android.usbserial.driver.Ch34xSerialDriver
 import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
+import com.hoho.android.usbserial.driver.Cp21xxSerialDriver
+import com.hoho.android.usbserial.driver.FtdiSerialDriver
+import com.hoho.android.usbserial.driver.ProlificSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import java.io.IOException
@@ -89,19 +92,23 @@ class UsbSerialTransport(
 
         if (usesDtrOnlyLineState) {
             // WCH CH340/CH341 and CDC-ACM devices (native ESP32 USB, CH9102,
-            // etc.) must idle with DTR asserted and RTS released.
+            // etc.) idle with DTR asserted and RTS released.
             //
-            // CH34x family: DTR+RTS asserts vendor control byte 0x9F, which
-            // drives the devkit EN/GPIO0 auto-reset circuit and holds the
-            // ESP32 in reset. The ESP-Bridge reference implementation leaves
-            // these bridges at 0xDF (DTR asserted, RTS released) instead.
-            //
-            // Release RTS first so a previous bad state cannot stay latched.
+            // Release RTS first so a previous DTR+RTS state cannot keep the
+            // chip reset while this port opens. On CH34x the combined state
+            // maps to vendor byte 0x9F, and the DTR-first close order can
+            // pulse EN through 0xBF.
             runCatching { openedPort.setRTS(false) }
             runCatching { openedPort.setDTR(true) }
+        } else if (usesDualReleasedLineState) {
+            // CP210x, FTDI, and Prolific bridge boards use the classic
+            // ESP32 auto-reset circuit. The canonical esptool/esp-idf idle
+            // state is both DTR and RTS deasserted. Raise IO0 first, then EN,
+            // so a stale reset state cannot leave the chip in the bootloader.
+            runCatching { openedPort.setDTR(false) }
+            runCatching { openedPort.setRTS(false) }
         } else {
-            // Preserve the existing idle state for CP210x/FTDI/other bridges.
-            // The ESP-Bridge reference keeps CP2102 at DTR+RTS asserted.
+            // Unknown serial driver: preserve the previous best-effort state.
             runCatching { openedPort.setDTR(true) }
             runCatching { openedPort.setRTS(true) }
         }
@@ -123,10 +130,13 @@ class UsbSerialTransport(
     override fun close() {
         // Deassert modem control lines before closing so native-USB CDC
         // devices see a clean host disconnect and can reinitialize.
-        if (usesDtrOnlyLineState) {
-            // Drop RTS before DTR. On CH34x, dropping DTR first while RTS is
-            // still asserted transitions through 0xBF (EN low), which pulses
-            // the reset line and produces a POWERONRESET boot log on close.
+        if (usesSafeCloseOrder) {
+            // Drop RTS before DTR for all supported UART bridge and CDC-ACM
+            // devices. On CH34x, dropping DTR first while RTS is still
+            // asserted transitions through 0xBF (EN low), which pulses the
+            // reset line and produces a POWERONRESET boot log on close.
+            // Other auto-reset bridges can similarly glitch EN if RTS is
+            // left asserted.
             runCatching { port?.setRTS(false) }
             runCatching { port?.setDTR(false) }
         } else {
@@ -140,15 +150,28 @@ class UsbSerialTransport(
     }
 
     /**
-     * True for UART/CDC devices whose known-good idle line state is DTR
-     * asserted and RTS released.
-     *
-     * CP210x and FTDI are intentionally excluded: the ESP-Bridge reference
-     * implementation keeps those families at DTR+RTS asserted, so changing
-     * them without hardware validation could regress those boards.
+     * WCH CH340/CH341 and CDC-ACM devices use DTR asserted, RTS released as
+     * their known-good idle state.
      */
     private val usesDtrOnlyLineState: Boolean
         get() = driver is Ch34xSerialDriver || driver is CdcAcmSerialDriver
+
+    /**
+     * CP210x, FTDI, and Prolific bridge boards use the classic ESP32
+     * auto-reset circuit. The canonical esptool/esp-idf idle state is both
+     * DTR and RTS deasserted.
+     */
+    private val usesDualReleasedLineState: Boolean
+        get() = driver is Cp21xxSerialDriver ||
+            driver is FtdiSerialDriver ||
+            driver is ProlificSerialDriver
+
+    /**
+     * True when the transport should release RTS before DTR on close to
+     * avoid walking through the asserted-RTS/reset state.
+     */
+    private val usesSafeCloseOrder: Boolean
+        get() = usesDtrOnlyLineState || usesDualReleasedLineState
 
     companion object {
         const val DEFAULT_BAUD_RATE = 115200
