@@ -2,6 +2,8 @@ package com.swp81x.nrsuite.core.usb
 
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
+import com.hoho.android.usbserial.driver.Ch34xSerialDriver
+import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import java.io.IOException
@@ -85,10 +87,24 @@ class UsbSerialTransport(
         connection = openedConnection
         port = openedPort
 
-        // Native CDC devices often need DTR/RTS asserted before they send data.
-        // Some UART-bridge drivers do not support these calls; ignore failures.
-        runCatching { openedPort.setDTR(true) }
-        runCatching { openedPort.setRTS(true) }
+        if (usesDtrOnlyLineState) {
+            // WCH CH340/CH341 and CDC-ACM devices (native ESP32 USB, CH9102,
+            // etc.) must idle with DTR asserted and RTS released.
+            //
+            // CH34x family: DTR+RTS asserts vendor control byte 0x9F, which
+            // drives the devkit EN/GPIO0 auto-reset circuit and holds the
+            // ESP32 in reset. The ESP-Bridge reference implementation leaves
+            // these bridges at 0xDF (DTR asserted, RTS released) instead.
+            //
+            // Release RTS first so a previous bad state cannot stay latched.
+            runCatching { openedPort.setRTS(false) }
+            runCatching { openedPort.setDTR(true) }
+        } else {
+            // Preserve the existing idle state for CP210x/FTDI/other bridges.
+            // The ESP-Bridge reference keeps CP2102 at DTR+RTS asserted.
+            runCatching { openedPort.setDTR(true) }
+            runCatching { openedPort.setRTS(true) }
+        }
     }
 
     @Synchronized
@@ -107,13 +123,32 @@ class UsbSerialTransport(
     override fun close() {
         // Deassert modem control lines before closing so native-USB CDC
         // devices see a clean host disconnect and can reinitialize.
-        runCatching { port?.setDTR(false) }
-        runCatching { port?.setRTS(false) }
+        if (usesDtrOnlyLineState) {
+            // Drop RTS before DTR. On CH34x, dropping DTR first while RTS is
+            // still asserted transitions through 0xBF (EN low), which pulses
+            // the reset line and produces a POWERONRESET boot log on close.
+            runCatching { port?.setRTS(false) }
+            runCatching { port?.setDTR(false) }
+        } else {
+            runCatching { port?.setDTR(false) }
+            runCatching { port?.setRTS(false) }
+        }
         runCatching { port?.close() }
         runCatching { connection?.close() }
         port = null
         connection = null
     }
+
+    /**
+     * True for UART/CDC devices whose known-good idle line state is DTR
+     * asserted and RTS released.
+     *
+     * CP210x and FTDI are intentionally excluded: the ESP-Bridge reference
+     * implementation keeps those families at DTR+RTS asserted, so changing
+     * them without hardware validation could regress those boards.
+     */
+    private val usesDtrOnlyLineState: Boolean
+        get() = driver is Ch34xSerialDriver || driver is CdcAcmSerialDriver
 
     companion object {
         const val DEFAULT_BAUD_RATE = 115200
