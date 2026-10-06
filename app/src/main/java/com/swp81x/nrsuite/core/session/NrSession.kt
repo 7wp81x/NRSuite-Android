@@ -62,28 +62,37 @@ class NrSession(
 
     private var readerJob: Job? = null
     @Volatile private var closed = false
+    @Volatile private var lastInboundDataAtMs = 0L
 
     suspend fun connect() {
         if (_state.value is ConnectionState.Connected) return
 
         closed = false
+        lastInboundDataAtMs = 0L
         _state.value = ConnectionState.Connecting
         try {
             withContext(Dispatchers.IO) { transport.open() }
             readerJob = scope.launch(Dispatchers.IO) { readLoop() }
 
-            // Native-S2 CDC can need a moment after a reconnect before it
-            // starts answering again. Retry a few times before declaring failure.
-            delay(150)
-            var pong: JSONObject? = null
-            val maxPingAttempts = 4
-            for (attempt in 0 until maxPingAttempts) {
-                if (attempt > 0) delay(400)
-                pong = sendCommand("PING", timeoutMs = 1_500)
-                if (pong?.optBoolean("ok") == true) break
+            // UART bridges can take a moment after the port opens and modem
+            // lines change before host->device data is forwarded. This also
+            // gives native USB CDC devices time after a reconnect.
+            delay(HANDSHAKE_SETTLE_MS)
+
+            var pong = pingUntilResponds()
+            if (pong?.optBoolean("ok") != true) {
+                // The serial-monitor workaround shows the device may still be
+                // booting or the first TX window may be missed. If it starts
+                // sending heartbeats/events, wait for that sign of life and
+                // retry the PING once.
+                log("No PING yet; waiting for device activity before retrying")
+                if (awaitDeviceActivity(DEVICE_ACTIVITY_TIMEOUT_MS)) {
+                    delay(POST_ACTIVITY_SETTLE_MS)
+                    pong = pingUntilResponds()
+                }
             }
             if (pong?.optBoolean("ok") != true) {
-                log("No valid PING response after $maxPingAttempts attempts")
+                log("No valid PING response after handshake retries")
                 disconnect()
                 _state.value = ConnectionState.Failed("No valid PING response from device")
                 return
@@ -204,6 +213,7 @@ class NrSession(
             ) {
                 val count = transport.read(buffer, READ_TIMEOUT_MS)
                 if (count > 0) {
+                    lastInboundDataAtMs = System.currentTimeMillis()
                     val frames = decoder.feed(buffer.copyOf(count))
                     for (frame in frames) {
                         handleFrame(frame)
@@ -257,6 +267,25 @@ class NrSession(
         return runCatching { JSONObject(frame.payloadAsString) }.getOrNull()
     }
 
+    private suspend fun pingUntilResponds(): JSONObject? {
+        var pong: JSONObject? = null
+        for (attempt in 0 until MAX_PING_ATTEMPTS) {
+            if (attempt > 0) delay(PING_RETRY_DELAY_MS)
+            pong = sendCommand("PING", timeoutMs = PING_TIMEOUT_MS)
+            if (pong?.optBoolean("ok") == true) break
+        }
+        return pong
+    }
+
+    private suspend fun awaitDeviceActivity(timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (lastInboundDataAtMs > 0L) return true
+            delay(100)
+        }
+        return lastInboundDataAtMs > 0L
+    }
+
     private fun log(message: String) {
         _logs.tryEmit(message)
     }
@@ -266,5 +295,12 @@ class NrSession(
         private const val READ_TIMEOUT_MS = 250
         private const val WRITE_TIMEOUT_MS = 1_000
         private const val READ_BUFFER_SIZE = 4096
+
+        private const val HANDSHAKE_SETTLE_MS = 500L
+        private const val PING_TIMEOUT_MS = 2_000L
+        private const val MAX_PING_ATTEMPTS = 4
+        private const val PING_RETRY_DELAY_MS = 500L
+        private const val DEVICE_ACTIVITY_TIMEOUT_MS = 5_000L
+        private const val POST_ACTIVITY_SETTLE_MS = 250L
     }
 }
