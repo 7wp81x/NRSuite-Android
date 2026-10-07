@@ -69,6 +69,7 @@ class NrSession(
 
         closed = false
         lastInboundDataAtMs = 0L
+        android.util.Log.i("NRSuiteWire", "NrSession.connect start")
         _state.value = ConnectionState.Connecting
         try {
             withContext(Dispatchers.IO) { transport.open() }
@@ -87,8 +88,11 @@ class NrSession(
                 // retry the PING once.
                 log("No PING yet; waiting for device activity before retrying")
                 if (awaitDeviceActivity(DEVICE_ACTIVITY_TIMEOUT_MS)) {
+                    android.util.Log.i("NRSuiteWire", "device activity observed; retrying PING")
                     delay(POST_ACTIVITY_SETTLE_MS)
                     pong = pingUntilResponds()
+                } else {
+                    android.util.Log.i("NRSuiteWire", "no device activity observed during retry wait")
                 }
             }
             if (pong?.optBoolean("ok") != true) {
@@ -126,6 +130,16 @@ class NrSession(
             log("Connection failed: $message")
             disconnect()
             _state.value = ConnectionState.Failed(message)
+        }
+    }
+
+    /**
+     * Prepare an already-open transport for a second handshake. This clears
+     * stale endpoint toggles on native USB bridges without a close/reopen.
+     */
+    suspend fun prepareForReuse() {
+        withContext(Dispatchers.IO) {
+            runCatching { transport.prepareForReuse() }
         }
     }
 
@@ -271,7 +285,19 @@ class NrSession(
         var pong: JSONObject? = null
         for (attempt in 0 until MAX_PING_ATTEMPTS) {
             if (attempt > 0) delay(PING_RETRY_DELAY_MS)
-            pong = sendCommand("PING", timeoutMs = PING_TIMEOUT_MS)
+            android.util.Log.d("NRSuiteWire", "sending PING attempt ${attempt + 1}")
+            // Keep the PING payload off the USB max-packet boundary. Some
+            // CH34x/Android bulk stacks do not flush a 32-byte full packet
+            // until a short packet arrives. The firmware ignores extra args.
+            pong = sendCommand(
+                "PING",
+                org.json.JSONObject().put("pad", attempt),
+                timeoutMs = PING_TIMEOUT_MS,
+            )
+            android.util.Log.d(
+                "NRSuiteWire",
+                "PING attempt ${attempt + 1} result=${pong?.toString() ?: "timeout"}",
+            )
             if (pong?.optBoolean("ok") == true) break
         }
         return pong
