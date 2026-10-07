@@ -1,9 +1,8 @@
 LOCAL_PATH := $(call my-dir)
 
-# libusb 1.0.27 source is expected at:
-#   <workspace-root>/reference/libusb-1.0.27
-# This relative path is valid for the current diagnostic workspace.
-LIBUSB_REL := ../../../../../reference/libusb-1.0.27
+# Vendored libusb 1.0.27 source. Keeping it inside the app repo makes
+# GitHub Actions and clean checkouts self-contained.
+LIBUSB_REL := libusb
 LIBUSB_ROOT := $(LOCAL_PATH)/$(LIBUSB_REL)
 
 # ---------------------------------------------------------------------------
