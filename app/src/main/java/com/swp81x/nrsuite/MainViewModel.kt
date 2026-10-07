@@ -60,6 +60,7 @@ import com.swp81x.nrsuite.core.wpa.WpaHandshake
 import com.swp81x.nrsuite.core.wpa.EvilTwinResult
 import com.swp81x.nrsuite.core.sniff.SniffRequest
 import com.swp81x.nrsuite.core.storage.StorageFile
+import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
 import com.swp81x.nrsuite.core.usb.UsbSerialTransport
@@ -1674,6 +1675,20 @@ class MainViewModel(internal val app: Application) {
      */
     internal fun idleSession(fingerprint: String, stopOperations: Boolean = false) {
         val entry = deviceSessions[fingerprint] ?: return
+
+        // Native TinyUSB CDC devices need idle-session reuse. External UART
+        // bridges that use the native libusb bulk path also prefer reuse:
+        // closing and reopening the Android UsbDeviceConnection on the same
+        // bridge has proven unreliable, while the already-open native session
+        // works.
+        val canIdle = entry.device.driver is CdcAcmSerialDriver ||
+            UsbSerialTransport.supportsNativeRaw(entry.device.driver)
+        if (!canIdle) {
+            appendLog("Closing UART bridge session instead of idling it.", tag = "USB")
+            disconnectSession(fingerprint, stopOperations = stopOperations, sendStopAll = true)
+            return
+        }
+
         val wasPrimary = activeDeviceFingerprint == fingerprint
 
         if (stopOperations && wasPrimary) {

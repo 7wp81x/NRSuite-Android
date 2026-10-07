@@ -10,6 +10,7 @@ import com.swp81x.nrsuite.core.usb.buildDeviceFingerprintKey
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
+import org.json.JSONObject
 
 // USB discovery, permission handling, connection lifecycle, and per-device sessions.
 
@@ -240,7 +241,12 @@ internal fun MainViewModel.connectImpl(device: UsbDevice) {
 
         scope.launch {
             appendLog("Reactivating ${entry.displayName} [$fingerprint]...", tag = "USB")
-            val pong = idle.session.sendCommand("PING", timeoutMs = 2_000)
+            idle.session.prepareForReuse()
+            val pong = idle.session.sendCommand(
+                "PING",
+                JSONObject().put("pad", 0),
+                timeoutMs = 2_000,
+            )
             if (pong?.optBoolean("ok") == true) {
                 val connected = idle.session.state.value
                 reactivated.opening = false

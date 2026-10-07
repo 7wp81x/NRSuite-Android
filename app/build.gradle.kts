@@ -20,15 +20,32 @@ android {
     compileSdk {
         version = release(36)
     }
+    ndkVersion = "30.0.16248370"
 
     defaultConfig {
         applicationId = "com.swp81x.nrsuite"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.0.0-beta.2"
+        versionCode = 6
+        versionName = "1.0.0-beta.2.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
+
+        externalNativeBuild {
+            ndkBuild {
+                arguments += "APP_PLATFORM=android-26"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        ndkBuild {
+            path = file("src/main/cpp/Android.mk")
+        }
     }
 
     signingConfigs {
@@ -65,6 +82,7 @@ android {
     }
     buildFeatures {
         compose = true
+        aidl = true
     }
 }
 

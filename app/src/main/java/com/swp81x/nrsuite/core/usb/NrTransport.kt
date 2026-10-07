@@ -18,6 +18,13 @@ interface NrTransport {
     @Throws(IOException::class)
     fun write(data: ByteArray, timeoutMs: Int)
 
+    /**
+     * Called before an already-open session is reused for a new handshake.
+     * Native USB bridges use this to reset endpoint toggles without closing
+     * the underlying Android UsbDeviceConnection.
+     */
+    fun prepareForReuse() = Unit
+
     @Throws(IOException::class)
     fun close()
 }
