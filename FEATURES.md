@@ -48,7 +48,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **Activation Handshake** - USB HMAC challenge, replay counter, and 30 s auth window
 - [x] **Session Locking** - Fresh master session ID and client recovery after master reboot
 - [x] **Heartbeat/Auto-Timeout** - 1 s master heartbeat, 5 s master timeout, 8 s peer timeout
-- [x] **Mesh Node Health Reporting** - Phase 3A generic encrypted report transport and `node_health` aggregation
+- [x] **Mesh Node Health Reporting** - Phase 3A encrypted report transport and `node_health` aggregation; hardware-validated on S3 + S2
 - [ ] **Distributed Detector Reporting** - Deauth/Rogue AP reports and same-frame correlation (Phase 3B+)
 - [ ] **Triangulation Engine (app-side)** - Log-distance path-loss + trilateration from 3+ node RSSI reports
 
