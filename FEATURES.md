@@ -41,14 +41,15 @@ This document lists all current and planned features across the NRSuite ecosyste
 
 ## 4. Mesh Network (ESP-NOW)
 
-- [ ] **Shared Group Key Provisioning** - Key pushed to node via USB/serial, stored in NVS
-- [ ] **Dynamic Master Election** - Whichever node is USB-plugged into the app becomes master
-- [ ] **Client Idle/Standby Mode** - Unplugged nodes idle until valid activation request
-- [ ] **Encrypted ESP-NOW Transport** - AES-CCM link encryption + HMAC payload auth
-- [ ] **Activation Handshake** - Decrypt → HMAC check → nonce/replay check → timestamp window
-- [ ] **Session Locking** - First-valid-master-wins per session, ignores competing requests
-- [ ] **Heartbeat/Auto-Timeout** - Clients revert to idle if master goes silent
-- [ ] **Distributed Sensor Reporting** - Active clients run local detectors, report to master
+- [x] **Shared Group Key Provisioning** - HKDF-derived auth/transport keys provisioned over USB and stored in NVS
+- [x] **Dynamic Master Election** - USB-authenticated candidate election with self-demotion
+- [x] **Client Idle/Standby Mode** - Provisioned nodes passively listen and auto-join a valid master
+- [x] **Encrypted ESP-NOW Transport** - AES-CCM transport encryption with replay protection
+- [x] **Activation Handshake** - USB HMAC challenge, replay counter, and 30 s auth window
+- [x] **Session Locking** - Fresh master session ID and client recovery after master reboot
+- [x] **Heartbeat/Auto-Timeout** - 1 s master heartbeat, 5 s master timeout, 8 s peer timeout
+- [x] **Mesh Node Health Reporting** - Phase 3A encrypted report transport and `node_health` aggregation; hardware-validated on S3 + S2
+- [ ] **Distributed Detector Reporting** - Deauth/Rogue AP reports and same-frame correlation (Phase 3B+)
 - [ ] **Triangulation Engine (app-side)** - Log-distance path-loss + trilateration from 3+ node RSSI reports
 
 ## 5. Mesh Chat

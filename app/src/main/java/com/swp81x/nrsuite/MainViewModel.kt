@@ -785,6 +785,7 @@ class MainViewModel(internal val app: Application) {
         initSafely("history") { loadHistory() }
         initSafely("credentialSessions") { this.loadCredentialSessionsImpl() }
         initSafely("meshCredentials") { this.refreshMeshGlobalCredentialsImpl() }
+        initSafely("meshHealthSweep") { this.startMeshHealthSweepImpl() }
         initSafely("usbDevices") { this.refreshDevicesImpl() }
     }
 
@@ -1516,6 +1517,7 @@ class MainViewModel(internal val app: Application) {
                         "mesh_heartbeat",
                         "mesh_node_joined",
                         "mesh_node_left",
+                        "mesh_sensor_report",
                         "mesh_activation_result",
                         "mesh_error" -> {
                             this@MainViewModel.handleMeshEventImpl(event)

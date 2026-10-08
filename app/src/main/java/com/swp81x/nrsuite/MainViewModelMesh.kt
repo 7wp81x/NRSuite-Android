@@ -7,6 +7,8 @@ import com.swp81x.nrsuite.core.mesh.StoredMeshCredentials
 import com.swp81x.nrsuite.core.session.ConnectionState
 import java.security.MessageDigest
 import java.security.SecureRandom
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.update
 import org.json.JSONObject
@@ -16,6 +18,8 @@ import org.json.JSONObject
 
 private const val MIN_MESH_PASSPHRASE_LENGTH = 8
 private const val MESH_COMMAND_TIMEOUT_MS = 8_000L
+private const val MESH_SENSOR_STALE_MS = 15_000L
+private const val MESH_SENSOR_SWEEP_MS = 5_000L
 
 internal fun MainViewModel.refreshMeshStatusImpl() {
     val activeSession = session ?: run {
@@ -29,6 +33,33 @@ internal fun MainViewModel.refreshMeshStatusImpl() {
             updateMeshStatusFromJsonImpl(response)
         } else {
             appendLog("Mesh status request failed: ${response?.optString("msg") ?: "timeout"}")
+        }
+    }
+}
+
+internal fun MainViewModel.startMeshHealthSweepImpl() {
+    scope.launch {
+        while (isActive) {
+            delay(MESH_SENSOR_SWEEP_MS)
+            pruneStaleMeshNodesImpl()
+        }
+    }
+}
+
+internal fun MainViewModel.pruneStaleMeshNodesImpl() {
+    val now = System.currentTimeMillis()
+    _meshNodes.update { current ->
+        current.map { node ->
+            if (!node.online) {
+                node
+            } else {
+                val lastActivity = maxOf(node.lastSeenAtMs, node.lastHealthAtMs)
+                if (lastActivity > 0L && now - lastActivity > MESH_SENSOR_STALE_MS) {
+                    node.copy(online = false)
+                } else {
+                    node
+                }
+            }
         }
     }
 }
@@ -465,14 +496,20 @@ internal fun MainViewModel.handleMeshEventImpl(event: JSONObject) {
             val chip = event.optString("chip").takeIf { it.isNotBlank() }
             val now = System.currentTimeMillis()
             _meshNodes.update { current ->
+                val existing = current.firstOrNull { it.nodeId == nodeId }
                 (current.filterNot { it.nodeId == nodeId } + MeshNodeStatus(
                     nodeId = nodeId,
                     role = role,
-                    sessionId = sessionId,
-                    rssi = rssi,
+                    sessionId = sessionId ?: existing?.sessionId,
+                    rssi = rssi ?: existing?.rssi,
                     online = true,
                     lastSeenAtMs = now,
-                    chip = chip,
+                    chip = chip ?: existing?.chip,
+                    uptimeMs = existing?.uptimeMs,
+                    heap = existing?.heap,
+                    healthChannel = existing?.healthChannel,
+                    healthSeq = existing?.healthSeq,
+                    lastHealthAtMs = existing?.lastHealthAtMs ?: 0L,
                 )).sortedByDescending { it.lastSeenAtMs }
             }
         }
@@ -483,15 +520,22 @@ internal fun MainViewModel.handleMeshEventImpl(event: JSONObject) {
             val sessionId = event.optLong("session_id", 0L).takeIf { it > 0L }
             val rssi = if (event.has("rssi")) event.optInt("rssi") else null
             val chip = event.optString("chip").takeIf { it.isNotBlank() }
+            val now = System.currentTimeMillis()
             _meshNodes.update { current ->
+                val existing = current.firstOrNull { it.nodeId == nodeId }
                 (current.filterNot { it.nodeId == nodeId } + MeshNodeStatus(
                     nodeId = nodeId,
                     role = "client",
-                    sessionId = sessionId,
-                    rssi = rssi,
+                    sessionId = sessionId ?: existing?.sessionId,
+                    rssi = rssi ?: existing?.rssi,
                     online = true,
-                    lastSeenAtMs = System.currentTimeMillis(),
-                    chip = chip,
+                    lastSeenAtMs = now,
+                    chip = chip ?: existing?.chip,
+                    uptimeMs = existing?.uptimeMs,
+                    heap = existing?.heap,
+                    healthChannel = existing?.healthChannel,
+                    healthSeq = existing?.healthSeq,
+                    lastHealthAtMs = existing?.lastHealthAtMs ?: 0L,
                 )).sortedByDescending { it.lastSeenAtMs }
             }
             appendLog("Mesh node joined: $nodeId", tag = "mesh")
@@ -508,6 +552,53 @@ internal fun MainViewModel.handleMeshEventImpl(event: JSONObject) {
             }
             appendLog("Mesh node left: $nodeId ($reason)", tag = "mesh")
             refreshMeshStatusImpl()
+        }
+
+        "mesh_sensor_report" -> {
+            val nodeId = event.optString("node_id")
+            if (nodeId.isBlank()) return
+            val kind = event.optString("kind")
+            val role = event.optString("role", "client").ifBlank { "client" }
+            val sessionId = event.optLong("session_id", 0L).takeIf { it > 0L }
+            val rssi = if (event.has("rssi")) event.optInt("rssi") else null
+            val chip = event.optString("chip").takeIf { it.isNotBlank() }
+            val now = System.currentTimeMillis()
+
+            _meshNodes.update { current ->
+                val existing = current.firstOrNull { it.nodeId == nodeId }
+                val base = existing ?: MeshNodeStatus(
+                    nodeId = nodeId,
+                    role = role,
+                    sessionId = sessionId,
+                    rssi = rssi,
+                    online = true,
+                    lastSeenAtMs = now,
+                    chip = chip,
+                )
+                val updated = base.copy(
+                    role = role,
+                    sessionId = sessionId ?: base.sessionId,
+                    rssi = rssi ?: base.rssi,
+                    chip = chip ?: base.chip,
+                    online = true,
+                    lastSeenAtMs = now,
+                    uptimeMs = if (event.has("uptime_ms")) {
+                        event.optLong("uptime_ms")
+                    } else {
+                        base.uptimeMs
+                    },
+                    heap = if (event.has("heap")) event.optLong("heap") else base.heap,
+                    healthChannel = if (event.has("channel")) {
+                        event.optInt("channel").takeIf { it in 1..13 } ?: base.healthChannel
+                    } else {
+                        base.healthChannel
+                    },
+                    healthSeq = if (event.has("seq")) event.optLong("seq") else base.healthSeq,
+                    lastHealthAtMs = if (kind == "node_health") now else base.lastHealthAtMs,
+                )
+                (current.filterNot { it.nodeId == nodeId } + updated)
+                    .sortedByDescending { it.lastSeenAtMs }
+            }
         }
 
         "mesh_error" -> {
@@ -643,15 +734,23 @@ private fun MainViewModel.updateMeshStatusFromJsonImpl(json: JSONObject) {
                 val peer = peersArray.optJSONObject(index) ?: continue
                 val peerNodeId = peer.optString("node_id")
                 if (peerNodeId.isBlank()) continue
+                val existing = merged[peerNodeId]
                 merged[peerNodeId] = MeshNodeStatus(
                     nodeId = peerNodeId,
                     role = peer.optString("role", "unknown"),
-                    sessionId = peer.optLong("session_id", 0L).takeIf { it > 0L },
-                    rssi = peer.optInt("rssi", 0).takeIf { it != 0 },
+                    sessionId = peer.optLong("session_id", 0L).takeIf { it > 0L }
+                        ?: existing?.sessionId,
+                    rssi = peer.optInt("rssi", 0).takeIf { it != 0 } ?: existing?.rssi,
                     online = peer.optBoolean("online", true),
                     lastSeenAtMs = System.currentTimeMillis() -
                         peer.optLong("last_seen_ms", 0L).coerceAtLeast(0L),
-                    chip = peer.optString("chip").takeIf { it.isNotBlank() },
+                    chip = peer.optString("chip").takeIf { it.isNotBlank() }
+                        ?: existing?.chip,
+                    uptimeMs = existing?.uptimeMs,
+                    heap = existing?.heap,
+                    healthChannel = existing?.healthChannel,
+                    healthSeq = existing?.healthSeq,
+                    lastHealthAtMs = existing?.lastHealthAtMs ?: 0L,
                 )
             }
             merged.values.sortedByDescending { it.lastSeenAtMs }

@@ -17,4 +17,9 @@ data class MeshNodeStatus(
     val online: Boolean,
     val lastSeenAtMs: Long,
     val chip: String? = null,
+    val uptimeMs: Long? = null,
+    val heap: Long? = null,
+    val healthChannel: Int? = null,
+    val healthSeq: Long? = null,
+    val lastHealthAtMs: Long = 0L,
 )

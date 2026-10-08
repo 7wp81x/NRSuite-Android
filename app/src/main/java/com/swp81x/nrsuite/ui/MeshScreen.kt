@@ -1313,6 +1313,38 @@ private fun MeshNodeRow(node: MeshNodeStatus) {
                         color = NrOnSurfaceVariant,
                     )
                 }
+                val healthText = buildString {
+                    node.heap?.let {
+                        append("heap ")
+                        append(it / 1024)
+                        append(" KB")
+                    }
+                    node.uptimeMs?.let {
+                        if (isNotEmpty()) append(" · ")
+                        append("up ")
+                        append(it / 1000)
+                        append(" s")
+                    }
+                    node.healthChannel?.let {
+                        if (isNotEmpty()) append(" · ")
+                        append("ch ")
+                        append(it)
+                    }
+                    node.healthSeq?.let {
+                        if (isNotEmpty()) append(" · ")
+                        append("seq ")
+                        append(it)
+                    }
+                }
+                if (healthText.isNotBlank()) {
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = healthText,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
             }
             Text(
                 text = if (node.online) "online" else "offline",
