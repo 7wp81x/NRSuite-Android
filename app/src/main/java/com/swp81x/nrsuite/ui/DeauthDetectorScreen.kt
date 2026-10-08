@@ -184,16 +184,14 @@ fun DeauthDetectorScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            if (feed.isNotEmpty()) {
-                DetectionFeedCard(
-                    feed = feed,
-                    feedFilter = feedFilter,
-                    sourceFilter = sourceFilter,
-                    onFeedFilterChange = onFeedFilterChange,
-                    onSourceFilterChange = onSourceFilterChange,
-                    onClearFeed = onClearFeed,
-                )
-            }
+            DetectionFeedCard(
+                feed = feed,
+                feedFilter = feedFilter,
+                sourceFilter = sourceFilter,
+                onFeedFilterChange = onFeedFilterChange,
+                onSourceFilterChange = onSourceFilterChange,
+                onClearFeed = onClearFeed,
+            )
 
             Spacer(Modifier.height(80.dp))
         }
@@ -763,22 +761,30 @@ private fun DetectionFeedCard(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            SelectionContainer {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 360.dp),
-                ) {
-                    itemsIndexed(feed) { index, entry ->
-                        FeedRow(entry)
-                        if (index != feed.lastIndex) {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(0.5.dp)
-                                    .background(NrOutline),
-                            )
+            if (feed.isEmpty()) {
+                Text(
+                    text = "No observations match the current source/frame filter yet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                )
+            } else {
+                SelectionContainer {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 360.dp),
+                    ) {
+                        itemsIndexed(feed) { index, entry ->
+                            FeedRow(entry)
+                            if (index != feed.lastIndex) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(0.5.dp)
+                                        .background(NrOutline),
+                                )
+                            }
                         }
                     }
                 }

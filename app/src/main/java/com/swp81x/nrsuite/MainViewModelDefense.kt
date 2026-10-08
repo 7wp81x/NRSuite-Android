@@ -382,4 +382,11 @@ internal fun MainViewModel.recordRemoteDeauthReport(event: JSONObject) {
             channel = channel,
         )).takeLast(500)
     }
+
+    appendLog(
+        "Mesh deauth: $nodeId ${chip ?: "?"} $sourceMac -> " +
+            "${targetMac ?: "broadcast"} on ch ${channel ?: "?"} " +
+            "($rssi dBm, reason $reasonCode, seq ${seq ?: "?"})",
+        tag = "mesh",
+    )
 }
