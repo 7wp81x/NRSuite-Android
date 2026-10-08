@@ -785,6 +785,7 @@ class MainViewModel(internal val app: Application) {
         initSafely("history") { loadHistory() }
         initSafely("credentialSessions") { this.loadCredentialSessionsImpl() }
         initSafely("meshCredentials") { this.refreshMeshGlobalCredentialsImpl() }
+        initSafely("meshHealthSweep") { this.startMeshHealthSweepImpl() }
         initSafely("usbDevices") { this.refreshDevicesImpl() }
     }
 
