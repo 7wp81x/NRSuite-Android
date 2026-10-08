@@ -55,8 +55,10 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.AlertConfidence
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.DeauthChannelMode
+import com.swp81x.nrsuite.core.defense.DeauthDistributedMode
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
+import com.swp81x.nrsuite.core.defense.DeauthSourceFilter
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.ui.util.rssiToProximity
 import com.swp81x.nrsuite.ui.util.threatProximityColor
@@ -89,6 +91,17 @@ fun DeauthDetectorScreen(
     activeAlert: DeauthAlert?,
     feed: List<DeauthFeedEntry>,
     feedFilter: DeauthFeedFilter,
+    sourceFilter: DeauthSourceFilter,
+    distributed: Boolean,
+    onDistributedChange: (Boolean) -> Unit,
+    distributedMode: DeauthDistributedMode,
+    onDistributedModeChange: (DeauthDistributedMode) -> Unit,
+    meshWindowMs: Int,
+    onMeshWindowChange: (Int) -> Unit,
+    detectorWindowMs: Int,
+    onDetectorWindowChange: (Int) -> Unit,
+    hopDwellMs: Int,
+    onHopDwellChange: (Int) -> Unit,
     scanResults: List<NetworkTarget>,
     selectedTarget: NetworkTarget?,
     channel: Int,
@@ -96,6 +109,7 @@ fun DeauthDetectorScreen(
     onScanClick: () -> Unit,
     isScanning: Boolean,
     onFeedFilterChange: (DeauthFeedFilter) -> Unit,
+    onSourceFilterChange: (DeauthSourceFilter) -> Unit,
     onClearFeed: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
@@ -153,11 +167,30 @@ fun DeauthDetectorScreen(
 
             Spacer(Modifier.height(10.dp))
 
+            DistributedDetectorCard(
+                connected = connected,
+                running = running,
+                distributed = distributed,
+                onDistributedChange = onDistributedChange,
+                distributedMode = distributedMode,
+                onDistributedModeChange = onDistributedModeChange,
+                meshWindowMs = meshWindowMs,
+                onMeshWindowChange = onMeshWindowChange,
+                detectorWindowMs = detectorWindowMs,
+                onDetectorWindowChange = onDetectorWindowChange,
+                hopDwellMs = hopDwellMs,
+                onHopDwellChange = onHopDwellChange,
+            )
+
+            Spacer(Modifier.height(10.dp))
+
             if (feed.isNotEmpty()) {
                 DetectionFeedCard(
                     feed = feed,
                     feedFilter = feedFilter,
+                    sourceFilter = sourceFilter,
                     onFeedFilterChange = onFeedFilterChange,
+                    onSourceFilterChange = onSourceFilterChange,
                     onClearFeed = onClearFeed,
                 )
             }
@@ -165,9 +198,13 @@ fun DeauthDetectorScreen(
             Spacer(Modifier.height(80.dp))
         }
 
-        val canStart = when (channelMode) {
-            DeauthChannelMode.TARGETED -> selectedTarget != null
-            DeauthChannelMode.HOPPING -> true
+        val canStart = when {
+            distributed && distributedMode == DeauthDistributedMode.FIXED ->
+                selectedTarget != null
+            distributed -> true
+            channelMode == DeauthChannelMode.TARGETED -> selectedTarget != null
+            channelMode == DeauthChannelMode.HOPPING -> true
+            else -> false
         }
         ModuleActionFab(
             onClick = {
@@ -197,7 +234,11 @@ fun DeauthDetectorScreen(
             title = { Text("Start monitoring?") },
             text = {
                 Text(
-                    if (channelMode == DeauthChannelMode.HOPPING) {
+                    if (distributed) {
+                        "The mesh master will broadcast a distributed deauth detector start. " +
+                            "Clients will time-slice a ${distributedMode.name.lowercase()} detector " +
+                            "against the mesh channel, and reports will appear as Mesh rows."
+                    } else if (channelMode == DeauthChannelMode.HOPPING) {
                         "The ESP32 will switch to monitor mode and hop across all channels " +
                             "every $hopIntervalMs ms."
                     } else {
@@ -222,6 +263,116 @@ fun DeauthDetectorScreen(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun DistributedDetectorCard(
+    connected: Boolean,
+    running: Boolean,
+    distributed: Boolean,
+    onDistributedChange: (Boolean) -> Unit,
+    distributedMode: DeauthDistributedMode,
+    onDistributedModeChange: (DeauthDistributedMode) -> Unit,
+    meshWindowMs: Int,
+    onMeshWindowChange: (Int) -> Unit,
+    detectorWindowMs: Int,
+    onDetectorWindowChange: (Int) -> Unit,
+    hopDwellMs: Int,
+    onHopDwellChange: (Int) -> Unit,
+) {
+    val controlsEnabled = connected && !running
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Detector source",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "Choose whether this detector runs locally over USB only, or " +
+                    "distributed across mesh clients.",
+                style = MaterialTheme.typography.bodySmall,
+                color = NrOnSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NrFilterChip(
+                    selected = !distributed,
+                    onClick = { if (controlsEnabled) onDistributedChange(false) },
+                    label = "Local only",
+                )
+                NrFilterChip(
+                    selected = distributed,
+                    onClick = { if (controlsEnabled) onDistributedChange(true) },
+                    label = "Distributed mesh",
+                )
+            }
+
+            if (distributed) {
+                Text(
+                    text = "Detector channel mode",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DeauthDistributedMode.entries.forEach { mode ->
+                        NrFilterChip(
+                            selected = distributedMode == mode,
+                            onClick = { if (controlsEnabled) onDistributedModeChange(mode) },
+                            label = when (mode) {
+                                DeauthDistributedMode.SAME_CHANNEL -> "Same channel"
+                                DeauthDistributedMode.FIXED -> "Fixed"
+                                DeauthDistributedMode.HOP -> "Hop"
+                            },
+                        )
+                    }
+                }
+                when (distributedMode) {
+                    DeauthDistributedMode.SAME_CHANNEL -> Text(
+                        text = "Experimental: mesh and detector share the mesh channel.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusAmber,
+                    )
+                    DeauthDistributedMode.FIXED -> Text(
+                        text = "Clients time-slice one detector channel; the master stays on mesh.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                    DeauthDistributedMode.HOP -> Text(
+                        text = "Clients hop inside the detector window; mesh resumes between windows.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+                NumberStepper(
+                    label = "Mesh window (ms)",
+                    valueText = meshWindowMs.toString(),
+                    enabled = controlsEnabled,
+                    onDecrease = { onMeshWindowChange((meshWindowMs - 500).coerceAtLeast(2_000)) },
+                    onIncrease = { onMeshWindowChange((meshWindowMs + 500).coerceAtMost(10_000)) },
+                )
+                NumberStepper(
+                    label = "Detector window (ms)",
+                    valueText = detectorWindowMs.toString(),
+                    enabled = controlsEnabled,
+                    onDecrease = { onDetectorWindowChange((detectorWindowMs - 100).coerceAtLeast(300)) },
+                    onIncrease = { onDetectorWindowChange((detectorWindowMs + 100).coerceAtMost(2_500)) },
+                )
+                if (distributedMode == DeauthDistributedMode.HOP) {
+                    NumberStepper(
+                        label = "Hop dwell (ms)",
+                        valueText = hopDwellMs.toString(),
+                        enabled = controlsEnabled,
+                        onDecrease = { onHopDwellChange((hopDwellMs - 50).coerceAtLeast(200)) },
+                        onIncrease = { onHopDwellChange((hopDwellMs + 50).coerceAtMost(1_000)) },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -540,7 +691,9 @@ private fun ConfigZone(
 private fun DetectionFeedCard(
     feed: List<DeauthFeedEntry>,
     feedFilter: DeauthFeedFilter,
+    sourceFilter: DeauthSourceFilter,
     onFeedFilterChange: (DeauthFeedFilter) -> Unit,
+    onSourceFilterChange: (DeauthSourceFilter) -> Unit,
     onClearFeed: () -> Unit,
 ) {
     val listState = rememberLazyListState()
@@ -595,6 +748,20 @@ private fun DetectionFeedCard(
                     )
                 }
             }
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DeauthSourceFilter.entries.forEach { filter ->
+                    NrFilterChip(
+                        selected = sourceFilter == filter,
+                        onClick = { onSourceFilterChange(filter) },
+                        label = when (filter) {
+                            DeauthSourceFilter.ALL -> "All sources"
+                            DeauthSourceFilter.LOCAL -> "Local"
+                            DeauthSourceFilter.MESH -> "Mesh"
+                        },
+                    )
+                }
+            }
             Spacer(Modifier.height(8.dp))
             SelectionContainer {
                 LazyColumn(
@@ -629,23 +796,40 @@ private fun FeedRow(entry: DeauthFeedEntry) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = entry.sourceMac,
+                text = buildString {
+                    if (entry.origin == "mesh") {
+                        append("[MESH] ")
+                        entry.nodeId?.takeIf { it.isNotBlank() }?.let {
+                            append(it)
+                            append(" ")
+                        }
+                    }
+                    append(entry.sourceMac)
+                },
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
             )
             Spacer(Modifier.weight(1f))
             Text(
-                text = entry.timestamp,
+                text = buildString {
+                    entry.chip?.takeIf { it.isNotBlank() }?.let {
+                        append(it)
+                        append(" · ")
+                    }
+                    append(entry.timestamp)
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
             )
         }
         val targetAddress = entry.targetMac ?: "FF:FF:FF:FF:FF:FF"
         val targetKind = if (entry.targetMac == null) "broadcast" else "directed"
+        val channelText = entry.channel?.let { "ch $it · " } ?: ""
+        val staleText = if (entry.stale) " · stale" else ""
         Text(
-            text = "to $targetAddress ($targetKind) · reason ${entry.reasonCode} · " +
-                "${entry.rssi} dBm · ${rssiToProximity(entry.rssi).label}",
+            text = "to $targetAddress ($targetKind) · ${channelText}reason ${entry.reasonCode} · " +
+                "${entry.rssi} dBm · ${rssiToProximity(entry.rssi).label}$staleText",
             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-            color = threatProximityColor(entry.rssi),
+            color = if (entry.stale) StatusNeutral else threatProximityColor(entry.rssi),
         )
     }
 }

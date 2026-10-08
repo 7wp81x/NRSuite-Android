@@ -3,6 +3,7 @@ package com.swp81x.nrsuite
 import com.swp81x.nrsuite.core.defense.AlertConfidence
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.DeauthChannelMode
+import com.swp81x.nrsuite.core.defense.DeauthDistributedMode
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import kotlinx.coroutines.delay
@@ -22,18 +23,32 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
 
     val mode = _deauthDetectorChannelMode.value
     val target = _deauthDetectorSelectedTarget.value
-    if (mode == DeauthChannelMode.TARGETED && target == null) {
+    val distributed = _deauthDetectorDistributed.value
+    val distributedMode = _deauthDetectorDistributedMode.value
+
+    if (!distributed && _meshActive.value) {
+        _actionError.value = "Mesh is active. Enable Distributed mesh mode instead of " +
+            "stopping the mesh for a local-only detector."
+        return
+    }
+
+    if (!distributed && mode == DeauthChannelMode.TARGETED && target == null) {
         _actionError.value = "Select a target AP before starting targeted deauth detection."
         return
     }
     if (!ensureRadioIdle("Deauth Detector")) return
 
-    val channel = _deauthDetectorChannel.value.coerceIn(1, 14)
+    val channel = when {
+        distributed && distributedMode == DeauthDistributedMode.SAME_CHANNEL ->
+            _meshChannel.value.coerceIn(1, 13)
+        else -> _deauthDetectorChannel.value.coerceIn(1, 14)
+    }
     val hopIntervalMs = _deauthDetectorHopIntervalMs.value.coerceIn(100, 2_000)
 
     _deauthDetectorActiveAlert.value = null
     _deauthDetectorCurrentHopChannel.value = null
-    _deauthDetectorFeed.value = emptyList()
+    // Keep remote Mesh rows visible across local detector start/stop.
+    _deauthDetectorFeed.update { current -> current.filter { it.origin == "mesh" } }
     _deauthDetectorFramesPerSecond.value = 0
     _deauthDetectorTotalFrames.value = 0
     _deauthDetectorUniqueSourceCount.value = 0
@@ -55,18 +70,38 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
 
     scope.launch {
         val args = JSONObject().apply {
-            put("mode", if (mode == DeauthChannelMode.HOPPING) "hop" else "fixed")
             put("rssi_min", -127)
-            if (mode == DeauthChannelMode.HOPPING) {
-                put("interval_ms", hopIntervalMs)
-            } else {
+            if (distributed) {
+                put("mesh", true)
+                put(
+                    "mode",
+                    when (distributedMode) {
+                        DeauthDistributedMode.SAME_CHANNEL -> "same_channel"
+                        DeauthDistributedMode.FIXED -> "fixed"
+                        DeauthDistributedMode.HOP -> "hop"
+                    },
+                )
                 put("channel", channel)
-                target?.bssid?.let { put("bssid", it) }
-                put("interval_ms", 300)
+                put("mesh_window_ms", _deauthMeshWindowMs.value)
+                put("detector_window_ms", _deauthDetectorWindowMs.value)
+                put("detector_hop_dwell_ms", _deauthHopDwellMs.value)
+            } else {
+                put("mode", if (mode == DeauthChannelMode.HOPPING) "hop" else "fixed")
+                if (mode == DeauthChannelMode.HOPPING) {
+                    put("interval_ms", hopIntervalMs)
+                } else {
+                    put("channel", channel)
+                    target?.bssid?.let { put("bssid", it) }
+                    put("interval_ms", 300)
+                }
             }
         }
 
-        val startDescription = if (mode == DeauthChannelMode.HOPPING) {
+        val startDescription = if (distributed) {
+            "distributed ${distributedMode.name.lowercase()} mode on channel $channel" +
+                " (${_deauthMeshWindowMs.value} ms mesh / " +
+                "${_deauthDetectorWindowMs.value} ms detector)"
+        } else if (mode == DeauthChannelMode.HOPPING) {
             "all channels every $hopIntervalMs ms"
         } else {
             "channel $channel (target ${target?.ssid ?: "selected AP"})"
@@ -75,9 +110,21 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
 
         val response = activeSession.sendCommand("DEAUTH_DETECT_START", args, timeoutMs = 10_000)
         if (response?.optBoolean("ok") == true) {
-            _deauthDetectorCurrentHopChannel.value =
-                if (mode == DeauthChannelMode.HOPPING) response.optInt("channel", 1) else null
-            appendLog("Deauth detector started.")
+            _deauthDetectorCurrentHopChannel.value = if (distributed) {
+                if (distributedMode == DeauthDistributedMode.HOP) response.optInt("channel", 1) else null
+            } else if (mode == DeauthChannelMode.HOPPING) {
+                response.optInt("channel", 1)
+            } else {
+                null
+            }
+            appendLog(
+                "Deauth detector started." +
+                    if (distributed) {
+                        " Master scanning=${response.optBoolean("master_scanning", false)}."
+                    } else {
+                        ""
+                    },
+            )
             addHistory(
                 "deauth_detector",
                 "Deauth detector started ($startDescription)",
@@ -210,6 +257,8 @@ internal fun MainViewModel.recordDeauthDetectorFrame(event: JSONObject) {
             targetMac = targetMac,
             reasonCode = reasonCode,
             rssi = rssi,
+            origin = "local",
+            channel = channel,
         )).takeLast(500)
     }
     _deauthDetectorTotalFrames.update { it + 1 }
@@ -284,4 +333,53 @@ internal fun MainViewModel.recordDeauthDetectorFrame(event: JSONObject) {
         "Deauth detected: $sourceMac -> ${targetMac ?: "broadcast"} " +
             "on ch $channel ($rssi dBm, reason $reasonCode, ${confidence.name.lowercase()} confidence)"
     )
+}
+
+
+/**
+ * Relay a mesh-forwarded deauth observation into the detector feed without
+ * touching local detector counters or the local active alert.
+ */
+internal fun MainViewModel.recordRemoteDeauthReport(event: JSONObject) {
+    if (!event.optString("kind").equals("deauth", ignoreCase = true)) return
+
+    val nodeId = event.optString("node_id")
+    if (nodeId.isBlank()) return
+    val seq = event.optLong("seq", -1L).takeIf { it >= 0L }
+
+    if (seq != null &&
+        !deauthMeshDeduplicator.accept(nodeId, seq, System.currentTimeMillis())
+    ) {
+        return
+    }
+
+    val sourceMac = event.optString("source", "?").uppercase().ifBlank { "?" }
+    val rawTarget = event.optString(
+        "target",
+        event.optString("client", event.optString("destination", "")),
+    ).uppercase()
+    val targetMac = rawTarget.takeIf {
+        it.isNotBlank() &&
+            it != "FF:FF:FF:FF:FF:FF" &&
+            it != "00:00:00:00:00:00"
+    }
+    val reasonCode = event.optInt("reason", 0)
+    val rssi = event.optInt("rssi", -127)
+    val channel = event.optInt("channel", 0).takeIf { it in 1..14 }
+    val chip = event.optString("chip").takeIf { it.isNotBlank() }
+
+    _deauthDetectorFeed.update { current ->
+        (current + DeauthFeedEntry(
+            timestamp = timeHmNow(),
+            sourceMac = sourceMac,
+            targetMac = targetMac,
+            reasonCode = reasonCode,
+            rssi = rssi,
+            origin = "mesh",
+            nodeId = nodeId,
+            chip = chip,
+            seq = seq,
+            channel = channel,
+        )).takeLast(500)
+    }
 }

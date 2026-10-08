@@ -24,9 +24,20 @@ data class DeauthFeedEntry(
     val targetMac: String?,   // null = broadcast
     val reasonCode: Int,
     val rssi: Int,
+    val origin: String = "local",
+    val nodeId: String? = null,
+    val chip: String? = null,
+    val seq: Long? = null,
+    val channel: Int? = null,
+    val stale: Boolean = false,
 )
 
 enum class DeauthFeedFilter { ALL, BROADCAST, TARGETED }
+
+/** Distributed detector channel strategy sent to the mesh master. */
+enum class DeauthDistributedMode { SAME_CHANNEL, FIXED, HOP }
+
+enum class DeauthSourceFilter { ALL, LOCAL, MESH }
 
 /**
  * Detector scan mode: one selected target/channel vs. hopping across channels.

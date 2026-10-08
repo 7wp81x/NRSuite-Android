@@ -26,7 +26,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 ## 2. Defense Modules
 
 - [x] **Rogue AP Detector** - Autonomous nearby AP comparison with OUI rules; flags duplicate SSIDs, security downgrades, and suspicious APs
-- [x] **Deauth Detector** - Passive deauth/disassoc monitoring with BSSID/client/RSSI/reason filters, async alerts, and live logs
+- [x] **Deauth Detector** - Passive deauth/disassoc monitoring with BSSID/client/RSSI/reason filters, async alerts, live logs, and All | Local | Mesh source filtering for distributed reports
 - [ ] **Deauth Locator** - RSSI-based direction/distance estimate; multi-node triangulation
 - [x] **Tracker Detector** - Find My-style advert detection, repeated sightings, alerts, and export
 - [x] **Client Detector** - Passive probe/assoc/reassoc/auth monitoring plus active deauth-trigger mode
@@ -49,7 +49,8 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **Session Locking** - Fresh master session ID and client recovery after master reboot
 - [x] **Heartbeat/Auto-Timeout** - 1 s master heartbeat, 5 s master timeout, 8 s peer timeout
 - [x] **Mesh Node Health Reporting** - Phase 3A encrypted report transport and `node_health` aggregation; hardware-validated on S3 + S2
-- [ ] **Distributed Detector Reporting** - Deauth/Rogue AP reports and same-frame correlation (Phase 3B+)
+- [x] **Distributed Deauth Detector** - Phase 3B client time-slicing, encrypted deauth reports, source filtering, stable `(node_id, seq)` dedupe; hardware validation pending
+- [ ] **Distributed Rogue AP / Same-Frame Correlation** - Rogue AP evidence and `frame_hash` correlation (Phase 3C+)
 - [ ] **Triangulation Engine (app-side)** - Log-distance path-loss + trilateration from 3+ node RSSI reports
 
 ## 5. Mesh Chat

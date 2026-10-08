@@ -27,7 +27,10 @@ import com.swp81x.nrsuite.core.defense.NearbyAp
 import com.swp81x.nrsuite.core.defense.RogueApAlert
 import com.swp81x.nrsuite.core.defense.DeauthChannelMode
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
+import com.swp81x.nrsuite.core.defense.DeauthMeshDeduplicator
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
+import com.swp81x.nrsuite.core.defense.DeauthDistributedMode
+import com.swp81x.nrsuite.core.defense.DeauthSourceFilter
 import com.swp81x.nrsuite.core.credentials.CredentialSession
 import com.swp81x.nrsuite.core.credentials.CredentialSource
 import com.swp81x.nrsuite.core.credentials.CredentialStatus
@@ -398,6 +401,27 @@ class MainViewModel(internal val app: Application) {
 
     internal val _deauthDetectorFeedFilter = MutableStateFlow(DeauthFeedFilter.ALL)
     val deauthDetectorFeedFilter: StateFlow<DeauthFeedFilter> = _deauthDetectorFeedFilter.asStateFlow()
+
+    internal val _deauthDetectorSourceFilter = MutableStateFlow(DeauthSourceFilter.ALL)
+    val deauthDetectorSourceFilter: StateFlow<DeauthSourceFilter> = _deauthDetectorSourceFilter.asStateFlow()
+
+    internal val _deauthDetectorDistributed = MutableStateFlow(false)
+    val deauthDetectorDistributed: StateFlow<Boolean> = _deauthDetectorDistributed.asStateFlow()
+
+    internal val _deauthDetectorDistributedMode = MutableStateFlow(DeauthDistributedMode.FIXED)
+    val deauthDetectorDistributedMode: StateFlow<DeauthDistributedMode> =
+        _deauthDetectorDistributedMode.asStateFlow()
+
+    internal val _deauthMeshWindowMs = MutableStateFlow(4500)
+    val deauthMeshWindowMs: StateFlow<Int> = _deauthMeshWindowMs.asStateFlow()
+
+    internal val _deauthDetectorWindowMs = MutableStateFlow(1500)
+    val deauthDetectorWindowMs: StateFlow<Int> = _deauthDetectorWindowMs.asStateFlow()
+
+    internal val _deauthHopDwellMs = MutableStateFlow(350)
+    val deauthHopDwellMs: StateFlow<Int> = _deauthHopDwellMs.asStateFlow()
+
+    internal val deauthMeshDeduplicator = DeauthMeshDeduplicator()
 
     internal val _deauthDetectorChannelMode = MutableStateFlow(DeauthChannelMode.TARGETED)
     val deauthDetectorChannelMode: StateFlow<DeauthChannelMode> = _deauthDetectorChannelMode.asStateFlow()
@@ -1352,10 +1376,35 @@ class MainViewModel(internal val app: Application) {
 
     fun clearDeauthDetectorFeed() {
         _deauthDetectorFeed.value = emptyList()
+        deauthMeshDeduplicator.clear()
     }
 
     fun setDeauthDetectorFeedFilter(filter: DeauthFeedFilter) {
         _deauthDetectorFeedFilter.value = filter
+    }
+
+    fun setDeauthDetectorSourceFilter(filter: DeauthSourceFilter) {
+        _deauthDetectorSourceFilter.value = filter
+    }
+
+    fun setDeauthDetectorDistributed(enabled: Boolean) {
+        _deauthDetectorDistributed.value = enabled
+    }
+
+    fun setDeauthDetectorDistributedMode(mode: DeauthDistributedMode) {
+        _deauthDetectorDistributedMode.value = mode
+    }
+
+    fun setDeauthMeshWindowMs(value: Int) {
+        _deauthMeshWindowMs.value = value.coerceIn(2_000, 10_000)
+    }
+
+    fun setDeauthDetectorWindowMs(value: Int) {
+        _deauthDetectorWindowMs.value = value.coerceIn(300, 2_500)
+    }
+
+    fun setDeauthHopDwellMs(value: Int) {
+        _deauthHopDwellMs.value = value.coerceIn(200, 1_000)
     }
 
     fun setDeauthDetectorChannelMode(mode: DeauthChannelMode) {

@@ -129,6 +129,8 @@ import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
+import com.swp81x.nrsuite.core.defense.DeauthSourceFilter
+import com.swp81x.nrsuite.core.defense.filterDeauthFeedBySource
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
@@ -212,6 +214,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val deauthDetectorActiveAlert by viewModel.deauthDetectorActiveAlert.collectAsState()
     val deauthDetectorFeed by viewModel.deauthDetectorFeed.collectAsState()
     val deauthDetectorFeedFilter by viewModel.deauthDetectorFeedFilter.collectAsState()
+    val deauthDetectorSourceFilter by viewModel.deauthDetectorSourceFilter.collectAsState()
+    val deauthDetectorDistributed by viewModel.deauthDetectorDistributed.collectAsState()
+    val deauthDetectorDistributedMode by viewModel.deauthDetectorDistributedMode.collectAsState()
+    val deauthMeshWindowMs by viewModel.deauthMeshWindowMs.collectAsState()
+    val deauthDetectorWindowMs by viewModel.deauthDetectorWindowMs.collectAsState()
+    val deauthHopDwellMs by viewModel.deauthHopDwellMs.collectAsState()
     val deauthDetectorFramesPerSecond by viewModel.deauthDetectorFramesPerSecond.collectAsState()
     val deauthDetectorTotalFrames by viewModel.deauthDetectorTotalFrames.collectAsState()
     val deauthDetectorUniqueSourceCount by viewModel.deauthDetectorUniqueSourceCount.collectAsState()
@@ -1076,12 +1084,22 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
 
             activeModuleId == "deauth_detector" -> {
-                val visibleFeed = remember(deauthDetectorFeed, deauthDetectorFeedFilter) {
-                    when (deauthDetectorFeedFilter) {
-                        DeauthFeedFilter.ALL -> deauthDetectorFeed
-                        DeauthFeedFilter.BROADCAST -> deauthDetectorFeed.filter { it.targetMac == null }
-                        DeauthFeedFilter.TARGETED -> deauthDetectorFeed.filter { it.targetMac != null }
-                    }
+                val visibleFeed = remember(
+                    deauthDetectorFeed,
+                    deauthDetectorFeedFilter,
+                    deauthDetectorSourceFilter,
+                ) {
+                    filterDeauthFeedBySource(
+                        deauthDetectorFeed,
+                        deauthDetectorSourceFilter,
+                    )
+                        .filter { entry ->
+                            when (deauthDetectorFeedFilter) {
+                                DeauthFeedFilter.ALL -> true
+                                DeauthFeedFilter.BROADCAST -> entry.targetMac == null
+                                DeauthFeedFilter.TARGETED -> entry.targetMac != null
+                            }
+                        }
                 }
                 DeauthDetectorScreen(
                     connected = connectionState is ConnectionState.Connected,
@@ -1098,6 +1116,17 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     activeAlert = deauthDetectorActiveAlert,
                     feed = visibleFeed,
                     feedFilter = deauthDetectorFeedFilter,
+                    sourceFilter = deauthDetectorSourceFilter,
+                    distributed = deauthDetectorDistributed,
+                    onDistributedChange = viewModel::setDeauthDetectorDistributed,
+                    distributedMode = deauthDetectorDistributedMode,
+                    onDistributedModeChange = viewModel::setDeauthDetectorDistributedMode,
+                    meshWindowMs = deauthMeshWindowMs,
+                    onMeshWindowChange = viewModel::setDeauthMeshWindowMs,
+                    detectorWindowMs = deauthDetectorWindowMs,
+                    onDetectorWindowChange = viewModel::setDeauthDetectorWindowMs,
+                    hopDwellMs = deauthHopDwellMs,
+                    onHopDwellChange = viewModel::setDeauthHopDwellMs,
                     scanResults = deauthDetectorTargets,
                     selectedTarget = deauthDetectorSelectedTarget,
                     channel = deauthDetectorChannel,
@@ -1105,6 +1134,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onScanClick = viewModel::scanWifi,
                     isScanning = scanning,
                     onFeedFilterChange = viewModel::setDeauthDetectorFeedFilter,
+                    onSourceFilterChange = viewModel::setDeauthDetectorSourceFilter,
                     onClearFeed = viewModel::clearDeauthDetectorFeed,
                     onStart = viewModel::startDeauthDetector,
                     onStop = viewModel::stopDeauthDetector,

@@ -558,6 +558,10 @@ internal fun MainViewModel.handleMeshEventImpl(event: JSONObject) {
             val nodeId = event.optString("node_id")
             if (nodeId.isBlank()) return
             val kind = event.optString("kind")
+            if (kind.equals("deauth", ignoreCase = true)) {
+                recordRemoteDeauthReport(event)
+                return
+            }
             val role = event.optString("role", "client").ifBlank { "client" }
             val sessionId = event.optLong("session_id", 0L).takeIf { it > 0L }
             val rssi = if (event.has("rssi")) event.optInt("rssi") else null
@@ -616,6 +620,15 @@ internal fun MainViewModel.resetMeshRuntimeStateImpl() {
     _meshPeerCount.value = 0
     _meshNodes.value = emptyList()
     _meshProvisioning.value = false
+
+    // Remote deauth rows are useful history. Deactivating the mesh marks them
+    // stale instead of deleting them; local detector controls never touch them.
+    _deauthDetectorFeed.update { current ->
+        current.map { entry ->
+            if (entry.origin == "mesh" && !entry.stale) entry.copy(stale = true) else entry
+        }
+    }
+    deauthMeshDeduplicator.clear()
 }
 
 internal fun MainViewModel.refreshMeshGlobalCredentialsImpl() {
