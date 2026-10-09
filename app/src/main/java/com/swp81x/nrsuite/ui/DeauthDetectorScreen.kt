@@ -82,6 +82,7 @@ import com.swp81x.nrsuite.ui.theme.StatusRed
 fun DeauthDetectorScreen(
     connected: Boolean,
     running: Boolean,
+    starting: Boolean,
     channelMode: DeauthChannelMode,
     onChannelModeChange: (DeauthChannelMode) -> Unit,
     hopIntervalMs: Int,
@@ -235,14 +236,22 @@ fun DeauthDetectorScreen(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
-            enabled = connected && (running || canStart),
+            enabled = connected && !starting && (running || canStart),
             containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
         ) {
-            Icon(
-                imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
-                contentDescription = null,
-            )
+            if (starting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+            } else {
+                Icon(
+                    imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                    contentDescription = null,
+                )
+            }
         }
     }
 
@@ -417,7 +426,7 @@ private fun DistributedDetectorCard(
                 when (distributedMode) {
                     DeauthDistributedMode.FIXED -> {
                         NumberStepper(
-                            label = "Channel",
+                            label = "Mesh channel",
                             valueText = detectorChannel.toString(),
                             enabled = connected && !detectorChannelApplyInProgress,
                             onDecrease = { onDetectorChannelChange((detectorChannel - 1).coerceAtLeast(1)) },
@@ -425,15 +434,17 @@ private fun DistributedDetectorCard(
                         )
                         Text(
                             text = if (channelChanged) {
-                                "Mesh channel: $meshChannel · detector channel differs, so clients " +
-                                    "will time-slice."
+                                "Current mesh channel: $meshChannel · applying will switch the " +
+                                    "whole mesh to $detectorChannel."
                             } else {
-                                "Mesh channel: $meshChannel · detector uses the same channel."
+                                "Mesh and detector share channel $meshChannel."
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = if (channelChanged) StatusAmber else NrOnSurfaceVariant,
                         )
-                        if (channelChanged) {
+                        if (channelChanged || detectorChannelApplyInProgress ||
+                            detectorChannelApplySuccess
+                        ) {
                             OutlinedButton(
                                 onClick = { onApplyDetectorChannel(detectorChannel) },
                                 enabled = connected && !detectorChannelApplyInProgress &&
@@ -464,7 +475,7 @@ private fun DistributedDetectorCard(
                                         Spacer(Modifier.width(8.dp))
                                         Text("Success")
                                     }
-                                    else -> Text("Apply selected channel")
+                                    else -> Text("Apply mesh channel")
                                 }
                             }
                             TextButton(

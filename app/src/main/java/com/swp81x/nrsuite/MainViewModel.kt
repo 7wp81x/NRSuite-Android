@@ -391,6 +391,9 @@ class MainViewModel(internal val app: Application) {
     internal val _deauthDetectorRunning = MutableStateFlow(false)
     val deauthDetectorRunning: StateFlow<Boolean> = _deauthDetectorRunning.asStateFlow()
 
+    internal val _deauthDetectorStarting = MutableStateFlow(false)
+    val deauthDetectorStarting: StateFlow<Boolean> = _deauthDetectorStarting.asStateFlow()
+
     internal val _deauthDetectorChannel = MutableStateFlow(6)
     val deauthDetectorChannel: StateFlow<Int> = _deauthDetectorChannel.asStateFlow()
 

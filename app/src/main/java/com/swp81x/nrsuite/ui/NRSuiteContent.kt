@@ -207,6 +207,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val deauthTarget by viewModel.deauthTarget.collectAsState()
     val deauthChannel by viewModel.deauthChannel.collectAsState()
     val deauthDetectorRunning by viewModel.deauthDetectorRunning.collectAsState()
+    val deauthDetectorStarting by viewModel.deauthDetectorStarting.collectAsState()
     val deauthDetectorChannel by viewModel.deauthDetectorChannel.collectAsState()
     val deauthDetectorChannelApplyInProgress by
         viewModel.deauthDetectorChannelApplyInProgress.collectAsState()
@@ -1110,6 +1111,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 DeauthDetectorScreen(
                     connected = connectionState is ConnectionState.Connected,
                     running = deauthDetectorRunning,
+                    starting = deauthDetectorStarting,
                     channelMode = deauthDetectorChannelMode,
                     onChannelModeChange = viewModel::setDeauthDetectorChannelMode,
                     hopIntervalMs = deauthDetectorHopIntervalMs,

@@ -7,8 +7,10 @@ import com.swp81x.nrsuite.core.defense.DeauthDistributedMode
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 
 // Deauth detector state and command handling.
@@ -44,14 +46,6 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
         else -> _deauthDetectorChannel.value.coerceIn(1, 14)
     }
     val hopIntervalMs = _deauthDetectorHopIntervalMs.value.coerceIn(100, 2_000)
-    val meshChannel = _meshChannel.value.coerceIn(1, 13)
-    val effectiveDistributedMode = when {
-        !distributed -> null
-        distributedMode == DeauthDistributedMode.HOP -> "hop"
-        channel == meshChannel -> "same_channel"
-        else -> "fixed"
-    }
-
     _deauthDetectorActiveAlert.value = null
     _deauthDetectorCurrentHopChannel.value = null
     // Keep remote Mesh rows visible across local detector start/stop.
@@ -73,10 +67,35 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
     deauthFpsResetJob = null
 
     _deauthDetectorRunning.value = true
+    _deauthDetectorStarting.value = distributed
     _deauthDetectorChannelApplySuccess.value = false
     updateForegroundService()
 
     scope.launch {
+        var effectiveDistributedMode: String? = null
+        if (distributed) {
+            if (distributedMode == DeauthDistributedMode.HOP) {
+                effectiveDistributedMode = "hop"
+            } else {
+                val switched = ensureMeshChannelForDetector(channel)
+                if (!switched) {
+                    _deauthDetectorRunning.value = false
+                    _deauthDetectorStarting.value = false
+                    updateForegroundService()
+                    appendLog("Could not switch mesh to channel $channel for distributed detection.")
+                    addHistory(
+                        "deauth_detector",
+                        "Distributed detector start failed: mesh channel switch timeout",
+                        HistoryLevel.ERROR,
+                    )
+                    return@launch
+                }
+                // Selected and mesh channel now match, so the master and clients
+                // can all observe the same channel.
+                effectiveDistributedMode = "same_channel"
+            }
+        }
+
         val args = JSONObject().apply {
             put("rssi_min", -127)
             if (distributed) {
@@ -111,6 +130,7 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
 
         val response = activeSession.sendCommand("DEAUTH_DETECT_START", args, timeoutMs = 10_000)
         if (response?.optBoolean("ok") == true) {
+            _deauthDetectorStarting.value = false
             _deauthDetectorCurrentHopChannel.value = if (distributed) {
                 if (distributedMode == DeauthDistributedMode.HOP) response.optInt("channel", 1) else null
             } else if (mode == DeauthChannelMode.HOPPING) {
@@ -133,6 +153,7 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
             )
         } else {
             _deauthDetectorRunning.value = false
+            _deauthDetectorStarting.value = false
             _deauthDetectorFramesPerSecond.value = 0
             updateForegroundService()
             appendLog("Failed to start deauth detector: ${response?.optString("msg") ?: "timeout"}")
@@ -396,9 +417,9 @@ internal fun MainViewModel.recordRemoteDeauthReport(event: JSONObject) {
 
 
 /**
- * Applies a distributed detector channel. When the detector is stopped the
- * value is simply staged for the next start. When it is running, stop and
- * restart the distributed detector on the new channel.
+ * Applies a distributed detector channel by switching the whole mesh to that
+ * channel. If the detector is running it is stopped and restarted after the
+ * channel switch so the master and clients scan the same channel.
  */
 internal fun MainViewModel.applyDeauthDetectorChannelImpl(channel: Int) {
     if (!_deauthDetectorDistributed.value) return
@@ -407,29 +428,57 @@ internal fun MainViewModel.applyDeauthDetectorChannelImpl(channel: Int) {
     val safeChannel = channel.coerceIn(1, 13)
     _deauthDetectorChannel.value = safeChannel
     _deauthDetectorChannelApplySuccess.value = false
-
-    if (!_deauthDetectorRunning.value) {
-        _deauthDetectorChannelApplySuccess.value = true
-        scope.launch {
-            delay(1_200)
-            _deauthDetectorChannelApplySuccess.value = false
-        }
-        return
-    }
-
     _deauthDetectorChannelApplyInProgress.value = true
+    updateForegroundService()
+
     scope.launch {
         try {
             val activeSession = session
-            activeSession?.sendCommand("DEAUTH_DETECT_STOP", timeoutMs = 6_000)
-            _deauthDetectorRunning.value = false
-            delay(250)
-            startDeauthDetectorImpl()
-            _deauthDetectorChannelApplySuccess.value = true
-            delay(1_500)
-            _deauthDetectorChannelApplySuccess.value = false
+            val wasRunning = _deauthDetectorRunning.value
+            if (wasRunning) {
+                activeSession?.sendCommand("DEAUTH_DETECT_STOP", timeoutMs = 6_000)
+                _deauthDetectorRunning.value = false
+                _deauthDetectorStarting.value = false
+                updateForegroundService()
+                delay(250)
+            }
+
+            val switched = ensureMeshChannelForDetector(safeChannel)
+            if (!switched) {
+                _actionError.value = "Could not switch mesh to channel $safeChannel."
+                appendLog("Distributed detector channel switch failed: timeout.", tag = "mesh")
+                return@launch
+            }
+
+            if (wasRunning) {
+                startDeauthDetectorImpl()
+            } else {
+                _deauthDetectorChannelApplySuccess.value = true
+                delay(1_500)
+                _deauthDetectorChannelApplySuccess.value = false
+            }
         } finally {
             _deauthDetectorChannelApplyInProgress.value = false
+            updateForegroundService()
         }
     }
+}
+
+/**
+ * Requests a whole-mesh channel switch and waits for the ACK/commit handshake
+ * to report that the master is on the target channel.
+ */
+private suspend fun MainViewModel.ensureMeshChannelForDetector(targetChannel: Int): Boolean {
+    if (targetChannel == _meshChannel.value) return true
+    if (session == null) return false
+
+    _meshChannelSwitchStatus.value = null
+    changeMeshChannelImpl(targetChannel)
+
+    val committed = withTimeoutOrNull(12_000) {
+        _meshChannelSwitchStatus.first { status ->
+            status?.phase == "committed" && status.channel == targetChannel
+        }
+    }
+    return committed != null
 }
