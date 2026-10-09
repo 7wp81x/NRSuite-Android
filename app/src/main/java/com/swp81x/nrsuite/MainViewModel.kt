@@ -394,6 +394,14 @@ class MainViewModel(internal val app: Application) {
     internal val _deauthDetectorChannel = MutableStateFlow(6)
     val deauthDetectorChannel: StateFlow<Int> = _deauthDetectorChannel.asStateFlow()
 
+    internal val _deauthDetectorChannelApplyInProgress = MutableStateFlow(false)
+    val deauthDetectorChannelApplyInProgress: StateFlow<Boolean> =
+        _deauthDetectorChannelApplyInProgress.asStateFlow()
+
+    internal val _deauthDetectorChannelApplySuccess = MutableStateFlow(false)
+    val deauthDetectorChannelApplySuccess: StateFlow<Boolean> =
+        _deauthDetectorChannelApplySuccess.asStateFlow()
+
     internal val _deauthDetectorActiveAlert = MutableStateFlow<DeauthAlert?>(null)
     val deauthDetectorActiveAlert: StateFlow<DeauthAlert?> = _deauthDetectorActiveAlert.asStateFlow()
 
@@ -1396,15 +1404,25 @@ class MainViewModel(internal val app: Application) {
     }
 
     fun setDeauthDetectorDistributed(enabled: Boolean) {
+        val wasEnabled = _deauthDetectorDistributed.value
         _deauthDetectorDistributed.value = enabled
+        if (enabled && !wasEnabled &&
+            _deauthDetectorDistributedMode.value == DeauthDistributedMode.FIXED
+        ) {
+            _deauthDetectorChannel.value = _meshChannel.value.coerceIn(1, 13)
+        }
     }
 
     fun setDeauthDetectorDistributedMode(mode: DeauthDistributedMode) {
-        // Hop is temporarily disabled in the UI until the distributed
-        // detector time-slicing is hardware-validated.
-        _deauthDetectorDistributedMode.value =
-            if (mode == DeauthDistributedMode.HOP) DeauthDistributedMode.FIXED else mode
+        _deauthDetectorDistributedMode.value = mode
     }
+
+    fun setDeauthDetectorChannel(channel: Int) {
+        _deauthDetectorChannel.value = channel.coerceIn(1, 13)
+    }
+
+    fun applyDeauthDetectorChannel(channel: Int) =
+        this.applyDeauthDetectorChannelImpl(channel)
 
     fun setDeauthMeshWindowMs(value: Int) {
         _deauthMeshWindowMs.value = value.coerceIn(2_000, 10_000)

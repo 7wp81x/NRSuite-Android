@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -72,6 +74,7 @@ import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
+import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
 
@@ -93,8 +96,15 @@ fun DeauthDetectorScreen(
     feedFilter: DeauthFeedFilter,
     sourceFilter: DeauthSourceFilter,
     meshActive: Boolean,
+    meshPeerCount: Int,
+    meshChannel: Int,
     distributed: Boolean,
     onDistributedChange: (Boolean) -> Unit,
+    detectorChannel: Int,
+    onDetectorChannelChange: (Int) -> Unit,
+    onApplyDetectorChannel: (Int) -> Unit,
+    detectorChannelApplyInProgress: Boolean,
+    detectorChannelApplySuccess: Boolean,
     distributedMode: DeauthDistributedMode,
     onDistributedModeChange: (DeauthDistributedMode) -> Unit,
     meshWindowMs: Int,
@@ -161,6 +171,7 @@ fun DeauthDetectorScreen(
                 selectedTarget = selectedTarget,
                 isScanning = isScanning,
                 onToggle = { configExpanded = !configExpanded },
+                distributed = distributed,
                 onChannelModeChange = onChannelModeChange,
                 onHopIntervalChange = onHopIntervalChange,
                 onScanClick = onScanClick,
@@ -173,11 +184,18 @@ fun DeauthDetectorScreen(
                 connected = connected,
                 running = running,
                 meshActive = meshActive,
+                meshPeerCount = meshPeerCount,
                 distributed = distributed,
                 onMeshRequired = { showMeshRequired = true },
                 onDistributedChange = onDistributedChange,
                 distributedMode = distributedMode,
                 onDistributedModeChange = onDistributedModeChange,
+                detectorChannel = detectorChannel,
+                onDetectorChannelChange = onDetectorChannelChange,
+                onApplyDetectorChannel = onApplyDetectorChannel,
+                detectorChannelApplyInProgress = detectorChannelApplyInProgress,
+                detectorChannelApplySuccess = detectorChannelApplySuccess,
+                meshChannel = meshChannel,
                 meshWindowMs = meshWindowMs,
                 onMeshWindowChange = onMeshWindowChange,
                 detectorWindowMs = detectorWindowMs,
@@ -201,8 +219,6 @@ fun DeauthDetectorScreen(
         }
 
         val canStart = when {
-            distributed && distributedMode == DeauthDistributedMode.FIXED ->
-                selectedTarget != null
             distributed -> true
             channelMode == DeauthChannelMode.TARGETED -> selectedTarget != null
             channelMode == DeauthChannelMode.HOPPING -> true
@@ -290,11 +306,18 @@ private fun DistributedDetectorCard(
     connected: Boolean,
     running: Boolean,
     meshActive: Boolean,
+    meshPeerCount: Int,
+    meshChannel: Int,
     distributed: Boolean,
     onDistributedChange: (Boolean) -> Unit,
     onMeshRequired: () -> Unit,
     distributedMode: DeauthDistributedMode,
     onDistributedModeChange: (DeauthDistributedMode) -> Unit,
+    detectorChannel: Int,
+    onDetectorChannelChange: (Int) -> Unit,
+    onApplyDetectorChannel: (Int) -> Unit,
+    detectorChannelApplyInProgress: Boolean,
+    detectorChannelApplySuccess: Boolean,
     meshWindowMs: Int,
     onMeshWindowChange: (Int) -> Unit,
     detectorWindowMs: Int,
@@ -303,6 +326,8 @@ private fun DistributedDetectorCard(
     onHopDwellChange: (Int) -> Unit,
 ) {
     val controlsEnabled = connected && !running
+    val channelChanged = detectorChannel != meshChannel
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -350,43 +375,125 @@ private fun DistributedDetectorCard(
             }
 
             if (distributed) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(9.dp)
+                            .background(
+                                if (meshPeerCount > 0) StatusGreen else StatusNeutral,
+                                RoundedCornerShape(50),
+                            ),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Mesh clients online: $meshPeerCount",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (meshPeerCount > 0) StatusGreen else NrOnSurfaceVariant,
+                    )
+                }
+
                 Text(
                     text = "Detector channel mode",
                     style = MaterialTheme.typography.labelLarge,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(
-                        DeauthDistributedMode.SAME_CHANNEL,
                         DeauthDistributedMode.FIXED,
+                        DeauthDistributedMode.HOP,
                     ).forEach { mode ->
                         NrFilterChip(
                             selected = distributedMode == mode,
                             onClick = { if (controlsEnabled) onDistributedModeChange(mode) },
                             label = when (mode) {
-                                DeauthDistributedMode.SAME_CHANNEL -> "Same channel"
                                 DeauthDistributedMode.FIXED -> "Fixed"
-                                DeauthDistributedMode.HOP -> "Hop"
+                                DeauthDistributedMode.HOP -> "Hop (experimental)"
+                                DeauthDistributedMode.SAME_CHANNEL -> "Same channel"
                             },
                         )
                     }
                 }
+
                 when (distributedMode) {
-                    DeauthDistributedMode.SAME_CHANNEL -> Text(
-                        text = "Experimental: mesh and detector share the mesh channel.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = StatusAmber,
-                    )
-                    DeauthDistributedMode.FIXED -> Text(
-                        text = "Clients time-slice one detector channel; the master stays on mesh.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                    DeauthDistributedMode.HOP -> Text(
-                        text = "Clients hop inside the detector window; mesh resumes between windows.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
+                    DeauthDistributedMode.FIXED -> {
+                        NumberStepper(
+                            label = "Channel",
+                            valueText = detectorChannel.toString(),
+                            enabled = connected && !detectorChannelApplyInProgress,
+                            onDecrease = { onDetectorChannelChange((detectorChannel - 1).coerceAtLeast(1)) },
+                            onIncrease = { onDetectorChannelChange((detectorChannel + 1).coerceAtMost(13)) },
+                        )
+                        Text(
+                            text = if (channelChanged) {
+                                "Mesh channel: $meshChannel · detector channel differs, so clients " +
+                                    "will time-slice."
+                            } else {
+                                "Mesh channel: $meshChannel · detector uses the same channel."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (channelChanged) StatusAmber else NrOnSurfaceVariant,
+                        )
+                        if (channelChanged) {
+                            OutlinedButton(
+                                onClick = { onApplyDetectorChannel(detectorChannel) },
+                                enabled = connected && !detectorChannelApplyInProgress &&
+                                    !detectorChannelApplySuccess,
+                                colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                    contentColor = if (detectorChannelApplySuccess) {
+                                        StatusGreen
+                                    } else {
+                                        MaterialTheme.colorScheme.primary
+                                    },
+                                ),
+                            ) {
+                                when {
+                                    detectorChannelApplyInProgress -> {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Applying...")
+                                    }
+                                    detectorChannelApplySuccess -> {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Success")
+                                    }
+                                    else -> Text("Apply selected channel")
+                                }
+                            }
+                            TextButton(
+                                onClick = { onDetectorChannelChange(meshChannel) },
+                                enabled = connected && !detectorChannelApplyInProgress,
+                            ) {
+                                Text("Use mesh channel")
+                            }
+                        }
+                    }
+
+                    DeauthDistributedMode.HOP -> {
+                        Text(
+                            text = "Experimental: clients hop only inside the detector window.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
+                        )
+                        NumberStepper(
+                            label = "Hop dwell (ms)",
+                            valueText = hopDwellMs.toString(),
+                            enabled = controlsEnabled,
+                            onDecrease = { onHopDwellChange((hopDwellMs - 50).coerceAtLeast(200)) },
+                            onIncrease = { onHopDwellChange((hopDwellMs + 50).coerceAtMost(1_000)) },
+                        )
+                    }
+
+                    DeauthDistributedMode.SAME_CHANNEL -> Unit
                 }
+
                 NumberStepper(
                     label = "Mesh window (ms)",
                     valueText = meshWindowMs.toString(),
@@ -401,15 +508,6 @@ private fun DistributedDetectorCard(
                     onDecrease = { onDetectorWindowChange((detectorWindowMs - 100).coerceAtLeast(300)) },
                     onIncrease = { onDetectorWindowChange((detectorWindowMs + 100).coerceAtMost(2_500)) },
                 )
-                if (distributedMode == DeauthDistributedMode.HOP) {
-                    NumberStepper(
-                        label = "Hop dwell (ms)",
-                        valueText = hopDwellMs.toString(),
-                        enabled = controlsEnabled,
-                        onDecrease = { onHopDwellChange((hopDwellMs - 50).coerceAtLeast(200)) },
-                        onIncrease = { onHopDwellChange((hopDwellMs + 50).coerceAtMost(1_000)) },
-                    )
-                }
             }
         }
     }
@@ -586,12 +684,14 @@ private fun ConfigZone(
     selectedTarget: NetworkTarget?,
     isScanning: Boolean,
     onToggle: () -> Unit,
+    distributed: Boolean,
     onChannelModeChange: (DeauthChannelMode) -> Unit,
     onHopIntervalChange: (Int) -> Unit,
     onScanClick: () -> Unit,
     onSelectTarget: (NetworkTarget) -> Unit,
 ) {
     val controlsEnabled = connected && !running
+    val localControlsEnabled = controlsEnabled && !distributed
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -645,10 +745,18 @@ private fun ConfigZone(
                         text = "Mode",
                         style = MaterialTheme.typography.labelLarge,
                     )
+                    if (distributed) {
+                        Text(
+                            text = "Hopping and target scanning are disabled while distributed " +
+                                "mesh is active.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
+                        )
+                    }
                     Spacer(Modifier.height(6.dp))
                     ChannelModeToggle(
-                        fixed = channelMode == DeauthChannelMode.TARGETED,
-                        enabled = controlsEnabled,
+                        fixed = if (distributed) true else channelMode == DeauthChannelMode.TARGETED,
+                        enabled = localControlsEnabled,
                         onFixedChange = { fixed ->
                             onChannelModeChange(
                                 if (fixed) DeauthChannelMode.TARGETED else DeauthChannelMode.HOPPING,
@@ -657,7 +765,7 @@ private fun ConfigZone(
                     )
                     Spacer(Modifier.height(10.dp))
 
-                    if (channelMode == DeauthChannelMode.TARGETED) {
+                    if (!distributed && channelMode == DeauthChannelMode.TARGETED) {
                         OutlinedButton(
                             onClick = onScanClick,
                             enabled = controlsEnabled && !isScanning,
@@ -687,7 +795,7 @@ private fun ConfigZone(
                             }
                         }
 
-                    } else {
+                    } else if (!distributed) {
                         NumberStepper(
                             label = "Dwell time (ms)",
                             valueText = hopIntervalMs.toString(),

@@ -208,6 +208,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val deauthChannel by viewModel.deauthChannel.collectAsState()
     val deauthDetectorRunning by viewModel.deauthDetectorRunning.collectAsState()
     val deauthDetectorChannel by viewModel.deauthDetectorChannel.collectAsState()
+    val deauthDetectorChannelApplyInProgress by
+        viewModel.deauthDetectorChannelApplyInProgress.collectAsState()
+    val deauthDetectorChannelApplySuccess by
+        viewModel.deauthDetectorChannelApplySuccess.collectAsState()
     val deauthDetectorChannelMode by viewModel.deauthDetectorChannelMode.collectAsState()
     val deauthDetectorHopIntervalMs by viewModel.deauthDetectorHopIntervalMs.collectAsState()
     val deauthDetectorCurrentHopChannel by viewModel.deauthDetectorCurrentHopChannel.collectAsState()
@@ -1120,10 +1124,17 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     feedFilter = deauthDetectorFeedFilter,
                     sourceFilter = deauthDetectorSourceFilter,
                     meshActive = meshActive,
+                    meshPeerCount = meshPeerCount,
+                    meshChannel = meshChannel,
                     distributed = deauthDetectorDistributed,
                     onDistributedChange = viewModel::setDeauthDetectorDistributed,
                     distributedMode = deauthDetectorDistributedMode,
                     onDistributedModeChange = viewModel::setDeauthDetectorDistributedMode,
+                    detectorChannel = deauthDetectorChannel,
+                    onDetectorChannelChange = viewModel::setDeauthDetectorChannel,
+                    onApplyDetectorChannel = viewModel::applyDeauthDetectorChannel,
+                    detectorChannelApplyInProgress = deauthDetectorChannelApplyInProgress,
+                    detectorChannelApplySuccess = deauthDetectorChannelApplySuccess,
                     meshWindowMs = deauthMeshWindowMs,
                     onMeshWindowChange = viewModel::setDeauthMeshWindowMs,
                     detectorWindowMs = deauthDetectorWindowMs,

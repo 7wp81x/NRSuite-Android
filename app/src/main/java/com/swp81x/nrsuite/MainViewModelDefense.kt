@@ -44,6 +44,13 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
         else -> _deauthDetectorChannel.value.coerceIn(1, 14)
     }
     val hopIntervalMs = _deauthDetectorHopIntervalMs.value.coerceIn(100, 2_000)
+    val meshChannel = _meshChannel.value.coerceIn(1, 13)
+    val effectiveDistributedMode = when {
+        !distributed -> null
+        distributedMode == DeauthDistributedMode.HOP -> "hop"
+        channel == meshChannel -> "same_channel"
+        else -> "fixed"
+    }
 
     _deauthDetectorActiveAlert.value = null
     _deauthDetectorCurrentHopChannel.value = null
@@ -66,6 +73,7 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
     deauthFpsResetJob = null
 
     _deauthDetectorRunning.value = true
+    _deauthDetectorChannelApplySuccess.value = false
     updateForegroundService()
 
     scope.launch {
@@ -73,14 +81,7 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
             put("rssi_min", -127)
             if (distributed) {
                 put("mesh", true)
-                put(
-                    "mode",
-                    when (distributedMode) {
-                        DeauthDistributedMode.SAME_CHANNEL -> "same_channel"
-                        DeauthDistributedMode.FIXED -> "fixed"
-                        DeauthDistributedMode.HOP -> "hop"
-                    },
-                )
+                put("mode", effectiveDistributedMode ?: "same_channel")
                 put("channel", channel)
                 put("mesh_window_ms", _deauthMeshWindowMs.value)
                 put("detector_window_ms", _deauthDetectorWindowMs.value)
@@ -98,7 +99,7 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
         }
 
         val startDescription = if (distributed) {
-            "distributed ${distributedMode.name.lowercase()} mode on channel $channel" +
+            "distributed ${effectiveDistributedMode ?: "same_channel"} mode on channel $channel" +
                 " (${_deauthMeshWindowMs.value} ms mesh / " +
                 "${_deauthDetectorWindowMs.value} ms detector)"
         } else if (mode == DeauthChannelMode.HOPPING) {
@@ -142,6 +143,8 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
 internal fun MainViewModel.stopDeauthDetectorImpl() {
     if (!_deauthDetectorRunning.value) return
     _deauthDetectorRunning.value = false
+    _deauthDetectorChannelApplyInProgress.value = false
+    _deauthDetectorChannelApplySuccess.value = false
     _deauthDetectorFramesPerSecond.value = 0
     _deauthDetectorCurrentHopChannel.value = null
     deauthAlertClearJob?.cancel()
@@ -389,4 +392,44 @@ internal fun MainViewModel.recordRemoteDeauthReport(event: JSONObject) {
             "($rssi dBm, reason $reasonCode, seq ${seq ?: "?"})",
         tag = "mesh",
     )
+}
+
+
+/**
+ * Applies a distributed detector channel. When the detector is stopped the
+ * value is simply staged for the next start. When it is running, stop and
+ * restart the distributed detector on the new channel.
+ */
+internal fun MainViewModel.applyDeauthDetectorChannelImpl(channel: Int) {
+    if (!_deauthDetectorDistributed.value) return
+    if (_deauthDetectorChannelApplyInProgress.value) return
+
+    val safeChannel = channel.coerceIn(1, 13)
+    _deauthDetectorChannel.value = safeChannel
+    _deauthDetectorChannelApplySuccess.value = false
+
+    if (!_deauthDetectorRunning.value) {
+        _deauthDetectorChannelApplySuccess.value = true
+        scope.launch {
+            delay(1_200)
+            _deauthDetectorChannelApplySuccess.value = false
+        }
+        return
+    }
+
+    _deauthDetectorChannelApplyInProgress.value = true
+    scope.launch {
+        try {
+            val activeSession = session
+            activeSession?.sendCommand("DEAUTH_DETECT_STOP", timeoutMs = 6_000)
+            _deauthDetectorRunning.value = false
+            delay(250)
+            startDeauthDetectorImpl()
+            _deauthDetectorChannelApplySuccess.value = true
+            delay(1_500)
+            _deauthDetectorChannelApplySuccess.value = false
+        } finally {
+            _deauthDetectorChannelApplyInProgress.value = false
+        }
+    }
 }
