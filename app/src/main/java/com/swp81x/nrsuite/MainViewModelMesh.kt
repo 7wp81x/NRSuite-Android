@@ -11,6 +11,8 @@ import java.security.SecureRandom
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import org.json.JSONObject
 
@@ -88,10 +90,15 @@ internal fun MainViewModel.changeMeshChannelImpl(channel: Int) {
         appendLog(message, tag = "mesh")
         return
     }
+    if (safeChannel == _meshChannel.value) {
+        _meshSetupMessage.value = "Mesh is already on channel $safeChannel."
+        return
+    }
 
     _meshChannelApplyInProgress.value = true
     _meshActionInProgress.value = true
     _meshLastError.value = null
+    _meshChannelSwitchStatus.value = null
     scope.launch {
         try {
             val response = activeSession.sendCommand(
@@ -99,14 +106,41 @@ internal fun MainViewModel.changeMeshChannelImpl(channel: Int) {
                 JSONObject().put("channel", safeChannel),
                 timeoutMs = MESH_COMMAND_TIMEOUT_MS,
             )
-            if (response?.optBoolean("ok") == true) {
-                _meshChannel.value = safeChannel
-                _meshSetupMessage.value = "Mesh channel change requested."
-                appendLog("Mesh channel change requested: $safeChannel", tag = "mesh")
-            } else {
+            if (response?.optBoolean("ok") != true) {
                 val message = response?.optString("msg") ?: "timeout"
                 _meshLastError.value = message
+                _meshSetupMessage.value = "Mesh channel change failed: $message"
                 appendLog("Mesh channel change failed: $message", tag = "mesh")
+                return@launch
+            }
+
+            appendLog("Mesh channel change requested: $safeChannel", tag = "mesh")
+            val terminal = withTimeoutOrNull(15_000L) {
+                _meshChannelSwitchStatus.first { status ->
+                    status != null &&
+                        status.channel == safeChannel &&
+                        status.phase in setOf("committed", "failed")
+                }
+            }
+            when {
+                terminal == null -> {
+                    val message = "Channel switch timed out waiting for commit."
+                    _meshLastError.value = message
+                    _meshSetupMessage.value = message
+                    appendLog(message, tag = "mesh")
+                    refreshMeshStatusImpl()
+                }
+                terminal.phase == "failed" -> {
+                    val message = terminal.reason ?: "channel switch failed"
+                    _meshLastError.value = message
+                    _meshSetupMessage.value = "Mesh channel change failed: $message"
+                    appendLog("Mesh channel change failed: $message", tag = "mesh")
+                }
+                else -> {
+                    _meshChannel.value = safeChannel
+                    _meshSetupMessage.value = "Mesh channel changed to $safeChannel."
+                    appendLog("Mesh channel switch committed: $safeChannel", tag = "mesh")
+                }
             }
         } finally {
             _meshChannelApplyInProgress.value = false
@@ -428,6 +462,13 @@ private fun MainViewModel.authenticateAndActivateWithAuthKey(
 }
 
 internal fun MainViewModel.deactivateMeshImpl() {
+    if (_meshChannelApplyInProgress.value) {
+        val message = "Wait for the channel switch to finish before stopping mesh."
+        _meshLastError.value = message
+        _meshSetupMessage.value = message
+        appendLog(message, tag = "mesh")
+        return
+    }
     val activeSession = session
     _meshActionInProgress.value = true
     scope.launch {
@@ -585,7 +626,6 @@ internal fun MainViewModel.handleMeshEventImpl(event: JSONObject) {
             )
             if (phase == "committed") {
                 _meshChannel.value = channel.coerceIn(1, 13)
-                _meshChannelApplyInProgress.value = false
             }
             appendLog(
                 "Mesh channel switch: phase=$phase ch=$channel" +

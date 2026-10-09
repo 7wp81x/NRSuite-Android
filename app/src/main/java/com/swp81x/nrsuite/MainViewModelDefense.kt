@@ -484,12 +484,13 @@ private suspend fun MainViewModel.ensureMeshChannelForDetector(targetChannel: In
     _meshChannelSwitchStatus.value = null
     changeMeshChannelImpl(targetChannel)
 
-    val committed = withTimeoutOrNull(12_000) {
+    val terminal = withTimeoutOrNull(12_000) {
         _meshChannelSwitchStatus.first { status ->
-            status?.phase == "committed" && status.channel == targetChannel
+            status?.channel == targetChannel &&
+                status.phase in setOf("committed", "failed")
         }
     }
-    return committed != null
+    return terminal?.phase == "committed"
 }
 
 
