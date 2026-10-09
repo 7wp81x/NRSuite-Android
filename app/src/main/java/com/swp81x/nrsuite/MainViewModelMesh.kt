@@ -114,6 +114,16 @@ internal fun MainViewModel.changeMeshChannelImpl(channel: Int) {
                 return@launch
             }
 
+            val responseMessage = response.optString("msg")
+            if (responseMessage.contains("already on channel", ignoreCase = true) ||
+                responseMessage.contains("saved for next activation", ignoreCase = true)
+            ) {
+                _meshSetupMessage.value = responseMessage
+                appendLog("Mesh channel command accepted: $responseMessage", tag = "mesh")
+                refreshMeshStatusImpl()
+                return@launch
+            }
+
             appendLog("Mesh channel change requested: $safeChannel", tag = "mesh")
             val terminal = withTimeoutOrNull(15_000L) {
                 _meshChannelSwitchStatus.first { status ->
