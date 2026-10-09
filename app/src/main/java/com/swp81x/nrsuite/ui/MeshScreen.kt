@@ -67,6 +67,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.core.mesh.MeshChannelSwitchStatus
 import com.swp81x.nrsuite.core.mesh.MeshNodeStatus
 import com.swp81x.nrsuite.ui.components.ChannelStepper
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
@@ -127,6 +128,7 @@ fun MeshScreen(
     checkingPassphrase: Boolean,
     provisioning: Boolean,
     actionInProgress: Boolean,
+    channelChangeInProgress: Boolean,
     setupMessage: String?,
     lastError: String?,
     hasStoredCredentials: Boolean,
@@ -134,6 +136,7 @@ fun MeshScreen(
     hasGlobalCredentials: Boolean,
     globalKeyId: String?,
     nodes: List<MeshNodeStatus>,
+    channelSwitchStatus: MeshChannelSwitchStatus?,
     onRefresh: () -> Unit,
     onPassphraseChange: (String) -> Unit,
     onKeyIdChange: (String) -> Unit,
@@ -291,7 +294,9 @@ fun MeshScreen(
                     nodeId = nodeId,
                     channel = channel,
                     busy = busy,
+                    channelChangeInProgress = channelChangeInProgress,
                     nodes = remoteNodes,
+                    channelSwitchStatus = channelSwitchStatus,
                     statusSummary = statusSummary,
                     onRefresh = onRefresh,
                     onClearNodes = onClearNodes,
@@ -759,7 +764,9 @@ private fun MeshNetworkTab(
     nodeId: String,
     channel: Int,
     busy: Boolean,
+    channelChangeInProgress: Boolean,
     nodes: List<MeshNodeStatus>,
+    channelSwitchStatus: MeshChannelSwitchStatus?,
     statusSummary: String,
     onRefresh: () -> Unit,
     onClearNodes: () -> Unit,
@@ -849,9 +856,18 @@ private fun MeshNetworkTab(
                 if (selectedChannel != channel) {
                     OutlinedButton(
                         onClick = { confirmChannelChange = true },
-                        enabled = connected && !busy,
+                        enabled = connected && !busy && !channelChangeInProgress,
                     ) {
-                        Text("Apply channel $selectedChannel")
+                        if (channelChangeInProgress) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Applying...")
+                        } else {
+                            Text("Apply channel $selectedChannel")
+                        }
                     }
                 }
             } else {
@@ -868,6 +884,37 @@ private fun MeshNetworkTab(
                     style = MaterialTheme.typography.bodySmall,
                     color = StatusAmber,
                 )
+            }
+
+            channelSwitchStatus?.let { status ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Channel switch: ${status.phase.replace('_', ' ')} " +
+                        "to ch ${status.channel}",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurface,
+                )
+                if (status.ackedNodeIds.isNotEmpty()) {
+                    Text(
+                        text = "Acked: ${status.ackedNodeIds.joinToString(", ")}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        color = StatusGreen,
+                    )
+                }
+                if (status.pendingNodeIds.isNotEmpty()) {
+                    Text(
+                        text = "Pending: ${status.pendingNodeIds.joinToString(", ")}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        color = StatusAmber,
+                    )
+                }
+                status.reason?.takeIf { it.isNotBlank() }?.let { reason ->
+                    Text(
+                        text = "Reason: $reason",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.swp81x.nrsuite
 
 import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.mesh.MeshChannelSwitchStatus
 import com.swp81x.nrsuite.core.mesh.MeshCrypto
 import com.swp81x.nrsuite.core.mesh.MeshNodeStatus
 import com.swp81x.nrsuite.core.mesh.StoredMeshCredentials
@@ -79,6 +80,7 @@ internal fun MainViewModel.setMeshChannelImpl(value: Int) {
 }
 
 internal fun MainViewModel.changeMeshChannelImpl(channel: Int) {
+    if (_meshChannelApplyInProgress.value) return
     val safeChannel = channel.coerceIn(1, 13)
     val activeSession = session ?: run {
         val message = "Connect to a device before changing the mesh channel."
@@ -87,6 +89,7 @@ internal fun MainViewModel.changeMeshChannelImpl(channel: Int) {
         return
     }
 
+    _meshChannelApplyInProgress.value = true
     _meshActionInProgress.value = true
     _meshLastError.value = null
     scope.launch {
@@ -106,6 +109,7 @@ internal fun MainViewModel.changeMeshChannelImpl(channel: Int) {
                 appendLog("Mesh channel change failed: $message", tag = "mesh")
             }
         } finally {
+            _meshChannelApplyInProgress.value = false
             _meshActionInProgress.value = false
         }
     }
@@ -554,6 +558,44 @@ internal fun MainViewModel.handleMeshEventImpl(event: JSONObject) {
             refreshMeshStatusImpl()
         }
 
+        "mesh_channel_switch" -> {
+            val phase = event.optString("phase", "unknown")
+            val channel = event.optInt("channel", _meshChannel.value)
+            val acked = mutableListOf<String>()
+            val pending = mutableListOf<String>()
+            event.optJSONArray("acked")?.let { array ->
+                for (index in 0 until array.length()) {
+                    array.optString(index).takeIf { it.isNotBlank() }?.let { acked += it }
+                }
+            }
+            event.optJSONArray("pending")?.let { array ->
+                for (index in 0 until array.length()) {
+                    array.optString(index).takeIf { it.isNotBlank() }?.let { pending += it }
+                }
+            }
+            val reason = event.optString("reason").takeIf { it.isNotBlank() }
+            val switchId = event.optLong("switch_id", 0L).takeIf { it > 0L }
+            _meshChannelSwitchStatus.value = MeshChannelSwitchStatus(
+                phase = phase,
+                channel = channel,
+                ackedNodeIds = acked,
+                pendingNodeIds = pending,
+                reason = reason,
+                switchId = switchId,
+            )
+            if (phase == "committed") {
+                _meshChannel.value = channel.coerceIn(1, 13)
+                _meshChannelApplyInProgress.value = false
+            }
+            appendLog(
+                "Mesh channel switch: phase=$phase ch=$channel" +
+                    (reason?.let { ", reason=$it" } ?: "") +
+                    ", acked=${acked.joinToString(",").ifBlank { "-" }}" +
+                    ", pending=${pending.joinToString(",").ifBlank { "-" }}",
+                tag = "mesh",
+            )
+        }
+
         "mesh_sensor_report" -> {
             val nodeId = event.optString("node_id")
             if (nodeId.isBlank()) return
@@ -620,6 +662,8 @@ internal fun MainViewModel.resetMeshRuntimeStateImpl() {
     _meshPeerCount.value = 0
     _meshNodes.value = emptyList()
     _meshProvisioning.value = false
+    _meshChannelApplyInProgress.value = false
+    _meshChannelSwitchStatus.value = null
 
     // Remote deauth rows are useful history. Deactivating the mesh marks them
     // stale instead of deleting them; local detector controls never touch them.

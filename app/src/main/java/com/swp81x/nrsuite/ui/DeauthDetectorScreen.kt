@@ -92,6 +92,7 @@ fun DeauthDetectorScreen(
     feed: List<DeauthFeedEntry>,
     feedFilter: DeauthFeedFilter,
     sourceFilter: DeauthSourceFilter,
+    meshActive: Boolean,
     distributed: Boolean,
     onDistributedChange: (Boolean) -> Unit,
     distributedMode: DeauthDistributedMode,
@@ -118,6 +119,7 @@ fun DeauthDetectorScreen(
 ) {
     var configExpanded by remember { mutableStateOf(true) }
     var confirmStart by remember { mutableStateOf(false) }
+    var showMeshRequired by remember { mutableStateOf(false) }
 
     LaunchedEffect(running) {
         if (running) configExpanded = false
@@ -170,7 +172,9 @@ fun DeauthDetectorScreen(
             DistributedDetectorCard(
                 connected = connected,
                 running = running,
+                meshActive = meshActive,
                 distributed = distributed,
+                onMeshRequired = { showMeshRequired = true },
                 onDistributedChange = onDistributedChange,
                 distributedMode = distributedMode,
                 onDistributedModeChange = onDistributedModeChange,
@@ -262,14 +266,33 @@ fun DeauthDetectorScreen(
             },
         )
     }
+
+    if (showMeshRequired) {
+        AlertDialog(
+            onDismissRequest = { showMeshRequired = false },
+            title = { Text("Mesh is not active") },
+            text = {
+                Text(
+                    "Activate mesh from the Mesh screen before enabling distributed detection."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showMeshRequired = false }) {
+                    Text("OK")
+                }
+            },
+        )
+    }
 }
 
 @Composable
 private fun DistributedDetectorCard(
     connected: Boolean,
     running: Boolean,
+    meshActive: Boolean,
     distributed: Boolean,
     onDistributedChange: (Boolean) -> Unit,
+    onMeshRequired: () -> Unit,
     distributedMode: DeauthDistributedMode,
     onDistributedModeChange: (DeauthDistributedMode) -> Unit,
     meshWindowMs: Int,
@@ -306,8 +329,23 @@ private fun DistributedDetectorCard(
                 )
                 NrFilterChip(
                     selected = distributed,
-                    onClick = { if (controlsEnabled) onDistributedChange(true) },
+                    onClick = {
+                        if (!controlsEnabled) return@NrFilterChip
+                        if (!meshActive) {
+                            onMeshRequired()
+                        } else {
+                            onDistributedChange(true)
+                        }
+                    },
                     label = "Distributed mesh",
+                )
+            }
+
+            if (!meshActive) {
+                Text(
+                    text = "Mesh is not active. Activate mesh first.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusAmber,
                 )
             }
 
@@ -317,7 +355,10 @@ private fun DistributedDetectorCard(
                     style = MaterialTheme.typography.labelLarge,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DeauthDistributedMode.entries.forEach { mode ->
+                    listOf(
+                        DeauthDistributedMode.SAME_CHANNEL,
+                        DeauthDistributedMode.FIXED,
+                    ).forEach { mode ->
                         NrFilterChip(
                             selected = distributedMode == mode,
                             onClick = { if (controlsEnabled) onDistributedModeChange(mode) },

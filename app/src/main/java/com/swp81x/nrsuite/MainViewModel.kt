@@ -44,6 +44,7 @@ import com.swp81x.nrsuite.core.history.HistoryEntry
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.mesh.MeshCredentialStore
+import com.swp81x.nrsuite.core.mesh.MeshChannelSwitchStatus
 import com.swp81x.nrsuite.core.mesh.MeshNodeStatus
 import com.swp81x.nrsuite.core.mesh.StoredMeshCredentials
 import com.swp81x.nrsuite.core.oui.MacLookupResult
@@ -723,6 +724,13 @@ class MainViewModel(internal val app: Application) {
     internal val _meshActionInProgress = MutableStateFlow(false)
     val meshActionInProgress: StateFlow<Boolean> = _meshActionInProgress.asStateFlow()
 
+    internal val _meshChannelApplyInProgress = MutableStateFlow(false)
+    val meshChannelApplyInProgress: StateFlow<Boolean> = _meshChannelApplyInProgress.asStateFlow()
+
+    internal val _meshChannelSwitchStatus = MutableStateFlow<MeshChannelSwitchStatus?>(null)
+    val meshChannelSwitchStatus: StateFlow<MeshChannelSwitchStatus?> =
+        _meshChannelSwitchStatus.asStateFlow()
+
     internal val _meshChannel = MutableStateFlow(1)
     val meshChannel: StateFlow<Int> = _meshChannel.asStateFlow()
 
@@ -1392,7 +1400,10 @@ class MainViewModel(internal val app: Application) {
     }
 
     fun setDeauthDetectorDistributedMode(mode: DeauthDistributedMode) {
-        _deauthDetectorDistributedMode.value = mode
+        // Hop is temporarily disabled in the UI until the distributed
+        // detector time-slicing is hardware-validated.
+        _deauthDetectorDistributedMode.value =
+            if (mode == DeauthDistributedMode.HOP) DeauthDistributedMode.FIXED else mode
     }
 
     fun setDeauthMeshWindowMs(value: Int) {
@@ -1567,6 +1578,7 @@ class MainViewModel(internal val app: Application) {
                         "mesh_node_joined",
                         "mesh_node_left",
                         "mesh_sensor_report",
+                        "mesh_channel_switch",
                         "mesh_activation_result",
                         "mesh_error" -> {
                             this@MainViewModel.handleMeshEventImpl(event)

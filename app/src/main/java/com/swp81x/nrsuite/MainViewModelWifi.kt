@@ -69,6 +69,13 @@ internal fun MainViewModel.scanWifiImpl() {
         return
     }
     if (_scanning.value) return
+    if (_meshActive.value) {
+        val message = "Mesh is active. Scanning stops the mesh radio; deactivate mesh " +
+            "or scan before activating it."
+        _actionError.value = message
+        appendLog(message, tag = "mesh")
+        return
+    }
     if (!ensureRadioIdle("WiFi Scan")) return
 
     _networks.value = emptyList()

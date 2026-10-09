@@ -320,6 +320,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val meshActive by viewModel.meshActive.collectAsState()
     val meshProvisioning by viewModel.meshProvisioning.collectAsState()
     val meshActionInProgress by viewModel.meshActionInProgress.collectAsState()
+    val meshChannelApplyInProgress by viewModel.meshChannelApplyInProgress.collectAsState()
+    val meshChannelSwitchStatus by viewModel.meshChannelSwitchStatus.collectAsState()
     val meshPassphrase by viewModel.meshPassphrase.collectAsState()
     val meshKeyId by viewModel.meshKeyId.collectAsState()
     val meshCheckingPassphrase by viewModel.meshCheckingPassphrase.collectAsState()
@@ -1117,6 +1119,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     feed = visibleFeed,
                     feedFilter = deauthDetectorFeedFilter,
                     sourceFilter = deauthDetectorSourceFilter,
+                    meshActive = meshActive,
                     distributed = deauthDetectorDistributed,
                     onDistributedChange = viewModel::setDeauthDetectorDistributed,
                     distributedMode = deauthDetectorDistributedMode,
@@ -1432,6 +1435,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     checkingPassphrase = meshCheckingPassphrase,
                     provisioning = meshProvisioning,
                     actionInProgress = meshActionInProgress,
+                    channelChangeInProgress = meshChannelApplyInProgress,
                     setupMessage = meshSetupMessage,
                     lastError = meshLastError,
                     hasStoredCredentials = meshHasStoredCredentials,
@@ -1439,6 +1443,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     hasGlobalCredentials = meshHasGlobalCredentials,
                     globalKeyId = meshGlobalKeyId,
                     nodes = meshNodes,
+                    channelSwitchStatus = meshChannelSwitchStatus,
                     onRefresh = viewModel::refreshMeshStatus,
                     onPassphraseChange = viewModel::setMeshPassphrase,
                     onKeyIdChange = viewModel::setMeshKeyId,

@@ -23,3 +23,13 @@ data class MeshNodeStatus(
     val healthSeq: Long? = null,
     val lastHealthAtMs: Long = 0L,
 )
+
+data class MeshChannelSwitchStatus(
+    val phase: String,
+    val channel: Int,
+    val ackedNodeIds: List<String> = emptyList(),
+    val pendingNodeIds: List<String> = emptyList(),
+    val reason: String? = null,
+    val switchId: Long? = null,
+    val updatedAtMs: Long = System.currentTimeMillis(),
+)
