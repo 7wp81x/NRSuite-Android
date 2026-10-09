@@ -213,6 +213,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         viewModel.deauthDetectorChannelApplyInProgress.collectAsState()
     val deauthDetectorChannelApplySuccess by
         viewModel.deauthDetectorChannelApplySuccess.collectAsState()
+    val deauthDetectorDetectedChannels by
+        viewModel.deauthDetectorDetectedChannels.collectAsState()
+    val deauthDetectorFocusChannels by
+        viewModel.deauthDetectorFocusChannels.collectAsState()
     val deauthDetectorChannelMode by viewModel.deauthDetectorChannelMode.collectAsState()
     val deauthDetectorHopIntervalMs by viewModel.deauthDetectorHopIntervalMs.collectAsState()
     val deauthDetectorCurrentHopChannel by viewModel.deauthDetectorCurrentHopChannel.collectAsState()
@@ -1137,6 +1141,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onApplyDetectorChannel = viewModel::applyDeauthDetectorChannel,
                     detectorChannelApplyInProgress = deauthDetectorChannelApplyInProgress,
                     detectorChannelApplySuccess = deauthDetectorChannelApplySuccess,
+                    recentChannels = deauthDetectorDetectedChannels,
+                    focusChannels = deauthDetectorFocusChannels,
+                    onFocusChannel = viewModel::focusDeauthDetectorChannel,
+                    onFocusChannels = viewModel::focusDeauthDetectorChannels,
                     meshWindowMs = deauthMeshWindowMs,
                     onMeshWindowChange = viewModel::setDeauthMeshWindowMs,
                     detectorWindowMs = deauthDetectorWindowMs,

@@ -39,6 +39,11 @@ enum class DeauthDistributedMode { SAME_CHANNEL, FIXED, HOP }
 
 enum class DeauthSourceFilter { ALL, LOCAL, MESH }
 
+data class DeauthDetectedChannel(
+    val channel: Int,
+    val count: Int,
+)
+
 /**
  * Detector scan mode: one selected target/channel vs. hopping across channels.
  */

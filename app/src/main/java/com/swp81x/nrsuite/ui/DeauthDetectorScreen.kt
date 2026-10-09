@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.AlertConfidence
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.DeauthChannelMode
+import com.swp81x.nrsuite.core.defense.DeauthDetectedChannel
 import com.swp81x.nrsuite.core.defense.DeauthDistributedMode
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
@@ -106,6 +107,10 @@ fun DeauthDetectorScreen(
     onApplyDetectorChannel: (Int) -> Unit,
     detectorChannelApplyInProgress: Boolean,
     detectorChannelApplySuccess: Boolean,
+    recentChannels: List<DeauthDetectedChannel>,
+    focusChannels: List<Int>,
+    onFocusChannel: (Int) -> Unit,
+    onFocusChannels: (List<Int>) -> Unit,
     distributedMode: DeauthDistributedMode,
     onDistributedModeChange: (DeauthDistributedMode) -> Unit,
     meshWindowMs: Int,
@@ -148,6 +153,11 @@ fun DeauthDetectorScreen(
                 connected = connected,
                 alert = activeAlert,
                 onLocateClick = onLocateClick,
+                onFocusChannel = if (distributed && distributedMode == DeauthDistributedMode.HOP) {
+                    onFocusChannel
+                } else {
+                    null
+                },
             )
             Spacer(Modifier.height(10.dp))
 
@@ -196,6 +206,10 @@ fun DeauthDetectorScreen(
                 onApplyDetectorChannel = onApplyDetectorChannel,
                 detectorChannelApplyInProgress = detectorChannelApplyInProgress,
                 detectorChannelApplySuccess = detectorChannelApplySuccess,
+                recentChannels = recentChannels,
+                focusChannels = focusChannels,
+                onFocusChannel = onFocusChannel,
+                onFocusChannels = onFocusChannels,
                 meshChannel = meshChannel,
                 meshWindowMs = meshWindowMs,
                 onMeshWindowChange = onMeshWindowChange,
@@ -327,6 +341,10 @@ private fun DistributedDetectorCard(
     onApplyDetectorChannel: (Int) -> Unit,
     detectorChannelApplyInProgress: Boolean,
     detectorChannelApplySuccess: Boolean,
+    recentChannels: List<DeauthDetectedChannel>,
+    focusChannels: List<Int>,
+    onFocusChannel: (Int) -> Unit,
+    onFocusChannels: (List<Int>) -> Unit,
     meshWindowMs: Int,
     onMeshWindowChange: (Int) -> Unit,
     detectorWindowMs: Int,
@@ -500,6 +518,46 @@ private fun DistributedDetectorCard(
                             onDecrease = { onHopDwellChange((hopDwellMs - 50).coerceAtLeast(200)) },
                             onIncrease = { onHopDwellChange((hopDwellMs + 50).coerceAtMost(1_000)) },
                         )
+                        if (focusChannels.isNotEmpty()) {
+                            Text(
+                                text = "Focused: ${focusChannels.joinToString { "ch $it" }}",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                ),
+                                color = StatusAmber,
+                            )
+                            TextButton(
+                                onClick = { onFocusChannels(emptyList()) },
+                                enabled = controlsEnabled,
+                            ) {
+                                Text("Hop all channels")
+                            }
+                        }
+                        if (recentChannels.isNotEmpty()) {
+                            Text(
+                                text = "Detected channels",
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                recentChannels.forEach { detected ->
+                                    NrFilterChip(
+                                        selected = false,
+                                        onClick = { onFocusChannel(detected.channel) },
+                                        label = "ch ${detected.channel} (${detected.count})",
+                                    )
+                                }
+                            }
+                            if (recentChannels.size > 1) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onFocusChannels(recentChannels.map { it.channel })
+                                    },
+                                    enabled = controlsEnabled,
+                                ) {
+                                    Text("Focus detected channels")
+                                }
+                            }
+                        }
                     }
 
                     DeauthDistributedMode.SAME_CHANNEL -> Unit
@@ -530,6 +588,7 @@ private fun DetectorStatusCard(
     connected: Boolean,
     alert: DeauthAlert?,
     onLocateClick: () -> Unit,
+    onFocusChannel: ((Int) -> Unit)? = null,
 ) {
     val state = when {
         alert != null && alert.confidence == AlertConfidence.HIGH -> ModuleStatusState.ALERT
@@ -586,6 +645,17 @@ private fun DetectorStatusCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (onFocusChannel != null) {
+                    OutlinedButton(
+                        onClick = { onFocusChannel(alert.channel) },
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                            contentColor = StatusAmber,
+                        ),
+                    ) {
+                        Text("Focus ch ${alert.channel}")
+                    }
+                    Spacer(Modifier.width(8.dp))
+                }
                 OutlinedButton(
                     onClick = onLocateClick,
                     colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(

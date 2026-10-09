@@ -26,6 +26,7 @@ import com.swp81x.nrsuite.core.defense.HiddenSsidCandidate
 import com.swp81x.nrsuite.core.defense.NearbyAp
 import com.swp81x.nrsuite.core.defense.RogueApAlert
 import com.swp81x.nrsuite.core.defense.DeauthChannelMode
+import com.swp81x.nrsuite.core.defense.DeauthDetectedChannel
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.defense.DeauthMeshDeduplicator
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
@@ -404,6 +405,17 @@ class MainViewModel(internal val app: Application) {
     internal val _deauthDetectorChannelApplySuccess = MutableStateFlow(false)
     val deauthDetectorChannelApplySuccess: StateFlow<Boolean> =
         _deauthDetectorChannelApplySuccess.asStateFlow()
+
+    internal val _deauthDetectorFocusChannels = MutableStateFlow<List<Int>>(emptyList())
+    val deauthDetectorFocusChannels: StateFlow<List<Int>> =
+        _deauthDetectorFocusChannels.asStateFlow()
+
+    internal val _deauthDetectorDetectedChannels =
+        MutableStateFlow<List<DeauthDetectedChannel>>(emptyList())
+    val deauthDetectorDetectedChannels: StateFlow<List<DeauthDetectedChannel>> =
+        _deauthDetectorDetectedChannels.asStateFlow()
+
+    internal val deauthDetectedChannelCounts = mutableMapOf<Int, Int>()
 
     internal val _deauthDetectorActiveAlert = MutableStateFlow<DeauthAlert?>(null)
     val deauthDetectorActiveAlert: StateFlow<DeauthAlert?> = _deauthDetectorActiveAlert.asStateFlow()
@@ -1396,6 +1408,9 @@ class MainViewModel(internal val app: Application) {
     fun clearDeauthDetectorFeed() {
         _deauthDetectorFeed.value = emptyList()
         deauthMeshDeduplicator.clear()
+        deauthDetectedChannelCounts.clear()
+        _deauthDetectorDetectedChannels.value = emptyList()
+        _deauthDetectorFocusChannels.value = emptyList()
     }
 
     fun setDeauthDetectorFeedFilter(filter: DeauthFeedFilter) {
@@ -1426,6 +1441,12 @@ class MainViewModel(internal val app: Application) {
 
     fun applyDeauthDetectorChannel(channel: Int) =
         this.applyDeauthDetectorChannelImpl(channel)
+
+    fun focusDeauthDetectorChannel(channel: Int) =
+        this.focusDeauthDetectorChannelImpl(channel)
+
+    fun focusDeauthDetectorChannels(channels: List<Int>) =
+        this.focusDeauthDetectorChannelsImpl(channels)
 
     fun setDeauthMeshWindowMs(value: Int) {
         _deauthMeshWindowMs.value = value.coerceIn(2_000, 10_000)

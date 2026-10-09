@@ -3,6 +3,7 @@ package com.swp81x.nrsuite
 import com.swp81x.nrsuite.core.defense.AlertConfidence
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.DeauthChannelMode
+import com.swp81x.nrsuite.core.defense.DeauthDetectedChannel
 import com.swp81x.nrsuite.core.defense.DeauthDistributedMode
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.history.HistoryLevel
@@ -96,6 +97,11 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
             }
         }
 
+        val focusChannels = _deauthDetectorFocusChannels.value
+        val hopMask = focusChannels.fold(0) { mask, focusChannel ->
+            mask or (1 shl (focusChannel - 1).coerceIn(0, 12))
+        }
+
         val args = JSONObject().apply {
             put("rssi_min", -127)
             if (distributed) {
@@ -105,6 +111,7 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
                 put("mesh_window_ms", _deauthMeshWindowMs.value)
                 put("detector_window_ms", _deauthDetectorWindowMs.value)
                 put("detector_hop_dwell_ms", _deauthHopDwellMs.value)
+                put("hop_mask", hopMask)
             } else {
                 put("mode", if (mode == DeauthChannelMode.HOPPING) "hop" else "fixed")
                 if (mode == DeauthChannelMode.HOPPING) {
@@ -248,6 +255,7 @@ internal fun MainViewModel.recordDeauthDetectorFrame(event: JSONObject) {
     }
     val rssi = event.optInt("rssi", -127)
     val reasonCode = event.optInt("reason", 0)
+    trackDetectedChannel(channel)
     val firmwareSsid = event.optString("ssid", "").trim()
     val resolvedSsid = firmwareSsid.ifBlank {
         _deauthDetectorTargets.value
@@ -390,6 +398,7 @@ internal fun MainViewModel.recordRemoteDeauthReport(event: JSONObject) {
     val reasonCode = event.optInt("reason", 0)
     val rssi = event.optInt("rssi", -127)
     val channel = event.optInt("channel", 0).takeIf { it in 1..14 }
+    channel?.let { trackDetectedChannel(it) }
     val chip = event.optString("chip").takeIf { it.isNotBlank() }
 
     _deauthDetectorFeed.update { current ->
@@ -481,4 +490,67 @@ private suspend fun MainViewModel.ensureMeshChannelForDetector(targetChannel: In
         }
     }
     return committed != null
+}
+
+
+private fun MainViewModel.trackDetectedChannel(channel: Int) {
+    if (channel !in 1..14) return
+    val count = (deauthDetectedChannelCounts[channel] ?: 0) + 1
+    deauthDetectedChannelCounts[channel] = count
+    _deauthDetectorDetectedChannels.value = deauthDetectedChannelCounts.entries
+        .sortedByDescending { it.value }
+        .take(6)
+        .map { DeauthDetectedChannel(it.key, it.value) }
+}
+
+internal fun MainViewModel.focusDeauthDetectorChannelImpl(channel: Int) {
+    val safeChannel = channel.coerceIn(1, 13)
+    _deauthDetectorFocusChannels.value = emptyList()
+
+    if (_deauthDetectorDistributed.value) {
+        _deauthDetectorDistributedMode.value = DeauthDistributedMode.FIXED
+        _deauthDetectorChannel.value = safeChannel
+        applyDeauthDetectorChannelImpl(safeChannel)
+    } else {
+        _deauthDetectorChannelMode.value = DeauthChannelMode.TARGETED
+        _deauthDetectorChannel.value = safeChannel
+        if (_deauthDetectorRunning.value) {
+            restartDeauthDetectorImpl()
+        }
+    }
+}
+
+internal fun MainViewModel.focusDeauthDetectorChannelsImpl(channels: List<Int>) {
+    val cleaned = channels
+        .filter { it in 1..13 }
+        .distinct()
+        .take(6)
+
+    _deauthDetectorFocusChannels.value = cleaned
+    if (!_deauthDetectorDistributed.value) return
+
+    _deauthDetectorDistributedMode.value = DeauthDistributedMode.HOP
+    if (_deauthDetectorRunning.value) {
+        restartDeauthDetectorImpl()
+    }
+}
+
+private fun MainViewModel.restartDeauthDetectorImpl() {
+    if (!_deauthDetectorRunning.value) return
+    if (_deauthDetectorChannelApplyInProgress.value) return
+
+    _deauthDetectorChannelApplyInProgress.value = true
+    updateForegroundService()
+    scope.launch {
+        try {
+            val activeSession = session
+            activeSession?.sendCommand("DEAUTH_DETECT_STOP", timeoutMs = 6_000)
+            _deauthDetectorRunning.value = false
+            delay(250)
+            startDeauthDetectorImpl()
+        } finally {
+            _deauthDetectorChannelApplyInProgress.value = false
+            updateForegroundService()
+        }
+    }
 }
