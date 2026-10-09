@@ -776,6 +776,14 @@ private fun MeshNetworkTab(
 ) {
     var selectedChannel by remember(channel) { mutableStateOf(channel) }
     var confirmChannelChange by remember { mutableStateOf(false) }
+    var applySucceeded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(channelSwitchStatus?.phase, channelSwitchStatus?.switchId) {
+        when (channelSwitchStatus?.phase) {
+            "request" -> applySucceeded = false
+            "committed" -> applySucceeded = true
+        }
+    }
     if (!initialized) {
         MeshStepCard {
             Column(
@@ -850,23 +858,42 @@ private fun MeshNetworkTab(
                 ChannelStepper(
                     value = selectedChannel,
                     enabled = connected && !busy,
-                    onDecrease = { selectedChannel = (selectedChannel - 1).coerceAtLeast(1) },
-                    onIncrease = { selectedChannel = (selectedChannel + 1).coerceAtMost(13) },
+                    onDecrease = {
+                        applySucceeded = false
+                        selectedChannel = (selectedChannel - 1).coerceAtLeast(1)
+                    },
+                    onIncrease = {
+                        applySucceeded = false
+                        selectedChannel = (selectedChannel + 1).coerceAtMost(13)
+                    },
                 )
-                if (selectedChannel != channel) {
+                if (selectedChannel != channel || channelChangeInProgress || applySucceeded) {
                     OutlinedButton(
                         onClick = { confirmChannelChange = true },
-                        enabled = connected && !busy && !channelChangeInProgress,
+                        enabled = connected && !busy && !channelChangeInProgress && !applySucceeded,
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (applySucceeded) StatusGreen else MaterialTheme.colorScheme.primary,
+                        ),
                     ) {
-                        if (channelChangeInProgress) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text("Applying...")
-                        } else {
-                            Text("Apply channel $selectedChannel")
+                        when {
+                            channelChangeInProgress -> {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Applying...")
+                            }
+                            applySucceeded -> {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Success")
+                            }
+                            else -> Text("Apply channel $selectedChannel")
                         }
                     }
                 }
@@ -886,33 +913,20 @@ private fun MeshNetworkTab(
                 )
             }
 
-            channelSwitchStatus?.let { status ->
+            channelSwitchStatus?.takeIf { status ->
+                status.phase in setOf("request", "ack", "commit")
+            }?.let { status ->
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Channel switch: ${status.phase.replace('_', ' ')} " +
-                        "to ch ${status.channel}",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurface,
-                )
-                if (status.ackedNodeIds.isNotEmpty()) {
-                    Text(
-                        text = "Acked: ${status.ackedNodeIds.joinToString(", ")}",
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        color = StatusGreen,
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
                     )
-                }
-                if (status.pendingNodeIds.isNotEmpty()) {
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "Pending: ${status.pendingNodeIds.joinToString(", ")}",
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        text = "Switching to channel ${status.channel}...",
+                        style = MaterialTheme.typography.bodySmall,
                         color = StatusAmber,
-                    )
-                }
-                status.reason?.takeIf { it.isNotBlank() }?.let { reason ->
-                    Text(
-                        text = "Reason: $reason",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = NrOnSurfaceVariant,
                     )
                 }
             }
@@ -951,7 +965,16 @@ private fun MeshNetworkTab(
                 MeshEmptyNodesState()
             } else {
                 nodes.forEach { node ->
-                    MeshNodeRow(node)
+                    val switchState = channelSwitchStatus?.let { status ->
+                        when {
+                            status.phase in setOf("request", "ack", "commit") &&
+                                node.nodeId in status.ackedNodeIds -> "acked"
+                            status.phase in setOf("request", "ack", "commit") &&
+                                node.nodeId in status.pendingNodeIds -> "pending"
+                            else -> null
+                        }
+                    }
+                    MeshNodeRow(node, switchState)
                 }
             }
 
@@ -1314,7 +1337,7 @@ private fun MeshEmptyNodesState() {
 }
 
 @Composable
-private fun MeshNodeRow(node: MeshNodeStatus) {
+private fun MeshNodeRow(node: MeshNodeStatus, switchState: String? = null) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurfaceVariant),
@@ -1327,10 +1350,19 @@ private fun MeshNodeRow(node: MeshNodeStatus) {
                 .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            val stateColor = when (switchState) {
+                "acked", "pending" -> StatusAmber
+                else -> if (node.online) StatusGreen else StatusNeutral
+            }
+            val stateLabel = when (switchState) {
+                "acked" -> "acked"
+                "pending" -> "pending"
+                else -> if (node.online) "online" else "offline"
+            }
             Box(
                 modifier = Modifier
                     .size(8.dp)
-                    .background(if (node.online) StatusGreen else StatusNeutral, CircleShape),
+                    .background(stateColor, CircleShape),
             )
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
@@ -1394,9 +1426,9 @@ private fun MeshNodeRow(node: MeshNodeStatus) {
                 }
             }
             Text(
-                text = if (node.online) "online" else "offline",
+                text = stateLabel,
                 style = MaterialTheme.typography.labelSmall,
-                color = if (node.online) StatusGreen else StatusNeutral,
+                color = stateColor,
             )
         }
     }
