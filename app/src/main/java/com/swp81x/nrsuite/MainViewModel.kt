@@ -1738,7 +1738,11 @@ class MainViewModel(internal val app: Application) {
                         }
                         "deauth_detected" -> this@MainViewModel.recordDeauthDetectorFrame(event)
                         "deauth_detector_hop" -> {
-                            if (_deauthDetectorChannelMode.value == DeauthChannelMode.HOPPING) {
+                            val distributedHop = _deauthDetectorDistributed.value &&
+                                _deauthDetectorDistributedMode.value == DeauthDistributedMode.HOP
+                            if (_deauthDetectorChannelMode.value == DeauthChannelMode.HOPPING ||
+                                distributedHop
+                            ) {
                                 _deauthDetectorCurrentHopChannel.value = event.optInt(
                                     "channel",
                                     _deauthDetectorCurrentHopChannel.value ?: 1,

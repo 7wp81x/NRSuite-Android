@@ -94,6 +94,9 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
                 // Selected and mesh channel now match, so the master and clients
                 // can all observe the same channel.
                 effectiveDistributedMode = "same_channel"
+                // Give clients a moment to process the switch/rejoin before the
+                // detector starts receiving control and report traffic.
+                delay(1_000)
             }
         }
 
@@ -139,7 +142,10 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
         if (response?.optBoolean("ok") == true) {
             _deauthDetectorStarting.value = false
             _deauthDetectorCurrentHopChannel.value = if (distributed) {
-                if (distributedMode == DeauthDistributedMode.HOP) response.optInt("channel", 1) else null
+                // Distributed hop channel is reported by deauth_detector_hop
+                // events as the scheduler hops; the start response only carries
+                // the configured seed channel.
+                null
             } else if (mode == DeauthChannelMode.HOPPING) {
                 response.optInt("channel", 1)
             } else {
@@ -250,7 +256,9 @@ internal fun MainViewModel.recordDeauthDetectorFrame(event: JSONObject) {
             it != "00:00:00:00:00:00"
     }
     val channel = event.optInt("channel", _deauthDetectorChannel.value)
-    if (_deauthDetectorChannelMode.value == DeauthChannelMode.HOPPING) {
+    val distributedHop = _deauthDetectorDistributed.value &&
+        _deauthDetectorDistributedMode.value == DeauthDistributedMode.HOP
+    if (_deauthDetectorChannelMode.value == DeauthChannelMode.HOPPING || distributedHop) {
         _deauthDetectorCurrentHopChannel.value = channel
     }
     val rssi = event.optInt("rssi", -127)
@@ -458,6 +466,9 @@ internal fun MainViewModel.applyDeauthDetectorChannelImpl(channel: Int) {
                 appendLog("Distributed detector channel switch failed: timeout.", tag = "mesh")
                 return@launch
             }
+
+            // Let clients settle on the committed channel before restarting.
+            delay(1_000)
 
             if (wasRunning) {
                 startDeauthDetectorImpl()

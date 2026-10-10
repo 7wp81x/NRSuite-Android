@@ -150,6 +150,10 @@ internal fun MainViewModel.changeMeshChannelImpl(channel: Int) {
                     _meshChannel.value = safeChannel
                     _meshSetupMessage.value = "Mesh channel changed to $safeChannel."
                     appendLog("Mesh channel switch committed: $safeChannel", tag = "mesh")
+                    // Rebuild the peer list after clients have had a moment to
+                    // move to the committed channel.
+                    delay(1_500)
+                    refreshMeshStatusImpl()
                 }
             }
         } finally {
