@@ -47,12 +47,12 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **Encrypted ESP-NOW Transport** - AES-CCM transport encryption with replay protection
 - [x] **Activation Handshake** - USB HMAC challenge, replay counter, and 30 s auth window
 - [x] **Session Locking** - Fresh master session ID and client recovery after master reboot
-- [x] **Heartbeat/Auto-Timeout** - 1 s master heartbeat, 5 s master timeout, 8 s peer timeout
+- [x] **Heartbeat/Auto-Timeout** - 1 s master heartbeat, 5 s master timeout, 12 s peer timeout
 - [x] **Channel Switch ACK Handshake** - Encrypted request/ACK/commit flow hardware-validated on S3 + S2; UI waits for `committed` before updating the channel or allowing mesh stop, and shows `acked`/`pending` node state with an applying/success transition
 - [x] **Join ACK Handshake** - Client join is confirmed by the master before the client locks/persists a channel; the ACK reports the master's live radio channel
 - [ ] **Detector Focus-Hop** - Focus a detected channel or hop only across recently detected channels; firmware hop mask implemented, hardware validation pending
 - [x] **Mesh Node Health Reporting** - Phase 3A encrypted report transport and `node_health` aggregation; hardware-validated on S3 + S2
-- [x] **Distributed Deauth Detector** - Phase 3B client time-slicing, encrypted deauth reports, source filtering, stable `(node_id, seq)` dedupe; same-channel default hardware-validated on S3 + S2, custom fixed channel and experimental hop UI added, fixed/hop hardware validation pending
+- [x] **Distributed Deauth Detector** - Phase 3B client time-slicing, encrypted deauth reports, source filtering, stable `(node_id, seq)` dedupe; same-channel default hardware-validated on S3 + S2, custom fixed channel added, distributed HOP UI temporarily disabled pending time-slicing validation
 - [ ] **Distributed Rogue AP / Same-Frame Correlation** - Rogue AP evidence and `frame_hash` correlation (Phase 3C+)
 - [ ] **Triangulation Engine (app-side)** - Log-distance path-loss + trilateration from 3+ node RSSI reports
 
