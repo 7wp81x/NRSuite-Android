@@ -429,12 +429,14 @@ private fun DistributedDetectorCard(
                         DeauthDistributedMode.FIXED,
                         DeauthDistributedMode.HOP,
                     ).forEach { mode ->
+                        val hopDisabled = mode == DeauthDistributedMode.HOP
                         NrFilterChip(
                             selected = distributedMode == mode,
-                            onClick = { if (controlsEnabled) onDistributedModeChange(mode) },
+                            onClick = { if (controlsEnabled && !hopDisabled) onDistributedModeChange(mode) },
+                            enabled = controlsEnabled && !hopDisabled,
                             label = when (mode) {
                                 DeauthDistributedMode.FIXED -> "Fixed"
-                                DeauthDistributedMode.HOP -> "Hop (experimental)"
+                                DeauthDistributedMode.HOP -> "Hop (temporarily disabled)"
                                 DeauthDistributedMode.SAME_CHANNEL -> "Same channel"
                             },
                         )

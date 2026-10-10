@@ -39,6 +39,12 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
         _actionError.value = "Select a target AP before starting targeted deauth detection."
         return
     }
+    if (distributed && distributedMode == DeauthDistributedMode.HOP) {
+        _actionError.value = "Distributed hop is temporarily disabled while the mesh " +
+            "time-slicing path is hardened. Use Fixed or Same channel mode."
+        appendLog("Distributed hop start blocked: mode temporarily disabled.", tag = "mesh")
+        return
+    }
     if (!ensureRadioIdle("Deauth Detector")) return
 
     val channel = when {
