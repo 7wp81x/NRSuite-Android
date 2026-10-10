@@ -52,7 +52,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **Join ACK Handshake** - Client join is confirmed by the master before the client locks/persists a channel; the ACK reports the master's live radio channel
 - [ ] **Detector Focus-Hop** - Focus a detected channel or hop only across recently detected channels; firmware hop mask implemented, hardware validation pending
 - [x] **Mesh Node Health Reporting** - Phase 3A encrypted report transport and `node_health` aggregation; hardware-validated on S3 + S2
-- [x] **Distributed Deauth Detector** - Phase 3B client time-slicing, encrypted deauth reports, source filtering, stable `(node_id, seq)` dedupe; same-channel default hardware-validated on S3 + S2, custom fixed channel added, distributed HOP UI temporarily disabled pending time-slicing validation
+- [x] **Distributed Deauth Detector** - Phase 3B client time-slicing, encrypted deauth reports, source filtering, stable `(node_id, seq)` dedupe; same-channel default hardware-validated on S3 + S2, custom fixed channel added, distributed HOP removed from UI/firmware path pending time-slicing redesign
 - [ ] **Distributed Rogue AP / Same-Frame Correlation** - Rogue AP evidence and `frame_hash` correlation (Phase 3C+)
 - [ ] **Triangulation Engine (app-side)** - Log-distance path-loss + trilateration from 3+ node RSSI reports
 

@@ -425,20 +425,15 @@ private fun DistributedDetectorCard(
                     style = MaterialTheme.typography.labelLarge,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(
-                        DeauthDistributedMode.FIXED,
-                        DeauthDistributedMode.HOP,
-                    ).forEach { mode ->
-                        val hopDisabled = mode == DeauthDistributedMode.HOP
+                    // Distributed HOP is intentionally removed from the UI for
+                    // now. The existing FIXED path applies the selected mesh
+                    // channel before the distributed detector starts.
+                    listOf(DeauthDistributedMode.FIXED).forEach { mode ->
                         NrFilterChip(
                             selected = distributedMode == mode,
-                            onClick = { if (controlsEnabled && !hopDisabled) onDistributedModeChange(mode) },
-                            enabled = controlsEnabled && !hopDisabled,
-                            label = when (mode) {
-                                DeauthDistributedMode.FIXED -> "Fixed"
-                                DeauthDistributedMode.HOP -> "Hop (temporarily disabled)"
-                                DeauthDistributedMode.SAME_CHANNEL -> "Same channel"
-                            },
+                            onClick = { if (controlsEnabled) onDistributedModeChange(mode) },
+                            enabled = controlsEnabled,
+                            label = "Fixed",
                         )
                     }
                 }
