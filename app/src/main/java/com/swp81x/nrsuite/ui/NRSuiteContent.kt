@@ -1009,6 +1009,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onHideNodeApsChange = viewModel::setMeshScanHideNodeAps,
                     onMultiChannelChange = viewModel::setMeshScanMultiChannel,
                     onToggleChannel = viewModel::toggleMeshScanChannel,
+                    onToggleAllChannels = viewModel::toggleAllMeshScanChannels,
                     onScan = viewModel::scanWifi,
                     modifier = Modifier,
                 )

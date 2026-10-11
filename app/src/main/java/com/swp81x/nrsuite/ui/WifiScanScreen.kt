@@ -75,6 +75,7 @@ fun WifiScanScreen(
     onHideNodeApsChange: (Boolean) -> Unit,
     onMultiChannelChange: (Boolean) -> Unit,
     onToggleChannel: (Int) -> Unit,
+    onToggleAllChannels: () -> Unit,
     onScan: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -108,6 +109,7 @@ fun WifiScanScreen(
                 onHideNodeApsChange = onHideNodeApsChange,
                 onMultiChannelChange = onMultiChannelChange,
                 onToggleChannel = onToggleChannel,
+                onToggleAllChannels = onToggleAllChannels,
             )
 
             Spacer(Modifier.height(10.dp))
@@ -196,6 +198,7 @@ private fun ConfigZone(
     onHideNodeApsChange: (Boolean) -> Unit,
     onMultiChannelChange: (Boolean) -> Unit,
     onToggleChannel: (Int) -> Unit,
+    onToggleAllChannels: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -282,6 +285,14 @@ private fun ConfigZone(
                     color = NrOnSurfaceVariant,
                 )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item {
+                        NrFilterChip(
+                            selected = selectedChannels.size == 13,
+                            onClick = { if (!scanning) onToggleAllChannels() },
+                            enabled = !scanning,
+                            label = "All",
+                        )
+                    }
                     items((1..13).toList()) { ch ->
                         NrFilterChip(
                             selected = ch in selectedChannels,

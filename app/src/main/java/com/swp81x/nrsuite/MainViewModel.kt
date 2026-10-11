@@ -1102,6 +1102,9 @@ class MainViewModel(internal val app: Application) {
         this.setMeshScanMultiChannelImpl(value)
     fun toggleMeshScanChannel(channel: Int) =
         this.toggleMeshScanChannelImpl(channel)
+
+    fun toggleAllMeshScanChannels() =
+        this.toggleAllMeshScanChannelsImpl()
     fun setMeshNodeLabel(nodeId: String, label: String) =
         this.setMeshNodeLabelImpl(nodeId, label)
     fun resetMeshNodeLabel(nodeId: String) =

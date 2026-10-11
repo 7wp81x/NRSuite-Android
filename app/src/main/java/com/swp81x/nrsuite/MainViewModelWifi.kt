@@ -85,6 +85,12 @@ internal fun MainViewModel.toggleMeshScanChannelImpl(channel: Int) {
     }
 }
 
+internal fun MainViewModel.toggleAllMeshScanChannelsImpl() {
+    _meshScanChannels.update { current ->
+        if (current.size == 13) emptySet() else (1..13).toSet()
+    }
+}
+
 /**
  * Runs a UI-visible WiFi scan in a cancellable job. The scan flag is cleared
  * from the job's finally block so a transport failure or a master disconnect
