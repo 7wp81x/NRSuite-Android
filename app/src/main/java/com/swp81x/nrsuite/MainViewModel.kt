@@ -1460,6 +1460,11 @@ class MainViewModel(internal val app: Application) {
         ) {
             _deauthDetectorChannel.value = _meshChannel.value.coerceIn(1, 13)
         }
+        if (enabled && _meshRole.value == "master") {
+            // Distributed target selection uses Mesh Scan rather than a local
+            // scan, since a local scan would stop the mesh radio.
+            _wifiScanUseMesh.value = true
+        }
     }
 
     fun setDeauthDetectorDistributedMode(mode: DeauthDistributedMode) {

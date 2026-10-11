@@ -48,6 +48,7 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
     if (!ensureRadioIdle("Deauth Detector")) return
 
     val channel = when {
+        distributed && target != null -> target.channel.coerceIn(1, 13)
         distributed && distributedMode == DeauthDistributedMode.SAME_CHANNEL ->
             _meshChannel.value.coerceIn(1, 13)
         else -> _deauthDetectorChannel.value.coerceIn(1, 14)
@@ -121,6 +122,7 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
                 put("detector_window_ms", _deauthDetectorWindowMs.value)
                 put("detector_hop_dwell_ms", _deauthHopDwellMs.value)
                 put("hop_mask", hopMask)
+                target?.bssid?.let { put("bssid", it) }
             } else {
                 put("mode", if (mode == DeauthChannelMode.HOPPING) "hop" else "fixed")
                 if (mode == DeauthChannelMode.HOPPING) {
@@ -135,6 +137,7 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
 
         val startDescription = if (distributed) {
             "distributed ${effectiveDistributedMode ?: "same_channel"} mode on channel $channel" +
+                (target?.ssid?.let { " (target $it)" } ?: "") +
                 " (${_deauthMeshWindowMs.value} ms mesh / " +
                 "${_deauthDetectorWindowMs.value} ms detector)"
         } else if (mode == DeauthChannelMode.HOPPING) {

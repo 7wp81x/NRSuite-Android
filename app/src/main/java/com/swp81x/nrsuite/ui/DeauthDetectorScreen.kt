@@ -825,8 +825,8 @@ private fun ConfigZone(
                     )
                     if (distributed) {
                         Text(
-                            text = "Hopping and target scanning are disabled while distributed " +
-                                "mesh is active.",
+                            text = "Distributed HOP is disabled. Select a target to move the " +
+                                "whole mesh to its channel and filter reports across nodes.",
                             style = MaterialTheme.typography.bodySmall,
                             color = StatusAmber,
                         )
@@ -843,7 +843,7 @@ private fun ConfigZone(
                     )
                     Spacer(Modifier.height(10.dp))
 
-                    if (!distributed && channelMode == DeauthChannelMode.TARGETED) {
+                    if (distributed || channelMode == DeauthChannelMode.TARGETED) {
                         OutlinedButton(
                             onClick = onScanClick,
                             enabled = controlsEnabled && !isScanning,
@@ -922,9 +922,11 @@ private fun DetectionFeedCard(
     onClearFeed: () -> Unit,
 ) {
     val listState = rememberLazyListState()
+    var compact by remember { mutableStateOf(true) }
+    val grouped = remember(feed) { buildCompactFeed(feed) }
 
-    LaunchedEffect(feed.size) {
-        if (feed.isNotEmpty()) {
+    LaunchedEffect(feed.size, compact) {
+        if (!compact && feed.isNotEmpty()) {
             listState.animateScrollToItem(feed.lastIndex)
         }
     }
@@ -947,7 +949,11 @@ private fun DetectionFeedCard(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "${feed.size} shown",
+                        text = if (compact) {
+                            "${grouped.size} group(s) · ${feed.size} frame(s)"
+                        } else {
+                            "${feed.size} shown"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
@@ -987,6 +993,19 @@ private fun DetectionFeedCard(
                     )
                 }
             }
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NrFilterChip(
+                    selected = compact,
+                    onClick = { compact = true },
+                    label = "Compact",
+                )
+                NrFilterChip(
+                    selected = !compact,
+                    onClick = { compact = false },
+                    label = "Raw",
+                )
+            }
             Spacer(Modifier.height(8.dp))
             if (feed.isEmpty()) {
                 Text(
@@ -1002,21 +1021,172 @@ private fun DetectionFeedCard(
                             .fillMaxWidth()
                             .heightIn(max = 360.dp),
                     ) {
-                        itemsIndexed(feed) { index, entry ->
-                            FeedRow(entry)
-                            if (index != feed.lastIndex) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .height(0.5.dp)
-                                        .background(NrOutline),
-                                )
+                        if (compact) {
+                            itemsIndexed(grouped) { index, group ->
+                                CompactFeedRow(group)
+                                if (index != grouped.lastIndex) {
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .height(0.5.dp)
+                                            .background(NrOutline),
+                                    )
+                                }
+                            }
+                        } else {
+                            itemsIndexed(feed) { index, entry ->
+                                FeedRow(entry)
+                                if (index != feed.lastIndex) {
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .height(0.5.dp)
+                                            .background(NrOutline),
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+private data class FeedNodeRssi(
+    val label: String,
+    val rssi: Int,
+    val count: Int,
+    val stale: Boolean,
+)
+
+private data class CompactFeedGroup(
+    val sourceMac: String,
+    val targetMac: String?,
+    val channel: Int?,
+    val reasonCode: Int,
+    val timestamp: String,
+    val count: Int,
+    val nodes: List<FeedNodeRssi>,
+    val lastIndex: Int,
+)
+
+private class MutableFeedNode {
+    var label: String = "local"
+    var lastRssi: Int = -127
+    var count: Int = 0
+    var stale: Boolean = false
+}
+
+private class MutableFeedGroup {
+    var sourceMac: String = "?"
+    var targetMac: String? = null
+    var channel: Int? = null
+    var reasonCode: Int = 0
+    var timestamp: String = ""
+    var count: Int = 0
+    var lastIndex: Int = 0
+    val nodes = linkedMapOf<String, MutableFeedNode>()
+}
+
+private fun buildCompactFeed(feed: List<DeauthFeedEntry>): List<CompactFeedGroup> {
+    val groups = linkedMapOf<Pair<String, String?>, MutableFeedGroup>()
+    feed.forEachIndexed { index, entry ->
+        val key = entry.sourceMac to entry.targetMac
+        val group = groups.getOrPut(key) {
+            MutableFeedGroup().apply {
+                sourceMac = entry.sourceMac
+                targetMac = entry.targetMac
+            }
+        }
+        group.lastIndex = index
+        group.timestamp = entry.timestamp
+        group.channel = entry.channel ?: group.channel
+        group.reasonCode = entry.reasonCode
+        group.count += 1
+
+        val nodeKey = if (entry.origin == "mesh") {
+            "mesh:${entry.nodeId.orEmpty()}:${entry.chip.orEmpty()}"
+        } else {
+            "local"
+        }
+        val node = group.nodes.getOrPut(nodeKey) { MutableFeedNode() }
+        node.label = when {
+            entry.origin != "mesh" -> "local"
+            !entry.chip.isNullOrBlank() && !entry.nodeId.isNullOrBlank() ->
+                "mesh ${entry.nodeId} · ${entry.chip}"
+            !entry.nodeId.isNullOrBlank() -> "mesh ${entry.nodeId}"
+            else -> "mesh"
+        }
+        node.lastRssi = entry.rssi
+        node.count += 1
+        node.stale = entry.stale
+    }
+
+    return groups.values.map { group ->
+        CompactFeedGroup(
+            sourceMac = group.sourceMac,
+            targetMac = group.targetMac,
+            channel = group.channel,
+            reasonCode = group.reasonCode,
+            timestamp = group.timestamp,
+            count = group.count,
+            nodes = group.nodes.values.map { node ->
+                FeedNodeRssi(
+                    label = node.label,
+                    rssi = node.lastRssi,
+                    count = node.count,
+                    stale = node.stale,
+                )
+            },
+            lastIndex = group.lastIndex,
+        )
+    }.sortedByDescending { it.lastIndex }
+}
+
+@Composable
+private fun CompactFeedRow(group: CompactFeedGroup) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 7.dp),
+    ) {
+        Text(
+            text = "${group.sourceMac} -> ${group.targetMac ?: "FF:FF:FF:FF:FF:FF"}",
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(3.dp))
+        group.nodes.forEach { node ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "  ${node.label}",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "${node.rssi} dBm · ${node.count}×",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = threatProximityColor(node.rssi),
+                )
+            }
+        }
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = buildString {
+                append("  ch ")
+                append(group.channel ?: "?")
+                append(" · reason ")
+                append(group.reasonCode)
+                append(" · ")
+                append(group.count)
+                append(" frame(s) · last ")
+                append(group.timestamp)
+                if (group.nodes.any { it.stale }) append(" · stale")
+            },
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            color = NrOnSurfaceVariant,
+        )
     }
 }
 
