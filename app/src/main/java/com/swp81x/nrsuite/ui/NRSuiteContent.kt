@@ -991,6 +991,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 WifiScanScreen(
                     scanning = scanning,
                     networks = networks,
+                    meshActive = meshActive,
+                    meshRole = meshRole,
                     onScan = viewModel::scanWifi,
                     modifier = Modifier,
                 )

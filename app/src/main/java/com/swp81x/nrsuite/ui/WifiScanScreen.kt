@@ -57,9 +57,14 @@ import org.json.JSONObject
 fun WifiScanScreen(
     scanning: Boolean,
     networks: List<JSONObject>,
+    meshActive: Boolean,
+    meshRole: String,
     onScan: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val meshScanAvailable = meshActive
+    val meshScanBlocked = meshActive && meshRole != "master"
+
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -67,10 +72,17 @@ fun WifiScanScreen(
                 .padding(12.dp),
         ) {
             Text(
-                text = if (scanning) {
-                    "Scanning all 2.4 GHz channels..."
-                } else {
-                    "Results arrive as asynchronous scan_ap events and are sorted by RSSI."
+                text = when {
+                    scanning && meshScanAvailable ->
+                        "Mesh scan: waiting for reports from online mesh nodes..."
+                    scanning ->
+                        "Scanning all 2.4 GHz channels..."
+                    meshScanBlocked ->
+                        "Mesh is active. Connect to the master to run a Mesh Scan."
+                    meshScanAvailable ->
+                        "Mesh scan: distributes a same-channel scan across online mesh nodes."
+                    else ->
+                        "Results arrive as asynchronous scan_ap events and are sorted by RSSI."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
@@ -116,7 +128,14 @@ fun WifiScanScreen(
                     color = MaterialTheme.colorScheme.onPrimary,
                 )
             } else {
-                Icon(Icons.Default.Search, contentDescription = "Scan WiFi")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = if (meshScanAvailable) "Mesh Scan" else "Scan WiFi",
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (meshScanAvailable) "Mesh Scan" else "Scan WiFi")
+                }
             }
         }
     }
@@ -280,6 +299,25 @@ private fun NetworkRow(network: JSONObject) {
                 if (wps) {
                     Spacer(Modifier.width(6.dp))
                     NetworkStatusBadge(text = "WPS", color = StatusAmber)
+                }
+            }
+            val meshNodes = network.optJSONArray("nodes")
+            if (meshNodes != null && meshNodes.length() > 0) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Mesh: ${meshNodes.length()} node(s) · best $rssi dBm",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                )
+                for (i in 0 until meshNodes.length()) {
+                    val node = meshNodes.optJSONObject(i) ?: continue
+                    val nodeId = node.optString("node_id")
+                    val nodeRssi = node.optInt("rssi", -127)
+                    Text(
+                        text = "  $nodeId: $nodeRssi dBm",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = signalQualityColor(nodeRssi),
+                    )
                 }
             }
         }

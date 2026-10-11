@@ -70,10 +70,13 @@ internal fun MainViewModel.scanWifiImpl() {
     }
     if (_scanning.value) return
     if (_meshActive.value) {
-        val message = "Mesh is active. Scanning stops the mesh radio; deactivate mesh " +
-            "or scan before activating it."
-        _actionError.value = message
-        appendLog(message, tag = "mesh")
+        if (_meshRole.value != "master") {
+            val message = "Connect to the mesh master to run a distributed mesh scan."
+            _actionError.value = message
+            appendLog(message, tag = "mesh")
+            return
+        }
+        meshScanImpl(activeSession)
         return
     }
     if (!ensureRadioIdle("WiFi Scan")) return
@@ -93,6 +96,36 @@ internal fun MainViewModel.scanWifiImpl() {
                 addHistory("scan", "WiFi scan complete: $count network(s)", HistoryLevel.SUCCESS)
             }
         }
+    }
+}
+
+internal fun MainViewModel.meshScanImpl(activeSession: NrSession) {
+    _networks.value = emptyList()
+    _deauthDetectorTargets.value = emptyList()
+    _scanning.value = true
+    scope.launch {
+        appendLog("Starting distributed mesh scan...", tag = "mesh")
+        val channel = _meshChannel.value.coerceIn(1, 13)
+        val response = activeSession.sendCommand(
+            "MESH_SCAN_START",
+            JSONObject().put("channel", channel),
+            timeoutMs = 8_000,
+        )
+        if (response?.optBoolean("ok") != true) {
+            val message = response?.optString("msg") ?: "timeout"
+            _scanning.value = false
+            appendLog("Mesh scan failed: $message", tag = "mesh")
+            return@launch
+        }
+
+        // Clients scan once after receiving the control packet. Keep the
+        // collection window open long enough for all mesh reports to arrive.
+        delay(3_500)
+        activeSession.sendCommand("MESH_SCAN_STOP", timeoutMs = 5_000)
+        _scanning.value = false
+        val count = _networks.value.size
+        appendLog("Mesh scan complete: $count network(s).", tag = "mesh")
+        addHistory("mesh_scan", "Mesh scan complete: $count network(s)", HistoryLevel.SUCCESS)
     }
 }
 

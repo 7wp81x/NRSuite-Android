@@ -6,6 +6,7 @@ import com.swp81x.nrsuite.core.mesh.MeshCrypto
 import com.swp81x.nrsuite.core.mesh.MeshNodeStatus
 import com.swp81x.nrsuite.core.mesh.StoredMeshCredentials
 import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import java.security.MessageDigest
 import java.security.SecureRandom
 import kotlinx.coroutines.delay
@@ -14,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import org.json.JSONArray
 import org.json.JSONObject
 
 // Mesh Foundation Phase 1/2: app-side key derivation, provisioning, auth,
@@ -658,6 +660,10 @@ internal fun MainViewModel.handleMeshEventImpl(event: JSONObject) {
                 recordRemoteDeauthReport(event)
                 return
             }
+            if (kind.equals("scan", ignoreCase = true)) {
+                recordMeshScanReportImpl(event)
+                return
+            }
             val role = event.optString("role", "client").ifBlank { "client" }
             val sessionId = event.optLong("session_id", 0L).takeIf { it > 0L }
             val rssi = if (event.has("rssi")) event.optInt("rssi") else null
@@ -819,6 +825,94 @@ private fun MainViewModel.refreshMeshFeaturesImpl() {
             _deviceConnectionStates.update { it + (fingerprint to updated) }
         }
     }
+}
+
+
+private fun MainViewModel.authModeSecurityName(authMode: Int): String = when (authMode) {
+    0 -> "OPEN"
+    1 -> "WEP"
+    2 -> "WPA-PSK"
+    3 -> "WPA2-PSK"
+    4 -> "WPA/WPA2-PSK"
+    5 -> "WPA2-ENTERPRISE"
+    6 -> "WPA3-PSK"
+    7 -> "WPA2/WPA3-PSK"
+    8 -> "WAPI-PSK"
+    else -> "?"
+}
+
+private fun MainViewModel.recordMeshScanReportImpl(event: JSONObject) {
+    val nodeId = event.optString("node_id")
+    val bssid = event.optString("bssid").uppercase()
+    if (nodeId.isBlank() || bssid.isBlank()) return
+
+    val ssid = event.optString("ssid")
+    val channel = event.optInt("channel", 0)
+    if (channel !in 1..13) return
+    val rssi = event.optInt("rssi", -127)
+    val security = authModeSecurityName(event.optInt("auth_mode", 0))
+    val wps = event.optBoolean("wps", false)
+    val chip = event.optString("chip").takeIf { it.isNotBlank() }
+
+    _networks.update { current ->
+        val existing = current.firstOrNull {
+            it.optString("bssid").equals(bssid, ignoreCase = true) &&
+                it.optInt("channel", 0) == channel
+        }
+        val merged = existing?.let { JSONObject(it.toString()) } ?: JSONObject()
+        val nodes = JSONArray()
+        existing?.optJSONArray("nodes")?.let { oldNodes ->
+            for (i in 0 until oldNodes.length()) {
+                val old = oldNodes.optJSONObject(i) ?: continue
+                if (old.optString("node_id") != nodeId) nodes.put(JSONObject(old.toString()))
+            }
+        }
+        nodes.put(JSONObject().apply {
+            put("node_id", nodeId)
+            if (chip != null) put("chip", chip)
+            put("rssi", rssi)
+        })
+
+        var bestRssi = rssi
+        for (i in 0 until nodes.length()) {
+            bestRssi = maxOf(bestRssi, nodes.optJSONObject(i)?.optInt("rssi", rssi) ?: rssi)
+        }
+
+        merged.put("bssid", bssid)
+        if (ssid.isNotBlank()) merged.put("ssid", ssid)
+        merged.put("channel", channel)
+        merged.put("rssi", bestRssi)
+        merged.put("security", security)
+        merged.put("wps", wps)
+        merged.put("nodes", nodes)
+        merged.put("nodes_seen", nodes.length())
+        merged.put("mesh_scan", true)
+
+        (current.filterNot {
+            it.optString("bssid").equals(bssid, ignoreCase = true) &&
+                it.optInt("channel", 0) == channel
+        } + merged).sortedByDescending { it.optInt("rssi", -999) }
+    }
+
+    val targetSsid = ssid.ifBlank { "(hidden)" }
+    val target = NetworkTarget(
+        ssid = targetSsid,
+        bssid = bssid,
+        channel = channel,
+        rssi = rssi,
+        security = security,
+        wps = wps,
+    )
+    _deauthDetectorTargets.update { current ->
+        val existing = current.firstOrNull { it.bssid.equals(bssid, ignoreCase = true) }
+        if (existing == null || rssi > existing.rssi) {
+            (current.filterNot { it.bssid.equals(bssid, ignoreCase = true) } + target)
+                .sortedByDescending { it.rssi }
+        } else {
+            current
+        }
+    }
+    appendLog("Mesh scan: $nodeId $bssid ch$channel $rssi dBm", tag = "mesh")
 }
 
 private fun MainViewModel.updateMeshStatusFromJsonImpl(json: JSONObject) {

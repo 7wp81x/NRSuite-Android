@@ -10,6 +10,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 ## 1. Offense Modules (Wi-Fi / BLE)
 
 - [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags
+- [x] **Mesh Scan** - WiFi Scan screen switches to Mesh Scan while mesh is active; master coordinates a same-channel scan across online clients and aggregates per-node RSSI
 - [x] **Beacon Spam** - Broadcast custom or hidden SSIDs
 - [x] **Deauthentication** - Deauth frame injection
 - [x] **Evil Twin** - Rogue AP with captive portal
