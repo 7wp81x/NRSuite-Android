@@ -66,6 +66,10 @@ internal fun MainViewModel.setWifiScanUseMeshImpl(value: Boolean) {
     _wifiScanUseMesh.value = value
 }
 
+internal fun MainViewModel.setMeshScanHideNodeApsImpl(value: Boolean) {
+    _meshScanHideNodeAps.value = value
+}
+
 internal fun MainViewModel.scanWifiImpl() {
     val activeSession = session
     if (activeSession == null) {

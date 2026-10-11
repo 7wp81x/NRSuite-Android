@@ -64,7 +64,9 @@ fun WifiScanScreen(
     meshPeerCount: Int,
     meshChannel: Int,
     useMesh: Boolean,
+    hideNodeAps: Boolean,
     onUseMeshChange: (Boolean) -> Unit,
+    onHideNodeApsChange: (Boolean) -> Unit,
     onScan: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -90,8 +92,10 @@ fun WifiScanScreen(
                 meshPeerCount = meshPeerCount,
                 meshChannel = meshChannel,
                 useMesh = useMesh,
+                hideNodeAps = hideNodeAps,
                 scanning = scanning,
                 onUseMeshChange = onUseMeshChange,
+                onHideNodeApsChange = onHideNodeApsChange,
             )
 
             Spacer(Modifier.height(10.dp))
@@ -172,8 +176,10 @@ private fun ConfigZone(
     meshPeerCount: Int,
     meshChannel: Int,
     useMesh: Boolean,
+    hideNodeAps: Boolean,
     scanning: Boolean,
     onUseMeshChange: (Boolean) -> Unit,
+    onHideNodeApsChange: (Boolean) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -220,6 +226,21 @@ private fun ConfigZone(
                     onClick = { if (!scanning && meshScanAvailable) onUseMeshChange(true) },
                     enabled = !scanning && meshScanAvailable,
                     label = "Mesh clients",
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NrFilterChip(
+                    selected = hideNodeAps,
+                    onClick = { if (!scanning) onHideNodeApsChange(!hideNodeAps) },
+                    enabled = !scanning,
+                    label = "Hide node APs",
+                )
+                Text(
+                    text = "hidden · nrcap32 · ESP_*",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                    modifier = Modifier.align(Alignment.CenterVertically),
                 )
             }
 

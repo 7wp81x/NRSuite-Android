@@ -349,6 +349,8 @@ class MainViewModel(internal val app: Application) {
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
     internal val _wifiScanUseMesh = MutableStateFlow(false)
     val wifiScanUseMesh: StateFlow<Boolean> = _wifiScanUseMesh.asStateFlow()
+    internal val _meshScanHideNodeAps = MutableStateFlow(true)
+    val meshScanHideNodeAps: StateFlow<Boolean> = _meshScanHideNodeAps.asStateFlow()
 
     internal val _sniffing = MutableStateFlow(false)
     val sniffing: StateFlow<Boolean> = _sniffing.asStateFlow()
@@ -1087,6 +1089,7 @@ class MainViewModel(internal val app: Application) {
 
     fun scanWifi() = this.scanWifiImpl()
     fun setWifiScanUseMesh(value: Boolean) = this.setWifiScanUseMeshImpl(value)
+    fun setMeshScanHideNodeAps(value: Boolean) = this.setMeshScanHideNodeApsImpl(value)
 
     fun setBadUsbPayload(uri: Uri, name: String?) = this.setBadUsbPayloadImpl(uri, name)
 

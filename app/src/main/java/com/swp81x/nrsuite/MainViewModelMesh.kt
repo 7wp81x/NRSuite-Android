@@ -828,6 +828,14 @@ private fun MainViewModel.refreshMeshFeaturesImpl() {
 }
 
 
+private fun isMeshNodeApSsid(ssid: String): Boolean {
+    val value = ssid.trim()
+    if (value.isEmpty()) return true
+    if (value.equals("nrcap32", ignoreCase = true)) return true
+    if (value.startsWith("ESP_", ignoreCase = true)) return true
+    return false
+}
+
 private fun MainViewModel.authModeSecurityName(authMode: Int): String = when (authMode) {
     0 -> "OPEN"
     1 -> "WEP"
@@ -847,6 +855,7 @@ private fun MainViewModel.recordMeshScanReportImpl(event: JSONObject) {
     if (nodeId.isBlank() || bssid.isBlank()) return
 
     val ssid = event.optString("ssid")
+    if (_meshScanHideNodeAps.value && isMeshNodeApSsid(ssid)) return
     val channel = event.optInt("channel", 0)
     if (channel !in 1..13) return
     val rssi = event.optInt("rssi", -127)
