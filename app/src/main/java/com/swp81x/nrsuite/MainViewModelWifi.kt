@@ -62,6 +62,10 @@ internal fun MainViewModel.persistBeaconListsImpl() {
     preferences.edit().putString(PREF_BEACON_LISTS, json.toString()).apply()
 }
 
+internal fun MainViewModel.setWifiScanUseMeshImpl(value: Boolean) {
+    _wifiScanUseMesh.value = value
+}
+
 internal fun MainViewModel.scanWifiImpl() {
     val activeSession = session
     if (activeSession == null) {
@@ -76,8 +80,17 @@ internal fun MainViewModel.scanWifiImpl() {
             appendLog(message, tag = "mesh")
             return
         }
+        if (!_wifiScanUseMesh.value) {
+            val message = "Mesh is active. Select Mesh clients as the scan source."
+            _actionError.value = message
+            appendLog(message, tag = "mesh")
+            return
+        }
         meshScanImpl(activeSession)
         return
+    }
+    if (_wifiScanUseMesh.value) {
+        _wifiScanUseMesh.value = false
     }
     if (!ensureRadioIdle("WiFi Scan")) return
 

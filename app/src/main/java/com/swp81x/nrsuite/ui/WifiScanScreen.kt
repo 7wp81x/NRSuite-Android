@@ -33,6 +33,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +44,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
+import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.StatusAmber
@@ -59,11 +61,21 @@ fun WifiScanScreen(
     networks: List<JSONObject>,
     meshActive: Boolean,
     meshRole: String,
+    meshPeerCount: Int,
+    meshChannel: Int,
+    useMesh: Boolean,
+    onUseMeshChange: (Boolean) -> Unit,
     onScan: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val meshScanAvailable = meshActive
+    val meshScanAvailable = meshActive && meshRole == "master"
     val meshScanBlocked = meshActive && meshRole != "master"
+    val activeMeshSource = meshScanAvailable && useMesh
+
+    LaunchedEffect(meshScanAvailable, meshActive) {
+        if (meshScanAvailable && !useMesh) onUseMeshChange(true)
+        if (!meshActive && useMesh) onUseMeshChange(false)
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -71,18 +83,33 @@ fun WifiScanScreen(
                 .fillMaxSize()
                 .padding(12.dp),
         ) {
+            ConfigZone(
+                meshActive = meshActive,
+                meshScanAvailable = meshScanAvailable,
+                meshScanBlocked = meshScanBlocked,
+                meshPeerCount = meshPeerCount,
+                meshChannel = meshChannel,
+                useMesh = useMesh,
+                scanning = scanning,
+                onUseMeshChange = onUseMeshChange,
+            )
+
+            Spacer(Modifier.height(10.dp))
+
             Text(
                 text = when {
-                    scanning && meshScanAvailable ->
+                    scanning && activeMeshSource ->
                         "Mesh scan: waiting for reports from online mesh nodes..."
                     scanning ->
                         "Scanning all 2.4 GHz channels..."
                     meshScanBlocked ->
-                        "Mesh is active. Connect to the master to run a Mesh Scan."
-                    meshScanAvailable ->
+                        "Mesh is active, but this device is not the master. Connect to the master to run a Mesh Scan."
+                    meshScanAvailable && !useMesh ->
+                        "Mesh is active. Select Mesh clients as the scan source."
+                    activeMeshSource ->
                         "Mesh scan: distributes a same-channel scan across online mesh nodes."
                     else ->
-                        "Results arrive as asynchronous scan_ap events and are sorted by RSSI."
+                        "Local scan: results arrive as asynchronous scan_ap events and are sorted by RSSI."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
@@ -128,14 +155,10 @@ fun WifiScanScreen(
                     color = MaterialTheme.colorScheme.onPrimary,
                 )
             } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Search,
-                        contentDescription = if (meshScanAvailable) "Mesh Scan" else "Scan WiFi",
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (meshScanAvailable) "Mesh Scan" else "Scan WiFi")
-                }
+                Icon(
+                    Icons.Default.Search,
+                    contentDescription = if (activeMeshSource) "Mesh Scan" else "Scan WiFi",
+                )
             }
         }
     }
@@ -143,9 +166,14 @@ fun WifiScanScreen(
 
 @Composable
 private fun ConfigZone(
-    expanded: Boolean,
+    meshActive: Boolean,
+    meshScanAvailable: Boolean,
+    meshScanBlocked: Boolean,
+    meshPeerCount: Int,
+    meshChannel: Int,
+    useMesh: Boolean,
     scanning: Boolean,
-    onToggle: () -> Unit,
+    onUseMeshChange: (Boolean) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -153,11 +181,8 @@ private fun ConfigZone(
         border = BorderStroke(0.5.dp, NrOutline),
         shape = RoundedCornerShape(12.dp),
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Default.Wifi,
                     contentDescription = null,
@@ -167,33 +192,43 @@ private fun ConfigZone(
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "Active scan",
+                        text = "Scan source",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = if (scanning) "Scanning all channels..." else "All 2.4 GHz channels",
+                        text = when {
+                            meshScanBlocked -> "Connect to the mesh master to enable Mesh Scan."
+                            meshScanAvailable -> "Mesh clients online: $meshPeerCount"
+                            else -> "Local scan uses the connected USB device."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
-                    )
-                }
-                IconButton(onClick = onToggle) {
-                    Icon(
-                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (expanded) "Collapse" else "Expand",
                     )
                 }
             }
 
-            AnimatedVisibility(visible = expanded) {
-                Column {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "The ESP32 performs the active scan. Results arrive as asynchronous scan_ap events and are sorted by RSSI.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NrFilterChip(
+                    selected = !useMesh,
+                    onClick = { if (!scanning) onUseMeshChange(false) },
+                    enabled = !scanning && !meshActive,
+                    label = "This device",
+                )
+                NrFilterChip(
+                    selected = useMesh,
+                    onClick = { if (!scanning && meshScanAvailable) onUseMeshChange(true) },
+                    enabled = !scanning && meshScanAvailable,
+                    label = "Mesh clients",
+                )
+            }
+
+            if (meshActive) {
+                Text(
+                    text = "Same-channel mesh scan · current mesh ch $meshChannel",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                )
             }
         }
     }

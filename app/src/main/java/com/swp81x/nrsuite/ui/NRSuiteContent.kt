@@ -184,6 +184,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val firmwareTargetDevice by viewModel.firmwareTargetDevice.collectAsState()
     val recentModuleIds by viewModel.recentModuleIds.collectAsState()
     val scanning by viewModel.scanning.collectAsState()
+    val wifiScanUseMesh by viewModel.wifiScanUseMesh.collectAsState()
     val networks by viewModel.networks.collectAsState()
     val sniffing by viewModel.sniffing.collectAsState()
     val sniffPacketCount by viewModel.sniffPacketCount.collectAsState()
@@ -993,6 +994,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     networks = networks,
                     meshActive = meshActive,
                     meshRole = meshRole,
+                    meshPeerCount = meshPeerCount,
+                    meshChannel = meshChannel,
+                    useMesh = wifiScanUseMesh,
+                    onUseMeshChange = viewModel::setWifiScanUseMesh,
                     onScan = viewModel::scanWifi,
                     modifier = Modifier,
                 )
