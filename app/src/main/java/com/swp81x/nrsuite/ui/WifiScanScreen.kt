@@ -103,7 +103,7 @@ fun WifiScanScreen(
             Text(
                 text = when {
                     scanning && activeMeshSource ->
-                        "Mesh scan: waiting for reports from online mesh nodes..."
+                        "Mesh scan: waiting for reports from master and online clients..."
                     scanning ->
                         "Scanning all 2.4 GHz channels..."
                     meshScanBlocked ->
@@ -111,7 +111,7 @@ fun WifiScanScreen(
                     meshScanAvailable && !useMesh ->
                         "Mesh is active. Select Mesh clients as the scan source."
                     activeMeshSource ->
-                        "Mesh scan: distributes a same-channel scan across online mesh nodes."
+                        "Mesh scan: master and online clients scan the current mesh channel."
                     else ->
                         "Local scan: results arrive as asynchronous scan_ap events and are sorted by RSSI."
                 },
@@ -205,7 +205,7 @@ private fun ConfigZone(
                     Text(
                         text = when {
                             meshScanBlocked -> "Connect to the mesh master to enable Mesh Scan."
-                            meshScanAvailable -> "Mesh clients online: $meshPeerCount"
+                            meshScanAvailable -> "Mesh nodes online: ${meshPeerCount + 1} (master + clients)"
                             else -> "Local scan uses the connected USB device."
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -246,7 +246,7 @@ private fun ConfigZone(
 
             if (meshActive) {
                 Text(
-                    text = "Same-channel mesh scan · current mesh ch $meshChannel",
+                    text = "Same-channel scan · master + clients · current mesh ch $meshChannel",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
                 )
