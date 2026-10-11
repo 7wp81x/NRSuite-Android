@@ -834,6 +834,7 @@ class MainViewModel(internal val app: Application) {
 
     internal var pcapWriter: PcapWriter? = null
     internal var pcapJob: Job? = null
+    internal var wifiScanJob: Job? = null
 
     private fun initSafely(name: String, block: () -> Unit) {
         runCatching(block).onFailure { error ->
@@ -1157,6 +1158,12 @@ class MainViewModel(internal val app: Application) {
         portalPcapJob = null
         pcapJob?.cancel()
         pcapJob = null
+        // WiFi scans may be suspended on a command response or a report wait.
+        // Cancel the job and clear the UI flag immediately so a master
+        // disconnect cannot leave the scan FAB spinning forever.
+        wifiScanJob?.cancel()
+        wifiScanJob = null
+        _scanning.value = false
         bleStatusJob?.cancel()
         bleStatusJob = null
 

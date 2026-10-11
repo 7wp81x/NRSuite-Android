@@ -3,11 +3,15 @@ package com.swp81x.nrsuite
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
 import com.swp81x.nrsuite.core.eapol.EapolParser
 import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.pcap.PcapWriter
 import com.swp81x.nrsuite.core.session.NrSession
 import com.swp81x.nrsuite.core.sniff.SniffRequest
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -81,6 +85,35 @@ internal fun MainViewModel.toggleMeshScanChannelImpl(channel: Int) {
     }
 }
 
+/**
+ * Runs a UI-visible WiFi scan in a cancellable job. The scan flag is cleared
+ * from the job's finally block so a transport failure or a master disconnect
+ * cannot leave the scanner FAB spinning forever.
+ */
+private fun MainViewModel.launchWifiScanJob(block: suspend () -> Unit) {
+    wifiScanJob?.cancel()
+    val job = scope.launch(start = CoroutineStart.LAZY) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            appendLog(
+                "Scan interrupted: ${t.message ?: t.javaClass.simpleName}",
+                level = LogLevel.ERROR,
+                tag = "wifi",
+            )
+        } finally {
+            if (wifiScanJob === coroutineContext[Job]) {
+                _scanning.value = false
+                wifiScanJob = null
+            }
+        }
+    }
+    wifiScanJob = job
+    job.start()
+}
+
 internal fun MainViewModel.scanWifiImpl() {
     val activeSession = session
     if (activeSession == null) {
@@ -112,10 +145,9 @@ internal fun MainViewModel.scanWifiImpl() {
     _networks.value = emptyList()
     _deauthDetectorTargets.value = emptyList()
     _scanning.value = true
-    scope.launch {
+    launchWifiScanJob {
         appendLog("Starting WiFi scan...")
         val count = activeSession.scanWifi()
-        _scanning.value = false
         when {
             count == null -> appendLog("WiFi scan timed out.")
             count < 0 -> appendLog("WiFi scan failed.")
@@ -131,16 +163,15 @@ internal fun MainViewModel.meshScanImpl(activeSession: NrSession) {
     _networks.value = emptyList()
     _deauthDetectorTargets.value = emptyList()
     _scanning.value = true
-    scope.launch {
+    launchWifiScanJob {
         val channel = _meshChannel.value.coerceIn(1, 13)
         val multi = _meshScanMultiChannel.value
         val selectedChannels = _meshScanChannels.value
             .filter { it in 1..13 }
             .sorted()
         if (multi && selectedChannels.isEmpty()) {
-            _scanning.value = false
             appendLog("Select at least one mesh scan channel.", tag = "mesh")
-            return@launch
+            return@launchWifiScanJob
         }
 
         val dwellMs = 300
@@ -175,17 +206,18 @@ internal fun MainViewModel.meshScanImpl(activeSession: NrSession) {
         val response = activeSession.sendCommand("MESH_SCAN_START", args, timeoutMs = 8_000)
         if (response?.optBoolean("ok") != true) {
             val message = response?.optString("msg") ?: "timeout"
-            _scanning.value = false
             appendLog("Mesh scan failed: $message", tag = "mesh")
-            return@launch
+            return@launchWifiScanJob
         }
 
         // Clients scan once after receiving the control packet. Keep the
         // collection window open long enough for all reports to arrive.
+        // If the master disconnects mid-scan the stop command can fail while
+        // the job is cancelled; the finally in launchWifiScanJob clears the
+        // scanner FAB either way.
         val waitMs = if (multi) (leaseMs + 1_500L) else 3_500L
         delay(waitMs)
         activeSession.sendCommand("MESH_SCAN_STOP", timeoutMs = 5_000)
-        _scanning.value = false
         val count = _networks.value.size
         appendLog("Mesh scan complete: $count network(s).", tag = "mesh")
         addHistory("mesh_scan", "Mesh scan complete: $count network(s)", HistoryLevel.SUCCESS)
