@@ -186,6 +186,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val scanning by viewModel.scanning.collectAsState()
     val wifiScanUseMesh by viewModel.wifiScanUseMesh.collectAsState()
     val meshScanHideNodeAps by viewModel.meshScanHideNodeAps.collectAsState()
+    val meshScanMultiChannel by viewModel.meshScanMultiChannel.collectAsState()
+    val meshScanChannels by viewModel.meshScanChannels.collectAsState()
     val networks by viewModel.networks.collectAsState()
     val sniffing by viewModel.sniffing.collectAsState()
     val sniffPacketCount by viewModel.sniffPacketCount.collectAsState()
@@ -1001,8 +1003,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     useMesh = wifiScanUseMesh,
                     hideNodeAps = meshScanHideNodeAps,
                     nodeLabels = meshNodeLabels,
+                    multiChannel = meshScanMultiChannel,
+                    selectedChannels = meshScanChannels,
                     onUseMeshChange = viewModel::setWifiScanUseMesh,
                     onHideNodeApsChange = viewModel::setMeshScanHideNodeAps,
+                    onMultiChannelChange = viewModel::setMeshScanMultiChannel,
+                    onToggleChannel = viewModel::toggleMeshScanChannel,
                     onScan = viewModel::scanWifi,
                     modifier = Modifier,
                 )

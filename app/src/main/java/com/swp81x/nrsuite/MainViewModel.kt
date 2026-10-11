@@ -351,6 +351,10 @@ class MainViewModel(internal val app: Application) {
     val wifiScanUseMesh: StateFlow<Boolean> = _wifiScanUseMesh.asStateFlow()
     internal val _meshScanHideNodeAps = MutableStateFlow(true)
     val meshScanHideNodeAps: StateFlow<Boolean> = _meshScanHideNodeAps.asStateFlow()
+    internal val _meshScanMultiChannel = MutableStateFlow(false)
+    val meshScanMultiChannel: StateFlow<Boolean> = _meshScanMultiChannel.asStateFlow()
+    internal val _meshScanChannels = MutableStateFlow<Set<Int>>(setOf(1, 6, 11))
+    val meshScanChannels: StateFlow<Set<Int>> = _meshScanChannels.asStateFlow()
 
     internal val _sniffing = MutableStateFlow(false)
     val sniffing: StateFlow<Boolean> = _sniffing.asStateFlow()
@@ -1093,6 +1097,10 @@ class MainViewModel(internal val app: Application) {
     fun scanWifi() = this.scanWifiImpl()
     fun setWifiScanUseMesh(value: Boolean) = this.setWifiScanUseMeshImpl(value)
     fun setMeshScanHideNodeAps(value: Boolean) = this.setMeshScanHideNodeApsImpl(value)
+    fun setMeshScanMultiChannel(value: Boolean) =
+        this.setMeshScanMultiChannelImpl(value)
+    fun toggleMeshScanChannel(channel: Int) =
+        this.toggleMeshScanChannelImpl(channel)
     fun setMeshNodeLabel(nodeId: String, label: String) =
         this.setMeshNodeLabelImpl(nodeId, label)
     fun resetMeshNodeLabel(nodeId: String) =

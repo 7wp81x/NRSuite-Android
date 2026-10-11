@@ -70,6 +70,17 @@ internal fun MainViewModel.setMeshScanHideNodeApsImpl(value: Boolean) {
     _meshScanHideNodeAps.value = value
 }
 
+internal fun MainViewModel.setMeshScanMultiChannelImpl(value: Boolean) {
+    _meshScanMultiChannel.value = value
+}
+
+internal fun MainViewModel.toggleMeshScanChannelImpl(channel: Int) {
+    if (channel !in 1..13) return
+    _meshScanChannels.update { current ->
+        if (channel in current) current - channel else current + channel
+    }
+}
+
 internal fun MainViewModel.scanWifiImpl() {
     val activeSession = session
     if (activeSession == null) {
@@ -121,13 +132,47 @@ internal fun MainViewModel.meshScanImpl(activeSession: NrSession) {
     _deauthDetectorTargets.value = emptyList()
     _scanning.value = true
     scope.launch {
-        appendLog("Starting distributed mesh scan...", tag = "mesh")
         val channel = _meshChannel.value.coerceIn(1, 13)
-        val response = activeSession.sendCommand(
-            "MESH_SCAN_START",
-            JSONObject().put("channel", channel),
-            timeoutMs = 8_000,
+        val multi = _meshScanMultiChannel.value
+        val selectedChannels = _meshScanChannels.value
+            .filter { it in 1..13 }
+            .sorted()
+        if (multi && selectedChannels.isEmpty()) {
+            _scanning.value = false
+            appendLog("Select at least one mesh scan channel.", tag = "mesh")
+            return@launch
+        }
+
+        val dwellMs = 300
+        val channelMask = if (multi) {
+            selectedChannels.fold(0) { mask, ch -> mask or (1 shl (ch - 1)) }
+        } else {
+            0
+        }
+        val leaseMs = if (multi) {
+            (selectedChannels.size * (dwellMs + 800)).coerceAtLeast(3_000)
+        } else {
+            0
+        }
+        val args = JSONObject().apply {
+            put("channel", channel)
+            put("mode", if (multi) "multi_channel" else "same_channel")
+            put("dwell_ms", dwellMs)
+            if (multi) {
+                put("channel_mask", channelMask)
+                put("lease_ms", leaseMs)
+            }
+        }
+
+        appendLog(
+            if (multi) {
+                "Starting multi-channel mesh scan: ${selectedChannels.joinToString()}..."
+            } else {
+                "Starting same-channel mesh scan..."
+            },
+            tag = "mesh",
         )
+        val response = activeSession.sendCommand("MESH_SCAN_START", args, timeoutMs = 8_000)
         if (response?.optBoolean("ok") != true) {
             val message = response?.optString("msg") ?: "timeout"
             _scanning.value = false
@@ -136,8 +181,9 @@ internal fun MainViewModel.meshScanImpl(activeSession: NrSession) {
         }
 
         // Clients scan once after receiving the control packet. Keep the
-        // collection window open long enough for all mesh reports to arrive.
-        delay(3_500)
+        // collection window open long enough for all reports to arrive.
+        val waitMs = if (multi) (leaseMs + 1_500L) else 3_500L
+        delay(waitMs)
         activeSession.sendCommand("MESH_SCAN_STOP", timeoutMs = 5_000)
         _scanning.value = false
         val count = _networks.value.size

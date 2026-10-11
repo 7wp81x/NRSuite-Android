@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -68,8 +69,12 @@ fun WifiScanScreen(
     useMesh: Boolean,
     hideNodeAps: Boolean,
     nodeLabels: Map<String, String>,
+    multiChannel: Boolean,
+    selectedChannels: Set<Int>,
     onUseMeshChange: (Boolean) -> Unit,
     onHideNodeApsChange: (Boolean) -> Unit,
+    onMultiChannelChange: (Boolean) -> Unit,
+    onToggleChannel: (Int) -> Unit,
     onScan: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -96,9 +101,13 @@ fun WifiScanScreen(
                 meshChannel = meshChannel,
                 useMesh = useMesh,
                 hideNodeAps = hideNodeAps,
+                multiChannel = multiChannel,
+                selectedChannels = selectedChannels,
                 scanning = scanning,
                 onUseMeshChange = onUseMeshChange,
                 onHideNodeApsChange = onHideNodeApsChange,
+                onMultiChannelChange = onMultiChannelChange,
+                onToggleChannel = onToggleChannel,
             )
 
             Spacer(Modifier.height(10.dp))
@@ -180,9 +189,13 @@ private fun ConfigZone(
     meshChannel: Int,
     useMesh: Boolean,
     hideNodeAps: Boolean,
+    multiChannel: Boolean,
+    selectedChannels: Set<Int>,
     scanning: Boolean,
     onUseMeshChange: (Boolean) -> Unit,
     onHideNodeApsChange: (Boolean) -> Unit,
+    onMultiChannelChange: (Boolean) -> Unit,
+    onToggleChannel: (Int) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -247,9 +260,46 @@ private fun ConfigZone(
                 )
             }
 
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NrFilterChip(
+                    selected = !multiChannel,
+                    onClick = { if (!scanning) onMultiChannelChange(false) },
+                    enabled = !scanning && meshScanAvailable,
+                    label = "Same channel",
+                )
+                NrFilterChip(
+                    selected = multiChannel,
+                    onClick = { if (!scanning) onMultiChannelChange(true) },
+                    enabled = !scanning && meshScanAvailable,
+                    label = "Multi-channel",
+                )
+            }
+
+            if (multiChannel && meshScanAvailable) {
+                Text(
+                    text = "Channels (${selectedChannels.size} selected)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NrOnSurfaceVariant,
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items((1..13).toList()) { ch ->
+                        NrFilterChip(
+                            selected = ch in selectedChannels,
+                            onClick = { if (!scanning) onToggleChannel(ch) },
+                            enabled = !scanning,
+                            label = ch.toString(),
+                        )
+                    }
+                }
+            }
+
             if (meshActive) {
                 Text(
-                    text = "Same-channel scan · master + clients · current mesh ch $meshChannel",
+                    text = if (multiChannel) {
+                        "Client-only multi-channel scan · master stays on mesh ch $meshChannel"
+                    } else {
+                        "Same-channel scan · master + clients · current mesh ch $meshChannel"
+                    },
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
                 )
