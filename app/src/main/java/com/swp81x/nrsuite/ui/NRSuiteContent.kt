@@ -344,6 +344,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val meshGlobalKeyId by viewModel.meshGlobalKeyId.collectAsState()
     val meshChannel by viewModel.meshChannel.collectAsState()
     val meshNodes by viewModel.meshNodes.collectAsState()
+    val meshNodeLabels by viewModel.meshNodeLabels.collectAsState()
     val meshLastError by viewModel.meshLastError.collectAsState()
     val serialMonitorSelected by viewModel.serialMonitorSelected.collectAsState()
     val serialMonitorConnected by viewModel.serialMonitorConnected.collectAsState()
@@ -999,6 +1000,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     meshChannel = meshChannel,
                     useMesh = wifiScanUseMesh,
                     hideNodeAps = meshScanHideNodeAps,
+                    nodeLabels = meshNodeLabels,
                     onUseMeshChange = viewModel::setWifiScanUseMesh,
                     onHideNodeApsChange = viewModel::setMeshScanHideNodeAps,
                     onScan = viewModel::scanWifi,
@@ -1474,6 +1476,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     hasGlobalCredentials = meshHasGlobalCredentials,
                     globalKeyId = meshGlobalKeyId,
                     nodes = meshNodes,
+                    nodeLabels = meshNodeLabels,
                     channelSwitchStatus = meshChannelSwitchStatus,
                     onRefresh = viewModel::refreshMeshStatus,
                     onPassphraseChange = viewModel::setMeshPassphrase,
@@ -1489,6 +1492,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onForgetPassphrase = viewModel::forgetMeshPassphrase,
                     onClearKeys = viewModel::clearMeshKeys,
                     onClearNodes = viewModel::clearMeshNodes,
+                    onSetNodeLabel = viewModel::setMeshNodeLabel,
+                    onResetNodeLabel = viewModel::resetMeshNodeLabel,
                     onClearSetupMessage = viewModel::clearMeshSetupMessage,
                     onClearError = viewModel::clearMeshError,
                     modifier = Modifier,

@@ -828,6 +828,68 @@ private fun MainViewModel.refreshMeshFeaturesImpl() {
 }
 
 
+
+private const val MESH_NODE_LABELS_PREF = "mesh_node_labels"
+
+internal fun defaultMeshNodeLabel(nodeId: String, chip: String?): String {
+    val prefix = when {
+        chip?.contains("S3", ignoreCase = true) == true -> "S3"
+        chip?.contains("S2", ignoreCase = true) == true -> "S2"
+        chip?.contains("C3", ignoreCase = true) == true -> "C3"
+        chip?.contains("C6", ignoreCase = true) == true -> "C6"
+        chip?.contains("C5", ignoreCase = true) == true -> "C5"
+        chip?.contains("ESP32", ignoreCase = true) == true -> "DEV"
+        else -> "NR"
+    }
+    val suffix = nodeId.takeLast(4).uppercase().ifBlank { "0000" }
+    return "$prefix-$suffix"
+}
+
+internal fun displayMeshNodeLabel(nodeId: String, chip: String?,
+                                  labels: Map<String, String>): String {
+    return labels[nodeId]?.takeIf { it.isNotBlank() }
+        ?: defaultMeshNodeLabel(nodeId, chip)
+}
+
+internal fun MainViewModel.loadMeshNodeLabelsImpl() {
+    val raw = preferences.getString(MESH_NODE_LABELS_PREF, null) ?: return
+    runCatching {
+        val json = JSONObject(raw)
+        val labels = buildMap {
+            json.keys().forEach { key ->
+                val value = json.optString(key, "").trim()
+                if (key.isNotBlank() && value.isNotBlank()) put(key, value)
+            }
+        }
+        _meshNodeLabels.value = labels
+    }
+}
+
+private fun MainViewModel.persistMeshNodeLabelsImpl() {
+    val json = JSONObject()
+    _meshNodeLabels.value.forEach { (key, value) ->
+        if (key.isNotBlank() && value.isNotBlank()) json.put(key, value)
+    }
+    preferences.edit().putString(MESH_NODE_LABELS_PREF, json.toString()).apply()
+}
+
+internal fun MainViewModel.setMeshNodeLabelImpl(nodeId: String, label: String) {
+    if (nodeId.isBlank()) return
+    val clean = label.trim().take(32)
+    if (clean.isBlank()) {
+        resetMeshNodeLabelImpl(nodeId)
+        return
+    }
+    _meshNodeLabels.update { it + (nodeId to clean) }
+    persistMeshNodeLabelsImpl()
+}
+
+internal fun MainViewModel.resetMeshNodeLabelImpl(nodeId: String) {
+    if (nodeId.isBlank()) return
+    _meshNodeLabels.update { it - nodeId }
+    persistMeshNodeLabelsImpl()
+}
+
 private fun isMeshNodeApSsid(ssid: String): Boolean {
     val value = ssid.trim()
     if (value.isEmpty()) return true
@@ -862,6 +924,7 @@ private fun MainViewModel.recordMeshScanReportImpl(event: JSONObject) {
     val security = authModeSecurityName(event.optInt("auth_mode", 0))
     val wps = event.optBoolean("wps", false)
     val chip = event.optString("chip").takeIf { it.isNotBlank() }
+    val role = event.optString("role").ifBlank { "client" }
 
     _networks.update { current ->
         val existing = current.firstOrNull {
@@ -879,6 +942,7 @@ private fun MainViewModel.recordMeshScanReportImpl(event: JSONObject) {
         nodes.put(JSONObject().apply {
             put("node_id", nodeId)
             if (chip != null) put("chip", chip)
+            put("role", role)
             put("rssi", rssi)
         })
 

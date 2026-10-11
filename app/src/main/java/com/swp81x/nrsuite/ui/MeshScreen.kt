@@ -1,5 +1,7 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.displayMeshNodeLabel
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -136,6 +138,7 @@ fun MeshScreen(
     hasGlobalCredentials: Boolean,
     globalKeyId: String?,
     nodes: List<MeshNodeStatus>,
+    nodeLabels: Map<String, String>,
     channelSwitchStatus: MeshChannelSwitchStatus?,
     onRefresh: () -> Unit,
     onPassphraseChange: (String) -> Unit,
@@ -151,6 +154,8 @@ fun MeshScreen(
     onForgetPassphrase: () -> Unit,
     onClearKeys: () -> Unit,
     onClearNodes: () -> Unit,
+    onSetNodeLabel: (String, String) -> Unit,
+    onResetNodeLabel: (String) -> Unit,
     onClearSetupMessage: () -> Unit,
     onClearError: () -> Unit,
     modifier: Modifier = Modifier,
@@ -296,12 +301,15 @@ fun MeshScreen(
                     busy = busy,
                     channelChangeInProgress = channelChangeInProgress,
                     nodes = remoteNodes,
+                    nodeLabels = nodeLabels,
                     channelSwitchStatus = channelSwitchStatus,
                     statusSummary = statusSummary,
                     onRefresh = onRefresh,
                     onClearNodes = onClearNodes,
                     onApplyChannel = onApplyChannel,
                     onCopyStatus = { clipboard.setText(AnnotatedString(statusSummary)) },
+                    onSetNodeLabel = onSetNodeLabel,
+                    onResetNodeLabel = onResetNodeLabel,
                     onSwitchToSetup = { selectedTab = 0 },
                 )
             }
@@ -766,16 +774,21 @@ private fun MeshNetworkTab(
     busy: Boolean,
     channelChangeInProgress: Boolean,
     nodes: List<MeshNodeStatus>,
+    nodeLabels: Map<String, String>,
     channelSwitchStatus: MeshChannelSwitchStatus?,
     statusSummary: String,
     onRefresh: () -> Unit,
     onClearNodes: () -> Unit,
     onApplyChannel: (Int) -> Unit,
     onCopyStatus: () -> Unit,
+    onSetNodeLabel: (String, String) -> Unit,
+    onResetNodeLabel: (String) -> Unit,
     onSwitchToSetup: () -> Unit,
 ) {
     var selectedChannel by remember(channel) { mutableStateOf(channel) }
     var confirmChannelChange by remember { mutableStateOf(false) }
+    var editNode by remember { mutableStateOf<MeshNodeStatus?>(null) }
+    var editLabel by remember { mutableStateOf("") }
     var applySucceeded by remember { mutableStateOf(false) }
 
     LaunchedEffect(channelSwitchStatus?.phase, channelSwitchStatus?.switchId) {
@@ -964,7 +977,16 @@ private fun MeshNetworkTab(
             if (nodes.isEmpty()) {
                 MeshEmptyNodesState()
             } else {
-                nodes.forEach { node ->
+                val orderedNodes = remember(nodes, nodeLabels) {
+                    nodes.sortedWith(
+                        compareBy(
+                            { it.role != "master" },
+                            { !it.online },
+                            { displayMeshNodeLabel(it.nodeId, it.chip, nodeLabels) },
+                        ),
+                    )
+                }
+                orderedNodes.forEach { node ->
                     val switchState = channelSwitchStatus?.let { status ->
                         when {
                             status.phase in setOf("request", "ack", "commit") &&
@@ -974,7 +996,17 @@ private fun MeshNetworkTab(
                             else -> null
                         }
                     }
-                    MeshNodeRow(node, switchState)
+                    val displayLabel = displayMeshNodeLabel(node.nodeId, node.chip, nodeLabels)
+                    MeshNodeRow(
+                        node = node,
+                        switchState = switchState,
+                        displayLabel = displayLabel,
+                        isMaster = node.role == "master",
+                        onClick = {
+                            editNode = node
+                            editLabel = displayLabel
+                        },
+                    )
                 }
             }
 
@@ -1021,6 +1053,56 @@ private fun MeshNetworkTab(
             dismissButton = {
                 TextButton(onClick = { confirmChannelChange = false }) {
                     Text("Cancel")
+                }
+            },
+        )
+    }
+
+    editNode?.let { node ->
+        AlertDialog(
+            onDismissRequest = { editNode = null },
+            title = { Text("Node label") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Node ID: ${node.nodeId}",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                        ),
+                        color = NrOnSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = editLabel,
+                        onValueChange = { editLabel = it.take(32) },
+                        label = { Text("Display label") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onSetNodeLabel(node.nodeId, editLabel)
+                        editNode = null
+                    },
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            onResetNodeLabel(node.nodeId)
+                            editNode = null
+                        },
+                    ) {
+                        Text("Reset")
+                    }
+                    TextButton(onClick = { editNode = null }) {
+                        Text("Cancel")
+                    }
                 }
             },
         )
@@ -1337,9 +1419,17 @@ private fun MeshEmptyNodesState() {
 }
 
 @Composable
-private fun MeshNodeRow(node: MeshNodeStatus, switchState: String? = null) {
+private fun MeshNodeRow(
+    node: MeshNodeStatus,
+    switchState: String? = null,
+    displayLabel: String = node.nodeId,
+    isMaster: Boolean = false,
+    onClick: () -> Unit = {},
+) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = NrSurfaceVariant),
         border = BorderStroke(0.5.dp, NrOutline),
         shape = RoundedCornerShape(10.dp),
@@ -1366,18 +1456,19 @@ private fun MeshNodeRow(node: MeshNodeStatus, switchState: String? = null) {
             )
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    text = buildString {
-                        append(node.nodeId)
-                        node.chip?.takeIf { it.isNotBlank() }?.let { chip ->
-                            append(" - ")
-                            append(chip)
-                        }
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = NrOnSurface,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isMaster) {
+                        NetworkStatusBadge(text = "M", color = StatusGreen)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(
+                        text = displayLabel,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = NrOnSurface,
+                        maxLines = 1,
+                    )
+                }
                 Spacer(Modifier.height(3.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     NetworkStatusBadge(
@@ -1391,6 +1482,15 @@ private fun MeshNodeRow(node: MeshNodeStatus, switchState: String? = null) {
                         fontFamily = FontFamily.Monospace,
                         color = NrOnSurfaceVariant,
                     )
+                    node.chip?.takeIf { it.isNotBlank() }?.let { chip ->
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = chip,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NrOnSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
                 }
                 val healthText = buildString {
                     node.heap?.let {
@@ -1403,16 +1503,6 @@ private fun MeshNodeRow(node: MeshNodeStatus, switchState: String? = null) {
                         append("up ")
                         append(it / 1000)
                         append(" s")
-                    }
-                    node.healthChannel?.let {
-                        if (isNotEmpty()) append(" · ")
-                        append("ch ")
-                        append(it)
-                    }
-                    node.healthSeq?.let {
-                        if (isNotEmpty()) append(" · ")
-                        append("seq ")
-                        append(it)
                     }
                 }
                 if (healthText.isNotBlank()) {

@@ -796,6 +796,8 @@ class MainViewModel(internal val app: Application) {
 
     internal val _meshNodes = MutableStateFlow<List<MeshNodeStatus>>(emptyList())
     val meshNodes: StateFlow<List<MeshNodeStatus>> = _meshNodes.asStateFlow()
+    internal val _meshNodeLabels = MutableStateFlow<Map<String, String>>(emptyMap())
+    val meshNodeLabels: StateFlow<Map<String, String>> = _meshNodeLabels.asStateFlow()
 
     internal val _meshLastError = MutableStateFlow<String?>(null)
     val meshLastError: StateFlow<String?> = _meshLastError.asStateFlow()
@@ -844,6 +846,7 @@ class MainViewModel(internal val app: Application) {
         initSafely("history") { loadHistory() }
         initSafely("credentialSessions") { this.loadCredentialSessionsImpl() }
         initSafely("meshCredentials") { this.refreshMeshGlobalCredentialsImpl() }
+        initSafely("meshNodeLabels") { this.loadMeshNodeLabelsImpl() }
         initSafely("meshHealthSweep") { this.startMeshHealthSweepImpl() }
         initSafely("usbDevices") { this.refreshDevicesImpl() }
     }
@@ -1090,6 +1093,10 @@ class MainViewModel(internal val app: Application) {
     fun scanWifi() = this.scanWifiImpl()
     fun setWifiScanUseMesh(value: Boolean) = this.setWifiScanUseMeshImpl(value)
     fun setMeshScanHideNodeAps(value: Boolean) = this.setMeshScanHideNodeApsImpl(value)
+    fun setMeshNodeLabel(nodeId: String, label: String) =
+        this.setMeshNodeLabelImpl(nodeId, label)
+    fun resetMeshNodeLabel(nodeId: String) =
+        this.resetMeshNodeLabelImpl(nodeId)
 
     fun setBadUsbPayload(uri: Uri, name: String?) = this.setBadUsbPayloadImpl(uri, name)
 
@@ -2046,6 +2053,7 @@ class MainViewModel(internal val app: Application) {
         private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
         private const val PREF_HISTORY = "session_history"
         private const val PREF_RECENT_MODULES = "recent_modules"
+        private const val PREF_MESH_NODE_LABELS = "mesh_node_labels"
         private const val DISCONNECT_TEARDOWN_WAIT_MS = 8_000L
         internal val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
     }

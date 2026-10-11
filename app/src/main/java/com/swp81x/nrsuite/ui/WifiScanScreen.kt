@@ -1,5 +1,7 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.displayMeshNodeLabel
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -65,6 +67,7 @@ fun WifiScanScreen(
     meshChannel: Int,
     useMesh: Boolean,
     hideNodeAps: Boolean,
+    nodeLabels: Map<String, String>,
     onUseMeshChange: (Boolean) -> Unit,
     onHideNodeApsChange: (Boolean) -> Unit,
     onScan: () -> Unit,
@@ -137,7 +140,7 @@ fun WifiScanScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(networks, key = { it.optString("bssid", it.toString()) }) { network ->
-                        NetworkRow(network)
+                        NetworkRow(network, nodeLabels)
                     }
                     item { Spacer(Modifier.height(72.dp)) }
                 }
@@ -290,7 +293,7 @@ private fun EmptyResults(scanning: Boolean) {
 }
 
 @Composable
-private fun NetworkRow(network: JSONObject) {
+private fun NetworkRow(network: JSONObject, nodeLabels: Map<String, String>) {
     val ssid = network.optString("ssid").ifBlank { "(hidden)" }
     val bssid = network.optString("bssid")
     val channel = network.optInt("channel")
@@ -368,9 +371,16 @@ private fun NetworkRow(network: JSONObject) {
                 for (i in 0 until meshNodes.length()) {
                     val node = meshNodes.optJSONObject(i) ?: continue
                     val nodeId = node.optString("node_id")
+                    val nodeRole = node.optString("role")
                     val nodeRssi = node.optInt("rssi", -127)
+                    val nodeLabel = displayMeshNodeLabel(
+                        nodeId,
+                        node.optString("chip").takeIf { it.isNotBlank() },
+                        nodeLabels,
+                    )
+                    val masterPrefix = if (nodeRole == "master") "[M] " else ""
                     Text(
-                        text = "  $nodeId: $nodeRssi dBm",
+                        text = "  $masterPrefix$nodeLabel: $nodeRssi dBm",
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = signalQualityColor(nodeRssi),
                     )
