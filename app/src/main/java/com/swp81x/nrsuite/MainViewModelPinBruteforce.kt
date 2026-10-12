@@ -347,7 +347,15 @@ internal fun MainViewModel.refreshPinBruteforceImpl() {
     val activeSession = session ?: return
     scope.launch {
         val response = activeSession.sendCommand("PIN_RANGE_STATUS", timeoutMs = 6_000)
-        if (response?.optBoolean("ok") == true) applyPinStatus(response)
+        if (response?.optBoolean("ok") == true) {
+            applyPinStatus(response)
+            appendLog(
+                "PIN status loaded: state=${response.optString("state")} " +
+                    "attempts=${response.optInt("attempts_total")} " +
+                    "last=${response.optString("last_pin").ifBlank { "-" }}",
+                tag = "pin",
+            )
+        }
     }
 }
 
