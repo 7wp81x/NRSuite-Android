@@ -49,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -91,6 +92,7 @@ fun PinBruteforceScreen(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onResume: () -> Unit,
+    onRefresh: () -> Unit,
     onClearSession: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -103,6 +105,10 @@ fun PinBruteforceScreen(
         if (uri != null) {
             onWordlistSelected(uri, uri.lastPathSegment ?: "pin_wordlist.txt")
         }
+    }
+
+    LaunchedEffect(Unit) {
+        onRefresh()
     }
 
     LaunchedEffect(state.running) {
@@ -146,11 +152,10 @@ fun PinBruteforceScreen(
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
-                    onClick = onResume,
-                    enabled = connected && !state.running &&
-                        state.state in setOf("paused", "armed", "idle"),
+                    onClick = onRefresh,
+                    enabled = connected && !state.running,
                 ) {
-                    Text("Resume")
+                    Text("Refresh status")
                 }
                 OutlinedButton(
                     onClick = onClearSession,
@@ -261,6 +266,13 @@ private fun StatusCard(state: PinBruteforceUiState) {
                     text = state.lastError,
                     style = MaterialTheme.typography.bodySmall,
                     color = StatusRed,
+                )
+            } else if (state.state == "armed") {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Armed. Unplug and re-plug the device to execute this one-shot HID session.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusAmber,
                 )
             }
         }
@@ -526,14 +538,28 @@ private fun NumericField(
     enabled: Boolean,
     onValueChange: (String) -> Unit,
 ) {
+    var text by remember { mutableStateOf(value) }
+    var focused by remember { mutableStateOf(false) }
+
+    LaunchedEffect(value, focused) {
+        if (!focused) text = value
+    }
+
     OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
+        value = text,
+        onValueChange = { newValue ->
+            if (newValue.length <= 6 && newValue.all { it.isDigit() }) {
+                text = newValue
+                if (newValue.isNotEmpty()) onValueChange(newValue)
+            }
+        },
         label = { Text(label) },
         singleLine = true,
         enabled = enabled,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { focusState -> focused = focusState.isFocused },
     )
 }
 

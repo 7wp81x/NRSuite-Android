@@ -1285,6 +1285,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onStart = viewModel::startPinBruteforce,
                     onStop = viewModel::stopPinBruteforce,
                     onResume = viewModel::resumePinBruteforce,
+                    onRefresh = viewModel::refreshPinBruteforce,
                     onClearSession = viewModel::clearPinBruteforce,
                     modifier = Modifier,
                 )

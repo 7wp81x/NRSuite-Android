@@ -260,8 +260,16 @@ internal fun MainViewModel.startPinBruteforceImpl() {
         _pinBruteforce.update { it.copy(starting = false) }
         if (response?.optBoolean("ok") == true) {
             applyPinStatus(response)
-            appendLog("PIN bruteforce started (${state.mode.wireName}, ${state.source.wireName}).")
-            addHistory("pin_bruteforce", "PIN bruteforce started", HistoryLevel.SUCCESS)
+            if (_pinBruteforce.value.state == "armed") {
+                appendLog(
+                    "PIN bruteforce armed. Unplug and re-plug the device to execute it.",
+                    tag = "pin",
+                )
+                addHistory("pin_bruteforce", "PIN bruteforce armed", HistoryLevel.SUCCESS)
+            } else {
+                appendLog("PIN bruteforce started (${state.mode.wireName}, ${state.source.wireName}).")
+                addHistory("pin_bruteforce", "PIN bruteforce started", HistoryLevel.SUCCESS)
+            }
         } else {
             val message = response?.optString("msg") ?: "timeout"
             _pinBruteforce.update { it.copy(state = "error", lastError = message) }
