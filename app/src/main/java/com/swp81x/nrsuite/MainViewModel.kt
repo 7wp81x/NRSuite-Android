@@ -34,6 +34,8 @@ import com.swp81x.nrsuite.core.credentials.CredentialStatus
 import com.swp81x.nrsuite.core.credentials.CredentialStore
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
 import com.swp81x.nrsuite.core.flasher.Esp32Flasher
+import com.swp81x.nrsuite.core.hid.PinAttemptRecord
+import com.swp81x.nrsuite.core.hid.PinBruteforceUiState
 import com.swp81x.nrsuite.core.flasher.UsbSerialFlasherTransport
 import com.swp81x.nrsuite.core.eapol.EapolParser
 import com.swp81x.nrsuite.core.history.HistoryLevel
@@ -615,6 +617,12 @@ class MainViewModel(internal val app: Application) {
     internal val _badUsbArmedFingerprints = MutableStateFlow<Set<String>>(emptySet())
     val badUsbArmedFingerprints: StateFlow<Set<String>> = _badUsbArmedFingerprints.asStateFlow()
 
+    internal val _pinBruteforce = MutableStateFlow(PinBruteforceUiState())
+    val pinBruteforce: StateFlow<PinBruteforceUiState> = _pinBruteforce.asStateFlow()
+
+    internal val _pinAttempts = MutableStateFlow<List<PinAttemptRecord>>(emptyList())
+    val pinAttempts: StateFlow<List<PinAttemptRecord>> = _pinAttempts.asStateFlow()
+
     internal val _bleAdvertising = MutableStateFlow(false)
     val bleAdvertising: StateFlow<Boolean> = _bleAdvertising.asStateFlow()
 
@@ -1032,6 +1040,28 @@ class MainViewModel(internal val app: Application) {
 
     fun setBadUsbPayload(uri: Uri, name: String?) = this.setBadUsbPayloadImpl(uri, name)
 
+    fun setPinBruteforceMode(mode: String) = this.setPinBruteforceModeImpl(mode)
+    fun setPinBruteforceSource(source: String) = this.setPinBruteforceSourceImpl(source)
+    fun setPinBruteforcePinLength(value: Int) = this.setPinBruteforcePinLengthImpl(value)
+    fun setPinBruteforceStart(value: String) = this.setPinBruteforceStartImpl(value)
+    fun setPinBruteforceEnd(value: String) = this.setPinBruteforceEndImpl(value)
+    fun setPinBruteforceCharset(value: String) = this.setPinBruteforceCharsetImpl(value)
+    fun setPinBruteforceCustomChars(value: String) = this.setPinBruteforceCustomCharsImpl(value)
+    fun setPinBruteforcePrefix(value: String) = this.setPinBruteforcePrefixImpl(value)
+    fun setPinBruteforceSuffix(value: String) = this.setPinBruteforceSuffixImpl(value)
+    fun setPinBruteforceTimeout(value: Int) = this.setPinBruteforceTimeoutImpl(value)
+    fun setPinBruteforceAttemptsBeforeTimeout(value: Int) = this.setPinBruteforceAttemptsBeforeTimeoutImpl(value)
+    fun setPinBruteforceInterAttempt(value: Int) = this.setPinBruteforceInterAttemptImpl(value)
+    fun setPinBruteforceAutoResume(value: Boolean) = this.setPinBruteforceAutoResumeImpl(value)
+    fun setPinBruteforceSessionKey(value: String) = this.setPinBruteforceSessionKeyImpl(value)
+    fun setPinBruteforceWordlist(uri: Uri, name: String?) = this.setPinBruteforceWordlistImpl(uri, name)
+    fun clearPinBruteforceWordlist() = this.clearPinBruteforceWordlistImpl()
+    fun startPinBruteforce() = this.startPinBruteforceImpl()
+    fun stopPinBruteforce() = this.stopPinBruteforceImpl()
+    fun resumePinBruteforce() = this.resumePinBruteforceImpl()
+    fun clearPinBruteforce() = this.clearPinBruteforceImpl()
+    fun refreshPinBruteforce() = this.refreshPinBruteforceImpl()
+
     fun clearBadUsbPayload() = this.clearBadUsbPayloadImpl()
 
     fun saveDuckyScript(name: String, script: String) = this.saveDuckyScriptImpl(name, script)
@@ -1107,6 +1137,7 @@ class MainViewModel(internal val app: Application) {
         _bleAdvertising.value = false
         _bleConnected.value = false
         _bleScriptRunning.value = false
+        _pinBruteforce.update { it.copy(state = "paused", starting = false) }
         _bleScanStarting.value = false
         _bleScanRunning.value = false
         _bleScanStopping.value = false
@@ -1424,6 +1455,7 @@ class MainViewModel(internal val app: Application) {
     internal fun updateForegroundService() {
         val context = app
         val activeText = when {
+            _pinBruteforce.value.running -> "PIN bruteforce active"
             _meshActive.value -> "Mesh active"
             _sniffing.value -> "Packet capture active"
             _beaconRunning.value -> "Beacon broadcast active"
@@ -1656,6 +1688,10 @@ class MainViewModel(internal val app: Application) {
                                 _hiddenApCurrentHopChannel.value ?: 1,
                             )
                         }
+                        "pin_session_status" -> this@MainViewModel.handlePinSessionStatusEvent(event)
+                        "pin_attempt" -> this@MainViewModel.handlePinAttemptEvent(event)
+                        "pin_range_done" -> this@MainViewModel.handlePinRangeDoneEvent(event)
+                        "pin_range_error" -> this@MainViewModel.handlePinRangeErrorEvent(event)
                         "heartbeat" -> Unit
                     }
                 }

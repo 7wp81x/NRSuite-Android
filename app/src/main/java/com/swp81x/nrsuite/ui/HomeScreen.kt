@@ -377,7 +377,7 @@ internal fun HomeScreen(
                     name = "HID",
                     icon = Icons.Default.Keyboard,
                     iconTint = categoryColor("HID"),
-                    moduleIds = listOf("ducky", "ble", "badusb"),
+                    moduleIds = listOf("ducky", "ble", "badusb", "pin_bruteforce"),
                     available = true,
                 ),
                 CategorySpec(

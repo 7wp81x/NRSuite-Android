@@ -283,6 +283,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val storageLoading by viewModel.storageLoading.collectAsState()
     val badUsbPayloadName by viewModel.badUsbPayloadName.collectAsState()
     val badUsbUploading by viewModel.badUsbUploading.collectAsState()
+    val pinBruteforce by viewModel.pinBruteforce.collectAsState()
+    val pinAttempts by viewModel.pinAttempts.collectAsState()
     val badUsbProgress by viewModel.badUsbProgress.collectAsState()
     val badUsbArmedFingerprints by viewModel.badUsbArmedFingerprints.collectAsState()
     val badUsbTargetDevice by viewModel.badUsbTargetDevice.collectAsState()
@@ -344,6 +346,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             state.chip in setOf("ESP32-S2", "ESP32-S3") &&
             (state.features.isEmpty() || "badusb" in state.features)
     }
+    val pinBruteforceCapableConnected = deviceConnectionStates.values.any { state ->
+        state is ConnectionState.Connected &&
+            state.chip in setOf("ESP32-S2", "ESP32-S3") &&
+            (state.features.isEmpty() || "pin_bruteforce" in state.features)
+    }
     val liveModules = remember(
         connectionState,
         deviceConnectionStates,
@@ -387,6 +394,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "storage" -> "storage"
             "ble" -> "ble_hid"
             "badusb" -> "badusb"
+            "pin_bruteforce" -> "pin_bruteforce"
             else -> null
         }
         val chipSupported = when (module.id) {
@@ -395,10 +403,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "tracker_detector" -> connectedChip in setOf("ESP32-C3", "ESP32-S3", "ESP32")
             "ble_profile" -> connectedChip in setOf("ESP32-C3", "ESP32-S3", "ESP32")
             "badusb" -> connectedChip in setOf("ESP32-S2", "ESP32-S3")
+            "pin_bruteforce" -> connectedChip in setOf("ESP32-S2", "ESP32-S3")
             else -> true
         }
         val featureSupported = when {
             module.id == "badusb" -> badUsbCapableConnected
+            module.id == "pin_bruteforce" -> pinBruteforceCapableConnected
             deviceFeatures.isEmpty() || featureKey == null -> chipSupported
             else -> featureKey in deviceFeatures
         }
@@ -409,7 +419,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             requiresOuiDb -> "OUI DB required"
             !isDeviceConnected && requiresDevice -> "Device needed"
             isDeviceConnected && !supported -> when {
-                module.id in setOf("ble", "ble_scanner", "tracker_detector", "ble_profile", "badusb") -> "Not supported"
+                module.id in setOf("ble", "ble_scanner", "tracker_detector", "ble_profile", "badusb", "pin_bruteforce") -> "Not supported"
                 else -> "Firmware required"
             }
             else -> null
@@ -1247,6 +1257,35 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onRefresh = viewModel::refreshStorage,
                     onDelete = viewModel::deleteStorageFile,
                     onStartMassStorage = viewModel::startMassStorage,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "pin_bruteforce" -> {
+                PinBruteforceScreen(
+                    connected = isDeviceConnected,
+                    state = pinBruteforce,
+                    attempts = pinAttempts,
+                    onModeChange = viewModel::setPinBruteforceMode,
+                    onSourceChange = viewModel::setPinBruteforceSource,
+                    onPinLengthChange = viewModel::setPinBruteforcePinLength,
+                    onStartChange = viewModel::setPinBruteforceStart,
+                    onEndChange = viewModel::setPinBruteforceEnd,
+                    onCharsetChange = viewModel::setPinBruteforceCharset,
+                    onCustomCharsChange = viewModel::setPinBruteforceCustomChars,
+                    onPrefixChange = viewModel::setPinBruteforcePrefix,
+                    onSuffixChange = viewModel::setPinBruteforceSuffix,
+                    onTimeoutChange = viewModel::setPinBruteforceTimeout,
+                    onAttemptsBeforeTimeoutChange = viewModel::setPinBruteforceAttemptsBeforeTimeout,
+                    onInterAttemptChange = viewModel::setPinBruteforceInterAttempt,
+                    onAutoResumeChange = viewModel::setPinBruteforceAutoResume,
+                    onSessionKeyChange = viewModel::setPinBruteforceSessionKey,
+                    onWordlistSelected = viewModel::setPinBruteforceWordlist,
+                    onClearWordlist = viewModel::clearPinBruteforceWordlist,
+                    onStart = viewModel::startPinBruteforce,
+                    onStop = viewModel::stopPinBruteforce,
+                    onResume = viewModel::resumePinBruteforce,
+                    onClearSession = viewModel::clearPinBruteforce,
                     modifier = Modifier,
                 )
             }

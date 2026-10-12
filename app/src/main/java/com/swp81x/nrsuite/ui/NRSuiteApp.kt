@@ -354,6 +354,16 @@ internal val modules = listOf(
     ),
 
     ModuleCardSpec(
+        id = "pin_bruteforce",
+        title = "PIN Bruteforce",
+        description = "Supervised HID PIN range and wordlist testing.",
+        icon = Icons.Default.Lock,
+        category = "HID",
+        radio = "USB",
+        available = true,
+    ),
+
+    ModuleCardSpec(
         id = "ble",
         title = "BLE HID",
         description = "BadBLE payloads and realtime keyboard input.",
