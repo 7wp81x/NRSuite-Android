@@ -262,7 +262,7 @@ internal fun MainViewModel.startPinBruteforceImpl() {
             applyPinStatus(response)
             if (_pinBruteforce.value.state == "armed") {
                 appendLog(
-                    "PIN bruteforce armed. Unplug and re-plug the device to execute it.",
+                    "PIN bruteforce armed. Unplug and re-plug to execute; it reboots to normal when done.",
                     tag = "pin",
                 )
                 addHistory("pin_bruteforce", "PIN bruteforce armed", HistoryLevel.SUCCESS)

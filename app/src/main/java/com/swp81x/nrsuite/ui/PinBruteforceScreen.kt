@@ -492,7 +492,7 @@ private fun ConfigCard(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Auto-resume", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                    Text("Continue on re-arm", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
                     NrFilterChip(
                         selected = state.autoResume,
                         onClick = { if (controlsEnabled) onAutoResumeChange(!state.autoResume) },
