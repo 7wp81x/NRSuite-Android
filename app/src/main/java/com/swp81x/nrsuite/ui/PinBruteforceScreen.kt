@@ -122,7 +122,7 @@ fun PinBruteforceScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp),
         ) {
-            StatusCard(state, onDisarm = onStop)
+            StatusCard(state, connected = connected, onDisarm = onStop)
             Spacer(Modifier.height(10.dp))
             WarningCard()
             Spacer(Modifier.height(10.dp))
@@ -232,7 +232,11 @@ fun PinBruteforceScreen(
 }
 
 @Composable
-private fun StatusCard(state: PinBruteforceUiState, onDisarm: () -> Unit) {
+private fun StatusCard(
+    state: PinBruteforceUiState,
+    connected: Boolean,
+    onDisarm: () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
@@ -248,6 +252,11 @@ private fun StatusCard(state: PinBruteforceUiState, onDisarm: () -> Unit) {
                         text = "PIN Bruteforce",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = if (connected) "Device connected" else "Device not connected",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (connected) StatusGreen else StatusRed,
                     )
                     Text(
                         text = "State: ${state.state} · ${state.mode.wireName}",
