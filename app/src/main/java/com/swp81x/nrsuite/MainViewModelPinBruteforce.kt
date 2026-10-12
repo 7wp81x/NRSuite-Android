@@ -260,24 +260,33 @@ internal fun MainViewModel.startPinBruteforceImpl() {
                 put("wordlist_file", PIN_WORDLIST_REMOTE_NAME)
             }
         }
-        val response = activeSession.sendCommand("PIN_RANGE_START", args, timeoutMs = 10_000)
-        _pinBruteforce.update { it.copy(starting = false) }
-        if (response?.optBoolean("ok") == true) {
-            applyPinStatus(response)
-            if (_pinBruteforce.value.state == "armed") {
-                appendLog(
-                    "PIN bruteforce armed. Unplug and re-plug to execute; it reboots to normal when done.",
-                    tag = "pin",
-                )
-                addHistory("pin_bruteforce", "PIN bruteforce armed", HistoryLevel.SUCCESS)
+        try {
+            val response = activeSession.sendCommand("PIN_RANGE_START", args, timeoutMs = 10_000)
+            if (response?.optBoolean("ok") == true) {
+                applyPinStatus(response)
+                if (_pinBruteforce.value.state == "starting") {
+                    _pinBruteforce.update { it.copy(state = "armed") }
+                }
+                if (_pinBruteforce.value.state == "armed") {
+                    appendLog(
+                        "PIN bruteforce armed. Unplug and re-plug to execute; it reboots to normal when done.",
+                        tag = "pin",
+                    )
+                    addHistory("pin_bruteforce", "PIN bruteforce armed", HistoryLevel.SUCCESS)
+                } else {
+                    appendLog("PIN bruteforce started (${state.mode.wireName}, ${state.source?.wireName ?: "range"}).")
+                    addHistory("pin_bruteforce", "PIN bruteforce started", HistoryLevel.SUCCESS)
+                }
             } else {
-                appendLog("PIN bruteforce started (${state.mode.wireName}, ${state.source?.wireName ?: "range"}).")
-                addHistory("pin_bruteforce", "PIN bruteforce started", HistoryLevel.SUCCESS)
+                val message = response?.optString("msg") ?: "timeout"
+                _pinBruteforce.update { it.copy(state = "error", lastError = message) }
+                appendLog("PIN bruteforce start failed: $message", level = LogLevel.ERROR)
             }
-        } else {
-            val message = response?.optString("msg") ?: "timeout"
-            _pinBruteforce.update { it.copy(state = "error", lastError = message) }
-            appendLog("PIN bruteforce start failed: $message", level = LogLevel.ERROR)
+        } catch (t: Throwable) {
+            _pinBruteforce.update { it.copy(state = "error", lastError = t.message ?: "arm failed") }
+            appendLog("PIN bruteforce arm failed: ${t.message ?: t.javaClass.simpleName}", level = LogLevel.ERROR)
+        } finally {
+            _pinBruteforce.update { it.copy(starting = false) }
         }
     }
 }
@@ -410,7 +419,15 @@ private fun MainViewModel.applyPinStatus(json: JSONObject) {
             pinLength = json.optInt("pin_length", current.pinLength),
             start = json.optString("start", current.start),
             end = json.optString("end", current.end),
-            charset = json.optString("charset", current.charset),
+            charset = json.optString(
+                "charset_mode",
+                if (json.optString("charset") == "0123456789") "digits" else current.charset,
+            ),
+            customChars = if (json.optString("charset_mode", "") == "custom") {
+                json.optString("charset", current.customChars)
+            } else {
+                current.customChars
+            },
             prefix = json.optString("prefix", current.prefix),
             suffix = json.optString("suffix", current.suffix),
             timeoutMs = json.optInt("timeout_ms", current.timeoutMs),
@@ -430,8 +447,20 @@ private fun MainViewModel.applyPinStatus(json: JSONObject) {
             startedAt = json.optInt("started_at", current.startedAt),
             updatedAt = json.optInt("updated_at", current.updatedAt),
             persistedInNvs = json.optBoolean("persisted_in_nvs", current.persistedInNvs),
+            wordlistName = if (json.optString("source") == "wordlist" &&
+                json.optBoolean("wordlist_present", false)
+            ) {
+                json.optString("wordlist_file", "/pin_wordlist.txt").substringAfterLast('/')
+            } else {
+                current.wordlistName
+            },
             wordlistLines = json.optInt("wordlist_lines", current.wordlistLines),
             wordlistBytes = json.optLong("wordlist_bytes", current.wordlistBytes),
+            wordlistUploadedToDevice = if (json.optString("source") == "wordlist") {
+                json.optBoolean("wordlist_present", current.wordlistUploadedToDevice)
+            } else {
+                current.wordlistUploadedToDevice
+            },
         )
     }
 }

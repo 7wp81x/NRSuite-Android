@@ -122,7 +122,7 @@ fun PinBruteforceScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp),
         ) {
-            StatusCard(state)
+            StatusCard(state, onDisarm = onStop)
             Spacer(Modifier.height(10.dp))
             WarningCard()
             Spacer(Modifier.height(10.dp))
@@ -169,7 +169,7 @@ fun PinBruteforceScreen(
             Spacer(Modifier.height(80.dp))
         }
 
-        if (state.source != null || state.running) {
+        if (state.source != null && !state.running) {
             ModuleActionFab(
                 onClick = {
                     if (state.running) {
@@ -232,7 +232,7 @@ fun PinBruteforceScreen(
 }
 
 @Composable
-private fun StatusCard(state: PinBruteforceUiState) {
+private fun StatusCard(state: PinBruteforceUiState, onDisarm: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
@@ -262,20 +262,39 @@ private fun StatusCard(state: PinBruteforceUiState) {
                 StatusValue("Cycle", state.attemptsInCycle.toString())
                 StatusValue("Last PIN", state.lastPin.ifBlank { "-" })
             }
-            if (state.lastError.isNotBlank()) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = state.lastError,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = StatusRed,
-                )
-            } else if (state.state == "armed") {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "Armed. Unplug and re-plug the device to execute this one-shot HID session.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = StatusAmber,
-                )
+            when {
+                state.lastError.isNotBlank() -> {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = state.lastError,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusRed,
+                    )
+                }
+                state.state == "armed" -> {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "ARMED",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = StatusGreen,
+                    )
+                    Text(
+                        text = "Unplug and re-plug the device to execute this one-shot HID session.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusAmber,
+                    )
+                    TextButton(onClick = onDisarm) {
+                        Text("Disarm")
+                    }
+                }
+                state.state == "starting" -> {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Arming...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusAmber,
+                    )
+                }
             }
         }
     }
