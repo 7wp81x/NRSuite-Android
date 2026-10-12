@@ -4,7 +4,6 @@ import android.net.Uri
 
 enum class PinBruteforceMode(val wireName: String) {
     STANDALONE_NATIVE_HID("standalone_native_hid"),
-    EXTERNAL_CH9329_REALTIME("external_ch9329_realtime"),
 }
 
 enum class PinBruteforceSource(val wireName: String) {
@@ -15,7 +14,7 @@ enum class PinBruteforceSource(val wireName: String) {
 data class PinBruteforceUiState(
     val state: String = "idle",
     val mode: PinBruteforceMode = PinBruteforceMode.STANDALONE_NATIVE_HID,
-    val source: PinBruteforceSource = PinBruteforceSource.RANGE,
+    val source: PinBruteforceSource? = null,
     val pinLength: Int = 4,
     val start: String = "0000",
     val end: String = "9999",

@@ -73,7 +73,6 @@ fun PinBruteforceScreen(
     connected: Boolean,
     state: PinBruteforceUiState,
     attempts: List<PinAttemptRecord>,
-    onModeChange: (String) -> Unit,
     onSourceChange: (String) -> Unit,
     onPinLengthChange: (Int) -> Unit,
     onStartChange: (String) -> Unit,
@@ -132,7 +131,6 @@ fun PinBruteforceScreen(
                 controlsEnabled = controlsEnabled,
                 expanded = configExpanded,
                 onToggle = { configExpanded = !configExpanded },
-                onModeChange = onModeChange,
                 onSourceChange = onSourceChange,
                 onPinLengthChange = onPinLengthChange,
                 onStartChange = onStartChange,
@@ -169,32 +167,34 @@ fun PinBruteforceScreen(
             Spacer(Modifier.height(80.dp))
         }
 
-        ModuleActionFab(
-            onClick = {
-                if (state.running) {
-                    onStop()
+        if (state.source != null || state.running) {
+            ModuleActionFab(
+                onClick = {
+                    if (state.running) {
+                        onStop()
+                    } else {
+                        confirmStart = true
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp),
+                enabled = connected && !state.starting,
+                containerColor = if (state.running) StatusRed else NrAccent,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                if (state.starting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
                 } else {
-                    confirmStart = true
+                    Icon(
+                        imageVector = if (state.running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        contentDescription = if (state.running) "Stop PIN bruteforce" else "Arm PIN bruteforce",
+                    )
                 }
-            },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
-            enabled = connected && !state.starting,
-            containerColor = if (state.running) StatusRed else NrAccent,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-        ) {
-            if (state.starting) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                )
-            } else {
-                Icon(
-                    imageVector = if (state.running) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = if (state.running) "Stop PIN bruteforce" else "Start PIN bruteforce",
-                )
             }
         }
     }
@@ -202,7 +202,7 @@ fun PinBruteforceScreen(
     if (confirmStart) {
         AlertDialog(
             onDismissRequest = { confirmStart = false },
-            title = { Text("Start PIN bruteforce?") },
+            title = { Text("Arm PIN bruteforce?") },
             text = {
                 Text(
                     "This will type PINs through HID into the target device. " +
@@ -320,7 +320,6 @@ private fun ConfigCard(
     controlsEnabled: Boolean,
     expanded: Boolean,
     onToggle: () -> Unit,
-    onModeChange: (String) -> Unit,
     onSourceChange: (String) -> Unit,
     onPinLengthChange: (Int) -> Unit,
     onStartChange: (String) -> Unit,
@@ -358,6 +357,7 @@ private fun ConfigCard(
                         text = when (state.source) {
                             PinBruteforceSource.RANGE -> "Range mode"
                             PinBruteforceSource.WORDLIST -> "Wordlist mode"
+                            null -> "Select a source"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
@@ -372,23 +372,6 @@ private fun ConfigCard(
             }
 
             if (expanded) {
-                Spacer(Modifier.height(8.dp))
-                Text("Mode", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NrFilterChip(
-                        selected = state.mode == PinBruteforceMode.STANDALONE_NATIVE_HID,
-                        onClick = { if (controlsEnabled) onModeChange(PinBruteforceMode.STANDALONE_NATIVE_HID.wireName) },
-                        enabled = controlsEnabled,
-                        label = "Native HID",
-                    )
-                    NrFilterChip(
-                        selected = false,
-                        onClick = { },
-                        enabled = false,
-                        label = "CH9329 later",
-                    )
-                }
-
                 Spacer(Modifier.height(8.dp))
                 Text("Source", style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -406,7 +389,13 @@ private fun ConfigCard(
                     )
                 }
 
-                if (state.source == PinBruteforceSource.RANGE) {
+                if (state.source == null) {
+                    Text(
+                        text = "Select Range or Wordlist to configure and arm a session.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                } else if (state.source == PinBruteforceSource.RANGE) {
                     Spacer(Modifier.height(8.dp))
                     NumericField("PIN length (4-12)", state.pinLength.toString(), controlsEnabled) {
                         onPinLengthChange(it.toIntOrNull() ?: state.pinLength)
@@ -474,6 +463,12 @@ private fun ConfigCard(
                 Spacer(Modifier.height(8.dp))
                 TextField("Prefix", state.prefix, controlsEnabled, onPrefixChange)
                 TextField("Suffix", state.suffix, controlsEnabled, onSuffixChange)
+                Text(
+                    text = "Prefix and suffix are added before/after every PIN or wordlist line. " +
+                        "Example: prefix 1 + 0000 + suffix # -> 10000#.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                )
                 NumericField("Timeout per attempt (ms)", state.timeoutMs.toString(), controlsEnabled) {
                     onTimeoutChange(it.toIntOrNull() ?: state.timeoutMs)
                 }

@@ -1040,7 +1040,6 @@ class MainViewModel(internal val app: Application) {
 
     fun setBadUsbPayload(uri: Uri, name: String?) = this.setBadUsbPayloadImpl(uri, name)
 
-    fun setPinBruteforceMode(mode: String) = this.setPinBruteforceModeImpl(mode)
     fun setPinBruteforceSource(source: String) = this.setPinBruteforceSourceImpl(source)
     fun setPinBruteforcePinLength(value: Int) = this.setPinBruteforcePinLengthImpl(value)
     fun setPinBruteforceStart(value: String) = this.setPinBruteforceStartImpl(value)

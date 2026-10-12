@@ -22,12 +22,6 @@ private const val PIN_WORDLIST_MAX_LINES = 1000
 private const val PIN_WORDLIST_CHUNK_SIZE = 512
 private const val PIN_ATTEMPT_FEED_LIMIT = 200
 
-internal fun MainViewModel.setPinBruteforceModeImpl(value: String) {
-    val mode = PinBruteforceMode.entries.firstOrNull { it.wireName == value }
-        ?: PinBruteforceMode.STANDALONE_NATIVE_HID
-    _pinBruteforce.update { it.copy(mode = mode) }
-}
-
 internal fun MainViewModel.setPinBruteforceSourceImpl(value: String) {
     val source = PinBruteforceSource.entries.firstOrNull { it.wireName == value }
         ?: PinBruteforceSource.RANGE
@@ -216,6 +210,10 @@ internal fun MainViewModel.startPinBruteforceImpl() {
     }
     val state = _pinBruteforce.value
     if (state.running || state.starting) return
+    if (state.source == null) {
+        appendLog("Select range or wordlist before arming PIN bruteforce.", level = LogLevel.ERROR)
+        return
+    }
 
     val connected = activeSession.state.value as? ConnectionState.Connected
     if (connected != null && connected.features.isNotEmpty() &&
@@ -238,8 +236,8 @@ internal fun MainViewModel.startPinBruteforceImpl() {
     _pinBruteforce.update { it.copy(starting = true, lastError = "", state = "starting") }
     scope.launch {
         val args = JSONObject().apply {
-            put("mode", state.mode.wireName)
-            put("source", state.source.wireName)
+            put("mode", PinBruteforceMode.STANDALONE_NATIVE_HID.wireName)
+            put("source", state.source?.wireName ?: PinBruteforceSource.RANGE.wireName)
             put("pin_length", state.pinLength)
             put("start", state.start)
             put("end", state.end)
@@ -267,7 +265,7 @@ internal fun MainViewModel.startPinBruteforceImpl() {
                 )
                 addHistory("pin_bruteforce", "PIN bruteforce armed", HistoryLevel.SUCCESS)
             } else {
-                appendLog("PIN bruteforce started (${state.mode.wireName}, ${state.source.wireName}).")
+                appendLog("PIN bruteforce started (${state.mode.wireName}, ${state.source?.wireName ?: "range"}).")
                 addHistory("pin_bruteforce", "PIN bruteforce started", HistoryLevel.SUCCESS)
             }
         } else {
@@ -401,7 +399,7 @@ private fun MainViewModel.applyPinStatus(json: JSONObject) {
                 it.wireName == json.optString("mode", current.mode.wireName)
             } ?: current.mode,
             source = PinBruteforceSource.entries.firstOrNull {
-                it.wireName == json.optString("source", current.source.wireName)
+                it.wireName == json.optString("source", current.source?.wireName ?: "")
             } ?: current.source,
             pinLength = json.optInt("pin_length", current.pinLength),
             start = json.optString("start", current.start),

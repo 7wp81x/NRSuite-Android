@@ -1266,7 +1266,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     connected = isDeviceConnected,
                     state = pinBruteforce,
                     attempts = pinAttempts,
-                    onModeChange = viewModel::setPinBruteforceMode,
                     onSourceChange = viewModel::setPinBruteforceSource,
                     onPinLengthChange = viewModel::setPinBruteforcePinLength,
                     onStartChange = viewModel::setPinBruteforceStart,
