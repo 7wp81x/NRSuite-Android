@@ -83,6 +83,7 @@ fun PinBruteforceScreen(
     onSuffixChange: (String) -> Unit,
     onTimeoutChange: (Int) -> Unit,
     onAttemptsBeforeTimeoutChange: (Int) -> Unit,
+    onCooldownChange: (Int) -> Unit,
     onInterAttemptChange: (Int) -> Unit,
     onAutoResumeChange: (Boolean) -> Unit,
     onSessionKeyChange: (String) -> Unit,
@@ -141,6 +142,7 @@ fun PinBruteforceScreen(
                 onSuffixChange = onSuffixChange,
                 onTimeoutChange = onTimeoutChange,
                 onAttemptsBeforeTimeoutChange = onAttemptsBeforeTimeoutChange,
+                onCooldownChange = onCooldownChange,
                 onInterAttemptChange = onInterAttemptChange,
                 onAutoResumeChange = onAutoResumeChange,
                 onSessionKeyChange = onSessionKeyChange,
@@ -330,6 +332,7 @@ private fun ConfigCard(
     onSuffixChange: (String) -> Unit,
     onTimeoutChange: (Int) -> Unit,
     onAttemptsBeforeTimeoutChange: (Int) -> Unit,
+    onCooldownChange: (Int) -> Unit,
     onInterAttemptChange: (Int) -> Unit,
     onAutoResumeChange: (Boolean) -> Unit,
     onSessionKeyChange: (String) -> Unit,
@@ -473,11 +476,14 @@ private fun ConfigCard(
                     onTimeoutChange(it.toIntOrNull() ?: state.timeoutMs)
                 }
                 NumericField(
-                    "Attempts before cooldown",
+                    "Attempts before cooldown (0 = off)",
                     state.attemptsBeforeTimeout.toString(),
                     controlsEnabled,
                 ) {
                     onAttemptsBeforeTimeoutChange(it.toIntOrNull() ?: state.attemptsBeforeTimeout)
+                }
+                NumericField("Cooldown duration (ms)", state.cooldownMs.toString(), controlsEnabled) {
+                    onCooldownChange(it.toIntOrNull() ?: state.cooldownMs)
                 }
                 NumericField("Inter-attempt delay (ms)", state.interAttemptMs.toString(), controlsEnabled) {
                     onInterAttemptChange(it.toIntOrNull() ?: state.interAttemptMs)

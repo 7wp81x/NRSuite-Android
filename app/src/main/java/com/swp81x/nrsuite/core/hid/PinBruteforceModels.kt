@@ -24,6 +24,7 @@ data class PinBruteforceUiState(
     val suffix: String = "",
     val timeoutMs: Int = 1000,
     val attemptsBeforeTimeout: Int = 0,
+    val cooldownMs: Int = 30000,
     val interAttemptMs: Int = 400,
     val autoResume: Boolean = true,
     val sessionKey: String = "default",

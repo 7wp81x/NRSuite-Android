@@ -1050,6 +1050,7 @@ class MainViewModel(internal val app: Application) {
     fun setPinBruteforceSuffix(value: String) = this.setPinBruteforceSuffixImpl(value)
     fun setPinBruteforceTimeout(value: Int) = this.setPinBruteforceTimeoutImpl(value)
     fun setPinBruteforceAttemptsBeforeTimeout(value: Int) = this.setPinBruteforceAttemptsBeforeTimeoutImpl(value)
+    fun setPinBruteforceCooldown(value: Int) = this.setPinBruteforceCooldownImpl(value)
     fun setPinBruteforceInterAttempt(value: Int) = this.setPinBruteforceInterAttemptImpl(value)
     fun setPinBruteforceAutoResume(value: Boolean) = this.setPinBruteforceAutoResumeImpl(value)
     fun setPinBruteforceSessionKey(value: String) = this.setPinBruteforceSessionKeyImpl(value)

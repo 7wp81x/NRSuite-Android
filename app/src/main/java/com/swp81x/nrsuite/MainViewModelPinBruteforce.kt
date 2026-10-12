@@ -64,6 +64,10 @@ internal fun MainViewModel.setPinBruteforceAttemptsBeforeTimeoutImpl(value: Int)
     _pinBruteforce.update { it.copy(attemptsBeforeTimeout = value.coerceIn(0, 1000)) }
 }
 
+internal fun MainViewModel.setPinBruteforceCooldownImpl(value: Int) {
+    _pinBruteforce.update { it.copy(cooldownMs = value.coerceIn(0, 600_000)) }
+}
+
 internal fun MainViewModel.setPinBruteforceInterAttemptImpl(value: Int) {
     _pinBruteforce.update { it.copy(interAttemptMs = value.coerceIn(0, 60_000)) }
 }
@@ -246,7 +250,9 @@ internal fun MainViewModel.startPinBruteforceImpl() {
             put("prefix", state.prefix)
             put("suffix", state.suffix)
             put("timeout_ms", state.timeoutMs)
+            put("attempts_before_cooldown", state.attemptsBeforeTimeout)
             put("attempts_before_timeout", state.attemptsBeforeTimeout)
+            put("cooldown_ms", state.cooldownMs)
             put("inter_attempt_ms", state.interAttemptMs)
             put("auto_resume", state.autoResume)
             put("session_key", state.sessionKey.ifBlank { "default" })
@@ -408,7 +414,11 @@ private fun MainViewModel.applyPinStatus(json: JSONObject) {
             prefix = json.optString("prefix", current.prefix),
             suffix = json.optString("suffix", current.suffix),
             timeoutMs = json.optInt("timeout_ms", current.timeoutMs),
-            attemptsBeforeTimeout = json.optInt("attempts_before_timeout", current.attemptsBeforeTimeout),
+            attemptsBeforeTimeout = json.optInt(
+                "attempts_before_cooldown",
+                json.optInt("attempts_before_timeout", current.attemptsBeforeTimeout),
+            ),
+            cooldownMs = json.optInt("cooldown_ms", current.cooldownMs),
             interAttemptMs = json.optInt("inter_attempt_ms", current.interAttemptMs),
             autoResume = json.optBoolean("auto_resume", current.autoResume),
             sessionKey = json.optString("session_key", current.sessionKey),

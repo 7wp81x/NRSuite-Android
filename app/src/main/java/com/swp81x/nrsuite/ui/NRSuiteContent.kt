@@ -1276,6 +1276,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onSuffixChange = viewModel::setPinBruteforceSuffix,
                     onTimeoutChange = viewModel::setPinBruteforceTimeout,
                     onAttemptsBeforeTimeoutChange = viewModel::setPinBruteforceAttemptsBeforeTimeout,
+                    onCooldownChange = viewModel::setPinBruteforceCooldown,
                     onInterAttemptChange = viewModel::setPinBruteforceInterAttempt,
                     onAutoResumeChange = viewModel::setPinBruteforceAutoResume,
                     onSessionKeyChange = viewModel::setPinBruteforceSessionKey,
