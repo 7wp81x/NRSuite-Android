@@ -21,6 +21,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **BLE GATT Profile** - Read-only GATT service/characteristic enumeration with integrated BLE target scanner
 - [ ] **FastPair Model ID** - Map FastPair model IDs to known device names/types
 - [x] **BadUSB** - HID injection via USB
+- [x] **PIN Bruteforce** - Supervised native-HID range/wordlist tester; one-shot boot-arm like BadUSB; saved sessions and progress
 - [x] **Credential Manager** - Local storage of harvested creds
 
 ## 2. Defense Modules

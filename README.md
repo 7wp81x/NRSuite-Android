@@ -82,6 +82,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 
 - [x] **Ducky Script Editor** - create, import, and export DuckyScript payloads
 - [x] **BadUSB** - HID injection via USB
+- [x] **PIN Bruteforce** - Supervised native-HID range/wordlist tester; one-shot boot-arm like BadUSB; saved sessions and compact attempt feed
 - [x] **Multi-device USB sessions** - connect and use multiple USB serial devices independently, with per-device permissions and connection state
 - [x] **BadUSB device picker** - choose the target USB device without interrupting other connections
 
@@ -265,6 +266,7 @@ app/src/main/java/com/swp81x/nrsuite/
     protocol/          # Frame codec and NrJson wire protocol (shared with firmware)
     session/           # Connection state and NrSession manager
     sniff/             # Sniff request model
+    hid/               # PIN Bruteforce models/state
     storage/           # Mass storage models (ESP32 flash file browser)
     usb/               # USB serial transport, device catalog, NrTransport
     wifi/              # Pcap SSID parser
@@ -296,6 +298,7 @@ app/src/main/java/com/swp81x/nrsuite/
   MainViewModelBleScanner.kt     # BLE device discovery
   MainViewModelBleProfile.kt     # BLE GATT enumeration
   MainViewModelStorage.kt        # Mass storage, BadUSB, DuckyScript
+  MainViewModelPinBruteforce.kt  # PIN Bruteforce HID session state
   MainViewModelCredentials.kt    # Credential sessions and WPA cracking
   MainViewModelDefense.kt        # Shared defense-module plumbing
   MainViewModelRogueAp.kt        # Rogue AP Detector
