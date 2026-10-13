@@ -131,6 +131,26 @@ internal fun MainViewModel.setLd2450MeshBroadcastImpl(enabled: Boolean) {
     _ld2450.update { it.copy(meshBroadcastEnabled = enabled) }
 }
 
+internal fun MainViewModel.setLd2450HeartbeatEnabledImpl(enabled: Boolean) {
+    _ld2450.update { it.copy(heartbeatEnabled = enabled) }
+}
+
+internal fun MainViewModel.setLd2450ScanDurationImpl(valueMs: Int) {
+    _ld2450.update { it.copy(scanDurationMs = valueMs.coerceIn(500, 3000)) }
+}
+
+internal fun MainViewModel.setLd2450SleepDurationImpl(valueMs: Int) {
+    _ld2450.update { it.copy(sleepDurationMs = valueMs.coerceIn(500, 5000)) }
+}
+
+internal fun MainViewModel.setLd2450LimitDotCountImpl(enabled: Boolean) {
+    _ld2450.update { it.copy(limitDotCount = enabled) }
+}
+
+internal fun MainViewModel.setLd2450MaxDotsImpl(value: Int) {
+    _ld2450.update { it.copy(maxDots = value.coerceIn(1, 32)) }
+}
+
 internal fun MainViewModel.handleLd2450TargetsEvent(event: JSONObject) {
     val targets = buildList {
         val array = event.optJSONArray("targets") ?: return@buildList

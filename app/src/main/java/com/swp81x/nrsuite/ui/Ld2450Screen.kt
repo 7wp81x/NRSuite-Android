@@ -3,6 +3,7 @@ package com.swp81x.nrsuite.ui
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -44,6 +45,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
@@ -74,11 +77,13 @@ import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
 import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 @Composable
 fun Ld2450Screen(
@@ -90,9 +95,19 @@ fun Ld2450Screen(
     onMaxRangeChange: (Int) -> Unit,
     onZoneAlertChange: (Boolean) -> Unit,
     onMeshBroadcastChange: (Boolean) -> Unit,
+    onHeartbeatEnabledChange: (Boolean) -> Unit,
+    onScanDurationChange: (Int) -> Unit,
+    onSleepDurationChange: (Int) -> Unit,
+    onLimitDotCountChange: (Boolean) -> Unit,
+    onMaxDotsChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by remember { mutableStateOf(true) }
+    var heartbeatPhase by remember { mutableStateOf(HeartbeatPhase.DORMANT) }
+    var displayDots by remember { mutableStateOf<List<PersistedRadarDot>>(emptyList()) }
+    var nextDotId by remember { mutableLongStateOf(0L) }
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val scanWave = remember { Animatable(0f) }
 
     LaunchedEffect(connected) {
         if (connected) onRefresh()
@@ -100,6 +115,120 @@ fun Ld2450Screen(
     LaunchedEffect(state.running) {
         if (state.running) configExpanded = false
     }
+
+    // Drives fade alpha even when the target stream is idle.
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowMs = System.currentTimeMillis()
+            delay(50)
+        }
+    }
+
+    // Heartbeat: scan window, then dormant/fade window, repeat.
+    LaunchedEffect(state.heartbeatEnabled, state.scanDurationMs, state.sleepDurationMs) {
+        if (!state.heartbeatEnabled) {
+            heartbeatPhase = HeartbeatPhase.DORMANT
+            displayDots = emptyList()
+            scanWave.snapTo(0f)
+            return@LaunchedEffect
+        }
+        while (true) {
+            heartbeatPhase = HeartbeatPhase.SCANNING
+            scanWave.snapTo(0f)
+            scanWave.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = state.scanDurationMs,
+                    easing = LinearEasing,
+                ),
+            )
+            heartbeatPhase = HeartbeatPhase.DORMANT
+            delay(state.sleepDurationMs.toLong())
+        }
+    }
+
+    // Position-based dot persistence. Slots are deliberately ignored: the
+    // LD2450 slot number is not a stable target identity.
+    LaunchedEffect(
+        state.targets,
+        state.heartbeatEnabled,
+        heartbeatPhase,
+        state.limitDotCount,
+        state.maxDots,
+    ) {
+        if (!state.heartbeatEnabled || heartbeatPhase != HeartbeatPhase.SCANNING) {
+            return@LaunchedEffect
+        }
+        val now = System.currentTimeMillis()
+        val fadeDurationMs = state.sleepDurationMs.toLong() + DOT_FADE_EXTRA_MS
+        val dots = displayDots.toMutableList().also { list ->
+            list.removeAll { now - it.lastSeenMs >= fadeDurationMs }
+        }
+
+        val candidates = mutableListOf<DotCandidate>()
+        dots.forEachIndexed { dotIndex, dot ->
+            state.targets.forEachIndexed { targetIndex, target ->
+                val dx = target.xCm - dot.xCm
+                val dy = target.yCm - dot.yCm
+                val distance = sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+                if (distance <= DOT_MATCH_RADIUS_CM) {
+                    candidates.add(DotCandidate(dotIndex, targetIndex, distance))
+                }
+            }
+        }
+        candidates.sortBy { it.distance }
+
+        val matchedDots = mutableSetOf<Int>()
+        val matchedTargets = mutableSetOf<Int>()
+        candidates.forEach { candidate ->
+            if (candidate.dotIndex in matchedDots || candidate.targetIndex in matchedTargets) {
+                return@forEach
+            }
+            matchedDots.add(candidate.dotIndex)
+            matchedTargets.add(candidate.targetIndex)
+            val target = state.targets[candidate.targetIndex]
+            val previous = dots[candidate.dotIndex]
+            dots[candidate.dotIndex] = previous.copy(
+                xCm = previous.xCm + (target.xCm - previous.xCm) * 0.6f,
+                yCm = previous.yCm + (target.yCm - previous.yCm) * 0.6f,
+                lastSeenMs = now,
+            )
+        }
+
+        state.targets.forEachIndexed { targetIndex, target ->
+            if (targetIndex in matchedTargets) return@forEachIndexed
+            if (state.limitDotCount && dots.size >= state.maxDots) return@forEachIndexed
+            dots.add(
+                PersistedRadarDot(
+                    id = nextDotId++,
+                    xCm = target.xCm,
+                    yCm = target.yCm,
+                    lastSeenMs = now,
+                ),
+            )
+        }
+        displayDots = dots
+    }
+
+    val dotsForPlot = if (state.heartbeatEnabled) {
+        displayDots
+    } else {
+        state.targets.mapIndexed { index, target ->
+            PersistedRadarDot(
+                id = index.toLong(),
+                xCm = target.xCm,
+                yCm = target.yCm,
+                lastSeenMs = nowMs,
+            )
+        }
+    }
+    val fadeDurationMs = state.sleepDurationMs.toLong() + DOT_FADE_EXTRA_MS
+    val scanWaveProgress =
+        if (state.heartbeatEnabled && heartbeatPhase == HeartbeatPhase.SCANNING) {
+            scanWave.value
+        } else {
+            null
+        }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -111,6 +240,8 @@ fun Ld2450Screen(
             Ld2450StatusCard(
                 connected = connected,
                 state = state,
+                heartbeatPhase = heartbeatPhase,
+                dotCount = dotsForPlot.size,
             )
 
             Spacer(Modifier.height(10.dp))
@@ -123,21 +254,23 @@ fun Ld2450Screen(
                 onMaxRangeChange = onMaxRangeChange,
                 onZoneAlertChange = onZoneAlertChange,
                 onMeshBroadcastChange = onMeshBroadcastChange,
+                onHeartbeatEnabledChange = onHeartbeatEnabledChange,
+                onScanDurationChange = onScanDurationChange,
+                onSleepDurationChange = onSleepDurationChange,
+                onLimitDotCountChange = onLimitDotCountChange,
+                onMaxDotsChange = onMaxDotsChange,
             )
 
             Spacer(Modifier.height(10.dp))
 
             Ld2450RadarCard(
-                targets = state.targets,
+                dots = dotsForPlot,
                 maxRangeCm = state.maxRangeCm,
                 alertZoneBreach = state.alertZoneBreach,
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            Ld2450TargetListCard(
-                state = state,
-                connected = connected,
+                nowMs = nowMs,
+                fadeDurationMs = fadeDurationMs,
+                heartbeatEnabled = state.heartbeatEnabled,
+                scanWaveProgress = scanWaveProgress,
             )
 
             Spacer(Modifier.height(10.dp))
@@ -176,10 +309,33 @@ fun Ld2450Screen(
     }
 }
 
+private enum class HeartbeatPhase {
+    SCANNING,
+    DORMANT,
+}
+
+private data class PersistedRadarDot(
+    val id: Long,
+    val xCm: Float,
+    val yCm: Float,
+    val lastSeenMs: Long,
+)
+
+private data class DotCandidate(
+    val dotIndex: Int,
+    val targetIndex: Int,
+    val distance: Float,
+)
+
+private const val DOT_MATCH_RADIUS_CM = 25f
+private const val DOT_FADE_EXTRA_MS = 500L
+
 @Composable
 private fun Ld2450StatusCard(
     connected: Boolean,
     state: Ld2450UiState,
+    heartbeatPhase: HeartbeatPhase,
+    dotCount: Int,
 ) {
     val statusState = when {
         !connected -> ModuleStatusState.DISCONNECTED
@@ -193,6 +349,8 @@ private fun Ld2450StatusCard(
         state.errorKind == "parse_error" -> "Parse errors"
         state.running && state.errorKind == "no_data" -> "Sensor not responding"
         state.running && !state.hasData -> "Waiting for data"
+        state.heartbeatEnabled && heartbeatPhase == HeartbeatPhase.SCANNING -> "Heartbeat · scanning"
+        state.heartbeatEnabled -> "Heartbeat · dormant"
         state.running && state.targets.isEmpty() -> "Monitoring"
         state.running -> "Tracking"
         else -> "Ready"
@@ -204,6 +362,10 @@ private fun Ld2450StatusCard(
         state.running && state.errorKind == "no_data" ->
             "No LD2450 frames received yet."
         state.running && !state.hasData -> "Waiting for the first valid frame."
+        state.heartbeatEnabled && heartbeatPhase == HeartbeatPhase.SCANNING ->
+            "Live scan window · $dotCount dot(s) visible"
+        state.heartbeatEnabled ->
+            "Fading last scan · $dotCount dot(s) visible"
         state.running && state.targets.isEmpty() -> "No targets detected"
         state.running -> "${state.targets.size} target(s) · ${state.validFrames} frame(s)"
         else -> "HLK-LD2450 presence and target tracking"
@@ -235,7 +397,14 @@ private fun Ld2450ConfigZone(
     onMaxRangeChange: (Int) -> Unit,
     onZoneAlertChange: (Boolean) -> Unit,
     onMeshBroadcastChange: (Boolean) -> Unit,
+    onHeartbeatEnabledChange: (Boolean) -> Unit,
+    onScanDurationChange: (Int) -> Unit,
+    onSleepDurationChange: (Int) -> Unit,
+    onLimitDotCountChange: (Boolean) -> Unit,
+    onMaxDotsChange: (Int) -> Unit,
 ) {
+    val controlsEnabled = connected && !state.running
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
@@ -254,7 +423,7 @@ private fun Ld2450ConfigZone(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "Display range and alert options",
+                        text = "Display, heartbeat, and alert options",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
@@ -284,7 +453,7 @@ private fun Ld2450ConfigZone(
                     }
                     IconButton(
                         onClick = { onMaxRangeChange(state.maxRangeCm - 50) },
-                        enabled = connected && !state.running && state.maxRangeCm > 100,
+                        enabled = controlsEnabled && state.maxRangeCm > 100,
                     ) {
                         Icon(Icons.Default.Remove, contentDescription = "Decrease max range")
                     }
@@ -294,7 +463,7 @@ private fun Ld2450ConfigZone(
                     )
                     IconButton(
                         onClick = { onMaxRangeChange(state.maxRangeCm + 50) },
-                        enabled = connected && !state.running && state.maxRangeCm < 800,
+                        enabled = controlsEnabled && state.maxRangeCm < 800,
                     ) {
                         Icon(Icons.Default.Add, contentDescription = "Increase max range")
                     }
@@ -304,10 +473,63 @@ private fun Ld2450ConfigZone(
                     value = state.maxRangeCm.toFloat(),
                     onValueChange = { onMaxRangeChange(it.roundToInt()) },
                     valueRange = 100f..800f,
-                    enabled = connected && !state.running,
+                    enabled = controlsEnabled,
                 )
 
                 Spacer(Modifier.height(8.dp))
+
+                ConfigSwitchRow(
+                    title = "Heartbeat mode",
+                    subtitle = "Scan window, then fade dots before the next scan.",
+                    checked = state.heartbeatEnabled,
+                    enabled = controlsEnabled,
+                    onCheckedChange = onHeartbeatEnabledChange,
+                )
+
+                if (state.heartbeatEnabled) {
+                    ConfigStepperRow(
+                        title = "Scan duration",
+                        subtitle = "Live radar sampling window",
+                        value = formatSeconds(state.scanDurationMs),
+                        onDecrease = { onScanDurationChange(state.scanDurationMs - 250) },
+                        onIncrease = { onScanDurationChange(state.scanDurationMs + 250) },
+                        decreaseEnabled = controlsEnabled && state.scanDurationMs > 500,
+                        increaseEnabled = controlsEnabled && state.scanDurationMs < 3000,
+                    )
+                    ConfigStepperRow(
+                        title = "Sleep duration",
+                        subtitle = "Dormant / fade window",
+                        value = formatSeconds(state.sleepDurationMs),
+                        onDecrease = { onSleepDurationChange(state.sleepDurationMs - 500) },
+                        onIncrease = { onSleepDurationChange(state.sleepDurationMs + 500) },
+                        decreaseEnabled = controlsEnabled && state.sleepDurationMs > 500,
+                        increaseEnabled = controlsEnabled && state.sleepDurationMs < 5000,
+                    )
+                    ConfigSwitchRow(
+                        title = "Limit dots",
+                        subtitle = "Cap how many persistent dots stay on the fan.",
+                        checked = state.limitDotCount,
+                        enabled = controlsEnabled,
+                        onCheckedChange = onLimitDotCountChange,
+                    )
+                    if (state.limitDotCount) {
+                        ConfigStepperRow(
+                            title = "Max dots",
+                            subtitle = "New detections are ignored once this cap is reached.",
+                            value = state.maxDots.toString(),
+                            onDecrease = { onMaxDotsChange(state.maxDots - 1) },
+                            onIncrease = { onMaxDotsChange(state.maxDots + 1) },
+                            decreaseEnabled = controlsEnabled && state.maxDots > 1,
+                            increaseEnabled = controlsEnabled && state.maxDots < 32,
+                        )
+                    }
+                    Text(
+                        text = "Match radius: ${DOT_MATCH_RADIUS_CM.toInt()} cm",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                }
 
                 ConfigSwitchRow(
                     title = "Zone alert",
@@ -360,10 +582,51 @@ private fun ConfigSwitchRow(
 }
 
 @Composable
+private fun ConfigStepperRow(
+    title: String,
+    subtitle: String,
+    value: String,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit,
+    decreaseEnabled: Boolean,
+    increaseEnabled: Boolean,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = NrOnSurfaceVariant,
+            )
+        }
+        IconButton(onClick = onDecrease, enabled = decreaseEnabled) {
+            Icon(Icons.Default.Remove, contentDescription = "Decrease $title")
+        }
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+        )
+        IconButton(onClick = onIncrease, enabled = increaseEnabled) {
+            Icon(Icons.Default.Add, contentDescription = "Increase $title")
+        }
+    }
+}
+
+@Composable
 private fun Ld2450RadarCard(
-    targets: List<Ld2450Target>,
+    dots: List<PersistedRadarDot>,
     maxRangeCm: Int,
     alertZoneBreach: Boolean,
+    nowMs: Long,
+    fadeDurationMs: Long,
+    heartbeatEnabled: Boolean,
+    scanWaveProgress: Float?,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -380,7 +643,11 @@ private fun Ld2450RadarCard(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "120° fan · range 0-${formatMeters(maxRangeCm)} m",
+                        text = if (heartbeatEnabled) {
+                            "Heartbeat dots · range 0-${formatMeters(maxRangeCm)} m"
+                        } else {
+                            "120° fan · range 0-${formatMeters(maxRangeCm)} m"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
@@ -396,8 +663,12 @@ private fun Ld2450RadarCard(
             }
             Spacer(Modifier.height(8.dp))
             Ld2450RadarPlot(
-                targets = targets,
+                dots = dots,
                 maxRangeCm = maxRangeCm,
+                nowMs = nowMs,
+                fadeDurationMs = fadeDurationMs,
+                heartbeatEnabled = heartbeatEnabled,
+                scanWaveProgress = scanWaveProgress,
             )
             Spacer(Modifier.height(4.dp))
             Row(
@@ -426,64 +697,16 @@ private fun Ld2450RadarCard(
 
 @Composable
 private fun Ld2450RadarPlot(
-    targets: List<Ld2450Target>,
+    dots: List<PersistedRadarDot>,
     maxRangeCm: Int,
+    nowMs: Long,
+    fadeDurationMs: Long,
+    heartbeatEnabled: Boolean,
+    scanWaveProgress: Float?,
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val grid = NrOutline
     val maxRange = maxRangeCm.coerceAtLeast(100).toFloat()
-
-    // Keep a short trail per target slot so fast movement leaves a soft
-    // afterimage. The trail is stored in radar centimetres, not screen pixels.
-    val trailStore = remember { mutableStateMapOf<Int, MutableList<Pair<Float, Float>>>() }
-    LaunchedEffect(targets) {
-        targets.forEach { target ->
-            val trail = trailStore.getOrPut(target.slot) { mutableListOf() }
-            val point = target.xCm to target.yCm
-            if (trail.lastOrNull() != point) {
-                trail.add(point)
-                while (trail.size > 10) trail.removeAt(0)
-            }
-        }
-        val presentSlots = targets.map { it.slot }.toSet()
-        trailStore.keys.toList().forEach { slot ->
-            if (slot !in presentSlots) trailStore.remove(slot)
-        }
-    }
-
-    // Expanding radar pings / heartbeat rings around each target.
-    val pulseTransition = rememberInfiniteTransition(label = "ld2450-pulse")
-    val pulsePhase by pulseTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1400, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "ld2450-pulse-phase",
-    )
-
-    // Stable slot order keeps animateFloatAsState calls in the same positions
-    // across recompositions, which gives each target a small interpolation/ease.
-    val animatedTargets = mutableListOf<AnimatedRadarTarget>()
-    for (slot in 1..3) {
-        val target = targets.firstOrNull { it.slot == slot }
-        val targetX = target?.xCm ?: 0f
-        val targetY = target?.yCm ?: 0f
-        val x by animateFloatAsState(
-            targetValue = targetX,
-            animationSpec = tween(durationMillis = 130),
-            label = "ld2450-x-$slot",
-        )
-        val y by animateFloatAsState(
-            targetValue = targetY,
-            animationSpec = tween(durationMillis = 130),
-            label = "ld2450-y-$slot",
-        )
-        if (target != null) {
-            animatedTargets.add(AnimatedRadarTarget(target = target, xCm = x, yCm = y))
-        }
-    }
 
     Canvas(
         modifier = Modifier
@@ -501,12 +724,6 @@ private fun Ld2450RadarPlot(
             x = origin.x + (xCm / maxRange) * outerRadius,
             y = origin.y - (yCm / maxRange) * outerRadius,
         )
-
-        fun colorFor(slot: Int): Color = when (slot) {
-            2 -> StatusAmber
-            3 -> CategoryDetectionBlue
-            else -> primary
-        }
 
         drawArc(
             color = primary.copy(alpha = 0.07f),
@@ -546,6 +763,43 @@ private fun Ld2450RadarPlot(
             )
         }
 
+        // Scan wave: a soft sector plus an expanding ring that reaches the fan edge.
+        if (scanWaveProgress != null) {
+            val progress = scanWaveProgress.coerceIn(0f, 1f)
+            val waveRadius = outerRadius * progress
+            drawArc(
+                color = StatusGreen.copy(alpha = (1f - progress) * 0.10f),
+                startAngle = -150f,
+                sweepAngle = 120f,
+                useCenter = true,
+                topLeft = Offset(origin.x - waveRadius, origin.y - waveRadius),
+                size = Size(waveRadius * 2f, waveRadius * 2f),
+            )
+            drawArc(
+                color = StatusGreen.copy(alpha = (1f - progress) * 0.55f),
+                startAngle = -150f,
+                sweepAngle = 120f,
+                useCenter = false,
+                topLeft = Offset(origin.x - waveRadius, origin.y - waveRadius),
+                size = Size(waveRadius * 2f, waveRadius * 2f),
+                style = Stroke(width = 2.dp.toPx()),
+            )
+
+            val secondProgress = (progress + 0.5f) % 1f
+            if (secondProgress > 0.001f) {
+                val secondRadius = outerRadius * secondProgress
+                drawArc(
+                    color = StatusGreen.copy(alpha = (1f - secondProgress) * 0.28f),
+                    startAngle = -150f,
+                    sweepAngle = 120f,
+                    useCenter = false,
+                    topLeft = Offset(origin.x - secondRadius, origin.y - secondRadius),
+                    size = Size(secondRadius * 2f, secondRadius * 2f),
+                    style = Stroke(width = 1.dp.toPx()),
+                )
+            }
+        }
+
         drawCircle(
             color = primary.copy(alpha = 0.14f),
             radius = 12.dp.toPx(),
@@ -557,100 +811,50 @@ private fun Ld2450RadarPlot(
             center = origin,
         )
 
-        // Trails and motion blur go behind the current target pips.
-        animatedTargets.forEach { target ->
-            val color = colorFor(target.target.slot)
-            val trail = trailStore[target.target.slot].orEmpty()
-            if (trail.size >= 2) {
-                for (index in 1 until trail.size) {
-                    val age = index.toFloat() / trail.lastIndex
-                    val start = project(trail[index - 1].first, trail[index - 1].second)
-                    val end = project(trail[index].first, trail[index].second)
-                    drawLine(
-                        color = color.copy(alpha = 0.11f * age),
-                        start = start,
-                        end = end,
-                        strokeWidth = (4f + 5f * age).dp.toPx(),
-                        cap = StrokeCap.Round,
-                    )
-                }
-
-                trail.dropLast(1).forEachIndexed { index, (xCm, yCm) ->
-                    val age = (index + 1).toFloat() / trail.size
-                    drawCircle(
-                        color = color.copy(alpha = 0.15f * age),
-                        radius = (3.5f + 3.5f * age).dp.toPx(),
-                        center = project(xCm, yCm),
-                    )
-                }
+        // Green blurred dots. Matched dots are refreshed and stay visible;
+        // unmatched dots fade slowly according to their last-seen time.
+        dots.forEach { dot ->
+            val ageMs = (nowMs - dot.lastSeenMs).coerceAtLeast(0L)
+            val fade = if (heartbeatEnabled && fadeDurationMs > 0L) {
+                (1f - ageMs.toFloat() / fadeDurationMs.toFloat()).coerceIn(0f, 1f)
+            } else {
+                1f
             }
+            if (fade <= 0.02f) return@forEach
 
-            val previous = trail.dropLast(1).lastOrNull()
-            if (previous != null) {
-                val previousPoint = project(previous.first, previous.second)
-                val point = project(target.xCm, target.yCm)
-                val distance = (point - previousPoint).getDistance()
-                if (distance > 2.dp.toPx()) {
-                    val speedBoost = (abs(target.target.speedCmS) / 60f).coerceIn(0f, 1f)
-                    drawLine(
-                        color = color.copy(alpha = 0.12f + 0.16f * speedBoost),
-                        start = previousPoint,
-                        end = point,
-                        strokeWidth = (4f + 8f * speedBoost).dp.toPx(),
-                        cap = StrokeCap.Round,
-                    )
-                }
-            }
-        }
-
-        animatedTargets.forEach { target ->
-            val point = project(target.xCm, target.yCm)
-            val color = colorFor(target.target.slot)
-            val speedBoost = (abs(target.target.speedCmS) / 60f).coerceIn(0f, 1f)
-
-            // Heartbeat halo: gentle scale pulse plus two expanding ping rings.
-            val beat = 1f + 0.10f * sin(pulsePhase * 2f * PI.toFloat() + target.target.slot.toFloat())
+            val point = project(dot.xCm, dot.yCm)
+            val pulse = 1f + 0.08f * sin(nowMs / 280f + dot.id.toFloat() * 0.8f)
+            val glowRadius = (18.dp.toPx() * pulse * (0.75f + 0.25f * fade))
             drawCircle(
-                color = color.copy(alpha = 0.14f + 0.06f * speedBoost),
-                radius = 14.dp.toPx() * beat,
-                center = point,
-            )
-
-            val firstPhase = (pulsePhase + target.target.slot * 0.13f) % 1f
-            drawCircle(
-                color = color.copy(alpha = (1f - firstPhase) * 0.42f),
-                radius = (6.dp.toPx() + firstPhase * 24.dp.toPx()),
-                center = point,
-                style = Stroke(width = 1.5.dp.toPx()),
-            )
-
-            val secondPhase = (firstPhase + 0.5f) % 1f
-            drawCircle(
-                color = color.copy(alpha = (1f - secondPhase) * 0.26f),
-                radius = (6.dp.toPx() + secondPhase * 24.dp.toPx()),
-                center = point,
-                style = Stroke(width = 1.dp.toPx()),
-            )
-
-            drawCircle(
-                color = color.copy(alpha = 0.38f),
-                radius = 9.dp.toPx(),
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        StatusGreen.copy(alpha = 0.42f * fade),
+                        StatusGreen.copy(alpha = 0f),
+                    ),
+                    center = point,
+                    radius = glowRadius,
+                ),
+                radius = glowRadius,
                 center = point,
             )
             drawCircle(
-                color = color,
-                radius = 4.5.dp.toPx(),
+                color = StatusGreen.copy(alpha = 0.22f * fade),
+                radius = 9.dp.toPx() * pulse,
+                center = point,
+            )
+            drawCircle(
+                color = StatusGreen.copy(alpha = 0.70f * fade),
+                radius = 5.dp.toPx(),
+                center = point,
+            )
+            drawCircle(
+                color = StatusGreen.copy(alpha = 0.95f * fade),
+                radius = 2.5.dp.toPx(),
                 center = point,
             )
         }
     }
 }
-
-private data class AnimatedRadarTarget(
-    val target: Ld2450Target,
-    val xCm: Float,
-    val yCm: Float,
-)
 
 @Composable
 private fun Ld2450TargetListCard(
@@ -826,3 +1030,6 @@ private fun formatSignedCmPerSecond(value: Int): String =
 
 private fun formatMeters(valueCm: Int): String =
     String.format(Locale.US, "%.1f", valueCm / 100f)
+
+private fun formatSeconds(valueMs: Int): String =
+    String.format(Locale.US, "%.1fs", valueMs / 1000f)

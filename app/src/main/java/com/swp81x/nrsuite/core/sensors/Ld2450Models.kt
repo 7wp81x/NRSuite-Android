@@ -47,6 +47,11 @@ data class Ld2450UiState(
     val maxRangeCm: Int = 600,
     val zoneAlertEnabled: Boolean = false,
     val meshBroadcastEnabled: Boolean = false,
+    val heartbeatEnabled: Boolean = false,
+    val scanDurationMs: Int = 1000,
+    val sleepDurationMs: Int = 2000,
+    val limitDotCount: Boolean = false,
+    val maxDots: Int = 8,
     val lastUpdatedAt: Long = 0L,
 ) {
     val running: Boolean get() = active

@@ -80,7 +80,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 <details>
 <summary><strong>Sensors</strong></summary>
 
-- [x] **mmWave Radar (LD2450)** - 120° fan plot with up to three tracked targets, X/Y/distance/speed, motion direction, max-range display control, and no-data/parse-error/zero-target states
+- [x] **mmWave Radar (LD2450)** - 120° fan with green blurred dots, heartbeat scan/sleep mode, position-based dot persistence, configurable dot cap, scan wave animation, max-range display control, and no-data/parse-error/zero-target states
 - [ ] **Zone alerts / mesh broadcast** - disabled until firmware zone commands or the mesh branch is integrated
 
 </details>

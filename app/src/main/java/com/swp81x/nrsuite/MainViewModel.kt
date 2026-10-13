@@ -1086,6 +1086,11 @@ class MainViewModel(internal val app: Application) {
     fun setLd2450MaxRange(valueCm: Int) = this.setLd2450MaxRangeImpl(valueCm)
     fun setLd2450ZoneAlert(enabled: Boolean) = this.setLd2450ZoneAlertImpl(enabled)
     fun setLd2450MeshBroadcast(enabled: Boolean) = this.setLd2450MeshBroadcastImpl(enabled)
+    fun setLd2450HeartbeatEnabled(enabled: Boolean) = this.setLd2450HeartbeatEnabledImpl(enabled)
+    fun setLd2450ScanDuration(valueMs: Int) = this.setLd2450ScanDurationImpl(valueMs)
+    fun setLd2450SleepDuration(valueMs: Int) = this.setLd2450SleepDurationImpl(valueMs)
+    fun setLd2450LimitDotCount(enabled: Boolean) = this.setLd2450LimitDotCountImpl(enabled)
+    fun setLd2450MaxDots(value: Int) = this.setLd2450MaxDotsImpl(value)
 
     fun clearBadUsbPayload() = this.clearBadUsbPayloadImpl()
 

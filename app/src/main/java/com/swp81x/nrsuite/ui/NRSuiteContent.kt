@@ -1304,6 +1304,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onMaxRangeChange = viewModel::setLd2450MaxRange,
                     onZoneAlertChange = viewModel::setLd2450ZoneAlert,
                     onMeshBroadcastChange = viewModel::setLd2450MeshBroadcast,
+                    onHeartbeatEnabledChange = viewModel::setLd2450HeartbeatEnabled,
+                    onScanDurationChange = viewModel::setLd2450ScanDuration,
+                    onSleepDurationChange = viewModel::setLd2450SleepDuration,
+                    onLimitDotCountChange = viewModel::setLd2450LimitDotCount,
+                    onMaxDotsChange = viewModel::setLd2450MaxDots,
                     modifier = Modifier,
                 )
             }

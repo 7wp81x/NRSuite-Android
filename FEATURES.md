@@ -37,7 +37,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 
 ## 3. Sensor Modules
 
-- [x] **mmWave Radar (LD2450)** - 120° radar fan, up to 3 target dots with interpolation/halos, target list with X/Y/distance/speed/motion, max-range display control, no-data/parse-error/zero-target states; zone config and mesh broadcast intentionally disabled on feature/non-mesh
+- [x] **mmWave Radar (LD2450)** - 120° fan with green blurred dots, heartbeat scan/sleep mode, position-based dot persistence, configurable/unlimited dot cap, scan wave animation, max-range display control, no-data/parse-error/zero-target states; zone config and mesh broadcast intentionally disabled on feature/non-mesh
 
 ## 4. Tools & Firmware Utilities
 
