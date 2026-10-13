@@ -1,6 +1,11 @@
 package com.swp81x.nrsuite.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -39,6 +44,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,6 +75,7 @@ import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
 import java.util.Locale
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -426,6 +433,36 @@ private fun Ld2450RadarPlot(
     val grid = NrOutline
     val maxRange = maxRangeCm.coerceAtLeast(100).toFloat()
 
+    // Keep a short trail per target slot so fast movement leaves a soft
+    // afterimage. The trail is stored in radar centimetres, not screen pixels.
+    val trailStore = remember { mutableStateMapOf<Int, MutableList<Pair<Float, Float>>>() }
+    LaunchedEffect(targets) {
+        targets.forEach { target ->
+            val trail = trailStore.getOrPut(target.slot) { mutableListOf() }
+            val point = target.xCm to target.yCm
+            if (trail.lastOrNull() != point) {
+                trail.add(point)
+                while (trail.size > 10) trail.removeAt(0)
+            }
+        }
+        val presentSlots = targets.map { it.slot }.toSet()
+        trailStore.keys.toList().forEach { slot ->
+            if (slot !in presentSlots) trailStore.remove(slot)
+        }
+    }
+
+    // Expanding radar pings / heartbeat rings around each target.
+    val pulseTransition = rememberInfiniteTransition(label = "ld2450-pulse")
+    val pulsePhase by pulseTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "ld2450-pulse-phase",
+    )
+
     // Stable slot order keeps animateFloatAsState calls in the same positions
     // across recompositions, which gives each target a small interpolation/ease.
     val animatedTargets = mutableListOf<AnimatedRadarTarget>()
@@ -459,6 +496,17 @@ private fun Ld2450RadarPlot(
         val outerRadius = minOf(width * 0.47f, height * 0.86f)
         val ringWidth = 1.dp.toPx()
         val guideWidth = 1.dp.toPx()
+
+        fun project(xCm: Float, yCm: Float): Offset = Offset(
+            x = origin.x + (xCm / maxRange) * outerRadius,
+            y = origin.y - (yCm / maxRange) * outerRadius,
+        )
+
+        fun colorFor(slot: Int): Color = when (slot) {
+            2 -> StatusAmber
+            3 -> CategoryDetectionBlue
+            else -> primary
+        }
 
         drawArc(
             color = primary.copy(alpha = 0.07f),
@@ -509,21 +557,81 @@ private fun Ld2450RadarPlot(
             center = origin,
         )
 
+        // Trails and motion blur go behind the current target pips.
         animatedTargets.forEach { target ->
-            val point = Offset(
-                x = origin.x + (target.xCm / maxRange) * outerRadius,
-                y = origin.y - (target.yCm / maxRange) * outerRadius,
-            )
-            val color = when (target.target.slot) {
-                2 -> StatusAmber
-                3 -> CategoryDetectionBlue
-                else -> primary
+            val color = colorFor(target.target.slot)
+            val trail = trailStore[target.target.slot].orEmpty()
+            if (trail.size >= 2) {
+                for (index in 1 until trail.size) {
+                    val age = index.toFloat() / trail.lastIndex
+                    val start = project(trail[index - 1].first, trail[index - 1].second)
+                    val end = project(trail[index].first, trail[index].second)
+                    drawLine(
+                        color = color.copy(alpha = 0.11f * age),
+                        start = start,
+                        end = end,
+                        strokeWidth = (4f + 5f * age).dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                }
+
+                trail.dropLast(1).forEachIndexed { index, (xCm, yCm) ->
+                    val age = (index + 1).toFloat() / trail.size
+                    drawCircle(
+                        color = color.copy(alpha = 0.15f * age),
+                        radius = (3.5f + 3.5f * age).dp.toPx(),
+                        center = project(xCm, yCm),
+                    )
+                }
             }
+
+            val previous = trail.dropLast(1).lastOrNull()
+            if (previous != null) {
+                val previousPoint = project(previous.first, previous.second)
+                val point = project(target.xCm, target.yCm)
+                val distance = (point - previousPoint).getDistance()
+                if (distance > 2.dp.toPx()) {
+                    val speedBoost = (abs(target.target.speedCmS) / 60f).coerceIn(0f, 1f)
+                    drawLine(
+                        color = color.copy(alpha = 0.12f + 0.16f * speedBoost),
+                        start = previousPoint,
+                        end = point,
+                        strokeWidth = (4f + 8f * speedBoost).dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+        }
+
+        animatedTargets.forEach { target ->
+            val point = project(target.xCm, target.yCm)
+            val color = colorFor(target.target.slot)
+            val speedBoost = (abs(target.target.speedCmS) / 60f).coerceIn(0f, 1f)
+
+            // Heartbeat halo: gentle scale pulse plus two expanding ping rings.
+            val beat = 1f + 0.10f * sin(pulsePhase * 2f * PI.toFloat() + target.target.slot.toFloat())
             drawCircle(
-                color = color.copy(alpha = 0.16f),
-                radius = 14.dp.toPx(),
+                color = color.copy(alpha = 0.14f + 0.06f * speedBoost),
+                radius = 14.dp.toPx() * beat,
                 center = point,
             )
+
+            val firstPhase = (pulsePhase + target.target.slot * 0.13f) % 1f
+            drawCircle(
+                color = color.copy(alpha = (1f - firstPhase) * 0.42f),
+                radius = (6.dp.toPx() + firstPhase * 24.dp.toPx()),
+                center = point,
+                style = Stroke(width = 1.5.dp.toPx()),
+            )
+
+            val secondPhase = (firstPhase + 0.5f) % 1f
+            drawCircle(
+                color = color.copy(alpha = (1f - secondPhase) * 0.26f),
+                radius = (6.dp.toPx() + secondPhase * 24.dp.toPx()),
+                center = point,
+                style = Stroke(width = 1.dp.toPx()),
+            )
+
             drawCircle(
                 color = color.copy(alpha = 0.38f),
                 radius = 9.dp.toPx(),
