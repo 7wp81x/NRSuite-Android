@@ -35,12 +35,16 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **Unauthorized RFID Reader Detector** - Detect unattended/skimmer-style RF field polling nearby
 - [ ] **Jam Detector (Sub-GHz / 2.4GHz)** - Wideband noise-floor anomaly detection (detection only - see Legal notes)
 
-## 3. Tools & Firmware Utilities
+## 3. Sensor Modules
+
+- [x] **mmWave Radar (LD2450)** - 120° radar fan, up to 3 target dots with interpolation/halos, target list with X/Y/distance/speed/motion, max-range display control, no-data/parse-error/zero-target states; zone config and mesh broadcast intentionally disabled on feature/non-mesh
+
+## 4. Tools & Firmware Utilities
 
 - [x] **MAC Lookup** - Offline OUI/vendor lookup for any MAC address; also backs vendor heuristics in defense modules
 - [x] **Serial Monitor** - Raw USB serial monitor for any ESP32 or USB-UART firmware, independent of the NRSuite wire protocol
 
-## 4. Mesh Network (ESP-NOW)
+## 5. Mesh Network (ESP-NOW)
 
 - [x] **Shared Group Key Provisioning** - HKDF-derived auth/transport keys provisioned over USB and stored in NVS
 - [x] **Dynamic Master Election** - USB-authenticated candidate election with self-demotion
@@ -53,7 +57,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **Distributed Detector Reporting** - Deauth/Rogue AP reports and same-frame correlation (Phase 3B+)
 - [ ] **Triangulation Engine (app-side)** - Log-distance path-loss + trilateration from 3+ node RSSI reports
 
-## 5. Mesh Chat
+## 6. Mesh Chat
 
 - [ ] **ESP-NOW Chat Transport** - Reuses mesh group-key infra
 - [ ] **Multi-hop Relay** - Flood-fill with message-ID dedup
@@ -63,7 +67,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **Quick/Canned Messages** - Preset messages for fast field use
 - [ ] **Chat/Sensor Traffic Prioritization** - Alerts pre-empt chat traffic on shared channel
 
-## 6. Remote Camera Node (ESP32-CAM)
+## 7. Remote Camera Node (ESP32-CAM)
 
 - [ ] **Live Feed Streaming** - Separate Wi-Fi link (not over ESP-NOW - bandwidth)
 - [ ] **Snapshot-on-Trigger** - Captures still on detection events from other modules
@@ -72,7 +76,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **SD Card Buffering** - Local storage if master link is down
 - [ ] **Mesh Manager Integration** - Camera nodes shown alongside sensor/chat nodes
 
-## 7. Long-Range Relay (LoRa)
+## 8. Long-Range Relay (LoRa)
 
 - [ ] **LoRa Node-to-Node Link** - SX1276/78, kilometers of range, requires soldering
 - [ ] **LoRa Chat Bridge** - Bridges distant node clusters into mesh chat
@@ -80,7 +84,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **Long-baseline Locator Beacon** - Improves triangulation geometry via wider node spacing
 - [ ] **Multi-hop Routing** - Beyond simple flood-relay, given larger distances/node counts
 
-## 8. Peripheral Radios (planned expansion modules)
+## 9. Peripheral Radios (planned expansion modules)
 
 - [ ] **IR** - Capture/Replay - IR LED + receiver, cheap GPIO add-on
 - [ ] **IR** - Universal Remote DB - Common protocol library (NEC, SIRC, RC5)
@@ -96,7 +100,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **RFID/NFC** - Write/Clone - To blank/magic tags
 - [ ] **RFID/NFC** - Access Control Analyzer - Identify tag type + known weaknesses (e.g., MIFARE Classic)
 
-## 9. System / USB
+## 10. System / USB
 
 - [x] **Multi-device USB sessions** - Multiple simultaneous USB serial sessions with per-device permission, connect/disconnect, and reconnect state. User-initiated disconnect uses idle-session reuse for S2 CDC stability.
 - [x] **BadUSB device picker** - Select which connected device receives BadUSB independent of the primary Wireless/Flasher session.

@@ -295,6 +295,16 @@ internal val modules = listOf(
     ),
 
     ModuleCardSpec(
+        id = "ld2450",
+        title = "mmWave Radar",
+        description = "Track up to 3 targets with X/Y, distance, and speed.",
+        icon = Icons.Default.Radar,
+        category = "Sensors",
+        radio = "24GHz",
+        available = true,
+    ),
+
+    ModuleCardSpec(
         id = "mesh",
         title = "Mesh",
         description = "Provision, monitor, and control the ESP-NOW mesh.",

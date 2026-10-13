@@ -35,6 +35,7 @@ import com.swp81x.nrsuite.core.credentials.CredentialStore
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
 import com.swp81x.nrsuite.core.flasher.Esp32Flasher
 import com.swp81x.nrsuite.core.hid.PinAttemptRecord
+import com.swp81x.nrsuite.core.sensors.Ld2450UiState
 import com.swp81x.nrsuite.core.hid.PinBruteforceUiState
 import com.swp81x.nrsuite.core.flasher.UsbSerialFlasherTransport
 import com.swp81x.nrsuite.core.eapol.EapolParser
@@ -623,6 +624,9 @@ class MainViewModel(internal val app: Application) {
     internal val _pinAttempts = MutableStateFlow<List<PinAttemptRecord>>(emptyList())
     val pinAttempts: StateFlow<List<PinAttemptRecord>> = _pinAttempts.asStateFlow()
 
+    internal val _ld2450 = MutableStateFlow(Ld2450UiState())
+    val ld2450: StateFlow<Ld2450UiState> = _ld2450.asStateFlow()
+
     internal val _bleAdvertising = MutableStateFlow(false)
     val bleAdvertising: StateFlow<Boolean> = _bleAdvertising.asStateFlow()
 
@@ -829,6 +833,20 @@ class MainViewModel(internal val app: Application) {
                 if (!_meshActive.value) {
                     _meshNodes.value = emptyList()
                     _meshPeerCount.value = 0
+                }
+            }
+
+            "ld2450" -> {
+                if (!_ld2450.value.active) {
+                    _ld2450.update {
+                        it.copy(
+                            targets = emptyList(),
+                            targetCount = 0,
+                            hasData = false,
+                            errorKind = null,
+                            errorMessage = null,
+                        )
+                    }
                 }
             }
         }
@@ -1062,6 +1080,13 @@ class MainViewModel(internal val app: Application) {
     fun clearPinBruteforce() = this.clearPinBruteforceImpl()
     fun refreshPinBruteforce() = this.refreshPinBruteforceImpl()
 
+    fun startLd2450() = this.startLd2450Impl()
+    fun stopLd2450() = this.stopLd2450Impl()
+    fun refreshLd2450() = this.refreshLd2450Impl()
+    fun setLd2450MaxRange(valueCm: Int) = this.setLd2450MaxRangeImpl(valueCm)
+    fun setLd2450ZoneAlert(enabled: Boolean) = this.setLd2450ZoneAlertImpl(enabled)
+    fun setLd2450MeshBroadcast(enabled: Boolean) = this.setLd2450MeshBroadcastImpl(enabled)
+
     fun clearBadUsbPayload() = this.clearBadUsbPayloadImpl()
 
     fun saveDuckyScript(name: String, script: String) = this.saveDuckyScriptImpl(name, script)
@@ -1138,6 +1163,15 @@ class MainViewModel(internal val app: Application) {
         _bleConnected.value = false
         _bleScriptRunning.value = false
         _pinBruteforce.update { it.copy(state = "paused", starting = false) }
+        _ld2450.update {
+            it.copy(
+                active = false,
+                starting = false,
+                stopping = false,
+                targets = emptyList(),
+                targetCount = 0,
+            )
+        }
         _bleScanStarting.value = false
         _bleScanRunning.value = false
         _bleScanStopping.value = false
@@ -1456,6 +1490,7 @@ class MainViewModel(internal val app: Application) {
         val context = app
         val activeText = when {
             _pinBruteforce.value.running -> "PIN bruteforce active"
+            _ld2450.value.active -> "mmWave radar active"
             _meshActive.value -> "Mesh active"
             _sniffing.value -> "Packet capture active"
             _beaconRunning.value -> "Beacon broadcast active"
@@ -1692,6 +1727,9 @@ class MainViewModel(internal val app: Application) {
                         "pin_attempt" -> this@MainViewModel.handlePinAttemptEvent(event)
                         "pin_range_done" -> this@MainViewModel.handlePinRangeDoneEvent(event)
                         "pin_range_error" -> this@MainViewModel.handlePinRangeErrorEvent(event)
+                        "ld2450_targets" -> this@MainViewModel.handleLd2450TargetsEvent(event)
+                        "ld2450_presence" -> this@MainViewModel.handleLd2450PresenceEvent(event)
+                        "ld2450_error" -> this@MainViewModel.handleLd2450ErrorEvent(event)
                         "heartbeat" -> Unit
                     }
                 }

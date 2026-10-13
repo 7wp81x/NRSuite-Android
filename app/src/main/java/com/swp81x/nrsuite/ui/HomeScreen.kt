@@ -66,6 +66,7 @@ import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputAntenna
@@ -350,6 +351,13 @@ internal fun HomeScreen(
                     icon = Icons.Default.Bluetooth,
                     iconTint = categoryColor("BLE"),
                     moduleIds = listOf("ble_scanner", "ble_profile", "tracker_detector"),
+                    available = true,
+                ),
+                CategorySpec(
+                    name = "Sensors",
+                    icon = Icons.Default.Radar,
+                    iconTint = categoryColor("Sensors"),
+                    moduleIds = listOf("ld2450"),
                     available = true,
                 ),
                 CategorySpec(

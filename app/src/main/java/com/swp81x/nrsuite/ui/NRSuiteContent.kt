@@ -285,6 +285,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val badUsbUploading by viewModel.badUsbUploading.collectAsState()
     val pinBruteforce by viewModel.pinBruteforce.collectAsState()
     val pinAttempts by viewModel.pinAttempts.collectAsState()
+    val ld2450 by viewModel.ld2450.collectAsState()
     val badUsbProgress by viewModel.badUsbProgress.collectAsState()
     val badUsbArmedFingerprints by viewModel.badUsbArmedFingerprints.collectAsState()
     val badUsbTargetDevice by viewModel.badUsbTargetDevice.collectAsState()
@@ -395,6 +396,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "ble" -> "ble_hid"
             "badusb" -> "badusb"
             "pin_bruteforce" -> "pin_bruteforce"
+            "ld2450" -> "ld2450"
             else -> null
         }
         val chipSupported = when (module.id) {
@@ -452,6 +454,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "tracker_detector" -> bleScanRunning
                 "ble_profile" -> bleProfileRunning
                 "mesh" -> meshActive
+                "ld2450" -> ld2450.running
                 else -> false
             },
         )
@@ -1287,6 +1290,20 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onResume = viewModel::resumePinBruteforce,
                     onRefresh = viewModel::refreshPinBruteforce,
                     onClearSession = viewModel::clearPinBruteforce,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "ld2450" -> {
+                Ld2450Screen(
+                    connected = isDeviceConnected,
+                    state = ld2450,
+                    onStart = viewModel::startLd2450,
+                    onStop = viewModel::stopLd2450,
+                    onRefresh = viewModel::refreshLd2450,
+                    onMaxRangeChange = viewModel::setLd2450MaxRange,
+                    onZoneAlertChange = viewModel::setLd2450ZoneAlert,
+                    onMeshBroadcastChange = viewModel::setLd2450MeshBroadcast,
                     modifier = Modifier,
                 )
             }
