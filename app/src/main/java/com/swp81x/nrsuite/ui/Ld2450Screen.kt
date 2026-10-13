@@ -103,6 +103,7 @@ fun Ld2450Screen(
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by remember { mutableStateOf(true) }
+    var radarExpanded by remember { mutableStateOf(false) }
     var heartbeatPhase by remember { mutableStateOf(HeartbeatPhase.DORMANT) }
     var displayDots by remember { mutableStateOf<List<PersistedRadarDot>>(emptyList()) }
     var nextDotId by remember { mutableLongStateOf(0L) }
@@ -271,6 +272,8 @@ fun Ld2450Screen(
                 fadeDurationMs = fadeDurationMs,
                 heartbeatEnabled = state.heartbeatEnabled,
                 scanWaveProgress = scanWaveProgress,
+                expanded = radarExpanded,
+                onToggleExpanded = { radarExpanded = !radarExpanded },
             )
 
             Spacer(Modifier.height(10.dp))
@@ -627,6 +630,8 @@ private fun Ld2450RadarCard(
     fadeDurationMs: Long,
     heartbeatEnabled: Boolean,
     scanWaveProgress: Float?,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -660,6 +665,12 @@ private fun Ld2450RadarCard(
                         modifier = Modifier.size(20.dp),
                     )
                 }
+                IconButton(onClick = onToggleExpanded) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (expanded) "Collapse radar" else "Expand radar",
+                    )
+                }
             }
             Spacer(Modifier.height(8.dp))
             Ld2450RadarPlot(
@@ -669,6 +680,7 @@ private fun Ld2450RadarCard(
                 fadeDurationMs = fadeDurationMs,
                 heartbeatEnabled = heartbeatEnabled,
                 scanWaveProgress = scanWaveProgress,
+                expanded = expanded,
             )
             Spacer(Modifier.height(4.dp))
             Row(
@@ -703,6 +715,7 @@ private fun Ld2450RadarPlot(
     fadeDurationMs: Long,
     heartbeatEnabled: Boolean,
     scanWaveProgress: Float?,
+    expanded: Boolean,
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val grid = NrOutline
@@ -711,12 +724,15 @@ private fun Ld2450RadarPlot(
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1.35f),
+            .aspectRatio(if (expanded) 1.05f else 1.25f),
     ) {
         val width = size.width
         val height = size.height
         val origin = Offset(width / 2f, height * 0.93f)
-        val outerRadius = minOf(width * 0.47f, height * 0.86f)
+        // The 120-degree wedge can safely use more of the canvas width than
+        // the old 0.47 factor; expanded mode gets a little more again.
+        val horizontalFactor = if (expanded) 0.57f else 0.54f
+        val outerRadius = minOf(width * horizontalFactor, height * 0.86f)
         val ringWidth = 1.dp.toPx()
         val guideWidth = 1.dp.toPx()
 
