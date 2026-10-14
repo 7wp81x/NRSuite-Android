@@ -285,6 +285,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val pinBruteforce by viewModel.pinBruteforce.collectAsState()
     val pinAttempts by viewModel.pinAttempts.collectAsState()
     val ld2450 by viewModel.ld2450.collectAsState()
+    val autoUpdateCheck by viewModel.autoUpdateCheck.collectAsState()
+    val appUpdate by viewModel.appUpdate.collectAsState()
+    val firmwareUpdate by viewModel.firmwareUpdate.collectAsState()
+    val updateCheckInProgress by viewModel.updateCheckInProgress.collectAsState()
+    val updateError by viewModel.updateError.collectAsState()
     val badUsbProgress by viewModel.badUsbProgress.collectAsState()
     val badUsbArmedFingerprints by viewModel.badUsbArmedFingerprints.collectAsState()
     val badUsbTargetDevice by viewModel.badUsbTargetDevice.collectAsState()
@@ -1558,6 +1563,13 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 ouiDatabaseStatus = ouiDatabaseStatus,
                 ouiDatabaseProgress = ouiDatabaseProgress,
                 onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
+                autoUpdateCheck = autoUpdateCheck,
+                updateCheckInProgress = updateCheckInProgress,
+                appUpdate = appUpdate,
+                firmwareUpdate = firmwareUpdate,
+                updateError = updateError,
+                onAutoUpdateCheckChange = viewModel::setAutoUpdateCheck,
+                onCheckForUpdates = { viewModel.checkForUpdates(force = true) },
                 modifier = Modifier,
             )
 
@@ -1585,6 +1597,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 listState = homeListState,
                 ouiDatabaseStatus = ouiDatabaseStatus,
                 ouiDatabaseProgress = ouiDatabaseProgress,
+                appUpdate = appUpdate,
+                firmwareUpdate = firmwareUpdate,
                 onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
                 onOpenModule = {
                     viewModel.onModuleOpened(it)

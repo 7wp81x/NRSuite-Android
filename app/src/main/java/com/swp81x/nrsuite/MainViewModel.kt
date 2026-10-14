@@ -45,6 +45,8 @@ import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.mesh.MeshCredentialStore
 import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
+import com.swp81x.nrsuite.core.update.AppUpdateInfo
+import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
 import com.swp81x.nrsuite.core.mesh.MeshNodeStatus
 import com.swp81x.nrsuite.core.mesh.StoredMeshCredentials
 import com.swp81x.nrsuite.core.oui.MacLookupResult
@@ -251,6 +253,23 @@ class MainViewModel(internal val app: Application) {
 
     private val _events = MutableStateFlow<List<JSONObject>>(emptyList())
     val events: StateFlow<List<JSONObject>> = _events.asStateFlow()
+
+    internal val _autoUpdateCheck = MutableStateFlow(
+        preferences.getBoolean(PREF_AUTO_UPDATE_CHECK, true),
+    )
+    val autoUpdateCheck: StateFlow<Boolean> = _autoUpdateCheck.asStateFlow()
+
+    internal val _appUpdate = MutableStateFlow<AppUpdateInfo?>(null)
+    val appUpdate: StateFlow<AppUpdateInfo?> = _appUpdate.asStateFlow()
+
+    internal val _firmwareUpdate = MutableStateFlow<FirmwareUpdateInfo?>(null)
+    val firmwareUpdate: StateFlow<FirmwareUpdateInfo?> = _firmwareUpdate.asStateFlow()
+
+    internal val _updateCheckInProgress = MutableStateFlow(false)
+    val updateCheckInProgress: StateFlow<Boolean> = _updateCheckInProgress.asStateFlow()
+
+    internal val _updateError = MutableStateFlow<String?>(null)
+    val updateError: StateFlow<String?> = _updateError.asStateFlow()
 
     internal val _networks = MutableStateFlow<List<JSONObject>>(emptyList())
     val networks: StateFlow<List<JSONObject>> = _networks.asStateFlow()
@@ -805,6 +824,7 @@ class MainViewModel(internal val app: Application) {
         initSafely("meshCredentials") { this.refreshMeshGlobalCredentialsImpl() }
         initSafely("meshHealthSweep") { this.startMeshHealthSweepImpl() }
         initSafely("usbDevices") { this.refreshDevicesImpl() }
+        initSafely("updateChecks") { this.initUpdateChecksImpl() }
     }
 
     fun onModuleOpened(moduleId: String) {
@@ -1097,6 +1117,12 @@ class MainViewModel(internal val app: Application) {
     fun setLd2450SleepDuration(valueMs: Int) = this.setLd2450SleepDurationImpl(valueMs)
     fun setLd2450LimitDotCount(enabled: Boolean) = this.setLd2450LimitDotCountImpl(enabled)
     fun setLd2450MaxDots(value: Int) = this.setLd2450MaxDotsImpl(value)
+
+    fun setAutoUpdateCheck(enabled: Boolean) = this.setAutoUpdateCheckImpl(enabled)
+    fun checkForUpdates(force: Boolean = false) = this.checkForUpdatesImpl(force)
+    fun clearUpdateError() {
+        _updateError.value = null
+    }
 
     fun clearBadUsbPayload() = this.clearBadUsbPayloadImpl()
 
@@ -1562,6 +1588,7 @@ class MainViewModel(internal val app: Application) {
                         is ConnectionState.Connected -> {
                             tracked?.opening = false
                             tracked?.openedOnce = true
+                            this@MainViewModel.checkForUpdates()
                         }
                         is ConnectionState.Failed -> tracked?.opening = false
                         is ConnectionState.Disconnected -> {

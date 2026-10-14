@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeveloperBoard
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Edit
@@ -125,6 +126,9 @@ import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.defense.OuiRuleAction
 import com.swp81x.nrsuite.core.defense.normalizeOuiPrefix
 import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.core.update.AppUpdateInfo
+import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
+import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
@@ -184,11 +188,23 @@ internal fun SettingsScreen(
     ouiDatabaseStatus: OuiDatabaseStatus = OuiDatabaseStatus.NotDownloaded,
     ouiDatabaseProgress: Float? = null,
     onDownloadOuiDatabase: () -> Unit = {},
+    autoUpdateCheck: Boolean = true,
+    updateCheckInProgress: Boolean = false,
+    appUpdate: AppUpdateInfo? = null,
+    firmwareUpdate: FirmwareUpdateInfo? = null,
+    updateError: String? = null,
+    onAutoUpdateCheckChange: (Boolean) -> Unit = {},
+    onCheckForUpdates: () -> Unit = {},
     flasherOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val currentFirmware = (connectionState as? ConnectionState.Connected)?.firmwareVersion
     val context = androidx.compose.ui.platform.LocalContext.current
+    val currentAppVersion = remember(context) {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull() ?: "unknown"
+    }
     val accent = MaterialTheme.colorScheme.primary
     val chip = (connectionState as? ConnectionState.Connected)?.chip
     val boardName = when (chip) {
@@ -548,6 +564,17 @@ internal fun SettingsScreen(
             onDeleteOuiRule = onDeleteOuiRule,
         )
 
+        UpdatesCard(
+            currentVersion = currentAppVersion,
+            autoUpdateCheck = autoUpdateCheck,
+            updateCheckInProgress = updateCheckInProgress,
+            appUpdate = appUpdate,
+            firmwareUpdate = firmwareUpdate,
+            updateError = updateError,
+            onAutoUpdateCheckChange = onAutoUpdateCheckChange,
+            onCheckForUpdates = onCheckForUpdates,
+        )
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -792,6 +819,131 @@ private fun OuiRuleRow(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun UpdatesCard(
+    currentVersion: String,
+    autoUpdateCheck: Boolean,
+    updateCheckInProgress: Boolean,
+    appUpdate: AppUpdateInfo?,
+    firmwareUpdate: FirmwareUpdateInfo?,
+    updateError: String?,
+    onAutoUpdateCheckChange: (Boolean) -> Unit,
+    onCheckForUpdates: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text("Updates", fontWeight = FontWeight.SemiBold)
+            Text(
+                text = "App version $currentVersion",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = NrOnSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Check automatically", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = "Checks GitHub when the app opens, at most once per hour.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = autoUpdateCheck,
+                    onCheckedChange = onAutoUpdateCheckChange,
+                )
+            }
+
+            if (updateError != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = updateError,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusRed,
+                )
+            }
+
+            appUpdate?.let { update ->
+                Spacer(Modifier.height(10.dp))
+                UpdateInfoRow(
+                    label = "App update available",
+                    currentVersion = update.currentVersion,
+                    latest = update.latest,
+                )
+            }
+
+            firmwareUpdate?.let { update ->
+                Spacer(Modifier.height(10.dp))
+                UpdateInfoRow(
+                    label = "Firmware update available",
+                    currentVersion = update.currentVersion,
+                    latest = update.latest,
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = onCheckForUpdates,
+                enabled = !updateCheckInProgress,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (updateCheckInProgress) {
+                    Text("Checking...")
+                } else {
+                    Text("Check now")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateInfoRow(
+    label: String,
+    currentVersion: String,
+    latest: ReleaseInfo,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Default.Download,
+            contentDescription = null,
+            tint = StatusAmber,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = "$currentVersion → ${latest.tag}",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = NrOnSurfaceVariant,
+            )
+        }
+        OutlinedButton(
+            onClick = {
+                val url = latest.downloadUrl ?: latest.htmlUrl
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }
+            },
+        ) {
+            Text("Download")
+        }
     }
 }
 

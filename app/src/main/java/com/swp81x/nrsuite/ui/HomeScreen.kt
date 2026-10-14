@@ -118,6 +118,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -127,6 +128,9 @@ import com.swp81x.nrsuite.MainViewModel
 import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.core.update.AppUpdateInfo
+import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
+import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
@@ -191,6 +195,8 @@ internal fun HomeScreen(
     recentModuleIds: List<String>,
     ouiDatabaseStatus: OuiDatabaseStatus,
     ouiDatabaseProgress: Float?,
+    appUpdate: AppUpdateInfo?,
+    firmwareUpdate: FirmwareUpdateInfo?,
     onDownloadOuiDatabase: () -> Unit,
     onOpenModule: (String) -> Unit,
     onOpenCategory: (String) -> Unit,
@@ -213,6 +219,8 @@ internal fun HomeScreen(
         item {
             DashboardDeviceCard(
                 state = connectionState,
+                appUpdate = appUpdate,
+                firmwareUpdate = firmwareUpdate,
                 onDisconnect = onDisconnect,
                 onManageDevice = onManageDevice,
             )
@@ -546,6 +554,8 @@ internal fun CategoryModulesScreen(
 @Composable
 internal fun DashboardDeviceCard(
     state: ConnectionState,
+    appUpdate: AppUpdateInfo?,
+    firmwareUpdate: FirmwareUpdateInfo?,
     onDisconnect: () -> Unit,
     onManageDevice: () -> Unit,
 ) {
@@ -555,6 +565,25 @@ internal fun DashboardDeviceCard(
         border = BorderStroke(0.5.dp, NrOutline),
     ) {
         Column(Modifier.padding(16.dp)) {
+            appUpdate?.let { update ->
+                UpdateAvailableBanner(
+                    title = "App update available",
+                    currentVersion = update.currentVersion,
+                    latest = update.latest,
+                )
+                Spacer(Modifier.height(10.dp))
+            }
+            if (state is ConnectionState.Connected) {
+                firmwareUpdate?.let { update ->
+                    UpdateAvailableBanner(
+                        title = "Firmware update available",
+                        currentVersion = update.currentVersion,
+                        latest = update.latest,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                }
+            }
+
             when (state) {
                 ConnectionState.Disconnected -> {
                     StatusIndicator(
@@ -621,6 +650,59 @@ internal fun DashboardDeviceCard(
                         color = NrOnSurfaceVariant,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateAvailableBanner(
+    title: String,
+    currentVersion: String,
+    latest: ReleaseInfo,
+) {
+    val context = LocalContext.current
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = NrSurfaceVariant),
+        border = BorderStroke(0.5.dp, StatusAmber),
+        shape = RoundedCornerShape(10.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Download,
+                contentDescription = null,
+                tint = StatusAmber,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "$currentVersion → ${latest.tag}",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(
+                onClick = {
+                    val url = latest.downloadUrl ?: latest.htmlUrl
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    }
+                },
+            ) {
+                Text("Download")
             }
         }
     }
