@@ -41,9 +41,9 @@ internal fun MainViewModel.downloadAppUpdateImpl() {
     }
     if (_appUpdateDownload.value is AppUpdateDownloadState.Downloading) return
 
-    val url = update.latest.apkUrl ?: update.latest.downloadUrl
+    val url = update.latest.apkUrl
     if (url.isNullOrBlank()) {
-        _appUpdateDownload.value = AppUpdateDownloadState.Failed("Release has no downloadable asset")
+        _appUpdateDownload.value = AppUpdateDownloadState.Failed("Release has no APK asset")
         appendLog("App update release has no downloadable APK asset.", level = LogLevel.ERROR)
         return
     }
