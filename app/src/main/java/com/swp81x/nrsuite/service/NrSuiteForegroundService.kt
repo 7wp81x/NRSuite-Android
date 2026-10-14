@@ -4,16 +4,13 @@ import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
 import android.os.IBinder
-import androidx.core.app.NotificationCompat
-import com.swp81x.nrsuite.MainActivity
-import com.swp81x.nrsuite.R
+import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
 
 class NrSuiteForegroundService : Service() {
 
@@ -31,7 +28,7 @@ class NrSuiteForegroundService : Service() {
         acquireWakeLock()
         createNotificationChannel()
         val text = intent.getStringExtra(EXTRA_TEXT) ?: "NRSuite operation active"
-        startForeground(NOTIFICATION_ID, buildNotification(text))
+        startForeground(NrSuiteNotifications.operationNotificationId(), buildNotification(text))
         return START_NOT_STICKY
     }
 
@@ -63,27 +60,8 @@ class NrSuiteForegroundService : Service() {
         wakeLock = null
     }
 
-    private fun buildNotification(text: String): Notification {
-        val launchIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            launchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_nrsuite)
-            .setContentTitle("NRSuite")
-            .setContentText(text)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
-    }
+    private fun buildNotification(text: String): Notification =
+        NrSuiteNotifications.buildOperationNotification(this, text)
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return

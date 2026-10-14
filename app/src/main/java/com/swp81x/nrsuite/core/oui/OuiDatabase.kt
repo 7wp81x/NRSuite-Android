@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 
-private const val DEFAULT_OUI_CSV_URL = "https://standards-oui.ieee.org/oui/oui.csv"
+internal const val OUI_CSV_URL = "https://standards-oui.ieee.org/oui/oui.csv"
 
 data class OuiVendor(
     val ouiPrefix: String,
@@ -41,7 +41,7 @@ sealed interface OuiDatabaseStatus {
 
 class OuiDatabaseRepository(
     private val dataFile: File,
-    private val csvUrl: String = DEFAULT_OUI_CSV_URL,
+    private val csvUrl: String = OUI_CSV_URL,
 ) {
     private val _status = MutableStateFlow<OuiDatabaseStatus>(OuiDatabaseStatus.NotDownloaded)
     val status: StateFlow<OuiDatabaseStatus> = _status.asStateFlow()
@@ -70,6 +70,20 @@ class OuiDatabaseRepository(
         }.onFailure { error ->
             _status.value = OuiDatabaseStatus.Error(error.message ?: "Could not read OUI database")
         }
+    }
+
+    fun markDownloading() {
+        _status.value = OuiDatabaseStatus.Downloading
+        _progress.value = null
+    }
+
+    fun updateDownloadProgress(percent: Float?) {
+        _progress.value = percent
+    }
+
+    fun reportDownloadError(message: String) {
+        _progress.value = null
+        _status.value = OuiDatabaseStatus.Error(message)
     }
 
     suspend fun download() {

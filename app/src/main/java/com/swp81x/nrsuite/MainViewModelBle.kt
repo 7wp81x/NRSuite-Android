@@ -3,6 +3,7 @@ package com.swp81x.nrsuite
 import android.net.Uri
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.log.LogLevel
+import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
 import com.swp81x.nrsuite.core.session.NrSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -319,9 +320,16 @@ internal fun MainViewModel.startBleStatusPollingImpl(activeSession: NrSession) {
                 activeSession.sendCommand("BLE_STATUS", timeoutMs = 4_000)
             }.getOrNull() ?: continue
             if (response.optBoolean("ok")) {
+                val wasConnected = _bleConnected.value
+                val nowConnected = response.optBoolean("connected", _bleConnected.value)
+                val peer = response.optString("peer", "")
                 _bleAdvertising.value = response.optBoolean("advertising", _bleAdvertising.value)
-                _bleConnected.value = response.optBoolean("connected", _bleConnected.value)
-                _blePeer.value = response.optString("peer", "")
+                _bleConnected.value = nowConnected
+                _blePeer.value = peer
+                if (!wasConnected && nowConnected) {
+                    NrSuiteNotifications.notifyBleConnected(app, peer)
+                }
+                updateForegroundService()
             }
         }
     }

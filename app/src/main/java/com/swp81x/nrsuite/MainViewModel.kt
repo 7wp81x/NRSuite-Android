@@ -44,6 +44,7 @@ import com.swp81x.nrsuite.core.history.HistoryEntry
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.mesh.MeshCredentialStore
+import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
 import com.swp81x.nrsuite.core.mesh.MeshNodeStatus
 import com.swp81x.nrsuite.core.mesh.StoredMeshCredentials
 import com.swp81x.nrsuite.core.oui.MacLookupResult
@@ -257,7 +258,12 @@ class MainViewModel(internal val app: Application) {
     internal val _ouiRules = MutableStateFlow<List<OuiRule>>(emptyList())
     val ouiRules: StateFlow<List<OuiRule>> = _ouiRules.asStateFlow()
 
-    internal val ouiDatabaseRepository = OuiDatabaseRepository(File(app.filesDir, "oui/oui.csv"))
+    internal val ouiDatabaseRepository = OuiDatabaseRepository(
+        com.swp81x.nrsuite.core.download.NrSuiteDownloadManager.destinationFile(
+            app,
+            "oui/oui.csv",
+        ),
+    )
     val ouiDatabaseStatus: StateFlow<OuiDatabaseStatus> = ouiDatabaseRepository.status
     val ouiDatabaseDownloadProgress: StateFlow<Float?> = ouiDatabaseRepository.progress
 
@@ -1497,9 +1503,12 @@ class MainViewModel(internal val app: Application) {
             _pinBruteforce.value.running -> "PIN bruteforce active"
             _ld2450.value.active -> "mmWave radar active"
             _meshActive.value -> "Mesh active"
-            _sniffing.value -> "Packet capture active"
+            _sniffing.value -> "Capture active"
             _beaconRunning.value -> "Beacon broadcast active"
-            _portalRunning.value -> "Captive portal active"
+            _portalRunning.value -> when (_portalMode.value) {
+                "evil_twin" -> "Evil Twin active · ${_portalClients.value} client(s)"
+                else -> "Captive Portal active · ${_portalClients.value} client(s)"
+            }
             _deauthRunning.value -> "Deauth burst active"
             _deauthDetectorRunning.value -> "Deauth detector active"
             _rogueApRunning.value -> "Rogue AP detector active"
@@ -1508,7 +1517,8 @@ class MainViewModel(internal val app: Application) {
             _hiddenApRunning.value -> "Hidden AP revealer active"
             _bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value -> "BLE scanner active"
             _bleProfileRunning.value -> "BLE profile active"
-            _bleAdvertising.value || _bleConnected.value -> "BLE HID active"
+            _bleConnected.value -> "BLE HID connected · ${_blePeer.value.ifBlank { "device" }}"
+            _bleAdvertising.value -> "BLE HID advertising"
             else -> null
         }
         val intent = Intent(context, NrSuiteForegroundService::class.java)
@@ -1670,6 +1680,12 @@ class MainViewModel(internal val app: Application) {
                                 _evilTwinPasswords.update {
                                     (it + CapturedPassword(submittedPassword, capturedAt)).takeLast(50)
                                 }
+                                NrSuiteNotifications.notifyCredential(
+                                    app,
+                                    "Evil Twin credential received",
+                                    "$ip · password candidate (${submittedPassword.length} chars)",
+                                )
+                                updateForegroundService()
                                 this@MainViewModel.verifyEvilTwinPasswordsImpl()
                             } else if (_portalMode.value == "portal" && details.isNotEmpty()) {
                                 val capturedAt = java.time.LocalTime.now()
@@ -1691,6 +1707,12 @@ class MainViewModel(internal val app: Application) {
                                 }
                                 _portalCredentials.update { (it + credential).takeLast(100) }
                                 appendLog("Portal credential captured (${details.size} field(s)).")
+                                NrSuiteNotifications.notifyCredential(
+                                    app,
+                                    "Portal credential received",
+                                    "$ip · ${details.size} field(s)",
+                                )
+                                updateForegroundService()
                             }
                         }
                         "client_associated" -> {
@@ -1699,6 +1721,7 @@ class MainViewModel(internal val app: Application) {
                             val rssi = event.optInt("rssi")
                             appendLog("Client associated: $client ($rssi dBm).")
                             this@MainViewModel.portalLogImpl("Client associated: $client ($rssi dBm)")
+                            updateForegroundService()
                         }
                         "deauth_stats" -> {
                             _deauthSent.value = event.optInt("sent_frames", _deauthSent.value)
