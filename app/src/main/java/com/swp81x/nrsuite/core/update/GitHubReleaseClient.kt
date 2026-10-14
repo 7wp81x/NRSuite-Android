@@ -4,6 +4,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 
 sealed interface GitHubReleaseResult {
@@ -12,6 +13,7 @@ sealed interface GitHubReleaseResult {
         val etag: String?,
     ) : GitHubReleaseResult
 
+    /** No changed release list, or no published non-draft release exists. */
     data object NotModified : GitHubReleaseResult
 
     data class Failure(val message: String) : GitHubReleaseResult
@@ -22,7 +24,7 @@ object GitHubReleaseClient {
         withContext(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
-                val url = URL("https://api.github.com/repos/$repo/releases/latest")
+                val url = URL("https://api.github.com/repos/$repo/releases?per_page=30")
                 connection = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
                     connectTimeout = 15_000
@@ -30,7 +32,7 @@ object GitHubReleaseClient {
                     instanceFollowRedirects = true
                     setRequestProperty("User-Agent", "NRSuite-Android")
                     setRequestProperty("Accept", "application/vnd.github+json")
-                    setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+                    setRequestProperty("X-GitHub-Api-Version", "2026-03-10")
                     if (!etag.isNullOrBlank()) {
                         setRequestProperty("If-None-Match", etag)
                     }
@@ -42,32 +44,18 @@ object GitHubReleaseClient {
                     -> GitHubReleaseResult.NotModified
                     in 200..299 -> {
                         val body = connection.inputStream.bufferedReader().use { it.readText() }
-                        val json = JSONObject(body)
-                        val tag = json.optString("tag_name").takeIf { it.isNotBlank() }
-                            ?: return@withContext GitHubReleaseResult.Failure("Release has no tag")
-                        val htmlUrl = json.optString("html_url").takeIf { it.isNotBlank() }
-                            ?: return@withContext GitHubReleaseResult.Failure("Release has no URL")
-                        val assets = json.optJSONArray("assets")
-                        var downloadUrl: String? = null
-                        if (assets != null) {
-                            for (index in 0 until assets.length()) {
-                                val asset = assets.optJSONObject(index) ?: continue
-                                val candidate = asset.optString("browser_download_url")
-                                if (candidate.isNotBlank()) {
-                                    downloadUrl = candidate
-                                    break
-                                }
-                            }
+                        val releases = parseReleases(body)
+                        if (releases.isEmpty()) {
+                            GitHubReleaseResult.NotModified
+                        } else {
+                            val latest = releases.maxWithOrNull { left, right ->
+                                VersionComparator.compare(left.tag, right.tag)
+                            } ?: releases.first()
+                            GitHubReleaseResult.Success(
+                                release = latest,
+                                etag = connection.getHeaderField("ETag"),
+                            )
                         }
-                        val release = ReleaseInfo(
-                            tag = tag,
-                            name = json.optString("name").takeIf { it.isNotBlank() },
-                            htmlUrl = htmlUrl,
-                            downloadUrl = downloadUrl,
-                            publishedAt = json.optString("published_at").takeIf { it.isNotBlank() },
-                        )
-                        val responseEtag = connection.getHeaderField("ETag")
-                        GitHubReleaseResult.Success(release, responseEtag)
                     }
                     HttpURLConnection.HTTP_FORBIDDEN,
                     HttpURLConnection.HTTP_UNAUTHORIZED,
@@ -88,4 +76,41 @@ object GitHubReleaseClient {
                 connection?.disconnect()
             }
         }
+
+    private fun parseReleases(body: String): List<ReleaseInfo> {
+        val array = JSONArray(body)
+        val releases = mutableListOf<ReleaseInfo>()
+        for (index in 0 until array.length()) {
+            val json = array.optJSONObject(index) ?: continue
+            if (json.optBoolean("draft", false)) continue
+            parseRelease(json)?.let { releases += it }
+        }
+        return releases
+    }
+
+    private fun parseRelease(json: JSONObject): ReleaseInfo? {
+        val tag = json.optString("tag_name").takeIf { it.isNotBlank() } ?: return null
+        val htmlUrl = json.optString("html_url").takeIf { it.isNotBlank() } ?: return null
+
+        val assets = json.optJSONArray("assets")
+        var downloadUrl: String? = null
+        if (assets != null) {
+            for (index in 0 until assets.length()) {
+                val asset = assets.optJSONObject(index) ?: continue
+                val candidate = asset.optString("browser_download_url")
+                if (candidate.isNotBlank()) {
+                    downloadUrl = candidate
+                    break
+                }
+            }
+        }
+
+        return ReleaseInfo(
+            tag = tag,
+            name = json.optString("name").takeIf { it.isNotBlank() },
+            htmlUrl = htmlUrl,
+            downloadUrl = downloadUrl,
+            publishedAt = json.optString("published_at").takeIf { it.isNotBlank() },
+        )
+    }
 }
