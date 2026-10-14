@@ -287,6 +287,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val ld2450 by viewModel.ld2450.collectAsState()
     val autoUpdateCheck by viewModel.autoUpdateCheck.collectAsState()
     val appUpdate by viewModel.appUpdate.collectAsState()
+    val appUpdateDownload by viewModel.appUpdateDownload.collectAsState()
     val firmwareUpdate by viewModel.firmwareUpdate.collectAsState()
     val updateCheckInProgress by viewModel.updateCheckInProgress.collectAsState()
     val updateError by viewModel.updateError.collectAsState()
@@ -419,7 +420,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             else -> featureKey in deviceFeatures
         }
         val supported = featureSupported
-        val requiresOuiDb = module.id == "mac_lookup" && ouiDatabaseStatus !is OuiDatabaseStatus.Ready
+        val requiresOuiDb = module.id == "mac_lookup" &&
+            ouiDatabaseStatus !is OuiDatabaseStatus.Ready &&
+            ouiDatabaseStatus !is OuiDatabaseStatus.Checking
         val availabilityLabel = when {
             !module.available -> module.statusLabel ?: "Unavailable"
             requiresOuiDb -> "OUI DB required"
@@ -1566,10 +1569,13 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 autoUpdateCheck = autoUpdateCheck,
                 updateCheckInProgress = updateCheckInProgress,
                 appUpdate = appUpdate,
+                appUpdateDownload = appUpdateDownload,
                 firmwareUpdate = firmwareUpdate,
                 updateError = updateError,
                 onAutoUpdateCheckChange = viewModel::setAutoUpdateCheck,
                 onCheckForUpdates = { viewModel.checkForUpdates(force = true) },
+                onDownloadAppUpdate = viewModel::downloadAppUpdate,
+                onInstallAppUpdate = viewModel::installAppUpdate,
                 modifier = Modifier,
             )
 
@@ -1598,8 +1604,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 ouiDatabaseStatus = ouiDatabaseStatus,
                 ouiDatabaseProgress = ouiDatabaseProgress,
                 appUpdate = appUpdate,
+                appUpdateDownload = appUpdateDownload,
                 firmwareUpdate = firmwareUpdate,
                 onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
+                onDownloadAppUpdate = viewModel::downloadAppUpdate,
+                onInstallAppUpdate = viewModel::installAppUpdate,
                 onOpenModule = {
                     viewModel.onModuleOpened(it)
                     activeModuleId = it

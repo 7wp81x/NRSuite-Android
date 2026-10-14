@@ -115,6 +115,7 @@ private suspend fun MainViewModel.fetchFirmwareRelease(): GitHubReleaseResult {
 }
 
 private fun MainViewModel.refreshUpdateUiState() {
+    refreshAppUpdateDownloadStateImpl()
     val installedVersion = installedAppVersion()
     val latestApp = readRelease(PREF_APP_RELEASE)
     _appUpdate.value = if (

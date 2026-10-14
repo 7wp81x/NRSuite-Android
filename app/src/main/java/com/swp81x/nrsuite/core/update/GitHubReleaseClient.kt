@@ -94,13 +94,21 @@ object GitHubReleaseClient {
 
         val assets = json.optJSONArray("assets")
         var downloadUrl: String? = null
+        var apkUrl: String? = null
         if (assets != null) {
             for (index in 0 until assets.length()) {
                 val asset = assets.optJSONObject(index) ?: continue
                 val candidate = asset.optString("browser_download_url")
-                if (candidate.isNotBlank()) {
+                if (candidate.isNotBlank() && downloadUrl == null) {
                     downloadUrl = candidate
-                    break
+                }
+                val name = asset.optString("name")
+                val contentType = asset.optString("content_type")
+                if (candidate.isNotBlank() && apkUrl == null &&
+                    (name.endsWith(".apk", ignoreCase = true) ||
+                        contentType == "application/vnd.android.package-archive")
+                ) {
+                    apkUrl = candidate
                 }
             }
         }
@@ -110,6 +118,7 @@ object GitHubReleaseClient {
             name = json.optString("name").takeIf { it.isNotBlank() },
             htmlUrl = htmlUrl,
             downloadUrl = downloadUrl,
+            apkUrl = apkUrl,
             publishedAt = json.optString("published_at").takeIf { it.isNotBlank() },
         )
     }

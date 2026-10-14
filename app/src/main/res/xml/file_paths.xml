@@ -6,4 +6,7 @@
     <files-path
         name="credential_captures"
         path="Credentials/" />
+    <external-files-path
+        name="downloads"
+        path="Download/" />
 </paths>

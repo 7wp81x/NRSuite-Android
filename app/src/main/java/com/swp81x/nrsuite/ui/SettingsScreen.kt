@@ -127,6 +127,7 @@ import com.swp81x.nrsuite.core.defense.OuiRuleAction
 import com.swp81x.nrsuite.core.defense.normalizeOuiPrefix
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.update.AppUpdateInfo
+import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
 import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
@@ -191,10 +192,13 @@ internal fun SettingsScreen(
     autoUpdateCheck: Boolean = true,
     updateCheckInProgress: Boolean = false,
     appUpdate: AppUpdateInfo? = null,
+    appUpdateDownload: AppUpdateDownloadState = AppUpdateDownloadState.Idle,
     firmwareUpdate: FirmwareUpdateInfo? = null,
     updateError: String? = null,
     onAutoUpdateCheckChange: (Boolean) -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
+    onDownloadAppUpdate: () -> Unit = {},
+    onInstallAppUpdate: () -> Unit = {},
     flasherOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -569,10 +573,13 @@ internal fun SettingsScreen(
             autoUpdateCheck = autoUpdateCheck,
             updateCheckInProgress = updateCheckInProgress,
             appUpdate = appUpdate,
+            appUpdateDownload = appUpdateDownload,
             firmwareUpdate = firmwareUpdate,
             updateError = updateError,
             onAutoUpdateCheckChange = onAutoUpdateCheckChange,
             onCheckForUpdates = onCheckForUpdates,
+            onDownloadAppUpdate = onDownloadAppUpdate,
+            onInstallAppUpdate = onInstallAppUpdate,
         )
 
         Card(
@@ -828,10 +835,13 @@ private fun UpdatesCard(
     autoUpdateCheck: Boolean,
     updateCheckInProgress: Boolean,
     appUpdate: AppUpdateInfo?,
+    appUpdateDownload: AppUpdateDownloadState,
     firmwareUpdate: FirmwareUpdateInfo?,
     updateError: String?,
     onAutoUpdateCheckChange: (Boolean) -> Unit,
     onCheckForUpdates: () -> Unit,
+    onDownloadAppUpdate: () -> Unit,
+    onInstallAppUpdate: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -876,10 +886,25 @@ private fun UpdatesCard(
 
             appUpdate?.let { update ->
                 Spacer(Modifier.height(10.dp))
+                val downloadState = appUpdateDownload
                 UpdateInfoRow(
                     label = "App update available",
                     currentVersion = update.currentVersion,
                     latest = update.latest,
+                    buttonLabel = when (downloadState) {
+                        is AppUpdateDownloadState.Downloading -> {
+                            downloadState.percent?.let { "Downloading ${it.toInt()}%" }
+                                ?: "Downloading…"
+                        }
+                        AppUpdateDownloadState.ReadyToInstall -> "Install"
+                        is AppUpdateDownloadState.Failed -> "Retry"
+                        AppUpdateDownloadState.Idle -> "Download"
+                    },
+                    buttonEnabled = downloadState !is AppUpdateDownloadState.Downloading,
+                    onButtonClick = when (downloadState) {
+                        AppUpdateDownloadState.ReadyToInstall -> onInstallAppUpdate
+                        else -> onDownloadAppUpdate
+                    },
                 )
             }
 
@@ -913,6 +938,9 @@ private fun UpdateInfoRow(
     label: String,
     currentVersion: String,
     latest: ReleaseInfo,
+    buttonLabel: String = "Download",
+    buttonEnabled: Boolean = true,
+    onButtonClick: (() -> Unit)? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     Row(
@@ -936,13 +964,18 @@ private fun UpdateInfoRow(
         }
         OutlinedButton(
             onClick = {
-                val url = latest.downloadUrl ?: latest.htmlUrl
-                runCatching {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                if (onButtonClick != null) {
+                    onButtonClick()
+                } else {
+                    val url = latest.downloadUrl ?: latest.htmlUrl
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    }
                 }
             },
+            enabled = buttonEnabled,
         ) {
-            Text("Download")
+            Text(buttonLabel)
         }
     }
 }
@@ -971,6 +1004,13 @@ private fun OuiDatabaseCard(
             Spacer(Modifier.height(10.dp))
 
             when (status) {
+                OuiDatabaseStatus.Checking -> {
+                    Text(
+                        text = "Checking local database…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
                 OuiDatabaseStatus.NotDownloaded -> {
                     Text(
                         text = "Not downloaded.",
@@ -1025,7 +1065,8 @@ private fun OuiDatabaseCard(
             Spacer(Modifier.height(10.dp))
             Button(
                 onClick = onDownload,
-                enabled = status !is OuiDatabaseStatus.Downloading,
+                enabled = status !is OuiDatabaseStatus.Downloading &&
+                    status !is OuiDatabaseStatus.Checking,
             ) {
                 Text(if (status is OuiDatabaseStatus.Ready) "Update database" else "Download database")
             }

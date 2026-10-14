@@ -87,7 +87,10 @@ fun RogueApScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp),
         ) {
-            if (ouiDatabaseStatus !is OuiDatabaseStatus.Ready) {
+            if (ouiDatabaseStatus is OuiDatabaseStatus.NotDownloaded ||
+                ouiDatabaseStatus is OuiDatabaseStatus.Downloading ||
+                ouiDatabaseStatus is OuiDatabaseStatus.Error
+            ) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),

@@ -7,6 +7,7 @@ data class ReleaseInfo(
     val name: String?,
     val htmlUrl: String,
     val downloadUrl: String?,
+    val apkUrl: String?,
     val publishedAt: String?,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
@@ -14,6 +15,7 @@ data class ReleaseInfo(
         put("name", name ?: "")
         put("html_url", htmlUrl)
         put("download_url", downloadUrl ?: "")
+        put("apk_url", apkUrl ?: "")
         put("published_at", publishedAt ?: "")
     }
 
@@ -26,6 +28,7 @@ data class ReleaseInfo(
                 name = json.optString("name").takeIf { it.isNotBlank() },
                 htmlUrl = htmlUrl,
                 downloadUrl = json.optString("download_url").takeIf { it.isNotBlank() },
+                apkUrl = json.optString("apk_url").takeIf { it.isNotBlank() },
                 publishedAt = json.optString("published_at").takeIf { it.isNotBlank() },
             )
         }
@@ -41,3 +44,10 @@ data class FirmwareUpdateInfo(
     val currentVersion: String,
     val latest: ReleaseInfo,
 )
+
+sealed interface AppUpdateDownloadState {
+    data object Idle : AppUpdateDownloadState
+    data class Downloading(val percent: Float?) : AppUpdateDownloadState
+    data object ReadyToInstall : AppUpdateDownloadState
+    data class Failed(val message: String) : AppUpdateDownloadState
+}

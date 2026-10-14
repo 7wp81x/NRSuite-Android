@@ -129,6 +129,7 @@ import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.update.AppUpdateInfo
+import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
 import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
@@ -196,8 +197,11 @@ internal fun HomeScreen(
     ouiDatabaseStatus: OuiDatabaseStatus,
     ouiDatabaseProgress: Float?,
     appUpdate: AppUpdateInfo?,
+    appUpdateDownload: AppUpdateDownloadState,
     firmwareUpdate: FirmwareUpdateInfo?,
     onDownloadOuiDatabase: () -> Unit,
+    onDownloadAppUpdate: () -> Unit,
+    onInstallAppUpdate: () -> Unit,
     onOpenModule: (String) -> Unit,
     onOpenCategory: (String) -> Unit,
     onRefreshDevices: () -> Unit,
@@ -220,13 +224,19 @@ internal fun HomeScreen(
             DashboardDeviceCard(
                 state = connectionState,
                 appUpdate = appUpdate,
+                appUpdateDownload = appUpdateDownload,
                 firmwareUpdate = firmwareUpdate,
+                onDownloadAppUpdate = onDownloadAppUpdate,
+                onInstallAppUpdate = onInstallAppUpdate,
                 onDisconnect = onDisconnect,
                 onManageDevice = onManageDevice,
             )
         }
 
-        if (ouiDatabaseStatus !is OuiDatabaseStatus.Ready) {
+        if (ouiDatabaseStatus is OuiDatabaseStatus.NotDownloaded ||
+            ouiDatabaseStatus is OuiDatabaseStatus.Downloading ||
+            ouiDatabaseStatus is OuiDatabaseStatus.Error
+        ) {
             item {
                 OuiDatabaseDashboardWarning(
                     status = ouiDatabaseStatus,
@@ -555,7 +565,10 @@ internal fun CategoryModulesScreen(
 internal fun DashboardDeviceCard(
     state: ConnectionState,
     appUpdate: AppUpdateInfo?,
+    appUpdateDownload: AppUpdateDownloadState,
     firmwareUpdate: FirmwareUpdateInfo?,
+    onDownloadAppUpdate: () -> Unit,
+    onInstallAppUpdate: () -> Unit,
     onDisconnect: () -> Unit,
     onManageDevice: () -> Unit,
 ) {
@@ -566,10 +579,25 @@ internal fun DashboardDeviceCard(
     ) {
         Column(Modifier.padding(16.dp)) {
             appUpdate?.let { update ->
+                val downloadState = appUpdateDownload
                 UpdateAvailableBanner(
                     title = "App update available",
                     currentVersion = update.currentVersion,
                     latest = update.latest,
+                    buttonLabel = when (downloadState) {
+                        is AppUpdateDownloadState.Downloading -> {
+                            downloadState.percent?.let { "Downloading ${it.toInt()}%" }
+                                ?: "Downloading…"
+                        }
+                        AppUpdateDownloadState.ReadyToInstall -> "Install"
+                        is AppUpdateDownloadState.Failed -> "Retry"
+                        AppUpdateDownloadState.Idle -> "Download"
+                    },
+                    buttonEnabled = downloadState !is AppUpdateDownloadState.Downloading,
+                    onButtonClick = when (downloadState) {
+                        AppUpdateDownloadState.ReadyToInstall -> onInstallAppUpdate
+                        else -> onDownloadAppUpdate
+                    },
                 )
                 Spacer(Modifier.height(10.dp))
             }
@@ -660,6 +688,9 @@ private fun UpdateAvailableBanner(
     title: String,
     currentVersion: String,
     latest: ReleaseInfo,
+    buttonLabel: String = "Download",
+    buttonEnabled: Boolean = true,
+    onButtonClick: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     Card(
@@ -696,13 +727,18 @@ private fun UpdateAvailableBanner(
             Spacer(Modifier.width(8.dp))
             OutlinedButton(
                 onClick = {
-                    val url = latest.downloadUrl ?: latest.htmlUrl
-                    runCatching {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    if (onButtonClick != null) {
+                        onButtonClick()
+                    } else {
+                        val url = latest.downloadUrl ?: latest.htmlUrl
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        }
                     }
                 },
+                enabled = buttonEnabled,
             ) {
-                Text("Download")
+                Text(buttonLabel)
             }
         }
     }
@@ -790,12 +826,14 @@ private fun OuiDatabaseDashboardWarning(
         else -> StatusAmber
     }
     val title = when (status) {
+        OuiDatabaseStatus.Checking -> ""
         OuiDatabaseStatus.NotDownloaded -> "OUI/vendor database not downloaded"
         OuiDatabaseStatus.Downloading -> "Updating OUI/vendor database…"
         is OuiDatabaseStatus.Error -> "OUI/vendor database download failed"
         is OuiDatabaseStatus.Ready -> ""
     }
     val message = when (status) {
+        OuiDatabaseStatus.Checking -> ""
         OuiDatabaseStatus.NotDownloaded ->
             "Vendor names and OUI-based signals will be unavailable until this is downloaded."
         OuiDatabaseStatus.Downloading ->

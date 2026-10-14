@@ -30,6 +30,7 @@ data class MacLookupResult(
 )
 
 sealed interface OuiDatabaseStatus {
+    data object Checking : OuiDatabaseStatus
     data object NotDownloaded : OuiDatabaseStatus
     data object Downloading : OuiDatabaseStatus
     data class Ready(
@@ -43,7 +44,7 @@ class OuiDatabaseRepository(
     private val dataFile: File,
     private val csvUrl: String = OUI_CSV_URL,
 ) {
-    private val _status = MutableStateFlow<OuiDatabaseStatus>(OuiDatabaseStatus.NotDownloaded)
+    private val _status = MutableStateFlow<OuiDatabaseStatus>(OuiDatabaseStatus.Checking)
     val status: StateFlow<OuiDatabaseStatus> = _status.asStateFlow()
 
     val file: File get() = dataFile

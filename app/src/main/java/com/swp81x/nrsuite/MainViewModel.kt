@@ -46,6 +46,7 @@ import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.mesh.MeshCredentialStore
 import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
 import com.swp81x.nrsuite.core.update.AppUpdateInfo
+import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
 import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
 import com.swp81x.nrsuite.core.mesh.MeshNodeStatus
 import com.swp81x.nrsuite.core.mesh.StoredMeshCredentials
@@ -261,6 +262,11 @@ class MainViewModel(internal val app: Application) {
 
     internal val _appUpdate = MutableStateFlow<AppUpdateInfo?>(null)
     val appUpdate: StateFlow<AppUpdateInfo?> = _appUpdate.asStateFlow()
+
+    internal val _appUpdateDownload =
+        MutableStateFlow<AppUpdateDownloadState>(AppUpdateDownloadState.Idle)
+    val appUpdateDownload: StateFlow<AppUpdateDownloadState> =
+        _appUpdateDownload.asStateFlow()
 
     internal val _firmwareUpdate = MutableStateFlow<FirmwareUpdateInfo?>(null)
     val firmwareUpdate: StateFlow<FirmwareUpdateInfo?> = _firmwareUpdate.asStateFlow()
@@ -1123,6 +1129,8 @@ class MainViewModel(internal val app: Application) {
     fun clearUpdateError() {
         _updateError.value = null
     }
+    fun downloadAppUpdate() = this.downloadAppUpdateImpl()
+    fun installAppUpdate() = this.installAppUpdateImpl()
 
     fun clearBadUsbPayload() = this.clearBadUsbPayloadImpl()
 
