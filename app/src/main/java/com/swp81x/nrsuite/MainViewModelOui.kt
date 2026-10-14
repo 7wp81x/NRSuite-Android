@@ -6,12 +6,25 @@ import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.oui.OUI_CSV_URL
 import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
+import java.io.File
 import kotlinx.coroutines.launch
 
 internal const val PREF_OUI_DB_PROMPTED = "oui_db_prompted"
 
 internal fun MainViewModel.loadOuiDatabaseImpl() {
     scope.launch {
+        // Migrate the old internal-files copy so existing installs do not
+        // have to redownload just because OUI storage moved to app external files.
+        val target = ouiDatabaseRepository.file
+        if (!target.exists()) {
+            val legacy = File(app.filesDir, "oui/oui.csv")
+            if (legacy.exists()) {
+                runCatching {
+                    target.parentFile?.mkdirs()
+                    legacy.copyTo(target, overwrite = true)
+                }
+            }
+        }
         ouiDatabaseRepository.load()
         if (ouiDatabaseRepository.status.value is OuiDatabaseStatus.NotDownloaded &&
             !preferences.getBoolean(PREF_OUI_DB_PROMPTED, false)

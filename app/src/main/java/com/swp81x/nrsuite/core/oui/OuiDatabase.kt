@@ -46,6 +46,8 @@ class OuiDatabaseRepository(
     private val _status = MutableStateFlow<OuiDatabaseStatus>(OuiDatabaseStatus.NotDownloaded)
     val status: StateFlow<OuiDatabaseStatus> = _status.asStateFlow()
 
+    val file: File get() = dataFile
+
     private val _progress = MutableStateFlow<Float?>(null)
     val progress: StateFlow<Float?> = _progress.asStateFlow()
 
