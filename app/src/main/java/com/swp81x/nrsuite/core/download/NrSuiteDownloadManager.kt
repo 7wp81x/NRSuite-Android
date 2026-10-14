@@ -66,11 +66,21 @@ object NrSuiteDownloadManager {
         val request = DownloadManager.Request(Uri.parse(url)).apply {
             setTitle(title)
             setDescription(description)
+            setMimeType("text/csv")
             setAllowedOverMetered(true)
             setAllowedOverRoaming(false)
             setNotificationVisibility(
                 DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED,
             )
+            // IEEE rejects the default DownloadManager user-agent with HTTP 418.
+            // Use a standard Android browser UA for compatibility with public servers.
+            addRequestHeader(
+                "User-Agent",
+                "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+            )
+            addRequestHeader("Accept", "text/csv,application/octet-stream,*/*")
+            addRequestHeader("Accept-Encoding", "identity")
             setDestinationUri(Uri.fromFile(destination))
         }
 

@@ -85,7 +85,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationBarItem
@@ -846,17 +845,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     }
                 },
             )
-            if (ouiDatabaseStatus is OuiDatabaseStatus.Downloading) {
-                val downloadProgress = ouiDatabaseProgress
-                if (downloadProgress != null) {
-                    LinearProgressIndicator(
-                        progress = { (downloadProgress / 100f).coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                } else {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-            }
             }
         },
         bottomBar = {
