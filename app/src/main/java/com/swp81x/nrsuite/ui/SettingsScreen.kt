@@ -223,6 +223,8 @@ internal fun SettingsScreen(
     onCheckForUpdates: () -> Unit = {},
     onDownloadAppUpdate: () -> Unit = {},
     onInstallAppUpdate: () -> Unit = {},
+    onDownloadFirmwareUpdate: () -> Unit = {},
+    onOpenFirmwareFlasher: () -> Unit = {},
     flasherOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -738,11 +740,14 @@ internal fun SettingsScreen(
             appUpdate = appUpdate,
             appUpdateDownload = appUpdateDownload,
             firmwareUpdate = firmwareUpdate,
+            firmwareAssetDownload = firmwareAssetDownload,
             updateError = updateError,
             onAutoUpdateCheckChange = onAutoUpdateCheckChange,
             onCheckForUpdates = onCheckForUpdates,
             onDownloadAppUpdate = onDownloadAppUpdate,
             onInstallAppUpdate = onInstallAppUpdate,
+            onDownloadFirmwareUpdate = onDownloadFirmwareUpdate,
+            onOpenFirmwareFlasher = onOpenFirmwareFlasher,
         )
 
         Card(
@@ -1000,11 +1005,14 @@ private fun UpdatesCard(
     appUpdate: AppUpdateInfo?,
     appUpdateDownload: AppUpdateDownloadState,
     firmwareUpdate: FirmwareUpdateInfo?,
+    firmwareAssetDownload: FirmwareAssetDownloadState,
     updateError: String?,
     onAutoUpdateCheckChange: (Boolean) -> Unit,
     onCheckForUpdates: () -> Unit,
     onDownloadAppUpdate: () -> Unit,
     onInstallAppUpdate: () -> Unit,
+    onDownloadFirmwareUpdate: () -> Unit,
+    onOpenFirmwareFlasher: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1072,9 +1080,24 @@ private fun UpdatesCard(
 
             firmwareUpdate?.let { update ->
                 Spacer(Modifier.height(10.dp))
+                val downloadState = firmwareAssetDownload
                 UpdateInfoRow(
                     label = "Firmware update available",
                     latest = update.latest,
+                    buttonLabel = when (downloadState) {
+                        is FirmwareAssetDownloadState.Downloading -> {
+                            downloadState.percent?.let { "Downloading ${it.toInt()}%" }
+                                ?: "Downloading…"
+                        }
+                        is FirmwareAssetDownloadState.Downloaded -> "Flash"
+                        is FirmwareAssetDownloadState.Failed -> "Retry"
+                        FirmwareAssetDownloadState.Idle -> "Download"
+                    },
+                    buttonEnabled = downloadState !is FirmwareAssetDownloadState.Downloading,
+                    onButtonClick = when (downloadState) {
+                        is FirmwareAssetDownloadState.Downloaded -> onOpenFirmwareFlasher
+                        else -> onDownloadFirmwareUpdate
+                    },
                 )
             }
 

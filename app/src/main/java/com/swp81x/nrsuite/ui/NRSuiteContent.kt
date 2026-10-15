@@ -1581,6 +1581,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onCheckForUpdates = { viewModel.checkForUpdates(force = true) },
                 onDownloadAppUpdate = viewModel::downloadAppUpdate,
                 onInstallAppUpdate = viewModel::installAppUpdate,
+                onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
+                onOpenFirmwareFlasher = {
+                    viewModel.onModuleOpened("firmware")
+                    activeModuleId = "firmware"
+                },
                 modifier = Modifier,
             )
 
