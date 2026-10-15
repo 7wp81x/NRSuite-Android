@@ -1583,6 +1583,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onInstallAppUpdate = viewModel::installAppUpdate,
                 onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
                 onOpenFirmwareFlasher = {
+                    viewModel.prepareFirmwareFlasherForUpdate()
                     viewModel.onModuleOpened("firmware")
                     activeModuleId = "firmware"
                 },
@@ -1622,6 +1623,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onInstallAppUpdate = viewModel::installAppUpdate,
                 onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
                 onOpenFirmwareFlasher = {
+                    viewModel.prepareFirmwareFlasherForUpdate()
                     viewModel.onModuleOpened("firmware")
                     activeModuleId = "firmware"
                 },

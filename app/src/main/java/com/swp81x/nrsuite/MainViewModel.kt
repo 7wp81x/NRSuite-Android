@@ -281,6 +281,8 @@ class MainViewModel(internal val app: Application) {
     val firmwareAssetDownload: StateFlow<FirmwareAssetDownloadState> =
         _firmwareAssetDownload.asStateFlow()
 
+    internal var downloadedFirmwarePath: String? = null
+
     internal val _updateCheckInProgress = MutableStateFlow(false)
     val updateCheckInProgress: StateFlow<Boolean> = _updateCheckInProgress.asStateFlow()
 
@@ -1145,6 +1147,7 @@ class MainViewModel(internal val app: Application) {
     fun downloadFirmwareAsset(releaseTag: String, assetName: String) =
         this.downloadFirmwareAssetImpl(releaseTag, assetName)
     fun downloadFirmwareUpdate() = this.downloadFirmwareUpdateForCurrentDeviceImpl()
+    fun prepareFirmwareFlasherForUpdate() = this.prepareFirmwareFlasherForUpdateImpl()
 
     fun clearBadUsbPayload() = this.clearBadUsbPayloadImpl()
 

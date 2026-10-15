@@ -253,6 +253,7 @@ internal fun SettingsScreen(
     var showFlashConfirm by remember { mutableStateOf(false) }
     var selectedFirmwareReleaseTag by remember { mutableStateOf<String?>(null) }
     var selectedFirmwareAssetName by remember { mutableStateOf<String?>(null) }
+    var firmwareSourceRemote by remember { mutableStateOf(false) }
     LaunchedEffect(firmwareFileName, chip) {
         val inferred = inferChipFromFirmwareName(firmwareFileName)
         when {
@@ -261,6 +262,11 @@ internal fun SettingsScreen(
         }
     }
 
+    LaunchedEffect(firmwareAssetDownload) {
+        if (firmwareAssetDownload is FirmwareAssetDownloadState.Downloaded) {
+            firmwareSourceRemote = true
+        }
+    }
     LaunchedEffect(firmwareReleases, selectedTargetChip) {
         val compatibleReleases = firmwareReleases.filter {
             it.compatibleFirmwareAssets(selectedTargetChip).isNotEmpty()
@@ -416,167 +422,192 @@ internal fun SettingsScreen(
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = if (firmwareFileName != null && firmwareFlashSize > 0) {
-                        "$firmwareFileName  (${firmwareFlashSize / 1024} KB)"
-                    } else {
-                        firmwareFileName ?: "No merged firmware .bin selected"
-                    },
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-                if (firmwareFileName == null) {
-                    Button(
-                        onClick = onChooseFirmware,
-                        enabled = targetHasPermission && !firmwareFlashing,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = accent,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
-                    ) {
-                        Text("Choose firmware .bin")
-                    }
-                } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = onChooseFirmware,
-                            enabled = targetHasPermission && !firmwareFlashing,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
-                        ) {
-                            Text("Change")
-                        }
-                        TextButton(
-                            onClick = onClearFirmware,
-                            enabled = !firmwareFlashing,
-                        ) {
-                            Text("Clear")
-                        }
-                    }
-                }
-                if (!targetHasPermission) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Select a device above to choose firmware.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = StatusAmber,
-                    )
-                }
-
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    text = "Remote firmware",
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Choose a cached GitHub release and download the matching firmware asset.",
+                    text = "Choose a cached GitHub release or a local .bin file.",
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
-
-                if (firmwareReleases.isEmpty()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "No firmware releases cached yet. Check for updates first.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = StatusAmber,
-                    )
-                } else {
-                    val selectedRelease = firmwareReleases.firstOrNull {
-                        it.tag == selectedFirmwareReleaseTag
-                    }
-                    val compatibleAssets = selectedRelease
-                        ?.compatibleFirmwareAssets(selectedTargetChip)
-                        .orEmpty()
-                    val selectedAsset = compatibleAssets.firstOrNull {
-                        it.name == selectedFirmwareAssetName
-                    } ?: compatibleAssets.firstOrNull()
-
-                    Spacer(Modifier.height(8.dp))
-                    SavedItemDropdown(
-                        label = "Firmware version",
-                        selectedName = selectedRelease?.tag,
-                        names = firmwareReleases
-                            .filter {
-                                it.compatibleFirmwareAssets(selectedTargetChip).isNotEmpty()
-                            }
-                            .map { it.tag },
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NrFilterChip(
+                        selected = firmwareSourceRemote,
+                        onClick = { firmwareSourceRemote = true },
                         enabled = !firmwareFlashing,
-                        sortNames = false,
-                        itemSupportingText = { tag ->
-                            if (tag == firmwareReleases.firstOrNull()?.tag) "Latest" else null
-                        },
-                        onSelect = { tag ->
-                            selectedFirmwareReleaseTag = tag
-                            selectedFirmwareAssetName = null
-                        },
+                        label = "Remote",
                     )
-
-                    Spacer(Modifier.height(8.dp))
-                    SavedItemDropdown(
-                        label = "Firmware image",
-                        selectedName = selectedAsset?.name,
-                        names = compatibleAssets.map { it.name },
-                        enabled = !firmwareFlashing && compatibleAssets.isNotEmpty(),
-                        sortNames = false,
-                        itemSupportingText = { "Compatible with $selectedTargetChip" },
-                        onSelect = { name -> selectedFirmwareAssetName = name },
+                    NrFilterChip(
+                        selected = !firmwareSourceRemote,
+                        onClick = { firmwareSourceRemote = false },
+                        enabled = !firmwareFlashing,
+                        label = "Local file",
                     )
+                }
+                Spacer(Modifier.height(10.dp))
 
-                    Spacer(Modifier.height(8.dp))
-                    val downloadState = firmwareAssetDownload
-                    Button(
-                        onClick = {
-                            val release = selectedRelease ?: return@Button
-                            val asset = selectedAsset ?: return@Button
-                            onDownloadFirmwareAsset(release.tag, asset.name)
+                if (!firmwareSourceRemote) {
+                    Text(
+                        text = if (firmwareFileName != null && firmwareFlashSize > 0) {
+                            "$firmwareFileName  (${firmwareFlashSize / 1024} KB)"
+                        } else {
+                            firmwareFileName ?: "No local firmware .bin selected"
                         },
-                        enabled = selectedRelease != null &&
-                            selectedAsset != null &&
-                            downloadState !is FirmwareAssetDownloadState.Downloading &&
-                            !firmwareFlashing,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = accent,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
-                    ) {
-                        when (downloadState) {
-                            is FirmwareAssetDownloadState.Downloading -> {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    downloadState.percent?.let {
-                                        "Downloading ${it.toInt()}%"
-                                    } ?: "Downloading…",
-                                )
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = NrOnSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (firmwareFileName == null) {
+                        Button(
+                            onClick = onChooseFirmware,
+                            enabled = targetHasPermission && !firmwareFlashing,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = accent,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                        ) {
+                            Text("Choose firmware .bin")
+                        }
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = onChooseFirmware,
+                                enabled = targetHasPermission && !firmwareFlashing,
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
+                            ) {
+                                Text("Change")
                             }
-                            is FirmwareAssetDownloadState.Downloaded -> Text("Downloaded")
-                            is FirmwareAssetDownloadState.Failed -> Text("Retry download")
-                            FirmwareAssetDownloadState.Idle -> Text("Download selected firmware")
+                            TextButton(
+                                onClick = onClearFirmware,
+                                enabled = !firmwareFlashing,
+                            ) {
+                                Text("Clear")
+                            }
                         }
                     }
-                    if (downloadState is FirmwareAssetDownloadState.Failed) {
+                    if (!targetHasPermission) {
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = downloadState.message,
+                            text = "Select a device above to choose a local firmware.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = StatusRed,
+                            color = StatusAmber,
                         )
                     }
-                    if (downloadState is FirmwareAssetDownloadState.Downloaded) {
-                        Spacer(Modifier.height(4.dp))
+                } else {
+                    if (firmwareReleases.isEmpty()) {
                         Text(
-                            text = "Selected: ${downloadState.fileName}",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontFamily = FontFamily.Monospace,
-                            ),
-                            color = StatusGreen,
+                            text = "No firmware releases cached yet. Check for updates first.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
                         )
+                    } else {
+                        val selectedRelease = firmwareReleases.firstOrNull {
+                            it.tag == selectedFirmwareReleaseTag
+                        }
+                        val compatibleAssets = selectedRelease
+                            ?.compatibleFirmwareAssets(selectedTargetChip)
+                            .orEmpty()
+                        val selectedAsset = compatibleAssets.firstOrNull {
+                            it.name == selectedFirmwareAssetName
+                        } ?: compatibleAssets.firstOrNull()
+
+                        SavedItemDropdown(
+                            label = "Firmware version",
+                            selectedName = selectedRelease?.tag,
+                            names = firmwareReleases.map { it.tag },
+                            enabled = !firmwareFlashing,
+                            sortNames = false,
+                            itemSupportingText = { tag ->
+                                val release = firmwareReleases.firstOrNull { it.tag == tag }
+                                val isLatest = tag == firmwareReleases.firstOrNull()?.tag
+                                val compatible = release
+                                    ?.compatibleFirmwareAssets(selectedTargetChip)
+                                    ?.isNotEmpty() == true
+                                when {
+                                    isLatest && compatible -> "Latest · compatible with $selectedTargetChip"
+                                    isLatest -> "Latest"
+                                    compatible -> "Compatible with $selectedTargetChip"
+                                    else -> "No $selectedTargetChip asset"
+                                }
+                            },
+                            onSelect = { tag ->
+                                selectedFirmwareReleaseTag = tag
+                                selectedFirmwareAssetName = null
+                            },
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+                        SavedItemDropdown(
+                            label = "Firmware image",
+                            selectedName = selectedAsset?.name,
+                            names = compatibleAssets.map { it.name },
+                            enabled = !firmwareFlashing && compatibleAssets.isNotEmpty(),
+                            sortNames = false,
+                            itemSupportingText = { "Compatible with $selectedTargetChip" },
+                            onSelect = { name -> selectedFirmwareAssetName = name },
+                        )
+
+                        if (compatibleAssets.isEmpty()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "This release has no firmware asset for $selectedTargetChip.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusAmber,
+                            )
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                        val downloadState = firmwareAssetDownload
+                        val downloaded = downloadState is FirmwareAssetDownloadState.Downloaded
+                        Button(
+                            onClick = {
+                                val release = selectedRelease ?: return@Button
+                                val asset = selectedAsset ?: return@Button
+                                onDownloadFirmwareAsset(release.tag, asset.name)
+                            },
+                            enabled = selectedRelease != null &&
+                                selectedAsset != null &&
+                                downloadState !is FirmwareAssetDownloadState.Downloading &&
+                                !downloaded &&
+                                !firmwareFlashing,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = accent,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                        ) {
+                            when (downloadState) {
+                                is FirmwareAssetDownloadState.Downloading -> {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        downloadState.percent?.let {
+                                            "Downloading ${it.toInt()}%"
+                                        } ?: "Downloading…",
+                                    )
+                                }
+                                is FirmwareAssetDownloadState.Downloaded -> Text("Downloaded")
+                                is FirmwareAssetDownloadState.Failed -> Text("Retry download")
+                                FirmwareAssetDownloadState.Idle -> Text("Download selected firmware")
+                            }
+                        }
+                        if (downloadState is FirmwareAssetDownloadState.Failed) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = downloadState.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusRed,
+                            )
+                        }
+                        if (downloaded) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Firmware ready to flash. Use the button below.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusGreen,
+                            )
+                        }
                     }
                 }
 

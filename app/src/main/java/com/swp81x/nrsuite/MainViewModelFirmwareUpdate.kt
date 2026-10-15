@@ -54,6 +54,7 @@ internal fun MainViewModel.downloadFirmwareAssetImpl(
         "updates/firmware/${sanitizeFirmwareName(releaseTag)}-${sanitizeFirmwareName(assetName)}",
     )
     if (destination.exists() && destination.length() > 0L) {
+        downloadedFirmwarePath = destination.absolutePath
         selectDownloadedFirmwareImpl(destination)
         _firmwareAssetDownload.value = FirmwareAssetDownloadState.Downloaded(destination.name)
         return
@@ -81,6 +82,7 @@ internal fun MainViewModel.downloadFirmwareAssetImpl(
                     }
                     DownloadState.Completed -> {
                         if (destination.exists() && destination.length() > 0L) {
+                            downloadedFirmwarePath = destination.absolutePath
                             selectDownloadedFirmwareImpl(destination)
                             _firmwareAssetDownload.value =
                                 FirmwareAssetDownloadState.Downloaded(destination.name)
@@ -105,6 +107,13 @@ internal fun MainViewModel.downloadFirmwareAssetImpl(
             _firmwareAssetDownload.value = FirmwareAssetDownloadState.Failed(message)
             appendLog("Firmware download failed: $message", level = LogLevel.ERROR)
         }
+    }
+}
+
+internal fun MainViewModel.prepareFirmwareFlasherForUpdateImpl() {
+    val file = downloadedFirmwarePath?.let(::File)
+    if (file != null && file.exists() && file.length() > 0L) {
+        selectDownloadedFirmwareImpl(file)
     }
 }
 
