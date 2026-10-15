@@ -1144,6 +1144,7 @@ class MainViewModel(internal val app: Application) {
 
     fun downloadFirmwareAsset(releaseTag: String, assetName: String) =
         this.downloadFirmwareAssetImpl(releaseTag, assetName)
+    fun downloadFirmwareUpdate() = this.downloadFirmwareUpdateForCurrentDeviceImpl()
 
     fun clearBadUsbPayload() = this.clearBadUsbPayloadImpl()
 

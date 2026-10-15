@@ -132,6 +132,7 @@ import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.update.AppUpdateInfo
 import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
 import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
+import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
@@ -200,9 +201,12 @@ internal fun HomeScreen(
     appUpdate: AppUpdateInfo?,
     appUpdateDownload: AppUpdateDownloadState,
     firmwareUpdate: FirmwareUpdateInfo?,
+    firmwareAssetDownload: FirmwareAssetDownloadState,
     onDownloadOuiDatabase: () -> Unit,
     onDownloadAppUpdate: () -> Unit,
     onInstallAppUpdate: () -> Unit,
+    onDownloadFirmwareUpdate: () -> Unit,
+    onOpenFirmwareFlasher: () -> Unit,
     onOpenModule: (String) -> Unit,
     onOpenCategory: (String) -> Unit,
     onRefreshDevices: () -> Unit,
@@ -248,9 +252,24 @@ internal fun HomeScreen(
         if (connectionState is ConnectionState.Connected) {
             firmwareUpdate?.let { update ->
                 item {
+                    val downloadState = firmwareAssetDownload
                     UpdateAvailableCard(
                         title = "Firmware update available",
                         latest = update.latest,
+                        buttonLabel = when (downloadState) {
+                            is FirmwareAssetDownloadState.Downloading -> {
+                                downloadState.percent?.let { "Downloading ${it.toInt()}%" }
+                                    ?: "Downloading…"
+                            }
+                            is FirmwareAssetDownloadState.Downloaded -> "Flash"
+                            is FirmwareAssetDownloadState.Failed -> "Retry"
+                            FirmwareAssetDownloadState.Idle -> "Download"
+                        },
+                        buttonEnabled = downloadState !is FirmwareAssetDownloadState.Downloading,
+                        onButtonClick = when (downloadState) {
+                            is FirmwareAssetDownloadState.Downloaded -> onOpenFirmwareFlasher
+                            else -> onDownloadFirmwareUpdate
+                        },
                     )
                 }
             }

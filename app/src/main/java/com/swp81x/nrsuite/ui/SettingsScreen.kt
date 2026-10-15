@@ -142,6 +142,7 @@ import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrFilterChip
+import com.swp81x.nrsuite.ui.components.SavedItemDropdown
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -250,8 +251,6 @@ internal fun SettingsScreen(
     var showFlashConfirm by remember { mutableStateOf(false) }
     var selectedFirmwareReleaseTag by remember { mutableStateOf<String?>(null) }
     var selectedFirmwareAssetName by remember { mutableStateOf<String?>(null) }
-    var firmwareVersionMenuExpanded by remember { mutableStateOf(false) }
-    var firmwareAssetMenuExpanded by remember { mutableStateOf(false) }
     LaunchedEffect(firmwareFileName, chip) {
         val inferred = inferChipFromFirmwareName(firmwareFileName)
         when {
@@ -492,71 +491,35 @@ internal fun SettingsScreen(
                     } ?: compatibleAssets.firstOrNull()
 
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Version",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
+                    SavedItemDropdown(
+                        label = "Firmware version",
+                        selectedName = selectedRelease?.tag,
+                        names = firmwareReleases
+                            .filter {
+                                it.compatibleFirmwareAssets(selectedTargetChip).isNotEmpty()
+                            }
+                            .map { it.tag },
+                        enabled = !firmwareFlashing,
+                        sortNames = false,
+                        itemSupportingText = { tag ->
+                            if (tag == firmwareReleases.firstOrNull()?.tag) "Latest" else null
+                        },
+                        onSelect = { tag ->
+                            selectedFirmwareReleaseTag = tag
+                            selectedFirmwareAssetName = null
+                        },
                     )
-                    Spacer(Modifier.height(4.dp))
-                    Box {
-                        OutlinedButton(
-                            onClick = { firmwareVersionMenuExpanded = true },
-                            enabled = !firmwareFlashing,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(selectedRelease?.tag ?: "Select release version")
-                        }
-                        DropdownMenu(
-                            expanded = firmwareVersionMenuExpanded,
-                            onDismissRequest = { firmwareVersionMenuExpanded = false },
-                        ) {
-                            firmwareReleases
-                                .filter {
-                                    it.compatibleFirmwareAssets(selectedTargetChip).isNotEmpty()
-                                }
-                                .forEach { release ->
-                                    DropdownMenuItem(
-                                        text = { Text(release.tag) },
-                                        onClick = {
-                                            selectedFirmwareReleaseTag = release.tag
-                                            selectedFirmwareAssetName = null
-                                            firmwareVersionMenuExpanded = false
-                                        },
-                                    )
-                                }
-                        }
-                    }
 
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Firmware",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
+                    SavedItemDropdown(
+                        label = "Firmware image",
+                        selectedName = selectedAsset?.name,
+                        names = compatibleAssets.map { it.name },
+                        enabled = !firmwareFlashing && compatibleAssets.isNotEmpty(),
+                        sortNames = false,
+                        itemSupportingText = { "Compatible with $selectedTargetChip" },
+                        onSelect = { name -> selectedFirmwareAssetName = name },
                     )
-                    Spacer(Modifier.height(4.dp))
-                    Box {
-                        OutlinedButton(
-                            onClick = { firmwareAssetMenuExpanded = true },
-                            enabled = !firmwareFlashing && compatibleAssets.isNotEmpty(),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(selectedAsset?.name ?: "No compatible firmware asset")
-                        }
-                        DropdownMenu(
-                            expanded = firmwareAssetMenuExpanded,
-                            onDismissRequest = { firmwareAssetMenuExpanded = false },
-                        ) {
-                            compatibleAssets.forEach { asset ->
-                                DropdownMenuItem(
-                                    text = { Text(asset.name) },
-                                    onClick = {
-                                        selectedFirmwareAssetName = asset.name
-                                        firmwareAssetMenuExpanded = false
-                                    },
-                                )
-                            }
-                        }
-                    }
 
                     Spacer(Modifier.height(8.dp))
                     val downloadState = firmwareAssetDownload

@@ -5,8 +5,32 @@ import com.swp81x.nrsuite.core.download.DownloadState
 import com.swp81x.nrsuite.core.download.NrSuiteDownloadManager
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
+import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
 import java.io.File
 import kotlinx.coroutines.launch
+
+internal fun MainViewModel.downloadFirmwareUpdateForCurrentDeviceImpl() {
+    val connected = session?.state?.value as? ConnectionState.Connected ?: run {
+        appendLog("Connect a device before downloading a firmware update.", level = LogLevel.ERROR)
+        return
+    }
+    val chip = connected.chip ?: run {
+        appendLog("Could not determine the connected chip for firmware update.", level = LogLevel.ERROR)
+        return
+    }
+    val release = _firmwareUpdate.value?.latest
+        ?: _firmwareReleases.value.firstOrNull { it.compatibleFirmwareAssets(chip).isNotEmpty() }
+        ?: run {
+            appendLog("No firmware release is available for $chip.", level = LogLevel.ERROR)
+            return
+        }
+    val asset = release.compatibleFirmwareAssets(chip).firstOrNull() ?: run {
+        appendLog("No firmware asset matches $chip in ${release.tag}.", level = LogLevel.ERROR)
+        return
+    }
+    downloadFirmwareAssetImpl(release.tag, asset.name)
+}
 
 internal fun MainViewModel.downloadFirmwareAssetImpl(
     releaseTag: String,

@@ -1611,9 +1611,15 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 appUpdate = appUpdate,
                 appUpdateDownload = appUpdateDownload,
                 firmwareUpdate = firmwareUpdate,
+                firmwareAssetDownload = firmwareAssetDownload,
                 onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
                 onDownloadAppUpdate = viewModel::downloadAppUpdate,
                 onInstallAppUpdate = viewModel::installAppUpdate,
+                onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
+                onOpenFirmwareFlasher = {
+                    viewModel.onModuleOpened("firmware")
+                    activeModuleId = "firmware"
+                },
                 onOpenModule = {
                     viewModel.onModuleOpened(it)
                     activeModuleId = it
