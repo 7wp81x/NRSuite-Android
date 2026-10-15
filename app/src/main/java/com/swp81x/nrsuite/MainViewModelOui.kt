@@ -60,6 +60,9 @@ internal fun MainViewModel.downloadOuiDatabaseImpl() {
                     is DownloadState.Running -> {
                         ouiDatabaseRepository.updateDownloadProgress(state.percent)
                     }
+                    is DownloadState.Paused -> {
+                        ouiDatabaseRepository.updateDownloadProgress(state.percent)
+                    }
                     DownloadState.Completed -> {
                         ouiDatabaseRepository.updateDownloadProgress(null)
                         ouiDatabaseRepository.load()

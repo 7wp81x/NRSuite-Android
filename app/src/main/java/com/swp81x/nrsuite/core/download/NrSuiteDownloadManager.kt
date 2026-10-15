@@ -13,6 +13,13 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 
+private fun downloadPercent(downloadedBytes: Long, totalBytes: Long): Float? =
+    if (totalBytes > 0L) {
+        (downloadedBytes * 100f / totalBytes).coerceIn(0f, 100f)
+    } else {
+        null
+    }
+
 sealed interface DownloadState {
     data class Pending(
         val downloadedBytes: Long = 0L,
@@ -24,11 +31,16 @@ sealed interface DownloadState {
         val totalBytes: Long,
     ) : DownloadState {
         val percent: Float?
-            get() = if (totalBytes > 0L) {
-                (downloadedBytes * 100f / totalBytes).coerceIn(0f, 100f)
-            } else {
-                null
-            }
+            get() = downloadPercent(downloadedBytes, totalBytes)
+    }
+
+    data class Paused(
+        val downloadedBytes: Long,
+        val totalBytes: Long,
+        val reason: String? = null,
+    ) : DownloadState {
+        val percent: Float?
+            get() = downloadPercent(downloadedBytes, totalBytes)
     }
 
     data object Completed : DownloadState
@@ -120,9 +132,17 @@ object NrSuiteDownloadManager {
             )
             return when (status) {
                 DownloadManager.STATUS_PENDING -> DownloadState.Pending(downloaded, total)
-                DownloadManager.STATUS_RUNNING,
-                DownloadManager.STATUS_PAUSED,
-                -> DownloadState.Running(downloaded, total)
+                DownloadManager.STATUS_RUNNING -> DownloadState.Running(downloaded, total)
+                DownloadManager.STATUS_PAUSED -> {
+                    val reasonCode = cursor.getInt(
+                        cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON),
+                    )
+                    DownloadState.Paused(
+                        downloadedBytes = downloaded,
+                        totalBytes = total,
+                        reason = pauseReasonLabel(reasonCode),
+                    )
+                }
                 DownloadManager.STATUS_SUCCESSFUL -> DownloadState.Completed
                 DownloadManager.STATUS_FAILED -> {
                     val reasonCode = cursor.getInt(
@@ -133,6 +153,14 @@ object NrSuiteDownloadManager {
                 else -> DownloadState.Pending(downloaded, total)
             }
         }
+    }
+
+    private fun pauseReasonLabel(code: Int): String = when (code) {
+        DownloadManager.PAUSED_WAITING_TO_RETRY -> "Waiting to retry"
+        DownloadManager.PAUSED_WAITING_FOR_NETWORK -> "Waiting for network"
+        DownloadManager.PAUSED_QUEUED_FOR_WIFI -> "Queued for Wi-Fi"
+        DownloadManager.PAUSED_UNKNOWN -> "Paused"
+        else -> "Paused"
     }
 
     private fun reasonLabel(code: Int): String = when (code) {

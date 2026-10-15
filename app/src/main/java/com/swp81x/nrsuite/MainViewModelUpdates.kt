@@ -59,14 +59,13 @@ internal fun MainViewModel.checkForUpdatesImpl(force: Boolean = false) {
                 preferences.edit().putLong(PREF_LAST_APP_CHECK, now).apply()
             }
 
-            val firmwareVersion = currentFirmwareVersion()
-            if (firmwareVersion != null) {
-                val lastFirmwareCheck = preferences.getLong(PREF_LAST_FW_CHECK, 0L)
-                if (force || now - lastFirmwareCheck >= UPDATE_CHECK_INTERVAL_MS) {
-                    val result = fetchFirmwareRelease()
-                    if (result is GitHubReleaseResult.Failure) error = result.message
-                    preferences.edit().putLong(PREF_LAST_FW_CHECK, now).apply()
-                }
+            // Firmware release metadata is useful even without a connected
+            // device because the flasher screen can browse/download assets.
+            val lastFirmwareCheck = preferences.getLong(PREF_LAST_FW_CHECK, 0L)
+            if (force || now - lastFirmwareCheck >= UPDATE_CHECK_INTERVAL_MS) {
+                val result = fetchFirmwareRelease()
+                if (result is GitHubReleaseResult.Failure) error = result.message
+                preferences.edit().putLong(PREF_LAST_FW_CHECK, now).apply()
             }
 
             _updateError.value = error

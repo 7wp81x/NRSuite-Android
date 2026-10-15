@@ -80,6 +80,10 @@ internal fun MainViewModel.downloadFirmwareAssetImpl(
                         _firmwareAssetDownload.value =
                             FirmwareAssetDownloadState.Downloading(state.percent)
                     }
+                    is DownloadState.Paused -> {
+                        _firmwareAssetDownload.value =
+                            FirmwareAssetDownloadState.Downloading(state.percent)
+                    }
                     DownloadState.Completed -> {
                         if (destination.exists() && destination.length() > 0L) {
                             downloadedFirmwarePath = destination.absolutePath

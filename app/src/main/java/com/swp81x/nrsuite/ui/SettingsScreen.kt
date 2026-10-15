@@ -184,6 +184,17 @@ private fun ReleaseInfo.compatibleFirmwareAssets(chip: String): List<ReleaseAsse
     return assets.filter { it.name.endsWith(suffix, ignoreCase = true) }
 }
 
+private fun firmwareChipFromAssetName(name: String): String? {
+    val normalized = name.lowercase()
+    return when {
+        normalized.endsWith("esp32c3.bin") -> "ESP32-C3"
+        normalized.endsWith("esp32s3.bin") -> "ESP32-S3"
+        normalized.endsWith("esp32s2.bin") -> "ESP32-S2"
+        normalized.endsWith("esp32-generic.bin") -> "ESP32"
+        else -> null
+    }
+}
+
 @Composable
 internal fun SettingsScreen(
     connectionState: ConnectionState,
@@ -221,6 +232,7 @@ internal fun SettingsScreen(
     updateError: String? = null,
     onAutoUpdateCheckChange: (Boolean) -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
+    onAutoCheckForUpdates: () -> Unit = {},
     onDownloadAppUpdate: () -> Unit = {},
     onInstallAppUpdate: () -> Unit = {},
     onDownloadFirmwareUpdate: () -> Unit = {},
@@ -284,6 +296,12 @@ internal fun SettingsScreen(
             usbManager.hasPermission(devices[0].device)
         ) {
             onSelectFlashTarget(devices[0].device)
+        }
+    }
+
+    LaunchedEffect(flasherOnly, autoUpdateCheck) {
+        if (flasherOnly && autoUpdateCheck) {
+            onAutoCheckForUpdates()
         }
     }
 
@@ -491,20 +509,44 @@ internal fun SettingsScreen(
                         )
                     }
                 } else {
-                    if (firmwareReleases.isEmpty()) {
+                    if (updateCheckInProgress) {
                         Text(
-                            text = "No firmware releases cached yet. Check for updates first.",
+                            text = "Checking for updates…",
                             style = MaterialTheme.typography.bodySmall,
                             color = StatusAmber,
                         )
+                        Spacer(Modifier.height(4.dp))
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    } else if (firmwareReleases.isEmpty()) {
+                        Text(
+                            text = "No firmware releases cached yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        OutlinedButton(
+                            onClick = onCheckForUpdates,
+                            enabled = autoUpdateCheck,
+                        ) {
+                            Text("Check now")
+                        }
+                        if (updateError != null) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = updateError,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusRed,
+                            )
+                        }
                     } else {
                         val selectedRelease = firmwareReleases.firstOrNull {
                             it.tag == selectedFirmwareReleaseTag
                         }
+                        val allAssets = selectedRelease?.assets.orEmpty()
                         val compatibleAssets = selectedRelease
                             ?.compatibleFirmwareAssets(selectedTargetChip)
                             .orEmpty()
-                        val selectedAsset = compatibleAssets.firstOrNull {
+                        val selectedAsset = allAssets.firstOrNull {
                             it.name == selectedFirmwareAssetName
                         } ?: compatibleAssets.firstOrNull()
 
@@ -537,17 +579,24 @@ internal fun SettingsScreen(
                         SavedItemDropdown(
                             label = "Firmware image",
                             selectedName = selectedAsset?.name,
-                            names = compatibleAssets.map { it.name },
-                            enabled = !firmwareFlashing && compatibleAssets.isNotEmpty(),
+                            names = allAssets.map { it.name },
+                            enabled = !firmwareFlashing && allAssets.isNotEmpty(),
                             sortNames = false,
-                            itemSupportingText = { "Compatible with $selectedTargetChip" },
-                            onSelect = { name -> selectedFirmwareAssetName = name },
+                            itemSupportingText = { name ->
+                                firmwareChipFromAssetName(name)?.let { "Target: $it" }
+                                    ?: "Unknown target chip"
+                            },
+                            onSelect = { name ->
+                                selectedFirmwareAssetName = name
+                                firmwareChipFromAssetName(name)?.let { selectedTargetChip = it }
+                            },
                         )
 
                         if (compatibleAssets.isEmpty()) {
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "This release has no firmware asset for $selectedTargetChip.",
+                                text = "This release has no asset for $selectedTargetChip. " +
+                                    "Select a version/firmware that matches the target chip.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = StatusAmber,
                             )

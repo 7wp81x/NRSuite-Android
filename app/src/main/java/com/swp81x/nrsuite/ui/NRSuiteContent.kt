@@ -1542,6 +1542,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 firmwareReleases = firmwareReleases,
                 firmwareAssetDownload = firmwareAssetDownload,
                 onDownloadFirmwareAsset = viewModel::downloadFirmwareAsset,
+                autoUpdateCheck = autoUpdateCheck,
+                updateCheckInProgress = updateCheckInProgress,
+                updateError = updateError,
+                onCheckForUpdates = { viewModel.checkForUpdates(force = true) },
+                onAutoCheckForUpdates = { viewModel.checkForUpdates(force = false) },
                 flasherOnly = true,
                 modifier = Modifier,
             )

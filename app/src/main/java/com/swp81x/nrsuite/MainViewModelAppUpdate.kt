@@ -69,6 +69,9 @@ internal fun MainViewModel.downloadAppUpdateImpl() {
                     is DownloadState.Running -> {
                         _appUpdateDownload.value = AppUpdateDownloadState.Downloading(state.percent)
                     }
+                    is DownloadState.Paused -> {
+                        _appUpdateDownload.value = AppUpdateDownloadState.Downloading(state.percent)
+                    }
                     DownloadState.Completed -> {
                         if (destination.exists() && destination.length() > 0L) {
                             preferences.edit()
