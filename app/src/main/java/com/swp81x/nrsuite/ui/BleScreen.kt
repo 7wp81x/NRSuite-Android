@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import com.swp81x.nrsuite.ui.components.SavedScriptPicker
+import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
@@ -112,36 +113,21 @@ fun BleScreen(
                 .fillMaxSize()
                 .padding(12.dp),
         ) {
-            TabRow(selectedTabIndex = selectedTab) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text("Payload") },
-                )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = {
-                        selectedTab = 1
-                        if (!canRealtime) {
-                            Toast.makeText(
-                                context,
-                                "Connect and pair to a BLE host to use Realtime HID.",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        }
-                    },
-                    text = {
-                        Text(
-                            text = "Realtime HID",
-                            color = if (canRealtime) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                NrOnSurfaceVariant.copy(alpha = 0.65f)
-                            },
-                        )
-                    },
-                )
-            }
+            RoundedTabRow(
+                selectedIndex = selectedTab,
+                tabs = listOf("Payload", "Realtime HID"),
+                onSelect = { index ->
+                    if (index == 1 && !canRealtime) {
+                        Toast.makeText(
+                            context,
+                            "Connect and pair to a BLE host to use Realtime HID.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    } else {
+                        selectedTab = index
+                    }
+                },
+            )
 
             Spacer(Modifier.height(10.dp))
 

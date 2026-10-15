@@ -169,7 +169,7 @@ fun PinBruteforceScreen(
             Spacer(Modifier.height(80.dp))
         }
 
-        if (state.source != null && !state.running) {
+        if (connected && state.source != null && !state.running) {
             ModuleActionFab(
                 onClick = {
                     if (state.running) {

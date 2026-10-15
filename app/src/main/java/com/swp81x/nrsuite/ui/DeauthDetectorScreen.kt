@@ -169,25 +169,27 @@ fun DeauthDetectorScreen(
             DeauthChannelMode.TARGETED -> selectedTarget != null
             DeauthChannelMode.HOPPING -> true
         }
-        ModuleActionFab(
-            onClick = {
-                if (running) {
-                    onStop()
-                } else if (canStart) {
-                    confirmStart = true
-                }
-            },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
-            enabled = connected && (running || canStart),
-            containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-        ) {
-            Icon(
-                imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
-                contentDescription = null,
-            )
+        if (connected) {
+            ModuleActionFab(
+                onClick = {
+                    if (running) {
+                        onStop()
+                    } else if (canStart) {
+                        confirmStart = true
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp),
+                enabled = running || canStart,
+                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                Icon(
+                    imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                    contentDescription = null,
+                )
+            }
         }
     }
 
@@ -522,14 +524,6 @@ private fun ConfigZone(
                         }
                     }
 
-                    if (!connected) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = "Connect a device before starting the detector.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusRed,
-                        )
-                    }
                 }
             }
         }

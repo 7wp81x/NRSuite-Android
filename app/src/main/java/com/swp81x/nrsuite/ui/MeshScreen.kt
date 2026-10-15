@@ -69,6 +69,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.mesh.MeshNodeStatus
 import com.swp81x.nrsuite.ui.components.ChannelStepper
+import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.CategoryBleBlue
@@ -228,18 +229,11 @@ fun MeshScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp),
         ) {
-            TabRow(selectedTabIndex = selectedTab) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text("Setup") },
-                )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = { Text("Network") },
-                )
-            }
+            RoundedTabRow(
+                selectedIndex = selectedTab,
+                tabs = listOf("Setup", "Network"),
+                onSelect = { selectedTab = it },
+            )
 
             Spacer(Modifier.height(10.dp))
 
@@ -400,32 +394,34 @@ fun MeshScreen(
             Spacer(Modifier.height(80.dp))
         }
 
-        FloatingActionButton(
-            onClick = {
-                if (!fabEnabled) return@FloatingActionButton
-                when {
-                    sessionActive -> onDeactivate()
-                    useSavedCredentials -> onAuthenticateStored()
-                    else -> onAuthenticateAndActivate(passphrase)
+        if (connected) {
+            FloatingActionButton(
+                onClick = {
+                    if (!fabEnabled) return@FloatingActionButton
+                    when {
+                        sessionActive -> onDeactivate()
+                        useSavedCredentials -> onAuthenticateStored()
+                        else -> onAuthenticateAndActivate(passphrase)
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .alpha(if (fabEnabled) 1f else 0.4f),
+                containerColor = if (sessionActive) StatusRed else NrAccent,
+            ) {
+                if (busy) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = NrBackground,
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (sessionActive) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        contentDescription = if (sessionActive) "Deactivate mesh" else "Authenticate and activate mesh",
+                    )
                 }
-            },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp)
-                .alpha(if (fabEnabled) 1f else 0.4f),
-            containerColor = if (sessionActive) StatusRed else NrAccent,
-        ) {
-            if (busy) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
-                    color = NrBackground,
-                )
-            } else {
-                Icon(
-                    imageVector = if (sessionActive) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = if (sessionActive) "Deactivate mesh" else "Authenticate and activate mesh",
-                )
             }
         }
     }

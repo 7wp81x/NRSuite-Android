@@ -981,6 +981,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             when {
             activeModuleId == "wifi" -> {
                 WifiScanScreen(
+                    connected = isDeviceConnected,
                     scanning = scanning,
                     networks = networks,
                     onScan = viewModel::scanWifi,

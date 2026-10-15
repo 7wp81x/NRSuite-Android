@@ -55,6 +55,7 @@ import org.json.JSONObject
 
 @Composable
 fun WifiScanScreen(
+    connected: Boolean,
     scanning: Boolean,
     networks: List<JSONObject>,
     onScan: () -> Unit,
@@ -101,22 +102,24 @@ fun WifiScanScreen(
             }
         }
 
-        ModuleActionFab(
-            onClick = onScan,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(20.dp),
-            containerColor = NrAccent,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-        ) {
-            if (scanning) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(22.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                )
-            } else {
-                Icon(Icons.Default.Search, contentDescription = "Scan WiFi")
+        if (connected) {
+            ModuleActionFab(
+                onClick = onScan,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(20.dp),
+                containerColor = NrAccent,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                if (scanning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Icon(Icons.Default.Search, contentDescription = "Scan WiFi")
+                }
             }
         }
     }

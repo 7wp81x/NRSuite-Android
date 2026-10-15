@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.components.HtmlUploadSection
+import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -114,18 +115,11 @@ fun PortalScreen(
                 .fillMaxSize()
                 .padding(12.dp),
         ) {
-            TabRow(selectedTabIndex = selectedTab) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text("Overview") },
-                )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = { Text("Logs (${eventLog.size})") },
-                )
-            }
+            RoundedTabRow(
+                selectedIndex = selectedTab,
+                tabs = listOf("Overview", "Logs (${eventLog.size})"),
+                onSelect = { selectedTab = it },
+            )
 
             Spacer(Modifier.height(10.dp))
 

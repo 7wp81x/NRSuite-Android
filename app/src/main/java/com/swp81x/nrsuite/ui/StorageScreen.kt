@@ -104,15 +104,17 @@ fun StorageScreen(
             }
         }
 
-        ModuleActionFab(
-            onClick = onRefresh,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(20.dp),
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-        ) {
-            Icon(Icons.Default.Refresh, contentDescription = "Refresh storage")
+        if (connected) {
+            ModuleActionFab(
+                onClick = onRefresh,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(20.dp),
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh storage")
+            }
         }
     }
 

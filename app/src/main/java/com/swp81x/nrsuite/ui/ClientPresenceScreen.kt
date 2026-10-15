@@ -411,14 +411,6 @@ private fun ConfigZone(
                         }
                     }
 
-                    if (!connected) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = "Connect a device before starting client detection.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusRed,
-                        )
-                    }
                 }
             }
         }
