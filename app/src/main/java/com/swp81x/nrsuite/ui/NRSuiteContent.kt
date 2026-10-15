@@ -289,6 +289,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val appUpdate by viewModel.appUpdate.collectAsState()
     val appUpdateDownload by viewModel.appUpdateDownload.collectAsState()
     val firmwareUpdate by viewModel.firmwareUpdate.collectAsState()
+    val firmwareReleases by viewModel.firmwareReleases.collectAsState()
+    val firmwareAssetDownload by viewModel.firmwareAssetDownload.collectAsState()
     val updateCheckInProgress by viewModel.updateCheckInProgress.collectAsState()
     val updateError by viewModel.updateError.collectAsState()
     val badUsbProgress by viewModel.badUsbProgress.collectAsState()
@@ -1537,6 +1539,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onRequestPermission = { device -> requestFirmwarePermission(device) },
                 onSelectFlashTarget = viewModel::selectFirmwareTarget,
                 onStartFirmwareFlash = viewModel::startFirmwareFlash,
+                firmwareReleases = firmwareReleases,
+                firmwareAssetDownload = firmwareAssetDownload,
+                onDownloadFirmwareAsset = viewModel::downloadFirmwareAsset,
                 flasherOnly = true,
                 modifier = Modifier,
             )

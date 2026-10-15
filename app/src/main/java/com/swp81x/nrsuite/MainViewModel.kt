@@ -48,6 +48,8 @@ import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
 import com.swp81x.nrsuite.core.update.AppUpdateInfo
 import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
 import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
+import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
+import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.mesh.MeshNodeStatus
 import com.swp81x.nrsuite.core.mesh.StoredMeshCredentials
 import com.swp81x.nrsuite.core.oui.MacLookupResult
@@ -270,6 +272,14 @@ class MainViewModel(internal val app: Application) {
 
     internal val _firmwareUpdate = MutableStateFlow<FirmwareUpdateInfo?>(null)
     val firmwareUpdate: StateFlow<FirmwareUpdateInfo?> = _firmwareUpdate.asStateFlow()
+
+    internal val _firmwareReleases = MutableStateFlow<List<ReleaseInfo>>(emptyList())
+    val firmwareReleases: StateFlow<List<ReleaseInfo>> = _firmwareReleases.asStateFlow()
+
+    internal val _firmwareAssetDownload =
+        MutableStateFlow<FirmwareAssetDownloadState>(FirmwareAssetDownloadState.Idle)
+    val firmwareAssetDownload: StateFlow<FirmwareAssetDownloadState> =
+        _firmwareAssetDownload.asStateFlow()
 
     internal val _updateCheckInProgress = MutableStateFlow(false)
     val updateCheckInProgress: StateFlow<Boolean> = _updateCheckInProgress.asStateFlow()
@@ -1131,6 +1141,9 @@ class MainViewModel(internal val app: Application) {
     }
     fun downloadAppUpdate() = this.downloadAppUpdateImpl()
     fun installAppUpdate() = this.installAppUpdateImpl()
+
+    fun downloadFirmwareAsset(releaseTag: String, assetName: String) =
+        this.downloadFirmwareAssetImpl(releaseTag, assetName)
 
     fun clearBadUsbPayload() = this.clearBadUsbPayloadImpl()
 

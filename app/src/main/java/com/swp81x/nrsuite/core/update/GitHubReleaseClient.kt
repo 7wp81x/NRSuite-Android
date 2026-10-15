@@ -7,6 +7,17 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+sealed interface GitHubReleasesResult {
+    data class Success(
+        val releases: List<ReleaseInfo>,
+        val etag: String?,
+    ) : GitHubReleasesResult
+
+    data object NotModified : GitHubReleasesResult
+
+    data class Failure(val message: String) : GitHubReleasesResult
+}
+
 sealed interface GitHubReleaseResult {
     data class Success(
         val release: ReleaseInfo,
@@ -20,7 +31,20 @@ sealed interface GitHubReleaseResult {
 }
 
 object GitHubReleaseClient {
-    suspend fun fetchLatest(repo: String, etag: String?): GitHubReleaseResult =
+    suspend fun fetchLatest(repo: String, etag: String?): GitHubReleaseResult {
+        return when (val result = fetchReleases(repo, etag)) {
+            is GitHubReleasesResult.Success -> {
+                val latest = result.releases.maxWithOrNull { left, right ->
+                    VersionComparator.compare(left.tag, right.tag)
+                } ?: return GitHubReleaseResult.NotModified
+                GitHubReleaseResult.Success(latest, result.etag)
+            }
+            GitHubReleasesResult.NotModified -> GitHubReleaseResult.NotModified
+            is GitHubReleasesResult.Failure -> GitHubReleaseResult.Failure(result.message)
+        }
+    }
+
+    suspend fun fetchReleases(repo: String, etag: String?): GitHubReleasesResult =
         withContext(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
@@ -41,37 +65,29 @@ object GitHubReleaseClient {
                 when (val code = connection.responseCode) {
                     HttpURLConnection.HTTP_NOT_MODIFIED,
                     HttpURLConnection.HTTP_NOT_FOUND,
-                    -> GitHubReleaseResult.NotModified
+                    -> GitHubReleasesResult.NotModified
                     in 200..299 -> {
                         val body = connection.inputStream.bufferedReader().use { it.readText() }
-                        val releases = parseReleases(body)
-                        if (releases.isEmpty()) {
-                            GitHubReleaseResult.NotModified
-                        } else {
-                            val latest = releases.maxWithOrNull { left, right ->
-                                VersionComparator.compare(left.tag, right.tag)
-                            } ?: releases.first()
-                            GitHubReleaseResult.Success(
-                                release = latest,
-                                etag = connection.getHeaderField("ETag"),
-                            )
-                        }
+                        GitHubReleasesResult.Success(
+                            releases = parseReleases(body),
+                            etag = connection.getHeaderField("ETag"),
+                        )
                     }
                     HttpURLConnection.HTTP_FORBIDDEN,
                     HttpURLConnection.HTTP_UNAUTHORIZED,
                     -> {
                         val remaining = connection.getHeaderField("X-RateLimit-Remaining")
                         val reset = connection.getHeaderField("X-RateLimit-Reset")
-                        GitHubReleaseResult.Failure(
+                        GitHubReleasesResult.Failure(
                             "GitHub rate limit or access denied" +
                                 (remaining?.let { " · remaining=$it" } ?: "") +
                                 (reset?.let { " · reset=$it" } ?: ""),
                         )
                     }
-                    else -> GitHubReleaseResult.Failure("GitHub returned HTTP $code")
+                    else -> GitHubReleasesResult.Failure("GitHub returned HTTP $code")
                 }
             } catch (t: Throwable) {
-                GitHubReleaseResult.Failure(t.message ?: "Update check failed")
+                GitHubReleasesResult.Failure(t.message ?: "Update check failed")
             } finally {
                 connection?.disconnect()
             }
@@ -92,24 +108,30 @@ object GitHubReleaseClient {
         val tag = json.optString("tag_name").takeIf { it.isNotBlank() } ?: return null
         val htmlUrl = json.optString("html_url").takeIf { it.isNotBlank() } ?: return null
 
-        val assets = json.optJSONArray("assets")
+        val assets = mutableListOf<ReleaseAsset>()
+        json.optJSONArray("assets")?.let { array ->
+            for (index in 0 until array.length()) {
+                val assetJson = array.optJSONObject(index) ?: continue
+                val name = assetJson.optString("name").takeIf { it.isNotBlank() } ?: continue
+                val url = assetJson.optString("browser_download_url").takeIf { it.isNotBlank() }
+                    ?: continue
+                assets += ReleaseAsset(
+                    name = name,
+                    url = url,
+                    contentType = assetJson.optString("content_type").takeIf { it.isNotBlank() },
+                )
+            }
+        }
+
         var downloadUrl: String? = null
         var apkUrl: String? = null
-        if (assets != null) {
-            for (index in 0 until assets.length()) {
-                val asset = assets.optJSONObject(index) ?: continue
-                val candidate = asset.optString("browser_download_url")
-                if (candidate.isNotBlank() && downloadUrl == null) {
-                    downloadUrl = candidate
-                }
-                val name = asset.optString("name")
-                val contentType = asset.optString("content_type")
-                if (candidate.isNotBlank() && apkUrl == null &&
-                    (name.endsWith(".apk", ignoreCase = true) ||
-                        contentType == "application/vnd.android.package-archive")
-                ) {
-                    apkUrl = candidate
-                }
+        assets.forEach { asset ->
+            if (downloadUrl == null) downloadUrl = asset.url
+            if (apkUrl == null &&
+                (asset.name.endsWith(".apk", ignoreCase = true) ||
+                    asset.contentType == "application/vnd.android.package-archive")
+            ) {
+                apkUrl = asset.url
             }
         }
 
@@ -120,6 +142,7 @@ object GitHubReleaseClient {
             downloadUrl = downloadUrl,
             apkUrl = apkUrl,
             publishedAt = json.optString("published_at").takeIf { it.isNotBlank() },
+            assets = assets,
         )
     }
 }
