@@ -858,7 +858,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
         },
         bottomBar = {
-            if (activeModuleId == null) {
+            if (activeModuleId == null && selectedCategory == null) {
                 NavigationBar(
                     containerColor = NrSurface,
                     tonalElevation = 0.dp,
