@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -220,17 +221,39 @@ internal fun HomeScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item {
-            DashboardDeviceCard(
-                state = connectionState,
-                appUpdate = appUpdate,
-                appUpdateDownload = appUpdateDownload,
-                firmwareUpdate = firmwareUpdate,
-                onDownloadAppUpdate = onDownloadAppUpdate,
-                onInstallAppUpdate = onInstallAppUpdate,
-                onDisconnect = onDisconnect,
-                onManageDevice = onManageDevice,
-            )
+        appUpdate?.let { update ->
+            item {
+                val downloadState = appUpdateDownload
+                UpdateAvailableCard(
+                    title = "App update available",
+                    latest = update.latest,
+                    buttonLabel = when (downloadState) {
+                        is AppUpdateDownloadState.Downloading -> {
+                            downloadState.percent?.let { "Downloading ${it.toInt()}%" }
+                                ?: "Downloading…"
+                        }
+                        AppUpdateDownloadState.ReadyToInstall -> "Update"
+                        is AppUpdateDownloadState.Failed -> "Retry"
+                        AppUpdateDownloadState.Idle -> "Download"
+                    },
+                    buttonEnabled = downloadState !is AppUpdateDownloadState.Downloading,
+                    onButtonClick = when (downloadState) {
+                        AppUpdateDownloadState.ReadyToInstall -> onInstallAppUpdate
+                        else -> onDownloadAppUpdate
+                    },
+                )
+            }
+        }
+
+        if (connectionState is ConnectionState.Connected) {
+            firmwareUpdate?.let { update ->
+                item {
+                    UpdateAvailableCard(
+                        title = "Firmware update available",
+                        latest = update.latest,
+                    )
+                }
+            }
         }
 
         if (ouiDatabaseStatus is OuiDatabaseStatus.NotDownloaded ||
@@ -244,6 +267,14 @@ internal fun HomeScreen(
                     onDownload = onDownloadOuiDatabase,
                 )
             }
+        }
+
+        item {
+            DashboardDeviceCard(
+                state = connectionState,
+                onDisconnect = onDisconnect,
+                onManageDevice = onManageDevice,
+            )
         }
 
         if (connectionState !is ConnectionState.Connected) {
@@ -564,11 +595,6 @@ internal fun CategoryModulesScreen(
 @Composable
 internal fun DashboardDeviceCard(
     state: ConnectionState,
-    appUpdate: AppUpdateInfo?,
-    appUpdateDownload: AppUpdateDownloadState,
-    firmwareUpdate: FirmwareUpdateInfo?,
-    onDownloadAppUpdate: () -> Unit,
-    onInstallAppUpdate: () -> Unit,
     onDisconnect: () -> Unit,
     onManageDevice: () -> Unit,
 ) {
@@ -578,40 +604,6 @@ internal fun DashboardDeviceCard(
         border = BorderStroke(0.5.dp, NrOutline),
     ) {
         Column(Modifier.padding(16.dp)) {
-            appUpdate?.let { update ->
-                val downloadState = appUpdateDownload
-                UpdateAvailableBanner(
-                    title = "App update available",
-                    currentVersion = update.currentVersion,
-                    latest = update.latest,
-                    buttonLabel = when (downloadState) {
-                        is AppUpdateDownloadState.Downloading -> {
-                            downloadState.percent?.let { "Downloading ${it.toInt()}%" }
-                                ?: "Downloading…"
-                        }
-                        AppUpdateDownloadState.ReadyToInstall -> "Install"
-                        is AppUpdateDownloadState.Failed -> "Retry"
-                        AppUpdateDownloadState.Idle -> "Download"
-                    },
-                    buttonEnabled = downloadState !is AppUpdateDownloadState.Downloading,
-                    onButtonClick = when (downloadState) {
-                        AppUpdateDownloadState.ReadyToInstall -> onInstallAppUpdate
-                        else -> onDownloadAppUpdate
-                    },
-                )
-                Spacer(Modifier.height(10.dp))
-            }
-            if (state is ConnectionState.Connected) {
-                firmwareUpdate?.let { update ->
-                    UpdateAvailableBanner(
-                        title = "Firmware update available",
-                        currentVersion = update.currentVersion,
-                        latest = update.latest,
-                    )
-                    Spacer(Modifier.height(10.dp))
-                }
-            }
-
             when (state) {
                 ConnectionState.Disconnected -> {
                     StatusIndicator(
@@ -684,9 +676,8 @@ internal fun DashboardDeviceCard(
 }
 
 @Composable
-private fun UpdateAvailableBanner(
+private fun UpdateAvailableCard(
     title: String,
-    currentVersion: String,
     latest: ReleaseInfo,
     buttonLabel: String = "Download",
     buttonEnabled: Boolean = true,
@@ -717,11 +708,15 @@ private fun UpdateAvailableBanner(
                     text = title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "$currentVersion → ${latest.tag}",
+                    text = latest.tag,
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             Spacer(Modifier.width(8.dp))
@@ -737,8 +732,15 @@ private fun UpdateAvailableBanner(
                     }
                 },
                 enabled = buttonEnabled,
+                modifier = Modifier.widthIn(min = 112.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
             ) {
-                Text(buttonLabel)
+                Text(
+                    text = buttonLabel,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -889,14 +890,13 @@ private fun UpdatesCard(
                 val downloadState = appUpdateDownload
                 UpdateInfoRow(
                     label = "App update available",
-                    currentVersion = update.currentVersion,
                     latest = update.latest,
                     buttonLabel = when (downloadState) {
                         is AppUpdateDownloadState.Downloading -> {
                             downloadState.percent?.let { "Downloading ${it.toInt()}%" }
                                 ?: "Downloading…"
                         }
-                        AppUpdateDownloadState.ReadyToInstall -> "Install"
+                        AppUpdateDownloadState.ReadyToInstall -> "Update"
                         is AppUpdateDownloadState.Failed -> "Retry"
                         AppUpdateDownloadState.Idle -> "Download"
                     },
@@ -912,7 +912,6 @@ private fun UpdatesCard(
                 Spacer(Modifier.height(10.dp))
                 UpdateInfoRow(
                     label = "Firmware update available",
-                    currentVersion = update.currentVersion,
                     latest = update.latest,
                 )
             }
@@ -936,7 +935,6 @@ private fun UpdatesCard(
 @Composable
 private fun UpdateInfoRow(
     label: String,
-    currentVersion: String,
     latest: ReleaseInfo,
     buttonLabel: String = "Download",
     buttonEnabled: Boolean = true,
@@ -955,11 +953,19 @@ private fun UpdateInfoRow(
         )
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
             Text(
-                text = "$currentVersion → ${latest.tag}",
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = latest.tag,
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                 color = NrOnSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         OutlinedButton(
@@ -974,8 +980,15 @@ private fun UpdateInfoRow(
                 }
             },
             enabled = buttonEnabled,
+            modifier = Modifier.widthIn(min = 112.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
         ) {
-            Text(buttonLabel)
+            Text(
+                text = buttonLabel,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
