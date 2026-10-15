@@ -74,6 +74,7 @@ internal fun MainViewModel.downloadAppUpdateImpl() {
                     }
                     DownloadState.Completed -> {
                         if (destination.exists() && destination.length() > 0L) {
+                            purgeOldAppUpdateFiles(destination)
                             preferences.edit()
                                 .putString(PREF_APP_UPDATE_APK_PATH, destination.absolutePath)
                                 .putString(PREF_APP_UPDATE_APK_TAG, update.latest.tag)
@@ -145,3 +146,14 @@ internal fun MainViewModel.installAppUpdateImpl() {
 
 private fun sanitizeVersionForFile(raw: String): String =
     raw.replace(Regex("[^A-Za-z0-9._-]"), "_")
+
+private fun purgeOldAppUpdateFiles(current: File) {
+    val parent = current.parentFile ?: return
+    parent.listFiles()?.forEach { file ->
+        if (file.isFile && file.name != current.name &&
+            file.extension.equals("apk", ignoreCase = true)
+        ) {
+            runCatching { file.delete() }
+        }
+    }
+}

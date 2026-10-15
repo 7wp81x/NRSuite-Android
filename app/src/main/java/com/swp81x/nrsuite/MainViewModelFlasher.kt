@@ -96,6 +96,66 @@ internal fun MainViewModel.selectFirmwareTargetImpl(device: UsbDevice) {
     appendLog("Firmware flash target: ${entry.displayName}")
 }
 
+internal fun MainViewModel.armManualFirmwareRecoveryImpl(targetChip: String) {
+    if (_firmwareFlashUri.value == null) {
+        appendLog("Choose a firmware image before arming manual bootloader recovery.", level = LogLevel.ERROR)
+        return
+    }
+    manualRecoveryTargetChip = targetChip
+    _firmwareManualRecovery.value = true
+    _firmwareFlashStatus.value =
+        "Manual bootloader armed. Hold BOOT, unplug/replug USB, release BOOT. " +
+            "The flash will start when the device appears."
+    appendLog("Manual bootloader recovery armed for $targetChip.", tag = "flasher")
+}
+
+internal fun MainViewModel.disarmManualFirmwareRecoveryImpl() {
+    _firmwareManualRecovery.value = false
+    manualRecoveryTargetChip = null
+    appendLog("Manual bootloader recovery disarmed.", tag = "flasher")
+}
+
+internal fun MainViewModel.flashManualFirmwareNowImpl() {
+    if (_firmwareFlashUri.value == null) {
+        _firmwareManualRecovery.value = false
+        appendLog("No firmware image is selected for manual bootloader recovery.", level = LogLevel.ERROR)
+        return
+    }
+    if (_firmwareFlashing.value) return
+
+    val entry = _firmwareTargetDevice.value
+        ?.takeIf { usbManager.hasPermission(it.device) }
+        ?: _devices.value.firstOrNull { usbManager.hasPermission(it.device) }
+    if (entry == null) {
+        _firmwareFlashStatus.value =
+            "Waiting for a bootloader device with USB permission. " +
+                "Hold BOOT, unplug/replug, then grant USB permission if prompted."
+        return
+    }
+
+    _firmwareTargetDevice.value = entry
+    val chip = manualRecoveryTargetChip ?: "ESP32"
+    _firmwareManualRecovery.value = false
+    startFirmwareFlashImpl(
+        targetChip = chip,
+        skipReset = true,
+        eraseBeforeFlash = false,
+    )
+}
+
+internal fun MainViewModel.tryManualFirmwareFlashOnAttachImpl() {
+    if (!_firmwareManualRecovery.value) return
+    val entry = _devices.value.firstOrNull { usbManager.hasPermission(it.device) }
+    if (entry != null) {
+        _firmwareTargetDevice.value = entry
+        appendLog("Bootloader device detected; starting manual flash.", tag = "flasher")
+        flashManualFirmwareNowImpl()
+    } else {
+        _firmwareFlashStatus.value =
+            "Bootloader device detected. Grant USB permission to continue flashing."
+    }
+}
+
 internal fun MainViewModel.startFirmwareFlashImpl(
     targetChip: String,
     skipReset: Boolean,
@@ -186,11 +246,9 @@ internal fun MainViewModel.startFirmwareFlashImpl(
             refreshDevices()
         } catch (t: Throwable) {
             _firmwareFlashProgress.value = 0
-            _firmwareFlashStatus.value = "Flash failed: ${t.message ?: t.javaClass.simpleName}"
-            appendLog(
-                "Firmware flash failed: ${t.message ?: t.javaClass.simpleName}",
-                level = LogLevel.ERROR,
-            )
+            val reason = t.message ?: t.javaClass.simpleName
+            _firmwareFlashStatus.value = "Flash failed: $reason"
+            appendLog("Firmware flash failed: $reason", level = LogLevel.ERROR)
             addHistory("firmware", "Firmware flash failed", HistoryLevel.ERROR)
         } finally {
             _firmwareFlashing.value = false

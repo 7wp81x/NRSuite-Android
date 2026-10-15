@@ -88,6 +88,7 @@ internal fun MainViewModel.onUsbDeviceAttachedImpl() {
     refreshDevices()
     appendLog("USB device attached.", level = LogLevel.USB)
     appendLog("Tap Connect to open a session when ready.", level = LogLevel.USB)
+    tryManualFirmwareFlashOnAttachImpl()
 }
 
 internal fun MainViewModel.deviceFingerprintImpl(device: UsbDevice): String {
@@ -171,6 +172,9 @@ internal fun MainViewModel.onPermissionResultImpl(device: UsbDevice, granted: Bo
         if (reallyGranted) {
             refreshDevicesImpl()
             selectFirmwareTargetImpl(device)
+            if (_firmwareManualRecovery.value) {
+                flashManualFirmwareNowImpl()
+            }
         }
         return
     }

@@ -291,6 +291,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val firmwareUpdate by viewModel.firmwareUpdate.collectAsState()
     val firmwareReleases by viewModel.firmwareReleases.collectAsState()
     val firmwareAssetDownload by viewModel.firmwareAssetDownload.collectAsState()
+    val firmwareManualRecovery by viewModel.firmwareManualRecovery.collectAsState()
     val updateCheckInProgress by viewModel.updateCheckInProgress.collectAsState()
     val updateError by viewModel.updateError.collectAsState()
     val badUsbProgress by viewModel.badUsbProgress.collectAsState()
@@ -1543,6 +1544,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 firmwareReleases = firmwareReleases,
                 firmwareAssetDownload = firmwareAssetDownload,
                 onDownloadFirmwareAsset = viewModel::downloadFirmwareAsset,
+                firmwareManualRecovery = firmwareManualRecovery,
+                onArmManualFirmwareRecovery = viewModel::armManualFirmwareRecovery,
+                onFlashManualFirmwareNow = viewModel::flashManualFirmwareNow,
+                onDisarmManualFirmwareRecovery = viewModel::disarmManualFirmwareRecovery,
                 autoUpdateCheck = autoUpdateCheck,
                 updateCheckInProgress = updateCheckInProgress,
                 updateError = updateError,
@@ -1593,6 +1598,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     viewModel.onModuleOpened("firmware")
                     activeModuleId = "firmware"
                 },
+                onClearUpdateDownloads = viewModel::clearUpdateDownloads,
                 modifier = Modifier,
             )
 

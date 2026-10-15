@@ -283,6 +283,11 @@ class MainViewModel(internal val app: Application) {
 
     internal var downloadedFirmwarePath: String? = null
 
+    internal val _firmwareManualRecovery = MutableStateFlow(false)
+    val firmwareManualRecovery: StateFlow<Boolean> = _firmwareManualRecovery.asStateFlow()
+
+    internal var manualRecoveryTargetChip: String? = null
+
     internal val _updateCheckInProgress = MutableStateFlow(false)
     val updateCheckInProgress: StateFlow<Boolean> = _updateCheckInProgress.asStateFlow()
 
@@ -1148,6 +1153,11 @@ class MainViewModel(internal val app: Application) {
         this.downloadFirmwareAssetImpl(releaseTag, assetName)
     fun downloadFirmwareUpdate() = this.downloadFirmwareUpdateForCurrentDeviceImpl()
     fun prepareFirmwareFlasherForUpdate() = this.prepareFirmwareFlasherForUpdateImpl()
+    fun armManualFirmwareRecovery(targetChip: String) =
+        this.armManualFirmwareRecoveryImpl(targetChip)
+    fun flashManualFirmwareNow() = this.flashManualFirmwareNowImpl()
+    fun disarmManualFirmwareRecovery() = this.disarmManualFirmwareRecoveryImpl()
+    fun clearUpdateDownloads() = this.clearUpdateDownloadsImpl()
 
     fun clearBadUsbPayload() = this.clearBadUsbPayloadImpl()
 

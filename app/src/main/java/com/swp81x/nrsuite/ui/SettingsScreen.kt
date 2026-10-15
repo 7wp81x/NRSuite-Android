@@ -215,6 +215,10 @@ internal fun SettingsScreen(
     onRequestPermission: (UsbDevice) -> Unit,
     onSelectFlashTarget: (UsbDevice) -> Unit,
     onStartFirmwareFlash: (targetChip: String, skipReset: Boolean, eraseBeforeFlash: Boolean) -> Unit,
+    firmwareManualRecovery: Boolean = false,
+    onArmManualFirmwareRecovery: (targetChip: String) -> Unit = {},
+    onFlashManualFirmwareNow: () -> Unit = {},
+    onDisarmManualFirmwareRecovery: () -> Unit = {},
     firmwareReleases: List<ReleaseInfo> = emptyList(),
     firmwareAssetDownload: FirmwareAssetDownloadState = FirmwareAssetDownloadState.Idle,
     onDownloadFirmwareAsset: (releaseTag: String, assetName: String) -> Unit = { _, _ -> },
@@ -237,6 +241,7 @@ internal fun SettingsScreen(
     onInstallAppUpdate: () -> Unit = {},
     onDownloadFirmwareUpdate: () -> Unit = {},
     onOpenFirmwareFlasher: () -> Unit = {},
+    onClearUpdateDownloads: () -> Unit = {},
     flasherOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -265,7 +270,7 @@ internal fun SettingsScreen(
     var showFlashConfirm by remember { mutableStateOf(false) }
     var selectedFirmwareReleaseTag by remember { mutableStateOf<String?>(null) }
     var selectedFirmwareAssetName by remember { mutableStateOf<String?>(null) }
-    var firmwareSourceRemote by remember { mutableStateOf(false) }
+    var firmwareSourceRemote by remember { mutableStateOf(true) }
     LaunchedEffect(firmwareFileName, chip) {
         val inferred = inferChipFromFirmwareName(firmwareFileName)
         when {
@@ -795,6 +800,56 @@ internal fun SettingsScreen(
                         },
                     )
                 }
+
+                if (firmwareManualRecovery) {
+                    Spacer(Modifier.height(10.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = NrSurfaceVariant),
+                        border = BorderStroke(0.5.dp, StatusAmber),
+                        shape = RoundedCornerShape(10.dp),
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Manual bootloader recovery armed",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Hold BOOT, unplug/replug USB, release BOOT. " +
+                                    "The flash will start when the device appears.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NrOnSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = onFlashManualFirmwareNow,
+                                    enabled = !firmwareFlashing,
+                                ) {
+                                    Text("Flash now")
+                                }
+                                TextButton(
+                                    onClick = onDisarmManualFirmwareRecovery,
+                                    enabled = !firmwareFlashing,
+                                ) {
+                                    Text("Cancel")
+                                }
+                            }
+                        }
+                    }
+                } else if (!firmwareFlashing &&
+                    firmwareFlashStatus?.startsWith("Flash failed") == true
+                ) {
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = { onArmManualFirmwareRecovery(selectedTargetChip) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Use manual bootloader")
+                    }
+                }
             }
         }
         }
@@ -828,6 +883,7 @@ internal fun SettingsScreen(
             onInstallAppUpdate = onInstallAppUpdate,
             onDownloadFirmwareUpdate = onDownloadFirmwareUpdate,
             onOpenFirmwareFlasher = onOpenFirmwareFlasher,
+            onClearUpdateDownloads = onClearUpdateDownloads,
         )
 
         Card(
@@ -1093,6 +1149,7 @@ private fun UpdatesCard(
     onInstallAppUpdate: () -> Unit,
     onDownloadFirmwareUpdate: () -> Unit,
     onOpenFirmwareFlasher: () -> Unit,
+    onClearUpdateDownloads: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1192,6 +1249,13 @@ private fun UpdatesCard(
                 } else {
                     Text("Check now")
                 }
+            }
+            Spacer(Modifier.height(6.dp))
+            TextButton(
+                onClick = onClearUpdateDownloads,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Clear downloaded updates")
             }
         }
     }

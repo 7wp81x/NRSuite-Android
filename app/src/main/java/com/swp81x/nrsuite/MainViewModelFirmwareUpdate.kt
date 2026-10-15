@@ -5,6 +5,8 @@ import com.swp81x.nrsuite.core.download.DownloadState
 import com.swp81x.nrsuite.core.download.NrSuiteDownloadManager
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
+import com.swp81x.nrsuite.core.update.ChecksumUtils
+import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
 import java.io.File
@@ -86,6 +88,18 @@ internal fun MainViewModel.downloadFirmwareAssetImpl(
                     }
                     DownloadState.Completed -> {
                         if (destination.exists() && destination.length() > 0L) {
+                            val verified = verifyFirmwareAsset(release, asset.name, destination)
+                            if (!verified) {
+                                destination.delete()
+                                _firmwareAssetDownload.value =
+                                    FirmwareAssetDownloadState.Failed("SHA-256 verification failed")
+                                appendLog(
+                                    "Firmware SHA-256 verification failed for ${asset.name}.",
+                                    level = LogLevel.ERROR,
+                                )
+                                return@collect
+                            }
+                            purgeOldFirmwareFiles(destination, asset.name)
                             downloadedFirmwarePath = destination.absolutePath
                             selectDownloadedFirmwareImpl(destination)
                             _firmwareAssetDownload.value =
@@ -146,3 +160,66 @@ internal fun MainViewModel.selectDownloadedFirmwareImpl(file: File) {
 
 private fun sanitizeFirmwareName(raw: String): String =
     raw.replace(Regex("[^A-Za-z0-9._-]"), "_")
+
+private suspend fun MainViewModel.verifyFirmwareAsset(
+    release: ReleaseInfo,
+    assetName: String,
+    file: File,
+): Boolean {
+    val sumsAsset = release.assets.firstOrNull {
+        it.name.equals("SHA256SUMS", ignoreCase = true)
+    } ?: run {
+        appendLog("No SHA256SUMS asset in ${release.tag}; skipping verification.", tag = "update")
+        return true
+    }
+
+    val sumsText = ChecksumUtils.fetchText(sumsAsset.url)
+    if (sumsText.isNullOrBlank()) {
+        appendLog("Could not download SHA256SUMS for ${release.tag}.", level = LogLevel.ERROR)
+        return false
+    }
+    val expected = ChecksumUtils.expectedHashFor(sumsText, assetName)
+    if (expected.isNullOrBlank()) {
+        appendLog("No checksum entry for $assetName in SHA256SUMS.", level = LogLevel.ERROR)
+        return false
+    }
+    val actual = ChecksumUtils.sha256(file)
+    if (actual == null) {
+        appendLog("Could not compute SHA-256 for $assetName.", level = LogLevel.ERROR)
+        return false
+    }
+    return actual.equals(expected, ignoreCase = true)
+}
+
+private fun purgeOldFirmwareFiles(current: File, assetName: String) {
+    val parent = current.parentFile ?: return
+    val suffix = firmwareAssetSuffix(assetName) ?: return
+    parent.listFiles()?.forEach { file ->
+        if (file.isFile &&
+            file.name != current.name &&
+            file.name.endsWith(suffix, ignoreCase = true)
+        ) {
+            runCatching { file.delete() }
+        }
+    }
+}
+
+private fun firmwareAssetSuffix(assetName: String): String? {
+    val normalized = assetName.lowercase()
+    return when {
+        normalized.endsWith("esp32c3.bin") -> "esp32c3.bin"
+        normalized.endsWith("esp32s3.bin") -> "esp32s3.bin"
+        normalized.endsWith("esp32s2.bin") -> "esp32s2.bin"
+        normalized.endsWith("esp32-generic.bin") -> "esp32-generic.bin"
+        else -> null
+    }
+}
+
+internal fun MainViewModel.clearUpdateDownloadsImpl() {
+    val updateRoot = NrSuiteDownloadManager.destinationFile(app, "updates")
+    runCatching { updateRoot.deleteRecursively() }
+    _appUpdateDownload.value = com.swp81x.nrsuite.core.update.AppUpdateDownloadState.Idle
+    _firmwareAssetDownload.value = FirmwareAssetDownloadState.Idle
+    downloadedFirmwarePath = null
+    appendLog("Downloaded update files cleared.", tag = "update")
+}
