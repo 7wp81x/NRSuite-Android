@@ -388,9 +388,16 @@ If you find a vulnerability in NRSuite itself (for example, a flaw in the mesh e
 
 ## License
 
-[MIT](./LICENSE)
+[GNU General Public License v3.0 or later](./LICENSE)
 
-This license covers redistribution of the code. It does not authorize use of the tool against systems you do not own or lack explicit permission to test. See [LEGAL.md](./LEGAL.md).
+NRSuite is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This license covers redistribution of the code. It does not authorize use of
+the tool against systems you do not own or lack explicit permission to test.
+See [LEGAL.md](./LEGAL.md) and [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 
 ---
 
