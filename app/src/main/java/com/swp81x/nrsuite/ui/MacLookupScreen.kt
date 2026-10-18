@@ -150,13 +150,34 @@ fun MacLookupScreen(
                                 )
                             },
                         )
-                        BssidMapView(
-                            bssid = location.bssid,
-                            latitude = location.latitude,
-                            longitude = location.longitude,
-                            accuracyMeters = location.accuracyMeters,
-                            source = location.source,
-                        )
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = NrSurface),
+                            border = BorderStroke(0.5.dp, NrOutline),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Column(Modifier.padding(10.dp)) {
+                                Text(
+                                    text = "Map preview",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                                )
+                                BssidMapView(
+                                    bssid = location.bssid,
+                                    latitude = location.latitude,
+                                    longitude = location.longitude,
+                                    accuracyMeters = location.accuracyMeters,
+                                    source = location.source,
+                                )
+                                Text(
+                                    text = "Tiles: © OpenStreetMap contributors",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = NrOnSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                                )
+                            }
+                        }
                     }
                 }
 
