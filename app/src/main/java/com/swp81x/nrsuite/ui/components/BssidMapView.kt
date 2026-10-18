@@ -1,6 +1,13 @@
 package com.swp81x.nrsuite.ui.components
 
 import android.annotation.SuppressLint
+import android.content.pm.ApplicationInfo
+import android.graphics.Color
+import android.util.Log
+import android.webkit.ConsoleMessage
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -14,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,8 +35,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrSurface
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
-private const val MAP_BASE_URL = "https://appassets.androidplatform.net/"
+// Real HTTPS base origin for the generated document. The document itself is
+// loaded with loadDataWithBaseURL, so this doesn't require hosting any files.
+private const val MAP_BASE_URL = "https://github.com/7wp81x/NRSuite-Android/"
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -41,29 +54,53 @@ fun BssidMapView(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    var mapHtml by remember { mutableStateOf<String?>(null) }
+    var assetError by remember { mutableStateOf<String?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
-    val mapHtml = remember(bssid, latitude, longitude, accuracyMeters, source) {
-        val leafletCss = context.assets.open("leaflet/leaflet.css")
-            .bufferedReader()
-            .use { it.readText() }
-        val leafletJs = context.assets.open("leaflet/leaflet.js")
-            .bufferedReader()
-            .use { it.readText() }
-        buildMapHtml(
-            leafletCss = leafletCss,
-            leafletJs = leafletJs,
-            bssid = bssid,
-            latitude = latitude,
-            longitude = longitude,
-            accuracyMeters = accuracyMeters,
-            source = source,
-        )
+
+    LaunchedEffect(bssid, latitude, longitude, accuracyMeters, source) {
+        mapHtml = null
+        assetError = null
+        if (!latitude.isFinite() || !longitude.isFinite() ||
+            latitude !in -90.0..90.0 || longitude !in -180.0..180.0
+        ) {
+            assetError = "Invalid coordinates."
+            return@LaunchedEffect
+        }
+        mapHtml = withContext(Dispatchers.IO) {
+            runCatching {
+                val leafletCss = context.assets.open("leaflet/leaflet.css")
+                    .bufferedReader()
+                    .use { it.readText() }
+                    // Avoid broken image requests; the map uses circle markers.
+                    .replace(Regex("""url\(images/[^)]*\)"""), "none")
+                val leafletJs = context.assets.open("leaflet/leaflet.js")
+                    .bufferedReader()
+                    .use { it.readText() }
+                buildMapHtml(
+                    leafletCss = leafletCss,
+                    leafletJs = leafletJs,
+                    bssid = bssid,
+                    latitude = latitude,
+                    longitude = longitude,
+                    accuracyMeters = accuracyMeters,
+                    source = source,
+                )
+            }.onFailure { error ->
+                assetError = error.message ?: "Could not read bundled map assets."
+            }.getOrNull()
+        }
     }
+
     val mapKey = remember(bssid, latitude, longitude, accuracyMeters, source) {
         "$bssid|$latitude|$longitude|$accuracyMeters|$source"
     }
 
     val webView = remember {
+        val debuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        if (debuggable) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
         WebView(context).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -73,18 +110,30 @@ fun BssidMapView(
             settings.displayZoomControls = false
             settings.loadsImagesAutomatically = true
             settings.cacheMode = WebSettings.LOAD_DEFAULT
-            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             settings.javaScriptCanOpenWindowsAutomatically = false
             overScrollMode = WebView.OVER_SCROLL_NEVER
-            setBackgroundColor(0xFF0D0D0F.toInt())
+            setBackgroundColor(Color.rgb(13, 13, 15))
             webViewClient = object : WebViewClient() {
                 override fun onReceivedError(
                     view: WebView?,
-                    errorCode: Int,
-                    description: String?,
-                    failingUrl: String?,
+                    request: WebResourceRequest?,
+                    error: WebResourceError?,
                 ) {
-                    loadError = description ?: "Unable to load the embedded map."
+                    if (request?.isForMainFrame == true) {
+                        loadError = error?.description?.toString() ?: "Unable to load the embedded map."
+                    }
+                }
+
+            }
+            webChromeClient = object : WebChromeClient() {
+                override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
+                    Log.d(
+                        "BssidMapView",
+                        "${consoleMessage.message()} " +
+                            "(${consoleMessage.sourceId()}:${consoleMessage.lineNumber()})",
+                    )
+                    return true
                 }
             }
         }
@@ -104,24 +153,29 @@ fun BssidMapView(
             .clip(RoundedCornerShape(12.dp))
             .background(NrSurface),
     ) {
-        AndroidView(
-            factory = { webView },
-            update = { view ->
-                if (view.tag != mapKey) {
-                    view.tag = mapKey
-                    loadError = null
-                    view.loadDataWithBaseURL(
-                        MAP_BASE_URL,
-                        mapHtml,
-                        "text/html",
-                        "UTF-8",
-                        null,
-                    )
-                }
-            },
-            modifier = Modifier.fillMaxSize(),
-        )
-        loadError?.let { error ->
+        val html = mapHtml
+        if (html != null) {
+            AndroidView(
+                factory = { webView },
+                update = { view ->
+                    if (view.tag != mapKey) {
+                        view.tag = mapKey
+                        loadError = null
+                        view.loadDataWithBaseURL(
+                            MAP_BASE_URL,
+                            html,
+                            "text/html",
+                            "UTF-8",
+                            null,
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        val error = assetError ?: loadError
+        if (error != null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -131,6 +185,20 @@ fun BssidMapView(
             ) {
                 Text(
                     text = "Map unavailable\n$error",
+                    color = NrOnSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        } else if (html == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(NrSurface)
+                    .padding(20.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Loading map...",
                     color = NrOnSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
@@ -148,7 +216,7 @@ private fun buildMapHtml(
     accuracyMeters: Double?,
     source: String,
 ): String {
-    val accuracy = accuracyMeters ?: 0.0
+    val accuracy = accuracyMeters?.takeIf { it.isFinite() && it > 0.0 } ?: 0.0
     val hasAccuracy = accuracy > 0.0
     return """
         <!DOCTYPE html>
@@ -192,13 +260,14 @@ private fun buildMapHtml(
               var tilesLoaded = 0;
               var tileErrors = 0;
               var status = document.getElementById('status');
-              var tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              var tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
+                referrerPolicy: 'origin',
                 attribution: '&copy; OpenStreetMap contributors'
               });
               tiles.on('tileload', function () {
                 tilesLoaded++;
-                if (tileErrors === 0) status.style.display = 'none';
+                status.style.display = 'none';
               });
               tiles.on('tileerror', function () {
                 tileErrors++;
@@ -208,13 +277,22 @@ private fun buildMapHtml(
                 }
               });
               tiles.addTo(map);
+
+              var box = document.createElement('div');
+              var title = document.createElement('strong');
+              title.textContent = bssid;
+              box.appendChild(title);
+              box.appendChild(document.createElement('br'));
+              box.appendChild(document.createTextNode(
+                hasAccuracy ? 'Accuracy: ±' + Math.round(accuracy) + ' m' : 'Accuracy: unknown'
+              ));
+              box.appendChild(document.createElement('br'));
+              box.appendChild(document.createTextNode('Source: ' + source));
+
               L.circleMarker([lat, lng], {
                 radius: 8, color: '#a3e635', weight: 2, fillColor: '#a3e635', fillOpacity: 0.45
-              }).addTo(map).bindPopup(
-                '<strong>' + bssid + '</strong><br>' +
-                (hasAccuracy ? 'Accuracy: ±' + Math.round(accuracy) + ' m<br>' : 'Accuracy: unknown<br>') +
-                'Source: ' + source
-              ).openPopup();
+              }).addTo(map).bindPopup(box).openPopup();
+
               if (hasAccuracy) {
                 L.circle([lat, lng], {
                   radius: accuracy, color: '#a3e635', weight: 1,
@@ -226,16 +304,13 @@ private fun buildMapHtml(
                 if (tileErrors > 0 && tilesLoaded === 0) {
                   status.textContent = 'Map tiles unavailable. The BSSID result remains available in NRSuite.';
                   status.style.display = 'block';
-                } else if (tilesLoaded > 0) {
-                  status.style.display = 'none';
                 }
-              }, 1200);
+              }, 1500);
             })();
           </script>
         </body>
         </html>
-    """.trimIndent()
+    """
 }
 
-private fun jsString(value: String): String =
-    "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+private fun jsString(value: String): String = JSONObject.quote(value)
