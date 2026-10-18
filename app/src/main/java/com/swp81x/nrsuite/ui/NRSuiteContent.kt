@@ -1107,6 +1107,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     networks = networks,
                     onScanWifi = viewModel::scanWifiForTargets,
                     onStart = viewModel::startDeauth,
+                    onStop = viewModel::stopDeauth,
                     modifier = Modifier,
                 )
             }

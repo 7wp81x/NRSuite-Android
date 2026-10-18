@@ -852,6 +852,7 @@ class MainViewModel(internal val app: Application) {
 
     internal var pcapWriter: PcapWriter? = null
     internal var pcapJob: Job? = null
+    internal var sniffDeauthJob: Job? = null
 
     private fun initSafely(name: String, block: () -> Unit) {
         runCatching(block).onFailure { error ->
@@ -1274,6 +1275,8 @@ class MainViewModel(internal val app: Application) {
         portalPcapJob = null
         pcapJob?.cancel()
         pcapJob = null
+        sniffDeauthJob?.cancel()
+        sniffDeauthJob = null
         bleStatusJob?.cancel()
         bleStatusJob = null
 
@@ -1552,7 +1555,25 @@ class MainViewModel(internal val app: Application) {
 
 
 
-    fun startDeauth(bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int) = this.startDeauthImpl(bssid, channel, client, count, duration, intervalMs)
+    fun startDeauth(
+        bssid: String,
+        channel: Int,
+        client: String,
+        count: Int,
+        duration: Int,
+        intervalMs: Int,
+        loopMode: Boolean = false,
+    ) = this.startDeauthImpl(
+        bssid,
+        channel,
+        client,
+        count,
+        duration,
+        intervalMs,
+        loopMode,
+    )
+
+    fun stopDeauth() = this.stopDeauthImpl()
 
     fun startDeauthDetector(band: WifiBand = WifiBand.AUTO) = this.startDeauthDetectorImpl(band)
 
@@ -1896,9 +1917,22 @@ class MainViewModel(internal val app: Application) {
                             updateForegroundService()
                         }
                         "deauth_stats" -> {
-                            _deauthSent.value = event.optInt("sent_frames", _deauthSent.value)
-                            appendLog("Deauth stats: ${_deauthSent.value} frame(s) sent.")
-                            this@MainViewModel.portalLogImpl("Deauth stats: ${_deauthSent.value} frame(s) sent")
+                            val sent = event.optInt("sent_frames", _deauthSent.value)
+                            val failed = event.optInt("failed_frames", 0)
+                            val status = event.optString("status", "finished")
+                            _deauthSent.value = sent
+                            if (failed > 0) {
+                                appendLog("Deauth stats: $sent sent, $failed failed.")
+                            } else {
+                                appendLog("Deauth stats: $sent frame(s) sent.")
+                            }
+                            this@MainViewModel.portalLogImpl(
+                                "Deauth stats: $sent sent, $failed failed"
+                            )
+                            if (status != "running") {
+                                _deauthRunning.value = false
+                                updateForegroundService()
+                            }
                         }
                         "deauth_detected" -> this@MainViewModel.recordDeauthDetectorFrame(event)
                         "deauth_detector_hop" -> {

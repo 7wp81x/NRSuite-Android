@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
@@ -52,6 +53,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
+import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -72,15 +74,17 @@ fun DeauthScreen(
     scanning: Boolean,
     networks: List<JSONObject>,
     onScanWifi: () -> Unit,
-    onStart: (bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int) -> Unit,
+    onStart: (bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int, loopMode: Boolean) -> Unit,
+    onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by remember { mutableStateOf(true) }
     var bssid by remember { mutableStateOf("") }
     var client by remember { mutableStateOf("FF:FF:FF:FF:FF:FF") }
     var channel by remember { mutableStateOf(6) }
-    var count by remember { mutableStateOf(0) }
-    var duration by remember { mutableStateOf(0) }
+    var loopMode by remember { mutableStateOf(false) }
+    var count by remember { mutableStateOf(20) }
+    var duration by remember { mutableStateOf(30) }
     var intervalMs by remember { mutableStateOf(100) }
     var confirmStart by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -106,6 +110,7 @@ fun DeauthScreen(
                 bssid = bssid,
                 client = client,
                 channel = channel,
+                loopMode = loopMode,
                 count = count,
                 duration = duration,
                 intervalMs = intervalMs,
@@ -119,8 +124,9 @@ fun DeauthScreen(
                 onBssidChange = { bssid = it },
                 onClientChange = { client = it },
                 onChannelChange = { channel = normalizeWifiChannel(it) },
-                onCountChange = { count = it.coerceAtLeast(0) },
-                onDurationChange = { duration = it.coerceAtLeast(0) },
+                onLoopModeChange = { loopMode = it },
+                onCountChange = { count = it.coerceIn(1, 2_000) },
+                onDurationChange = { duration = it.coerceIn(0, 3_600) },
                 onIntervalChange = { intervalMs = it.coerceIn(10, 10_000) },
             )
 
@@ -139,7 +145,7 @@ fun DeauthScreen(
             ModuleActionFab(
                 onClick = {
                     when {
-                        running -> Unit
+                        running -> onStop()
                         !validBssid -> Toast.makeText(
                             context,
                             "Select a valid target BSSID first.",
@@ -159,15 +165,10 @@ fun DeauthScreen(
                 containerColor = if (running) StatusAmber else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                if (running) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                } else {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "Send deauth")
-                }
+                Icon(
+                    imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                    contentDescription = if (running) "Stop deauth" else "Send deauth",
+                )
             }
         }
     }
@@ -177,11 +178,18 @@ fun DeauthScreen(
             onDismissRequest = { confirmStart = false },
             title = { Text("Send deauth frames?") },
             text = {
+                val modeDescription = if (loopMode) {
+                    "Mode: Loop — ${if (duration == 0) "until stopped" else "${duration}s"}\n" +
+                        "Interval: $intervalMs ms\n\n"
+                } else {
+                    "Mode: Burst — $count frame(s)\n" +
+                        "Interval: $intervalMs ms\n\n"
+                }
                 Text(
                     "Target: $bssid\n" +
                         "Client: $client\n" +
                         "Channel: $channel\n" +
-                        "Count: ${if (count <= 0) "firmware default" else count}\n\n" +
+                        modeDescription +
                         "This disrupts connectivity for affected clients. Only use this on networks you own or are authorized to test."
                 )
             },
@@ -189,7 +197,15 @@ fun DeauthScreen(
                 TextButton(
                     onClick = {
                         confirmStart = false
-                        onStart(bssid.trim(), channel, client.trim(), count, duration, intervalMs)
+                        onStart(
+                            bssid.trim(),
+                            channel,
+                            client.trim(),
+                            count,
+                            duration,
+                            intervalMs,
+                            loopMode,
+                        )
                     },
                 ) {
                     Text("Send")
@@ -212,6 +228,7 @@ private fun ConfigZone(
     bssid: String,
     client: String,
     channel: Int,
+    loopMode: Boolean,
     count: Int,
     duration: Int,
     intervalMs: Int,
@@ -225,6 +242,7 @@ private fun ConfigZone(
     onBssidChange: (String) -> Unit,
     onClientChange: (String) -> Unit,
     onChannelChange: (Int) -> Unit,
+    onLoopModeChange: (Boolean) -> Unit,
     onCountChange: (Int) -> Unit,
     onDurationChange: (Int) -> Unit,
     onIntervalChange: (Int) -> Unit,
@@ -329,21 +347,41 @@ private fun ConfigZone(
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = NrOnSurfaceVariant,
                     )
+                    Spacer(Modifier.height(10.dp))
+                    Text("Mode", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NrFilterChip(
+                            selected = !loopMode,
+                            onClick = { onLoopModeChange(false) },
+                            label = "Burst",
+                            enabled = !running,
+                        )
+                        NrFilterChip(
+                            selected = loopMode,
+                            onClick = { onLoopModeChange(true) },
+                            label = "Loop",
+                            enabled = !running,
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
-                    NumberStepper(
-                        label = "Count",
-                        valueText = if (count <= 0) "default" else count.toString(),
-                        enabled = !running,
-                        onDecrease = { onCountChange(count - 5) },
-                        onIncrease = { onCountChange(count + 5) },
-                    )
-                    NumberStepper(
-                        label = "Duration",
-                        valueText = if (duration <= 0) "default" else "${duration}s",
-                        enabled = !running,
-                        onDecrease = { onDurationChange(duration - 5) },
-                        onIncrease = { onDurationChange(duration + 5) },
-                    )
+                    if (!loopMode) {
+                        NumberStepper(
+                            label = "Frame count",
+                            valueText = count.toString(),
+                            enabled = !running,
+                            onDecrease = { onCountChange(count - 5) },
+                            onIncrease = { onCountChange(count + 5) },
+                        )
+                    } else {
+                        NumberStepper(
+                            label = "Duration",
+                            valueText = if (duration == 0) "until stopped" else "${duration}s",
+                            enabled = !running,
+                            onDecrease = { onDurationChange(maxOf(0, duration - 5)) },
+                            onIncrease = { onDurationChange(duration + 5) },
+                        )
+                    }
                     NumberStepper(
                         label = "Interval",
                         valueText = "$intervalMs ms",
@@ -354,7 +392,13 @@ private fun ConfigZone(
 
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "Count 0 uses the firmware default. Duration is passed through for parity with the Termux CLI.",
+                        text = if (loopMode) {
+                            "Loop mode repeats deauth frames at the selected interval. " +
+                                "Duration 0 runs until you press Stop."
+                        } else {
+                            "Burst mode sends exactly the selected frame count, then stops. " +
+                                "Count and duration are mutually exclusive."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )

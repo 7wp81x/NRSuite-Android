@@ -12,10 +12,10 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; screen-local Auto/2.4/5 GHz filter
 - [x] **Wi-Fi regulatory country** - C5-only Settings control for the persisted country/channel mask
 - [x] **Beacon Spam** - Broadcast custom or hidden SSIDs
-- [x] **Deauthentication** - Deauth frame injection
+- [x] **Deauthentication** - Finite burst or stoppable duration-based loop mode with mutually exclusive count/duration controls
 - [x] **Evil Twin** - Rogue AP with captive portal
 - [x] **Captive Portal** - Credential harvesting UI
-- [x] **Packet Sniffer** - Monitor-mode capture, pcap export, per-module Auto/2.4/5 GHz hopping and target-channel-aware fixed mode
+- [x] **Packet Sniffer** - Monitor-mode capture, pcap export, per-module Auto/2.4/5 GHz hopping, target-channel-aware fixed mode, and post-start deauth assist with periodic retries
 - [x] **WPA Handshake Capture/Crack** - Offline dictionary cracking
 - [x] **Nrugochi** - Pwnagotchi-style channel-density hunting: RECON -> INTERACT, multi-AP authorized deauth (8 frames/AP default with requested/sent/failed telemetry), all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` files, mood/status UI, and today/total stats (hardware validation pending)
 - [x] **BLE HID** - Bluetooth LE keyboard/mouse HID and DuckyScript payloads

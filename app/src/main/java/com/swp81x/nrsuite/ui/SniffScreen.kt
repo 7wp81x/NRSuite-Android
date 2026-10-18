@@ -94,8 +94,10 @@ fun SniffScreen(
     var targetNetworkOnly by remember { mutableStateOf(false) }
     var targetBssid by remember { mutableStateOf("") }
     var client by remember { mutableStateOf("FF:FF:FF:FF:FF:FF") }
-    var deauthCount by remember { mutableStateOf(0) }
-    var deauthIntervalMs by remember { mutableStateOf(80) }
+    var deauthCount by remember { mutableStateOf(8) }
+    var deauthIntervalMs by remember { mutableStateOf(50) }
+    var deauthRetryDuringCapture by remember { mutableStateOf(true) }
+    var deauthRetryIntervalMs by remember { mutableStateOf(5_000) }
 
     val validDeauthTarget = !deauthBeforeCapture || SNIFF_MAC_REGEX.matches(targetBssid.trim())
     val validDeauthClient = SNIFF_MAC_REGEX.matches(client.trim())
@@ -124,14 +126,21 @@ fun SniffScreen(
                 client = client,
                 deauthCount = deauthCount,
                 deauthIntervalMs = deauthIntervalMs,
+                deauthRetryDuringCapture = deauthRetryDuringCapture,
+                deauthRetryIntervalMs = deauthRetryIntervalMs,
                 validDeauthTarget = validDeauthTarget,
                 validDeauthClient = validDeauthClient,
                 onToggle = { configExpanded = !configExpanded },
-                onModeChange = { fixedMode = it },
+                onModeChange = { requestedFixed ->
+                    fixedMode = if (deauthBeforeCapture) true else requestedFixed
+                },
                 onChannelChange = { channel = normalizeWifiChannel(it) },
                 onBandSelected = { band = it },
                 onIntervalChange = { intervalMs = it.coerceIn(50, 1000) },
-                onDeauthBeforeCaptureChange = { deauthBeforeCapture = it },
+                onDeauthBeforeCaptureChange = {
+                    deauthBeforeCapture = it
+                    if (it) fixedMode = true
+                },
                 onEapolOnlyChange = { eapolOnly = it },
                 onTargetNetworkOnlyChange = { targetNetworkOnly = it },
                 scanning = scanning,
@@ -143,8 +152,10 @@ fun SniffScreen(
                 allowedChannels = allowedChannels,
                 onTargetBssidChange = { targetBssid = it },
                 onClientChange = { client = it },
-                onDeauthCountChange = { deauthCount = it.coerceAtLeast(0) },
+                onDeauthCountChange = { deauthCount = it.coerceIn(1, 200) },
                 onDeauthIntervalChange = { deauthIntervalMs = it.coerceIn(10, 10_000) },
+                onDeauthRetryDuringCaptureChange = { deauthRetryDuringCapture = it },
+                onDeauthRetryIntervalChange = { deauthRetryIntervalMs = it.coerceIn(1_000, 60_000) },
             )
 
             Spacer(Modifier.height(10.dp))
@@ -166,7 +177,7 @@ fun SniffScreen(
                     } else if (validDeauthTarget && validDeauthClient) {
                         onStart(
                             SniffRequest(
-                                fixedMode = fixedMode,
+                                fixedMode = fixedMode || deauthBeforeCapture,
                                 channel = channel,
                                 intervalMs = intervalMs,
                                 deauthBeforeCapture = deauthBeforeCapture,
@@ -176,6 +187,8 @@ fun SniffScreen(
                                 client = client.trim(),
                                 deauthCount = deauthCount,
                                 deauthIntervalMs = deauthIntervalMs,
+                                deauthRetryDuringCapture = deauthRetryDuringCapture,
+                                deauthRetryIntervalMs = deauthRetryIntervalMs,
                                 band = if (fixedMode) {
                                     bandForWifiChannel(channel).wireName
                                 } else {
@@ -218,6 +231,8 @@ private fun ConfigZone(
     client: String,
     deauthCount: Int,
     deauthIntervalMs: Int,
+    deauthRetryDuringCapture: Boolean,
+    deauthRetryIntervalMs: Int,
     validDeauthTarget: Boolean,
     validDeauthClient: Boolean,
     onToggle: () -> Unit,
@@ -239,6 +254,8 @@ private fun ConfigZone(
     onClientChange: (String) -> Unit,
     onDeauthCountChange: (Int) -> Unit,
     onDeauthIntervalChange: (Int) -> Unit,
+    onDeauthRetryDuringCaptureChange: (Boolean) -> Unit,
+    onDeauthRetryIntervalChange: (Int) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -418,7 +435,7 @@ private fun ConfigZone(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "Send deauth before capture",
+                            text = "Deauth assist during capture",
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.weight(1f),
                         )
@@ -426,6 +443,14 @@ private fun ConfigZone(
                             checked = deauthBeforeCapture,
                             onCheckedChange = onDeauthBeforeCaptureChange,
                             enabled = !sniffing,
+                        )
+                    }
+                    if (deauthBeforeCapture) {
+                        Text(
+                            text = "Deauth assist starts after the sniffer is active, forces fixed-channel capture, " +
+                                "and retries until the capture stops or a handshake is found.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
                         )
                     }
 
@@ -447,6 +472,7 @@ private fun ConfigZone(
                             singleLine = true,
                         )
                         Spacer(Modifier.height(6.dp))
+                        if (deauthBeforeCapture) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "Count",
@@ -486,6 +512,50 @@ private fun ConfigZone(
                                 onClick = { onDeauthIntervalChange(deauthIntervalMs + 10) },
                                 enabled = !sniffing && deauthIntervalMs < 10_000,
                             ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = "Retry while capturing",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Text(
+                                    text = "Repeats the burst after the sniffer is active until capture stops or a handshake is found.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = NrOnSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = deauthRetryDuringCapture,
+                                onCheckedChange = onDeauthRetryDuringCaptureChange,
+                                enabled = !sniffing,
+                            )
+                        }
+                        if (deauthRetryDuringCapture) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Retry interval",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                IconButton(
+                                    onClick = { onDeauthRetryIntervalChange(deauthRetryIntervalMs - 1_000) },
+                                    enabled = !sniffing && deauthRetryIntervalMs > 1_000,
+                                ) { Text("-", style = MaterialTheme.typography.titleLarge) }
+                                Text(
+                                    text = "${deauthRetryIntervalMs / 1000}s",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                )
+                                IconButton(
+                                    onClick = { onDeauthRetryIntervalChange(deauthRetryIntervalMs + 1_000) },
+                                    enabled = !sniffing && deauthRetryIntervalMs < 60_000,
+                                ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+                            }
+                        }
                         }
                     }
 

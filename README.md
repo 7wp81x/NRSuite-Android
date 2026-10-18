@@ -45,11 +45,11 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 
 - [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; AUTO 2.4/5 GHz and regulatory-country channel filtering on C5-capable firmware
 - [x] **Beacon Spam** - broadcast custom or hidden SSIDs
-- [x] **Deauthentication** - deauth frame injection
+- [x] **Deauthentication** - finite burst or stoppable duration-based loop mode, with mutually exclusive count/duration controls
 - [x] **Evil Twin** - rogue AP with captive portal
 - [x] **Captive Portal** - custom HTML credential capture
 - [x] **Portal authoring guide** - [Captive Portal / Evil Twin HTML authoring](docs/CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)
-- [x] **Packet Sniffer** - monitor-mode capture with PCAP export; per-module Auto/2.4/5 GHz hopping and target-channel-aware fixed capture
+- [x] **Packet Sniffer** - monitor-mode capture with PCAP export; per-module Auto/2.4/5 GHz hopping, target-channel-aware fixed capture, and retrying deauth assist that starts after the sniffer
 - [x] **Hidden AP Revealer** - passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution
 - [ ] **PMKID Capture**
 

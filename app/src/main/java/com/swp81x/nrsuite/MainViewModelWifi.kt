@@ -175,7 +175,15 @@ internal fun MainViewModel.ensureWifiChannelAllowed(channel: Int, module: String
     return false
 }
 
-internal fun MainViewModel.startDeauthImpl(bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int) {
+internal fun MainViewModel.startDeauthImpl(
+    bssid: String,
+    channel: Int,
+    client: String,
+    count: Int,
+    duration: Int,
+    intervalMs: Int,
+    loopMode: Boolean = false,
+) {
     val activeSession = session
     if (activeSession == null) {
         appendLog("Connect to a device before sending deauth frames.")
@@ -196,11 +204,11 @@ internal fun MainViewModel.startDeauthImpl(bssid: String, channel: Int, client: 
         return
     }
 
-    // The firmware's DEAUTH handler calls radioIdle(), so stop local
-    // companion tasks before issuing the burst.
     beaconStatusJob?.cancel()
     beaconStatusJob = null
     _beaconRunning.value = false
+    sniffDeauthJob?.cancel()
+    sniffDeauthJob = null
     if (_sniffing.value) {
         _sniffing.value = false
         pcapJob?.cancel()
@@ -213,6 +221,10 @@ internal fun MainViewModel.startDeauthImpl(bssid: String, channel: Int, client: 
 
     val safeChannel = normalizeWifiChannel(channel)
     if (!ensureWifiChannelAllowed(safeChannel, "Deauthentication")) return
+    val safeInterval = intervalMs.coerceIn(10, 10_000)
+    val safeCount = count.coerceIn(0, 2_000)
+    val safeDuration = duration.coerceIn(0, 3_600)
+
     _deauthSent.value = 0
     _deauthTarget.value = cleanBssid
     _deauthChannel.value = safeChannel
@@ -220,28 +232,78 @@ internal fun MainViewModel.startDeauthImpl(bssid: String, channel: Int, client: 
     updateForegroundService()
 
     scope.launch {
+        val modeLabel = if (loopMode) "loop" else "burst"
+        val modeDetail = if (loopMode) {
+            if (safeDuration == 0) "until stopped" else "${safeDuration}s"
+        } else {
+            "count=${if (safeCount <= 0) "firmware default" else safeCount}"
+        }
         appendLog(
-            "Starting deauth burst: $cleanBssid on channel $safeChannel " +
-                "(client=$cleanClient, count=${if (count <= 0) "firmware default" else count})."
+            "Starting deauth $modeLabel: $cleanBssid on channel $safeChannel " +
+                "(client=$cleanClient, $modeDetail, interval=${safeInterval}ms)."
         )
         val args = JSONObject().apply {
             put("bssid", cleanBssid)
             put("client", cleanClient)
             put("band", bandForWifiChannel(safeChannel).wireName)
             put("channel", safeChannel)
-            put("count", count.coerceAtLeast(0))
-            put("duration", duration.coerceAtLeast(0))
-            put("deauth_interval_ms", intervalMs.coerceIn(10, 10_000))
+            put("mode", if (loopMode) "loop" else "burst")
+            if (loopMode) {
+                put("duration", safeDuration)
+            } else {
+                put("count", safeCount)
+            }
+            put("deauth_interval_ms", safeInterval)
             put("reason", 7)
         }
         val response = activeSession.sendCommand("DEAUTH", args, timeoutMs = 60_000)
-        _deauthRunning.value = false
-        updateForegroundService()
         if (response?.optBoolean("ok") == true) {
-            appendLog("Deauth burst completed.")
-            addHistory("deauth", "Deauth burst completed on $cleanBssid", HistoryLevel.SUCCESS)
+            val sent = response.optInt("sent_frames", 0)
+            val failed = response.optInt("failed_frames", 0)
+            _deauthSent.value = sent
+            if (loopMode && response.optBoolean("active", true)) {
+                appendLog(
+                    "Deauth loop started. " +
+                        (if (failed > 0) "$failed initial frame(s) failed." else "Initial frames sent: $sent.")
+                )
+                addHistory(
+                    "deauth",
+                    "Deauth loop started on $cleanBssid ($modeDetail)",
+                    HistoryLevel.SUCCESS,
+                )
+            } else {
+                _deauthRunning.value = false
+                updateForegroundService()
+                appendLog("Deauth burst completed: $sent sent, $failed failed.")
+                addHistory(
+                    "deauth",
+                    "Deauth burst completed on $cleanBssid",
+                    HistoryLevel.SUCCESS,
+                )
+            }
         } else {
+            _deauthRunning.value = false
+            updateForegroundService()
             appendLog("Deauth request failed: ${response?.optString("msg") ?: "timeout"}")
+        }
+    }
+}
+
+internal fun MainViewModel.stopDeauthImpl() {
+    if (!_deauthRunning.value) return
+    val activeSession = session
+    _deauthRunning.value = false
+    updateForegroundService()
+    scope.launch {
+        val response = activeSession?.sendCommand("DEAUTH_STOP", timeoutMs = 6_000)
+        if (response?.optBoolean("ok") == true) {
+            val sent = response.optInt("sent_frames", _deauthSent.value)
+            val failed = response.optInt("failed_frames", 0)
+            _deauthSent.value = sent
+            appendLog("Deauth loop stopped: $sent sent, $failed failed.")
+            addHistory("deauth", "Deauth loop stopped", HistoryLevel.INFO)
+        } else {
+            appendLog("Deauth stop request sent without confirmation.")
         }
     }
 }
@@ -342,6 +404,8 @@ internal fun MainViewModel.startSniffImpl(request: SniffRequest) {
     }
     if (_sniffing.value) return
     if (!ensureRadioIdle("Packet Sniffer")) return
+    sniffDeauthJob?.cancel()
+    sniffDeauthJob = null
     val safeChannel = normalizeWifiChannel(request.channel)
     if (request.fixedMode && !ensureWifiChannelAllowed(safeChannel, "Packet Sniffer")) return
     val effectiveBand = if (request.fixedMode) {
@@ -414,34 +478,6 @@ internal fun MainViewModel.startSniffImpl(request: SniffRequest) {
     }
 
     scope.launch {
-        if (request.deauthBeforeCapture) {
-            val cleanBssid = request.targetBssid.trim().uppercase()
-            if (MainViewModel.MAC_PATTERN.matches(cleanBssid)) {
-                val cleanClient = request.client.trim()
-                    .ifBlank { "FF:FF:FF:FF:FF:FF" }
-                    .uppercase()
-                appendLog("Sending deauth burst before capture...")
-                val deauthResponse = activeSession.sendCommand(
-                    "DEAUTH",
-                    JSONObject().apply {
-                        put("bssid", cleanBssid)
-                        put("client", cleanClient)
-                        put("channel", safeChannel)
-                        put("count", request.deauthCount.coerceAtLeast(0))
-                        put("deauth_interval_ms", request.deauthIntervalMs.coerceIn(10, 10_000))
-                        put("reason", 7)
-                        put("band", effectiveBand)
-                    },
-                    timeoutMs = 20_000,
-                )
-                if (deauthResponse?.optBoolean("ok") != true) {
-                    appendLog("Deauth burst failed or timed out; continuing with capture.")
-                }
-            } else {
-                appendLog("Skipping deauth trigger: invalid target BSSID.")
-            }
-        }
-
         val cleanFilterBssid = request.targetBssid.trim().uppercase()
         val args = JSONObject().apply {
             put("mode", if (request.fixedMode) "fixed" else "hop")
@@ -464,9 +500,78 @@ internal fun MainViewModel.startSniffImpl(request: SniffRequest) {
             }
             appendLog(message)
             addHistory("sniff", message, HistoryLevel.SUCCESS)
+            if (request.deauthBeforeCapture) {
+                startSniffDeauthRetry(activeSession, request, safeChannel, effectiveBand)
+            }
         } else {
             appendLog("Failed to start sniffing: ${response?.optString("msg") ?: "timeout"}")
             stopSniffImpl()
+        }
+    }
+}
+
+private fun MainViewModel.startSniffDeauthRetry(
+    activeSession: NrSession,
+    request: SniffRequest,
+    channel: Int,
+    band: String,
+) {
+    val cleanBssid = request.targetBssid.trim().uppercase()
+    if (!MainViewModel.MAC_PATTERN.matches(cleanBssid)) {
+        appendLog("Skipping capture deauth retries: select a valid target BSSID.")
+        return
+    }
+    if (!request.fixedMode) {
+        appendLog("Skipping capture deauth retries: deauth assist requires fixed-channel capture.")
+        return
+    }
+
+    val cleanClient = request.client.trim()
+        .ifBlank { "FF:FF:FF:FF:FF:FF" }
+        .uppercase()
+    val burstCount = request.deauthCount.coerceIn(1, 200)
+    val burstInterval = request.deauthIntervalMs.coerceIn(10, 10_000)
+    val retryInterval = request.deauthRetryIntervalMs.coerceIn(1_000, 60_000)
+
+    sniffDeauthJob?.cancel()
+    sniffDeauthJob = scope.launch {
+        var retry = 0
+        delay(100)
+        while (isActive && _sniffing.value) {
+            retry++
+            val response = runCatching {
+                activeSession.sendCommand(
+                    "DEAUTH_BURST",
+                    JSONObject().apply {
+                        put("bssid", cleanBssid)
+                        put("client", cleanClient)
+                        put("band", band)
+                        put("channel", channel)
+                        put("count", burstCount)
+                        put("deauth_interval_ms", burstInterval)
+                        put("reason", 7)
+                    },
+                    timeoutMs = 12_000,
+                )
+            }.getOrNull()
+
+            if (!_sniffing.value) break
+            if (response?.optBoolean("ok") == true) {
+                val sent = response.optInt("sent_frames", 0)
+                val failed = response.optInt("failed_frames", 0)
+                appendLog(
+                    "Capture deauth retry #$retry: $sent sent, $failed failed " +
+                        "(burst=$burstCount every ${retryInterval / 1000}s)."
+                )
+            } else {
+                appendLog(
+                    "Capture deauth retry #$retry failed: " +
+                        (response?.optString("msg") ?: "timeout")
+                )
+            }
+
+            if (!request.deauthRetryDuringCapture) break
+            delay(retryInterval.toLong())
         }
     }
 }
@@ -478,6 +583,8 @@ internal fun MainViewModel.stopSniffImpl() {
 
     pcapJob?.cancel()
     pcapJob = null
+    sniffDeauthJob?.cancel()
+    sniffDeauthJob = null
 
     val activeSession = session
     scope.launch {
