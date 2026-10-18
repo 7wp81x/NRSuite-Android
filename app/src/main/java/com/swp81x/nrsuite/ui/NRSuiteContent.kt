@@ -194,9 +194,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val ouiDatabaseStatus by viewModel.ouiDatabaseStatus.collectAsState()
     val ouiDatabaseProgress by viewModel.ouiDatabaseDownloadProgress.collectAsState()
     val macLookupResult by viewModel.macLookupResult.collectAsState()
-    val bssidGeolocationResult by viewModel.bssidGeolocationResult.collectAsState()
-    val bssidGeolocationLoading by viewModel.bssidGeolocationLoading.collectAsState()
-    val bssidGeolocationError by viewModel.bssidGeolocationError.collectAsState()
+    val bssidGeolocationState by viewModel.bssidGeolocationState.collectAsState()
+    val bssidGeolocationHistory by viewModel.bssidGeolocationHistory.collectAsState()
     val requiresOuiDatabase by viewModel.requiresOuiDatabase.collectAsState()
     val requiresRootDirectory by viewModel.requiresRootDirectory.collectAsState()
     val actionError by viewModel.actionError.collectAsState()
@@ -1246,11 +1245,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             activeModuleId == "mac_lookup" -> {
                 MacLookupScreen(
                     result = macLookupResult,
-                    locationResult = bssidGeolocationResult,
-                    locationLoading = bssidGeolocationLoading,
-                    locationError = bssidGeolocationError,
-                    onLookup = viewModel::lookupMac,
-                    onLookupLocation = viewModel::lookupBssidGeolocation,
+                    geolocationState = bssidGeolocationState,
+                    history = bssidGeolocationHistory,
+                    onLookup = viewModel::lookupBssidGeolocation,
+                    onSelectHistory = viewModel::selectBssidGeolocationHistory,
+                    onDeleteHistory = viewModel::deleteBssidGeolocationHistory,
+                    onClearHistory = viewModel::clearBssidGeolocationHistory,
                     onClear = viewModel::clearBssidGeolocation,
                     modifier = Modifier,
                 )

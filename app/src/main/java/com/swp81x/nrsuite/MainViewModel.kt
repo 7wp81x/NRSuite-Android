@@ -15,7 +15,9 @@ import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.ble.BleDeviceObservation
 import com.swp81x.nrsuite.core.ble.BleScanOwner
 import com.swp81x.nrsuite.core.ble.BleServiceProfile
-import com.swp81x.nrsuite.core.geo.BssidGeolocationResult
+import com.swp81x.nrsuite.core.geo.BssidGeolocationHistoryEntry
+import com.swp81x.nrsuite.core.geo.BssidGeolocationHistoryStore
+import com.swp81x.nrsuite.core.geo.BssidGeolocationState
 import com.swp81x.nrsuite.core.ble.TrackerObservation
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.OuiRule
@@ -324,17 +326,18 @@ class MainViewModel(internal val app: Application) {
     val ouiDatabaseStatus: StateFlow<OuiDatabaseStatus> = ouiDatabaseRepository.status
     val ouiDatabaseDownloadProgress: StateFlow<Float?> = ouiDatabaseRepository.progress
 
+    internal val bssidGeolocationHistoryStore =
+        BssidGeolocationHistoryStore(File(app.filesDir, "geo"))
     internal val _macLookupResult = MutableStateFlow<MacLookupResult?>(null)
     val macLookupResult: StateFlow<MacLookupResult?> = _macLookupResult.asStateFlow()
-    internal val _bssidGeolocationResult = MutableStateFlow<BssidGeolocationResult?>(null)
-    val bssidGeolocationResult: StateFlow<BssidGeolocationResult?> =
-        _bssidGeolocationResult.asStateFlow()
-    internal val _bssidGeolocationLoading = MutableStateFlow(false)
-    val bssidGeolocationLoading: StateFlow<Boolean> =
-        _bssidGeolocationLoading.asStateFlow()
-    internal val _bssidGeolocationError = MutableStateFlow<String?>(null)
-    val bssidGeolocationError: StateFlow<String?> =
-        _bssidGeolocationError.asStateFlow()
+    internal val _bssidGeolocationState =
+        MutableStateFlow<BssidGeolocationState>(BssidGeolocationState.Idle)
+    val bssidGeolocationState: StateFlow<BssidGeolocationState> =
+        _bssidGeolocationState.asStateFlow()
+    internal val _bssidGeolocationHistory =
+        MutableStateFlow<List<BssidGeolocationHistoryEntry>>(emptyList())
+    val bssidGeolocationHistory: StateFlow<List<BssidGeolocationHistoryEntry>> =
+        _bssidGeolocationHistory.asStateFlow()
 
     internal val _requiresOuiDatabase = MutableStateFlow(false)
     val requiresOuiDatabase: StateFlow<Boolean> = _requiresOuiDatabase.asStateFlow()
@@ -877,6 +880,7 @@ class MainViewModel(internal val app: Application) {
         initSafely("ouiDatabase") { this.loadOuiDatabaseImpl() }
         initSafely("duckyScripts") { this.loadDuckyScriptsImpl() }
         initSafely("history") { loadHistory() }
+        initSafely("bssidGeolocationHistory") { this.loadBssidGeolocationHistoryImpl() }
         initSafely("credentialSessions") { this.loadCredentialSessionsImpl() }
         initSafely("autoHandshakeSessions") { this.loadAutoHandshakeSessionsImpl() }
         initSafely("meshCredentials") { this.refreshMeshGlobalCredentialsImpl() }
@@ -955,6 +959,11 @@ class MainViewModel(internal val app: Application) {
 
     fun lookupMac(mac: String) = this.lookupMacImpl(mac)
     fun lookupBssidGeolocation(bssid: String) = this.lookupBssidGeolocationImpl(bssid)
+    fun selectBssidGeolocationHistory(bssid: String) =
+        this.selectBssidGeolocationHistoryImpl(bssid)
+    fun deleteBssidGeolocationHistory(bssid: String) =
+        this.deleteBssidGeolocationHistoryImpl(bssid)
+    fun clearBssidGeolocationHistory() = this.clearBssidGeolocationHistoryImpl()
     fun clearBssidGeolocation() = this.clearBssidGeolocationImpl()
 
     fun clearMacLookup() {

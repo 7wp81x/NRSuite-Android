@@ -24,3 +24,13 @@ behavior and wire format documented by:
 
 No WaveDigger or apple-corelocation-experiments source code is bundled here.
 The NRSuite implementation is a separate minimal Kotlin implementation.
+
+## Map rendering
+
+- Leaflet 1.9.4 — BSD 2-Clause — https://leafletjs.com/
+- OpenStreetMap tile imagery — © OpenStreetMap contributors, ODbL —
+  https://www.openstreetmap.org/copyright
+
+Leaflet is bundled under `app/src/main/assets/leaflet/`. Map tile usage must
+respect the selected tile provider's usage policy; the current prototype uses
+the public OpenStreetMap tile service.

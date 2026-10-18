@@ -3,8 +3,12 @@ package com.swp81x.nrsuite.core.geo
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.net.ConnectException
 import java.net.HttpURLConnection
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
 import java.net.URL
+import java.net.UnknownHostException
 import java.util.zip.GZIPInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,6 +20,12 @@ data class BssidGeolocationResult(
     val accuracyMeters: Double?,
     val source: String,
 )
+
+class BssidGeolocationException(
+    val kind: BssidGeolocationErrorKind,
+    override val message: String,
+    cause: Throwable? = null,
+) : IOException(message, cause)
 
 internal fun normalizeBssid(input: String): String? {
     val compact = input.trim()
@@ -67,7 +77,7 @@ object BssidGeolocationClient {
         }
 
         if (lastError != null && lastError !is NotFoundException) {
-            throw IOException("Location service failed: ${lastError.message ?: "unknown error"}", lastError)
+            throw classifyError(lastError)
         }
         null
     }
@@ -111,7 +121,15 @@ object BssidGeolocationClient {
             val status = connection.responseCode
             if (status != HttpURLConnection.HTTP_OK) {
                 if (status == HttpURLConnection.HTTP_NOT_FOUND) throw NotFoundException()
-                throw IOException("HTTP $status ${connection.responseMessage.orEmpty()}".trim())
+                val kind = if (status == 429) {
+                    BssidGeolocationErrorKind.RATE_LIMITED
+                } else {
+                    BssidGeolocationErrorKind.SERVICE_ERROR
+                }
+                throw BssidGeolocationException(
+                    kind,
+                    "Location service returned HTTP $status.",
+                )
             }
 
             var response = connection.inputStream.use { it.readBytes() }
@@ -128,6 +146,28 @@ object BssidGeolocationClient {
     }
 
     private class NotFoundException : IOException("BSSID not found")
+
+    private fun classifyError(error: Throwable): BssidGeolocationException {
+        if (error is BssidGeolocationException) return error
+        return when (error) {
+            is SocketTimeoutException -> BssidGeolocationException(
+                BssidGeolocationErrorKind.TIMEOUT,
+                "Location service timed out. Try again.",
+                error,
+            )
+            is UnknownHostException, is ConnectException, is NoRouteToHostException ->
+                BssidGeolocationException(
+                    BssidGeolocationErrorKind.NO_NETWORK,
+                    "No network connection available.",
+                    error,
+                )
+            else -> BssidGeolocationException(
+                BssidGeolocationErrorKind.SERVICE_ERROR,
+                "Location service failed: ${error.message ?: "unknown error"}",
+                error,
+            )
+        }
+    }
 
     private data class ProtoField(
         val number: Int,

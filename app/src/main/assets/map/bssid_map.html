@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>BSSID Location</title>
+  <link rel="stylesheet" href="../leaflet/leaflet.css">
+  <style>
+    html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; background: #0d0d0f; }
+    #status {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: 8px;
+      z-index: 1000;
+      display: none;
+      padding: 8px 10px;
+      border: 1px solid rgba(245, 158, 11, .45);
+      border-radius: 8px;
+      background: rgba(13, 13, 15, .92);
+      color: #fbbf24;
+      font: 12px system-ui, sans-serif;
+    }
+    .leaflet-container { background: #0d0d0f; }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<div id="status"></div>
+<script src="../leaflet/leaflet.js"></script>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const lat = Number(params.get('lat'));
+  const lng = Number(params.get('lng'));
+  const accuracy = Number(params.get('accuracy'));
+  const bssid = params.get('bssid') || 'BSSID';
+  const source = params.get('source') || 'unknown';
+
+  const map = L.map('map', {
+    zoomControl: true,
+    attributionControl: true
+  }).setView([0, 0], 2);
+
+  let tilesLoaded = 0;
+  let tileErrors = 0;
+  const status = document.getElementById('status');
+
+  const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  });
+  tiles.on('tileload', function () { tilesLoaded++; });
+  tiles.on('tileerror', function () {
+    tileErrors++;
+    if (tilesLoaded === 0 && status.style.display !== 'block') {
+      status.textContent = 'Map tiles unavailable. The BSSID result remains available in NRSuite.';
+      status.style.display = 'block';
+    }
+  });
+  tiles.addTo(map);
+
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    const hasAccuracy = Number.isFinite(accuracy) && accuracy > 0;
+    const zoom = hasAccuracy && accuracy < 100 ? 17 : 15;
+    map.setView([lat, lng], zoom);
+
+    L.circleMarker([lat, lng], {
+      radius: 8,
+      color: '#a3e635',
+      weight: 2,
+      fillColor: '#a3e635',
+      fillOpacity: 0.45
+    }).addTo(map).bindPopup(
+      '<strong>' + bssid + '</strong><br>' +
+      (hasAccuracy ? 'Accuracy: ±' + Math.round(accuracy) + ' m<br>' : 'Accuracy: unknown<br>') +
+      'Source: ' + source
+    ).openPopup();
+
+    if (hasAccuracy) {
+      L.circle([lat, lng], {
+        radius: accuracy,
+        color: '#a3e635',
+        weight: 1,
+        fillColor: '#a3e635',
+        fillOpacity: 0.08
+      }).addTo(map);
+    }
+  }
+</script>
+</body>
+</html>

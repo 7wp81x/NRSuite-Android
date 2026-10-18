@@ -113,7 +113,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 - [x] **Mass Storage** - list/delete files on ESP32 flash and enter USB MSC mode
 - [x] **ESP32 Flasher** - flash merged NRSuite firmware directly from the app over USB; supports ESP32, S2, S3, C3, and C5 images with target-chip validation
 - [x] **Serial Monitor** - raw USB serial monitor with reliable clipboard copy, bounded log retention, and visible save/export feedback
-- [x] **BSSID Geolocation** - offline OUI/vendor lookup plus approximate Wi-Fi access-point location, with a Google Maps external link
+- [x] **BSSID Geolocation** - offline OUI/vendor lookup plus approximate Wi-Fi access-point location, persistent lookup history, and an embedded Leaflet map with external Google Maps fallback
 - [x] **Persistent firmware device ID** - `NRxxxxxxx` NVS ID shown in the app so devices remain identifiable across reconnects
 
 </details>
@@ -273,7 +273,7 @@ app/src/main/java/com/swp81x/nrsuite/
     history/           # Session history entries
     log/               # Log entry model (Logs screen, live module logs)
     oui/               # Offline OUI/vendor database (BSSID Geolocation, defense modules)
-    geo/               # Independent BSSID/WLOC geolocation client
+    geo/               # Independent BSSID/WLOC client and persistent lookup history
     pcap/              # Pcap file reader and writer
     protocol/          # Frame codec and NrJson wire protocol (shared with firmware)
     session/           # Connection state and NrSession manager
