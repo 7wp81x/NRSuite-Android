@@ -48,6 +48,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 - [x] **Deauthentication** - deauth frame injection
 - [x] **Evil Twin** - rogue AP with captive portal
 - [x] **Captive Portal** - custom HTML credential capture
+- [x] **Portal authoring guide** - [Captive Portal / Evil Twin HTML authoring](docs/CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)
 - [x] **Packet Sniffer** - monitor-mode capture with PCAP export; per-module Auto/2.4/5 GHz hopping and target-channel-aware fixed capture
 - [x] **Hidden AP Revealer** - passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution
 - [ ] **PMKID Capture**
@@ -403,9 +404,16 @@ If you find a vulnerability in NRSuite itself (for example, a flaw in the mesh e
 
 ## License
 
-[MIT](./LICENSE)
+[GNU General Public License v3.0 or later](./LICENSE)
 
-This license covers redistribution of the code. It does not authorize use of the tool against systems you do not own or lack explicit permission to test. See [LEGAL.md](./LEGAL.md).
+NRSuite is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This license covers redistribution of the code. It does not authorize use of
+the tool against systems you do not own or lack explicit permission to test.
+See [LEGAL.md](./LEGAL.md) and [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
 
 ---
 
