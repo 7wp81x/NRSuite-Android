@@ -48,6 +48,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 - [x] **Deauthentication** - deauth frame injection
 - [x] **Evil Twin** - rogue AP with captive portal
 - [x] **Captive Portal** - custom HTML credential capture
+- [x] **Portal authoring guide** - [Captive Portal / Evil Twin HTML authoring](docs/CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)
 - [x] **Packet Sniffer** - monitor-mode capture with PCAP export
 - [x] **Hidden AP Revealer** - passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution
 - [ ] **PMKID Capture**
