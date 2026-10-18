@@ -7,6 +7,7 @@ import com.swp81x.nrsuite.core.flasher.Esp32Flasher
 import com.swp81x.nrsuite.core.flasher.UsbSerialFlasherTransport
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.log.LogLevel
+import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -178,6 +179,14 @@ internal fun MainViewModel.startFirmwareFlashImpl(
         return
     }
 
+    val imageChip = firmwareChipFromFirmwareName(_firmwareFlashName.value)
+    if (imageChip != null && !imageChip.equals(targetChip, ignoreCase = true)) {
+        val message = "Firmware image targets $imageChip but the selected flash target is $targetChip."
+        _firmwareFlashStatus.value = "Target mismatch: $message"
+        appendLog(message, level = LogLevel.ERROR)
+        return
+    }
+
     _firmwareFlashing.value = true
     _firmwareFlashProgress.value = 0
     _firmwareFlashStatus.value = "Reading firmware image..."
@@ -211,7 +220,12 @@ internal fun MainViewModel.startFirmwareFlashImpl(
 
             val flasher = Esp32Flasher(
                 transport = UsbSerialFlasherTransport(usbManager, entry.driver),
-                supportsEncryptedFlash = targetChip in setOf("ESP32-S2", "ESP32-S3", "ESP32-C3"),
+                supportsEncryptedFlash = targetChip in setOf(
+                    "ESP32-S2",
+                    "ESP32-S3",
+                    "ESP32-C3",
+                    "ESP32-C5",
+                ),
             )
 
             _firmwareFlashStatus.value = if (skipReset) {

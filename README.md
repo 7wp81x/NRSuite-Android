@@ -111,7 +111,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 <summary><strong>Storage, Firmware & Tools</strong></summary>
 
 - [x] **Mass Storage** - list/delete files on ESP32 flash and enter USB MSC mode
-- [x] **ESP32 Flasher** - flash NRSuite firmware directly from the app over USB
+- [x] **ESP32 Flasher** - flash merged NRSuite firmware directly from the app over USB; supports ESP32, S2, S3, C3, and C5 images with target-chip validation
 - [x] **Serial Monitor** - raw USB serial monitor with reliable clipboard copy, bounded log retention, and visible save/export feedback
 - [x] **MAC Lookup** - offline OUI/vendor lookup for any MAC address
 - [x] **Persistent firmware device ID** - `NRxxxxxxx` NVS ID shown in the app so devices remain identifiable across reconnects

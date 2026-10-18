@@ -135,10 +135,12 @@ import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.wifi.WIFI_REGULATORY_COUNTRIES
 import com.swp81x.nrsuite.core.update.AppUpdateInfo
 import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
-import com.swp81x.nrsuite.core.update.ReleaseAsset
 import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
 import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
 import com.swp81x.nrsuite.core.update.ReleaseInfo
+import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
+import com.swp81x.nrsuite.core.update.firmwareChipFromAssetName
+import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
@@ -160,41 +162,6 @@ import org.json.JSONObject
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.ui.theme.LogBgError
-
-private fun inferChipFromFirmwareName(name: String?): String? {
-    val normalized = name?.lowercase() ?: return null
-    return when {
-        "esp32s3" in normalized || "esp32-s3" in normalized -> "ESP32-S3"
-        "esp32c3" in normalized || "esp32-c3" in normalized -> "ESP32-C3"
-        "esp32s2" in normalized || "esp32-s2" in normalized -> "ESP32-S2"
-        "esp32-generic" in normalized || "esp32dev" in normalized || "esp32_dev" in normalized -> "ESP32"
-        "esp32" in normalized -> "ESP32"
-        else -> null
-    }
-}
-
-private fun firmwareSuffixForChip(chip: String): String = when (chip) {
-    "ESP32-C3" -> "esp32c3.bin"
-    "ESP32-S3" -> "esp32s3.bin"
-    "ESP32-S2" -> "esp32s2.bin"
-    else -> "esp32-generic.bin"
-}
-
-private fun ReleaseInfo.compatibleFirmwareAssets(chip: String): List<ReleaseAsset> {
-    val suffix = firmwareSuffixForChip(chip)
-    return assets.filter { it.name.endsWith(suffix, ignoreCase = true) }
-}
-
-private fun firmwareChipFromAssetName(name: String): String? {
-    val normalized = name.lowercase()
-    return when {
-        normalized.endsWith("esp32c3.bin") -> "ESP32-C3"
-        normalized.endsWith("esp32s3.bin") -> "ESP32-S3"
-        normalized.endsWith("esp32s2.bin") -> "ESP32-S2"
-        normalized.endsWith("esp32-generic.bin") -> "ESP32"
-        else -> null
-    }
-}
 
 @Composable
 internal fun SettingsScreen(
@@ -260,6 +227,7 @@ internal fun SettingsScreen(
     val wifiCountry = connectedInfo?.country
     val allowed5gChannels = connectedInfo?.allowed5gChannels.orEmpty()
     val boardName = when (chip) {
+        "ESP32-C5" -> "ESP32-C5"
         "ESP32-C3" -> "ESP32-C3"
         "ESP32-S3" -> "ESP32-S3"
         "ESP32-S2" -> "ESP32-S2"
@@ -277,7 +245,7 @@ internal fun SettingsScreen(
     var selectedFirmwareAssetName by remember { mutableStateOf<String?>(null) }
     var firmwareSourceRemote by remember { mutableStateOf(true) }
     LaunchedEffect(firmwareFileName, chip) {
-        val inferred = inferChipFromFirmwareName(firmwareFileName)
+        val inferred = firmwareChipFromFirmwareName(firmwareFileName)
         when {
             inferred != null -> selectedTargetChip = inferred
             !chip.isNullOrBlank() -> selectedTargetChip = chip

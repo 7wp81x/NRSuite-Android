@@ -9,6 +9,7 @@ import com.swp81x.nrsuite.core.update.ChecksumUtils
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
+import com.swp81x.nrsuite.core.update.firmwareChipFromAssetName
 import java.io.File
 import kotlinx.coroutines.launch
 
@@ -193,25 +194,14 @@ private suspend fun MainViewModel.verifyFirmwareAsset(
 
 private fun purgeOldFirmwareFiles(current: File, assetName: String) {
     val parent = current.parentFile ?: return
-    val suffix = firmwareAssetSuffix(assetName) ?: return
+    val chip = firmwareChipFromAssetName(assetName) ?: return
     parent.listFiles()?.forEach { file ->
         if (file.isFile &&
             file.name != current.name &&
-            file.name.endsWith(suffix, ignoreCase = true)
+            firmwareChipFromAssetName(file.name) == chip
         ) {
             runCatching { file.delete() }
         }
-    }
-}
-
-private fun firmwareAssetSuffix(assetName: String): String? {
-    val normalized = assetName.lowercase()
-    return when {
-        normalized.endsWith("esp32c3.bin") -> "esp32c3.bin"
-        normalized.endsWith("esp32s3.bin") -> "esp32s3.bin"
-        normalized.endsWith("esp32s2.bin") -> "esp32s2.bin"
-        normalized.endsWith("esp32-generic.bin") -> "esp32-generic.bin"
-        else -> null
     }
 }
 

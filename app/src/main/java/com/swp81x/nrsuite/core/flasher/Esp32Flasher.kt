@@ -12,7 +12,7 @@ import kotlin.math.max
  * chosen flash offset, and reboots the chip.
  *
  * Only the no-stub command subset is implemented, so it works with ROM
- * bootloaders across ESP32, ESP32-S2, ESP32-S3, and ESP32-C3.
+ * bootloaders across ESP32, ESP32-S2, ESP32-S3, ESP32-C3, and ESP32-C5.
  */
 class Esp32Flasher(
     private val transport: FlasherTransport,
