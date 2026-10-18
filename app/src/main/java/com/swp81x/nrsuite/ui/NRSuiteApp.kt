@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.PersonSearch
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Radio
@@ -326,11 +327,11 @@ internal val modules = listOf(
 
     ModuleCardSpec(
         id = "mac_lookup",
-        title = "MAC Lookup",
-        description = "Offline OUI and vendor lookup for any MAC address.",
-        icon = Icons.Default.Search,
+        title = "BSSID Geolocation",
+        description = "Offline vendor lookup plus approximate Wi-Fi access-point location.",
+        icon = Icons.Default.LocationOn,
         category = "Tools",
-        radio = "2.4GHz",
+        radio = "Wi-Fi",
         available = true,
     ),
 

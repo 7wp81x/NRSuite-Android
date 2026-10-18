@@ -194,6 +194,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val ouiDatabaseStatus by viewModel.ouiDatabaseStatus.collectAsState()
     val ouiDatabaseProgress by viewModel.ouiDatabaseDownloadProgress.collectAsState()
     val macLookupResult by viewModel.macLookupResult.collectAsState()
+    val bssidGeolocationResult by viewModel.bssidGeolocationResult.collectAsState()
+    val bssidGeolocationLoading by viewModel.bssidGeolocationLoading.collectAsState()
+    val bssidGeolocationError by viewModel.bssidGeolocationError.collectAsState()
     val requiresOuiDatabase by viewModel.requiresOuiDatabase.collectAsState()
     val requiresRootDirectory by viewModel.requiresRootDirectory.collectAsState()
     val actionError by viewModel.actionError.collectAsState()
@@ -484,12 +487,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             else -> featureKey in deviceFeatures
         }
         val supported = featureSupported
-        val requiresOuiDb = module.id == "mac_lookup" &&
-            ouiDatabaseStatus !is OuiDatabaseStatus.Ready &&
-            ouiDatabaseStatus !is OuiDatabaseStatus.Checking
         val availabilityLabel = when {
             !module.available -> module.statusLabel ?: "Unavailable"
-            requiresOuiDb -> "OUI DB required"
             !isDeviceConnected && requiresDevice -> "Device needed"
             isDeviceConnected && !supported -> when {
                 module.id in setOf("ble", "ble_scanner", "tracker_detector", "ble_profile", "badusb", "pin_bruteforce", "ble_pin_bruteforce") -> "Not supported"
@@ -1247,8 +1246,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             activeModuleId == "mac_lookup" -> {
                 MacLookupScreen(
                     result = macLookupResult,
+                    locationResult = bssidGeolocationResult,
+                    locationLoading = bssidGeolocationLoading,
+                    locationError = bssidGeolocationError,
                     onLookup = viewModel::lookupMac,
-                    onClear = viewModel::clearMacLookup,
+                    onLookupLocation = viewModel::lookupBssidGeolocation,
+                    onClear = viewModel::clearBssidGeolocation,
                     modifier = Modifier,
                 )
             }

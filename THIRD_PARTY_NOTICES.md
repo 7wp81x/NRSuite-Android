@@ -13,3 +13,14 @@ Notable bundled/runtime components include:
 
 When distributing an APK, retain this notice and all upstream license/notice
 files required by the corresponding dependencies.
+
+## Geolocation research references
+
+The independent BSSID geolocation client was informed by the publicly visible
+behavior and wire format documented by:
+
+- WaveDigger — GNU AGPL-3.0 — https://github.com/7wp81x/wavedigger
+- apple-corelocation-experiments — https://github.com/acheong08/apple-corelocation-experiments
+
+No WaveDigger or apple-corelocation-experiments source code is bundled here.
+The NRSuite implementation is a separate minimal Kotlin implementation.

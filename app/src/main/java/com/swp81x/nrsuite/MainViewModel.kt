@@ -15,6 +15,7 @@ import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.ble.BleDeviceObservation
 import com.swp81x.nrsuite.core.ble.BleScanOwner
 import com.swp81x.nrsuite.core.ble.BleServiceProfile
+import com.swp81x.nrsuite.core.geo.BssidGeolocationResult
 import com.swp81x.nrsuite.core.ble.TrackerObservation
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.OuiRule
@@ -325,6 +326,15 @@ class MainViewModel(internal val app: Application) {
 
     internal val _macLookupResult = MutableStateFlow<MacLookupResult?>(null)
     val macLookupResult: StateFlow<MacLookupResult?> = _macLookupResult.asStateFlow()
+    internal val _bssidGeolocationResult = MutableStateFlow<BssidGeolocationResult?>(null)
+    val bssidGeolocationResult: StateFlow<BssidGeolocationResult?> =
+        _bssidGeolocationResult.asStateFlow()
+    internal val _bssidGeolocationLoading = MutableStateFlow(false)
+    val bssidGeolocationLoading: StateFlow<Boolean> =
+        _bssidGeolocationLoading.asStateFlow()
+    internal val _bssidGeolocationError = MutableStateFlow<String?>(null)
+    val bssidGeolocationError: StateFlow<String?> =
+        _bssidGeolocationError.asStateFlow()
 
     internal val _requiresOuiDatabase = MutableStateFlow(false)
     val requiresOuiDatabase: StateFlow<Boolean> = _requiresOuiDatabase.asStateFlow()
@@ -944,6 +954,8 @@ class MainViewModel(internal val app: Application) {
     fun downloadOuiDatabase() = this.downloadOuiDatabaseImpl()
 
     fun lookupMac(mac: String) = this.lookupMacImpl(mac)
+    fun lookupBssidGeolocation(bssid: String) = this.lookupBssidGeolocationImpl(bssid)
+    fun clearBssidGeolocation() = this.clearBssidGeolocationImpl()
 
     fun clearMacLookup() {
         _macLookupResult.value = null

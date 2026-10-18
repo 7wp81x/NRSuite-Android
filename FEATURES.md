@@ -45,7 +45,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 ## 4. Tools & Firmware Utilities
 
 - [x] **ESP32 Flasher** - Merged firmware flashing for ESP32, S2, S3, C3, and C5; release-asset matching and target-chip validation
-- [x] **MAC Lookup** - Offline OUI/vendor lookup for any MAC address; also backs vendor heuristics in defense modules
+- [x] **BSSID Geolocation** - Offline OUI/vendor lookup combined with approximate Wi-Fi access-point location; external Google Maps link in the first version
 - [x] **Serial Monitor** - Raw USB serial monitor with reliable clipboard copy, bounded log retention, and visible save/export success or failure feedback
 
 ## 5. Mesh Network (ESP-NOW)
