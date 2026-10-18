@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -33,6 +34,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,7 +44,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
+import com.swp81x.nrsuite.ui.components.WifiBandSelector
 import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.StatusAmber
@@ -58,18 +62,45 @@ fun WifiScanScreen(
     connected: Boolean,
     scanning: Boolean,
     networks: List<JSONObject>,
+    band: WifiBand,
+    showBandSelector: Boolean,
+    fiveGhzAvailable: Boolean,
+    fiveGhzUnavailableMessage: String,
+    onBandSelected: (WifiBand) -> Unit,
     onScan: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    var configExpanded by remember { mutableStateOf(true) }
+
+    LaunchedEffect(scanning) {
+        if (scanning) configExpanded = false
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(12.dp),
         ) {
+            if (showBandSelector) {
+                ScanConfigCard(
+                    expanded = configExpanded,
+                    onToggle = { configExpanded = !configExpanded },
+                    band = band,
+                    fiveGhzAvailable = fiveGhzAvailable,
+                    onBandSelected = onBandSelected,
+                    onUnavailableBandClicked = {
+                        Toast.makeText(context, fiveGhzUnavailableMessage, Toast.LENGTH_SHORT).show()
+                    },
+                )
+
+                Spacer(Modifier.height(10.dp))
+            }
+
             Text(
                 text = if (scanning) {
-                    "Scanning all 2.4 GHz channels..."
+                    "Scanning ${band.label} channels..."
                 } else {
                     "Results arrive as asynchronous scan_ap events and are sorted by RSSI."
                 },
@@ -126,10 +157,13 @@ fun WifiScanScreen(
 }
 
 @Composable
-private fun ConfigZone(
+private fun ScanConfigCard(
     expanded: Boolean,
-    scanning: Boolean,
     onToggle: () -> Unit,
+    band: WifiBand,
+    fiveGhzAvailable: Boolean,
+    onBandSelected: (WifiBand) -> Unit,
+    onUnavailableBandClicked: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -145,18 +179,18 @@ private fun ConfigZone(
                 Icon(
                     imageVector = Icons.Default.Wifi,
                     contentDescription = null,
-                    tint = NrAccent,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "Active scan",
+                        text = "Scan configuration",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = if (scanning) "Scanning all channels..." else "All 2.4 GHz channels",
+                        text = "Band: ${band.label}",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
@@ -173,9 +207,15 @@ private fun ConfigZone(
                 Column {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "The ESP32 performs the active scan. Results arrive as asynchronous scan_ap events and are sorted by RSSI.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
+                        text = "Band",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    WifiBandSelector(
+                        selectedBand = band,
+                        fiveGhzAvailable = fiveGhzAvailable,
+                        onBandSelected = onBandSelected,
+                        onUnavailableBandClicked = { onUnavailableBandClicked() },
                     )
                 }
             }
@@ -259,8 +299,9 @@ private fun NetworkRow(network: JSONObject) {
                     clipboardManager.copyWithToast(context, bssid)
                 },
             )
+            val bandLabel = if (network.optString("band") == "5g") "5 GHz" else "2.4 GHz"
             Text(
-                text = "ch $channel  •  $rssi dBm",
+                text = "$bandLabel · ch $channel  •  $rssi dBm",
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                 color = signalTint,
             )

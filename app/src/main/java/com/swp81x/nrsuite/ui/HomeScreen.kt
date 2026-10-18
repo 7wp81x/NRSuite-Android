@@ -404,7 +404,7 @@ internal fun HomeScreen(
                     name = "WiFi Attacks",
                     icon = Icons.Default.WifiOff,
                     iconTint = categoryColor("WiFi Attacks"),
-                    moduleIds = listOf("beacon", "deauth", "evil_twin", "portal"),
+                    moduleIds = listOf("beacon", "deauth", "nrugochi", "evil_twin", "portal"),
                     available = true,
                 ),
                 CategorySpec(

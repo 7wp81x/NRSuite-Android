@@ -56,7 +56,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -78,8 +77,11 @@ import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
-import com.swp81x.nrsuite.ui.util.copyWithToast
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.widget.Toast
 
+private const val MAX_SERIAL_CLIPBOARD_CHARS = 200_000
 private val BAUD_RATES = listOf(9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600)
 private val LINE_ENDINGS = listOf("None", "LF", "CR", "CRLF")
 
@@ -120,7 +122,6 @@ fun SerialMonitorScreen(
         if (connected) configExpanded = false
     }
 
-    val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val logListState = rememberLazyListState()
     val logTextForCopy = remember(logLines) {
@@ -186,7 +187,32 @@ fun SerialMonitorScreen(
             onLineEndingChange = onLineEndingChange,
             onSend = onSend,
             onHexModeChange = onHexModeChange,
-            onCopy = { clipboard.copyWithToast(context, logTextForCopy, "Serial log copied") },
+            onCopy = {
+                val payload = if (logTextForCopy.length > MAX_SERIAL_CLIPBOARD_CHARS) {
+                    logTextForCopy.takeLast(MAX_SERIAL_CLIPBOARD_CHARS)
+                } else {
+                    logTextForCopy
+                }
+                val copied = runCatching {
+                    val clipboardManager =
+                        context.getSystemService(ClipboardManager::class.java)
+                    clipboardManager.setPrimaryClip(
+                        ClipData.newPlainText("NRSuite serial log", payload)
+                    )
+                }.isSuccess
+                Toast.makeText(
+                    context,
+                    if (copied) {
+                        "Serial log copied" +
+                            if (payload.length < logTextForCopy.length) {
+                                " (latest ${payload.length} characters)"
+                            } else ""
+                    } else {
+                        "Could not copy serial log"
+                    },
+                    Toast.LENGTH_SHORT,
+                ).show()
+            },
             onClearLog = onClearLog,
             onExport = onExport,
         )

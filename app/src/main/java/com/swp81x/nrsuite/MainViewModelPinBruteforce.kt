@@ -40,24 +40,16 @@ internal fun MainViewModel.setPinBruteforceEndImpl(value: String) {
     _pinBruteforce.update { it.copy(end = value.filter { ch -> ch.isLetterOrDigit() }.take(12)) }
 }
 
-internal fun MainViewModel.setPinBruteforceCharsetImpl(value: String) {
-    _pinBruteforce.update { it.copy(charset = if (value == "custom") "custom" else "digits") }
-}
-
-internal fun MainViewModel.setPinBruteforceCustomCharsImpl(value: String) {
-    _pinBruteforce.update { it.copy(customChars = value.take(62)) }
-}
-
-internal fun MainViewModel.setPinBruteforcePrefixImpl(value: String) {
-    _pinBruteforce.update { it.copy(prefix = value.take(32)) }
-}
-
-internal fun MainViewModel.setPinBruteforceSuffixImpl(value: String) {
-    _pinBruteforce.update { it.copy(suffix = value.take(32)) }
-}
-
 internal fun MainViewModel.setPinBruteforceTimeoutImpl(value: Int) {
     _pinBruteforce.update { it.copy(timeoutMs = value.coerceIn(50, 60_000)) }
+}
+
+internal fun MainViewModel.setPinBruteforceMaxAttemptsImpl(value: Int) {
+    _pinBruteforce.update { it.copy(maxAttempts = value.coerceIn(1, 1_000_000_000)) }
+}
+
+internal fun MainViewModel.setPinBruteforcePersistEveryImpl(value: Int) {
+    _pinBruteforce.update { it.copy(persistEvery = value.coerceIn(1, 1000)) }
 }
 
 internal fun MainViewModel.setPinBruteforceAttemptsBeforeTimeoutImpl(value: Int) {
@@ -70,6 +62,14 @@ internal fun MainViewModel.setPinBruteforceCooldownImpl(value: Int) {
 
 internal fun MainViewModel.setPinBruteforceInterAttemptImpl(value: Int) {
     _pinBruteforce.update { it.copy(interAttemptMs = value.coerceIn(0, 60_000)) }
+}
+
+internal fun MainViewModel.setPinBruteforceTypingDelayImpl(value: Int) {
+    _pinBruteforce.update { it.copy(typingDelayMs = value.coerceIn(0, 500)) }
+}
+
+internal fun MainViewModel.setPinBruteforceStartDelayImpl(value: Int) {
+    _pinBruteforce.update { it.copy(startDelayMs = value.coerceIn(0, 10_000)) }
 }
 
 internal fun MainViewModel.setPinBruteforceAutoResumeImpl(value: Boolean) {
@@ -178,11 +178,14 @@ private suspend fun MainViewModel.uploadPinWordlistImpl(
         val isLast = end == bytes.size
 
         var success = false
+        val checksum = chunk.sumOf { it.toLong() and 0xFFL }.toInt()
         for (attempt in 1..3) {
             val response = activeSession.sendCommand(
                 "PIN_WORDLIST_CHUNK",
                 JSONObject().apply {
                     put("data", encoded)
+                    put("offset", offset)
+                    put("checksum", checksum)
                     put("last", isLast)
                 },
                 timeoutMs = 6_000,
@@ -245,15 +248,15 @@ internal fun MainViewModel.startPinBruteforceImpl() {
             put("pin_length", state.pinLength)
             put("start", state.start)
             put("end", state.end)
-            put("charset", if (state.charset == "custom") "custom" else "digits")
-            put("custom_chars", state.customChars)
-            put("prefix", state.prefix)
-            put("suffix", state.suffix)
             put("timeout_ms", state.timeoutMs)
+            put("max_attempts", state.maxAttempts)
+            put("persist_every", state.persistEvery)
             put("attempts_before_cooldown", state.attemptsBeforeTimeout)
             put("attempts_before_timeout", state.attemptsBeforeTimeout)
             put("cooldown_ms", state.cooldownMs)
             put("inter_attempt_ms", state.interAttemptMs)
+            put("typing_delay_ms", state.typingDelayMs)
+            put("start_delay_ms", state.startDelayMs)
             put("auto_resume", state.autoResume)
             put("session_key", state.sessionKey.ifBlank { "default" })
             if (state.source == PinBruteforceSource.WORDLIST) {
@@ -301,19 +304,6 @@ internal fun MainViewModel.stopPinBruteforceImpl() {
             _pinBruteforce.update { it.copy(state = "paused") }
         }
         appendLog("PIN bruteforce stopped.")
-    }
-}
-
-internal fun MainViewModel.resumePinBruteforceImpl() {
-    val activeSession = session ?: return
-    scope.launch {
-        val response = activeSession.sendCommand("PIN_RANGE_RESUME", timeoutMs = 8_000)
-        if (response?.optBoolean("ok") == true) {
-            applyPinStatus(response)
-            appendLog("PIN bruteforce resumed.")
-        } else {
-            appendLog("PIN bruteforce resume failed: ${response?.optString("msg") ?: "timeout"}")
-        }
     }
 }
 
@@ -377,6 +367,8 @@ internal fun MainViewModel.handlePinAttemptEvent(event: JSONObject) {
             lastPin = pin,
             attemptsTotal = attempts,
             attemptsInCycle = event.optInt("attempts_in_cycle", it.attemptsInCycle),
+            estimatedTotal = event.optLong("estimated_total", it.estimatedTotal),
+            maxAttempts = event.optInt("max_attempts", it.maxAttempts),
             startedAt = event.optInt("started_at", it.startedAt),
             updatedAt = event.optInt("updated_at", it.updatedAt),
         )
@@ -397,6 +389,8 @@ internal fun MainViewModel.handlePinRangeDoneEvent(event: JSONObject) {
             state = "done",
             attemptsTotal = event.optInt("attempts_total", it.attemptsTotal),
             lastPin = event.optString("last_pin", it.lastPin),
+            stopReason = event.optString("stop_reason", it.stopReason),
+            progressPercent = 100,
             updatedAt = event.optInt("updated_at", it.updatedAt),
         )
     }
@@ -427,24 +421,20 @@ private fun MainViewModel.applyPinStatus(json: JSONObject) {
             pinLength = json.optInt("pin_length", current.pinLength),
             start = json.optString("start", current.start),
             end = json.optString("end", current.end),
-            charset = json.optString(
-                "charset_mode",
-                if (json.optString("charset") == "0123456789") "digits" else current.charset,
-            ),
-            customChars = if (json.optString("charset_mode", "") == "custom") {
-                json.optString("charset", current.customChars)
-            } else {
-                current.customChars
-            },
-            prefix = json.optString("prefix", current.prefix),
-            suffix = json.optString("suffix", current.suffix),
             timeoutMs = json.optInt("timeout_ms", current.timeoutMs),
+            maxAttempts = json.optInt("max_attempts", current.maxAttempts),
+            persistEvery = json.optInt("persist_every", current.persistEvery),
+            estimatedTotal = json.optLong("estimated_total", current.estimatedTotal),
+            progressPercent = json.optInt("progress_percent", current.progressPercent),
+            stopReason = json.optString("stop_reason", current.stopReason),
             attemptsBeforeTimeout = json.optInt(
                 "attempts_before_cooldown",
                 json.optInt("attempts_before_timeout", current.attemptsBeforeTimeout),
             ),
             cooldownMs = json.optInt("cooldown_ms", current.cooldownMs),
             interAttemptMs = json.optInt("inter_attempt_ms", current.interAttemptMs),
+            typingDelayMs = json.optInt("typing_delay_ms", current.typingDelayMs),
+            startDelayMs = json.optInt("start_delay_ms", current.startDelayMs),
             autoResume = json.optBoolean("auto_resume", current.autoResume),
             sessionKey = json.optString("session_key", current.sessionKey),
             currentSequence = json.optInt("current_sequence", current.currentSequence),

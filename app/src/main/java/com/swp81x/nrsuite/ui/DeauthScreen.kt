@@ -3,6 +3,8 @@ package com.swp81x.nrsuite.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import org.json.JSONObject
+import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -116,7 +118,7 @@ fun DeauthScreen(
                 onToggle = { configExpanded = !configExpanded },
                 onBssidChange = { bssid = it },
                 onClientChange = { client = it },
-                onChannelChange = { channel = it.coerceIn(1, 13) },
+                onChannelChange = { channel = normalizeWifiChannel(it) },
                 onCountChange = { count = it.coerceAtLeast(0) },
                 onDurationChange = { duration = it.coerceAtLeast(0) },
                 onIntervalChange = { intervalMs = it.coerceIn(10, 10_000) },
@@ -323,7 +325,7 @@ private fun ConfigZone(
 
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        text = "Channel: $channel (auto from selected target)",
+                        text = "Channel: $channel · ${bandForWifiChannel(channel).label} (auto from selected target)",
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = NrOnSurfaceVariant,
                     )

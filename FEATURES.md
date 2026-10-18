@@ -9,19 +9,22 @@ This document lists all current and planned features across the NRSuite ecosyste
 
 ## 1. Offense Modules (Wi-Fi / BLE)
 
-- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags
+- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; screen-local Auto/2.4/5 GHz filter
+- [x] **Wi-Fi regulatory country** - C5-only Settings control for the persisted country/channel mask
 - [x] **Beacon Spam** - Broadcast custom or hidden SSIDs
 - [x] **Deauthentication** - Deauth frame injection
 - [x] **Evil Twin** - Rogue AP with captive portal
 - [x] **Captive Portal** - Credential harvesting UI
-- [x] **Packet Sniffer** - Monitor-mode capture, pcap export
+- [x] **Packet Sniffer** - Monitor-mode capture, pcap export, per-module Auto/2.4/5 GHz hopping and target-channel-aware fixed mode
 - [x] **WPA Handshake Capture/Crack** - Offline dictionary cracking
+- [x] **Nrugochi** - Pwnagotchi-style channel-density hunting: RECON -> INTERACT, multi-AP authorized deauth (8 frames/AP default with requested/sent/failed telemetry), all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` files, mood/status UI, and today/total stats (hardware validation pending)
 - [x] **BLE HID** - Bluetooth LE keyboard/mouse HID and DuckyScript payloads
-- [x] **BLE Scanner** - Device discovery with names, RSSI, manufacturer data, and service badges
-- [x] **BLE GATT Profile** - Read-only GATT service/characteristic enumeration with integrated BLE target scanner
+- [x] **BLE Scanner** - Device discovery with names, RSSI, manufacturer data, and service badges; module-owned scan lifecycle
+- [x] **BLE GATT Profile** - Read-only GATT service/characteristic enumeration with integrated BLE target scanner and module-owned scan controls
 - [ ] **FastPair Model ID** - Map FastPair model IDs to known device names/types
 - [x] **BadUSB** - HID injection via USB
-- [x] **PIN Bruteforce** - Supervised native-HID range/wordlist tester; one-shot boot-arm like BadUSB; saved sessions and progress
+- [x] **PIN Bruteforce** - Supervised native-HID range/wordlist tester; one-shot boot-arm like BadUSB; max-attempt cap, progress/ETA, configurable typing/start delays, saved sessions
+- [x] **BLE HID PIN Bruteforce** - Hidden/experimental BLE-HID range/wordlist tester retained for future use; lock-screen use is unsupported
 - [x] **Credential Manager** - Local storage of harvested creds
 
 ## 2. Defense Modules
@@ -42,7 +45,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 ## 4. Tools & Firmware Utilities
 
 - [x] **MAC Lookup** - Offline OUI/vendor lookup for any MAC address; also backs vendor heuristics in defense modules
-- [x] **Serial Monitor** - Raw USB serial monitor for any ESP32 or USB-UART firmware, independent of the NRSuite wire protocol
+- [x] **Serial Monitor** - Raw USB serial monitor with reliable clipboard copy, bounded log retention, and visible save/export success or failure feedback
 
 ## 5. Mesh Network (ESP-NOW)
 

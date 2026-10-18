@@ -132,6 +132,7 @@ import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.defense.OuiRuleAction
 import com.swp81x.nrsuite.core.defense.normalizeOuiPrefix
 import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.core.wifi.WIFI_REGULATORY_COUNTRIES
 import com.swp81x.nrsuite.core.update.AppUpdateInfo
 import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
 import com.swp81x.nrsuite.core.update.ReleaseAsset
@@ -242,6 +243,7 @@ internal fun SettingsScreen(
     onDownloadFirmwareUpdate: () -> Unit = {},
     onOpenFirmwareFlasher: () -> Unit = {},
     onClearUpdateDownloads: () -> Unit = {},
+    onSetWifiCountry: (String) -> Unit = {},
     flasherOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -253,7 +255,10 @@ internal fun SettingsScreen(
         }.getOrNull() ?: "unknown"
     }
     val accent = MaterialTheme.colorScheme.primary
-    val chip = (connectionState as? ConnectionState.Connected)?.chip
+    val connectedInfo = connectionState as? ConnectionState.Connected
+    val chip = connectedInfo?.chip
+    val wifiCountry = connectedInfo?.country
+    val allowed5gChannels = connectedInfo?.allowed5gChannels.orEmpty()
     val boardName = when (chip) {
         "ESP32-C3" -> "ESP32-C3"
         "ESP32-S3" -> "ESP32-S3"
@@ -343,6 +348,14 @@ internal fun SettingsScreen(
                 )
             }
         }
+        }
+
+        if (!flasherOnly && chip == "ESP32-C5") {
+            RegulatoryCountryCard(
+                country = wifiCountry,
+                allowed5gChannels = allowed5gChannels,
+                onCountrySelected = onSetWifiCountry,
+            )
         }
 
         if (flasherOnly) {
@@ -1317,6 +1330,65 @@ private fun UpdateInfoRow(
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RegulatoryCountryCard(
+    country: String?,
+    allowed5gChannels: List<Int>,
+    onCountrySelected: (String) -> Unit,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    val currentLabel = country?.let { code ->
+        WIFI_REGULATORY_COUNTRIES.firstOrNull { it.first == code }?.second ?: code
+    } ?: "Unknown"
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text("Wi-Fi regulatory country", fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Select your actual location. This controls which 2.4 GHz and 5 GHz " +
+                    "channels the ESP32-C5 firmware will allow. It is not a region unlock.",
+                style = MaterialTheme.typography.bodySmall,
+                color = StatusAmber,
+            )
+            Spacer(Modifier.height(10.dp))
+            Box {
+                OutlinedButton(onClick = { menuExpanded = true }) {
+                    Text(currentLabel)
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                ) {
+                    WIFI_REGULATORY_COUNTRIES.forEach { (code, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                menuExpanded = false
+                                onCountrySelected(code)
+                            },
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = if (allowed5gChannels.isEmpty()) {
+                    "Allowed 5 GHz channels: none reported"
+                } else {
+                    "Allowed 5 GHz channels: ${allowed5gChannels.joinToString(", ")}"
+                },
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = NrOnSurfaceVariant,
             )
         }
     }

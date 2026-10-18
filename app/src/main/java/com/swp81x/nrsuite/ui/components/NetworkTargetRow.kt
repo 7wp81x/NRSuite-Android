@@ -1,5 +1,7 @@
 package com.swp81x.nrsuite.ui.components
 
+import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -87,7 +89,7 @@ fun NetworkTargetRow(
                     maxLines = 1,
                 )
                 Text(
-                    text = "ch $channel  ·  $rssi dBm",
+                    text = "ch $channel · ${bandForWifiChannel(channel).label}  ·  $rssi dBm",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = signalTint,
                     maxLines = 1,

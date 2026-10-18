@@ -25,6 +25,7 @@ data class SerialLogLine(
 )
 
 private val SERIAL_LOG_TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
+private const val MAX_SERIAL_MONITOR_LOG_LINES = 5_000
 
 internal fun MainViewModel.markSerialMonitorPermissionRequestedImpl(device: UsbDevice) {
     serialMonitorPermissionDeviceId = device.deviceId
@@ -194,13 +195,17 @@ internal fun MainViewModel.sendSerialMonitorInputImpl() {
 internal fun MainViewModel.exportSerialMonitorLogImpl() {
     val lines = _serialMonitorLogLines.value
     if (lines.isEmpty()) {
-        _serialMonitorError.value = "There is no Serial Monitor log to export."
+        val message = "There is no Serial Monitor log to export."
+        _serialMonitorError.value = message
+        _toastMessage.value = message
         return
     }
 
     val rootUri = _exportDirectory.value
     if (rootUri == null) {
-        _serialMonitorError.value = "Set an NRSuite root directory before exporting."
+        val message = "Set an NRSuite root directory before exporting."
+        _serialMonitorError.value = message
+        _toastMessage.value = message
         return
     }
 
@@ -227,12 +232,17 @@ internal fun MainViewModel.exportSerialMonitorLogImpl() {
             } ?: throw IOException("Could not open the export file")
 
             withContext(Dispatchers.Main) {
-                appendLog("Serial Monitor log exported to ${displayNameForTreeUri(rootUri)}/Logs/$fileName.")
+                val exportedPath = "${displayNameForTreeUri(rootUri)}/Logs/$fileName"
+                _serialMonitorError.value = null
+                appendLog("Serial Monitor log exported to $exportedPath.")
+                _toastMessage.value = "Serial log saved to Logs/$fileName"
             }
         } catch (error: Throwable) {
             withContext(Dispatchers.Main) {
-                _serialMonitorError.value = "Serial log export failed: ${error.message}"
-                appendLog("Serial Monitor export failed: ${error.message}", level = LogLevel.ERROR)
+                val message = "Serial log export failed: ${error.message ?: "unknown error"}"
+                _serialMonitorError.value = message
+                _toastMessage.value = message
+                appendLog(message, level = LogLevel.ERROR)
             }
         }
     }
@@ -257,7 +267,9 @@ private fun MainViewModel.appendSerialMonitorLine(
         text = text,
         level = level,
     )
-    _serialMonitorLogLines.update { current -> current + line }
+    _serialMonitorLogLines.update { current ->
+        (current + line).takeLast(MAX_SERIAL_MONITOR_LOG_LINES)
+    }
 }
 
 private fun inferSerialLogLevel(text: String): LogLevel {

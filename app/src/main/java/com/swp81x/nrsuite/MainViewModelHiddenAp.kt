@@ -3,6 +3,9 @@ package com.swp81x.nrsuite
 import com.swp81x.nrsuite.core.defense.HiddenApObservation
 import com.swp81x.nrsuite.core.defense.HiddenSsidCandidate
 import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.wifi.WifiBand
+import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -11,7 +14,11 @@ import org.json.JSONObject
 // Hidden AP Revealer: passive detection of zero-length SSID beacons/probe
 // responses, probe-request SSID candidates, and client association mappings.
 
-internal fun MainViewModel.startHiddenApImpl(fixed: Boolean, channel: Int) {
+internal fun MainViewModel.startHiddenApImpl(
+    fixed: Boolean,
+    channel: Int,
+    band: WifiBand = WifiBand.AUTO,
+) {
     val activeSession = session
     if (activeSession == null) {
         appendLog("Connect to a device before starting hidden AP detection.")
@@ -20,7 +27,9 @@ internal fun MainViewModel.startHiddenApImpl(fixed: Boolean, channel: Int) {
     if (_hiddenApRunning.value || _hiddenApStarting.value) return
     if (!ensureRadioIdle("Hidden AP Revealer")) return
 
-    val safeChannel = channel.coerceIn(1, 14)
+    val safeChannel = normalizeWifiChannel(channel, fallback = 1)
+    if (fixed && !ensureWifiChannelAllowed(safeChannel, "Hidden AP Revealer")) return
+    val wireBand = if (fixed) bandForWifiChannel(safeChannel).wireName else band.wireName
     _hiddenApFixed.value = fixed
     _hiddenApChannel.value = safeChannel
     hiddenApSavedChannel = safeChannel
@@ -51,6 +60,7 @@ internal fun MainViewModel.startHiddenApImpl(fixed: Boolean, channel: Int) {
 
             val args = JSONObject().apply {
                 put("mode", if (fixed) "fixed" else "hop")
+                put("band", wireBand)
                 put("channel", safeChannel)
                 put("interval_ms", 300)
             }

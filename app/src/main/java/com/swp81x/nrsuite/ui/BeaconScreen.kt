@@ -7,6 +7,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.platform.LocalContext
 import com.swp81x.nrsuite.ui.components.SavedItemDropdown
+import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wifi.nextWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -73,6 +76,7 @@ fun BeaconScreen(
     onDeleteList: (String) -> Unit,
     onStart: (List<String>, Int, Int, Boolean, Boolean) -> Unit,
     onStop: () -> Unit,
+    allowedChannels: List<Int> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by remember { mutableStateOf(true) }
@@ -118,6 +122,7 @@ fun BeaconScreen(
                 expanded = configExpanded,
                 ssidsText = ssidsText,
                 channel = channel,
+                allowedChannels = allowedChannels,
                 intervalMs = intervalMs,
                 hidden = hidden,
                 randomBssid = randomBssid,
@@ -131,7 +136,13 @@ fun BeaconScreen(
                 onDeleteRequest = { pendingDeleteList = it },
                 onImportFile = { importPicker.launch(arrayOf("text/plain", "*/*")) },
                 onSsidsChange = { ssidsText = it },
-                onChannelChange = { channel = it.coerceIn(1, 13) },
+                onChannelChange = {
+                    channel = normalizeWifiChannel(
+                        it,
+                        allowedChannels.ifEmpty { com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS },
+                        fallback = channel,
+                    )
+                },
                 onIntervalChange = { intervalMs = it.coerceIn(10, 2000) },
                 onHiddenChange = { hidden = it },
                 onRandomBssidChange = { randomBssid = it },
@@ -267,6 +278,7 @@ private fun ConfigZone(
     expanded: Boolean,
     ssidsText: String,
     channel: Int,
+    allowedChannels: List<Int>,
     intervalMs: Int,
     hidden: Boolean,
     randomBssid: Boolean,
@@ -377,10 +389,26 @@ private fun ConfigZone(
                     NumberStepper(
                         label = "Channel",
                         value = channel,
-                        valueText = channel.toString(),
+                        valueText = "$channel · ${bandForWifiChannel(channel).label}",
                         enabled = !running,
-                        onDecrease = { onChannelChange(channel - 1) },
-                        onIncrease = { onChannelChange(channel + 1) },
+                        onDecrease = {
+                            onChannelChange(
+                                nextWifiChannel(
+                                    channel,
+                                    false,
+                                    allowedChannels.ifEmpty { com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS },
+                                )
+                            )
+                        },
+                        onIncrease = {
+                            onChannelChange(
+                                nextWifiChannel(
+                                    channel,
+                                    true,
+                                    allowedChannels.ifEmpty { com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS },
+                                )
+                            )
+                        },
                     )
 
                     Spacer(Modifier.height(6.dp))

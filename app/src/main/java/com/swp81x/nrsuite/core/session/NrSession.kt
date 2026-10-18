@@ -102,26 +102,17 @@ class NrSession(
                 return
             }
 
-            val status = sendCommand("STATUS", timeoutMs = 5_000)
-            val chip = status?.optString("chip")?.takeIf { it.isNotBlank() }
-            val firmware = status?.optString("fw")?.takeIf { it.isNotBlank() }
-            val deviceId = status?.optString("device_id")?.takeIf { it.isNotBlank() }
-            val features = mutableSetOf<String>()
-            status?.optJSONArray("features")?.let { array ->
-                for (index in 0 until array.length()) {
-                    val value = array.optString(index)
-                    if (value.isNotBlank()) features += value
-                }
+            val status = sendCommand("STATUS", timeoutMs = 5_000) ?: run {
+                disconnect()
+                _state.value = ConnectionState.Failed("No STATUS response from device")
+                return
             }
-            _state.value = ConnectionState.Connected(
-                chip = chip,
-                firmwareVersion = firmware,
-                features = features,
-                deviceId = deviceId,
-            )
+            val connected = connectedFromStatus(status)
+            _state.value = connected
             log(
-                "Connected to ${chip ?: "NRSuite device"}" +
-                    (deviceId?.let { " ($it)" } ?: "")
+                "Connected to ${connected.chip ?: "NRSuite device"}" +
+                    (connected.deviceId?.let { " ($it)" } ?: "") +
+                    (connected.country?.let { " · regulatory $it" } ?: "")
             )
         } catch (e: CancellationException) {
             throw e
@@ -155,10 +146,72 @@ class NrSession(
         _state.value = ConnectionState.Disconnected
     }
 
-    suspend fun scanWifi(timeoutMs: Long = 30_000): Int? {
-        val response = sendCommand("SCAN_WIFI", timeoutMs = timeoutMs) ?: return null
+    suspend fun scanWifi(
+        band: String? = null,
+        timeoutMs: Long = 30_000,
+    ): Int? {
+        val args = org.json.JSONObject()
+        if (!band.isNullOrBlank()) args.put("band", band)
+        val response = sendCommand("SCAN_WIFI", args, timeoutMs = timeoutMs) ?: return null
         if (!response.optBoolean("ok")) return -1
         return response.optInt("count", 0)
+    }
+
+    /**
+     * Apply a regulatory country in firmware and refresh the channel lists
+     * exposed through the connected state. The caller is responsible for
+     * choosing the user's actual legal country.
+     */
+    suspend fun setWifiCountry(country: String): JSONObject? {
+        val response = sendCommand(
+            "SET_COUNTRY",
+            JSONObject().put("country", country.trim().uppercase()),
+            timeoutMs = 8_000,
+        ) ?: return null
+        if (response.optBoolean("ok")) {
+            updateCountryFromResponse(response)
+        }
+        return response
+    }
+
+    private fun connectedFromStatus(status: JSONObject): ConnectionState.Connected {
+        val features = mutableSetOf<String>()
+        status.optJSONArray("features")?.let { array ->
+            for (index in 0 until array.length()) {
+                val value = array.optString(index)
+                if (value.isNotBlank()) features += value
+            }
+        }
+        return ConnectionState.Connected(
+            chip = status.optString("chip").takeIf { it.isNotBlank() },
+            firmwareVersion = status.optString("fw").takeIf { it.isNotBlank() },
+            features = features,
+            deviceId = status.optString("device_id").takeIf { it.isNotBlank() },
+            country = status.optString("country").takeIf { it.isNotBlank() },
+            allowed2gChannels = parseChannelArray(status, "allowed_2ghz_channels"),
+            allowed5gChannels = parseChannelArray(status, "allowed_5ghz_channels"),
+        )
+    }
+
+    private fun updateCountryFromResponse(response: JSONObject) {
+        val current = _state.value as? ConnectionState.Connected ?: return
+        _state.value = current.copy(
+            country = response.optString("country").takeIf { it.isNotBlank() } ?: current.country,
+            allowed2gChannels = parseChannelArray(response, "allowed_2ghz_channels")
+                .ifEmpty { current.allowed2gChannels },
+            allowed5gChannels = parseChannelArray(response, "allowed_5ghz_channels")
+                .ifEmpty { current.allowed5gChannels },
+        )
+    }
+
+    private fun parseChannelArray(source: JSONObject, key: String): List<Int> {
+        val array = source.optJSONArray(key) ?: return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val channel = array.optInt(index, 0)
+                if (channel > 0) add(channel)
+            }
+        }.distinct()
     }
 
     suspend fun sendCommand(

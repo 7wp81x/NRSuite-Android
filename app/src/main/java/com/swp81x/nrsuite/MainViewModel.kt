@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.ble.BleDeviceObservation
+import com.swp81x.nrsuite.core.ble.BleScanOwner
 import com.swp81x.nrsuite.core.ble.BleServiceProfile
 import com.swp81x.nrsuite.core.ble.TrackerObservation
 import com.swp81x.nrsuite.core.defense.DeauthAlert
@@ -34,6 +35,11 @@ import com.swp81x.nrsuite.core.credentials.CredentialStatus
 import com.swp81x.nrsuite.core.credentials.CredentialStore
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
 import com.swp81x.nrsuite.core.flasher.Esp32Flasher
+import com.swp81x.nrsuite.core.handshake.AutoHandshakeConfig
+import com.swp81x.nrsuite.core.handshake.CapturedHandshakeEntry
+import com.swp81x.nrsuite.core.handshake.AutoHandshakePhase
+import com.swp81x.nrsuite.core.hid.BlePinAttemptRecord
+import com.swp81x.nrsuite.core.hid.BlePinBruteforceUiState
 import com.swp81x.nrsuite.core.hid.PinAttemptRecord
 import com.swp81x.nrsuite.core.sensors.Ld2450UiState
 import com.swp81x.nrsuite.core.hid.PinBruteforceUiState
@@ -61,6 +67,7 @@ import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
 import com.swp81x.nrsuite.core.wifi.DetectedSsid
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
+import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.core.wifi.PcapSsidParser
 import com.swp81x.nrsuite.core.wpa.WpaCracker
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeVerifier
@@ -133,6 +140,8 @@ class MainViewModel(internal val app: Application) {
 
     internal val usbOperationMutex = Mutex()
 
+    internal val autoHandshake = AutoHandshakeRuntime()
+
     internal val usbManager =
         app.getSystemService(Context.USB_SERVICE) as UsbManager
     internal val preferences =
@@ -149,6 +158,8 @@ class MainViewModel(internal val app: Application) {
 
     internal val _actionError = MutableStateFlow<String?>(null)
     val actionError: StateFlow<String?> = _actionError.asStateFlow()
+    internal val _toastMessage = MutableStateFlow<String?>(null)
+    val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
 
     internal val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()
@@ -296,6 +307,9 @@ class MainViewModel(internal val app: Application) {
 
     internal val _networks = MutableStateFlow<List<JSONObject>>(emptyList())
     val networks: StateFlow<List<JSONObject>> = _networks.asStateFlow()
+
+    internal val _wifiBand = MutableStateFlow(WifiBand.AUTO)
+    val wifiBand: StateFlow<WifiBand> = _wifiBand.asStateFlow()
 
     internal val _ouiRules = MutableStateFlow<List<OuiRule>>(emptyList())
     val ouiRules: StateFlow<List<OuiRule>> = _ouiRules.asStateFlow()
@@ -672,6 +686,12 @@ class MainViewModel(internal val app: Application) {
     internal val _pinAttempts = MutableStateFlow<List<PinAttemptRecord>>(emptyList())
     val pinAttempts: StateFlow<List<PinAttemptRecord>> = _pinAttempts.asStateFlow()
 
+    internal val _blePinBruteforce = MutableStateFlow(BlePinBruteforceUiState())
+    val blePinBruteforce: StateFlow<BlePinBruteforceUiState> = _blePinBruteforce.asStateFlow()
+
+    internal val _blePinAttempts = MutableStateFlow<List<BlePinAttemptRecord>>(emptyList())
+    val blePinAttempts: StateFlow<List<BlePinAttemptRecord>> = _blePinAttempts.asStateFlow()
+
     internal val _ld2450 = MutableStateFlow(Ld2450UiState())
     val ld2450: StateFlow<Ld2450UiState> = _ld2450.asStateFlow()
 
@@ -707,6 +727,9 @@ class MainViewModel(internal val app: Application) {
 
     internal val _bleScanStopping = MutableStateFlow(false)
     val bleScanStopping: StateFlow<Boolean> = _bleScanStopping.asStateFlow()
+
+    internal val _bleScanOwner = MutableStateFlow<BleScanOwner?>(null)
+    val bleScanOwner: StateFlow<BleScanOwner?> = _bleScanOwner.asStateFlow()
 
     internal val _bleScanActive = MutableStateFlow(true)
     val bleScanActive: StateFlow<Boolean> = _bleScanActive.asStateFlow()
@@ -844,6 +867,7 @@ class MainViewModel(internal val app: Application) {
         initSafely("duckyScripts") { this.loadDuckyScriptsImpl() }
         initSafely("history") { loadHistory() }
         initSafely("credentialSessions") { this.loadCredentialSessionsImpl() }
+        initSafely("autoHandshakeSessions") { this.loadAutoHandshakeSessionsImpl() }
         initSafely("meshCredentials") { this.refreshMeshGlobalCredentialsImpl() }
         initSafely("meshHealthSweep") { this.startMeshHealthSweepImpl() }
         initSafely("usbDevices") { this.refreshDevicesImpl() }
@@ -865,6 +889,12 @@ class MainViewModel(internal val app: Application) {
             "wifi", "sniff", "deauth", "evil_twin", "client_presence" -> {
                 _networks.value = emptyList()
                 _deauthDetectorTargets.value = emptyList()
+            }
+
+            "nrugochi" -> {
+                if (!autoHandshake.uiState.value.running) {
+                    autoHandshake.currentTarget = null
+                }
             }
 
             "deauth_detector" -> {
@@ -934,7 +964,8 @@ class MainViewModel(internal val app: Application) {
         channel: Int,
         targetBssid: String,
         intervalMs: Int,
-    ) = this.startClientPresenceImpl(mode, fixed, channel, targetBssid, intervalMs)
+        band: WifiBand = WifiBand.AUTO,
+    ) = this.startClientPresenceImpl(mode, fixed, channel, targetBssid, intervalMs, band)
 
     fun startClientPresence() = this.startClientPresenceImpl(
         _clientPresenceMode.value,
@@ -957,13 +988,13 @@ class MainViewModel(internal val app: Application) {
     }
 
     fun setClientPresenceChannel(channel: Int) {
-        _clientPresenceChannel.value = channel.coerceIn(1, 14)
+        _clientPresenceChannel.value = com.swp81x.nrsuite.core.wifi.normalizeWifiChannel(channel, fallback = 1)
     }
 
     fun selectClientPresenceTarget(target: NetworkTarget?) {
         _clientPresenceTargetBssid.value = target?.bssid ?: ""
         target?.let {
-            _clientPresenceChannel.value = it.channel.coerceIn(1, 14)
+            _clientPresenceChannel.value = com.swp81x.nrsuite.core.wifi.normalizeWifiChannel(it.channel, fallback = 1)
             _clientPresenceFixed.value = true
         }
     }
@@ -973,9 +1004,10 @@ class MainViewModel(internal val app: Application) {
         _clientPresenceFrameCount.value = 0
     }
 
-    fun startHiddenAp() = this.startHiddenApImpl(
+    fun startHiddenAp(band: WifiBand = WifiBand.AUTO) = this.startHiddenApImpl(
         _hiddenApFixed.value,
         _hiddenApChannel.value,
+        band,
     )
 
     fun stopHiddenAp() = this.stopHiddenApImpl()
@@ -985,7 +1017,7 @@ class MainViewModel(internal val app: Application) {
     }
 
     fun setHiddenApChannel(channel: Int) {
-        _hiddenApChannel.value = channel.coerceIn(1, 14)
+        _hiddenApChannel.value = com.swp81x.nrsuite.core.wifi.normalizeWifiChannel(channel, fallback = 1)
     }
 
     fun clearHiddenAp() {
@@ -1104,6 +1136,9 @@ class MainViewModel(internal val app: Application) {
     fun disconnectDevice(device: UsbDevice) = this.disconnectDeviceImpl(device)
 
     fun scanWifi() = this.scanWifiImpl()
+    fun scanWifiForTargets() = this.scanWifiForTargetsImpl()
+    fun setWifiBand(band: WifiBand) = this.setWifiBandImpl(band)
+    fun setWifiCountry(country: String) = this.setWifiCountryImpl(country)
 
     fun setBadUsbPayload(uri: Uri, name: String?) = this.setBadUsbPayloadImpl(uri, name)
 
@@ -1111,21 +1146,52 @@ class MainViewModel(internal val app: Application) {
     fun setPinBruteforcePinLength(value: Int) = this.setPinBruteforcePinLengthImpl(value)
     fun setPinBruteforceStart(value: String) = this.setPinBruteforceStartImpl(value)
     fun setPinBruteforceEnd(value: String) = this.setPinBruteforceEndImpl(value)
-    fun setPinBruteforceCharset(value: String) = this.setPinBruteforceCharsetImpl(value)
-    fun setPinBruteforceCustomChars(value: String) = this.setPinBruteforceCustomCharsImpl(value)
-    fun setPinBruteforcePrefix(value: String) = this.setPinBruteforcePrefixImpl(value)
-    fun setPinBruteforceSuffix(value: String) = this.setPinBruteforceSuffixImpl(value)
     fun setPinBruteforceTimeout(value: Int) = this.setPinBruteforceTimeoutImpl(value)
+    fun setPinBruteforceMaxAttempts(value: Int) = this.setPinBruteforceMaxAttemptsImpl(value)
+    fun setPinBruteforcePersistEvery(value: Int) = this.setPinBruteforcePersistEveryImpl(value)
     fun setPinBruteforceAttemptsBeforeTimeout(value: Int) = this.setPinBruteforceAttemptsBeforeTimeoutImpl(value)
     fun setPinBruteforceCooldown(value: Int) = this.setPinBruteforceCooldownImpl(value)
     fun setPinBruteforceInterAttempt(value: Int) = this.setPinBruteforceInterAttemptImpl(value)
+    fun setPinBruteforceTypingDelay(value: Int) = this.setPinBruteforceTypingDelayImpl(value)
+    fun setPinBruteforceStartDelay(value: Int) = this.setPinBruteforceStartDelayImpl(value)
+
+    fun setBlePinBruteforceSource(source: String) = this.setBlePinBruteforceSourceImpl(source)
+    fun setBlePinBruteforcePinLength(value: Int) = this.setBlePinBruteforcePinLengthImpl(value)
+    fun setBlePinBruteforceStart(value: String) = this.setBlePinBruteforceStartImpl(value)
+    fun setBlePinBruteforceEnd(value: String) = this.setBlePinBruteforceEndImpl(value)
+    fun setBlePinBruteforceTimeout(value: Int) = this.setBlePinBruteforceTimeoutImpl(value)
+    fun setBlePinBruteforceMaxAttempts(value: Int) = this.setBlePinBruteforceMaxAttemptsImpl(value)
+    fun setBlePinBruteforcePersistEvery(value: Int) = this.setBlePinBruteforcePersistEveryImpl(value)
+    fun setBlePinBruteforceAttemptsBeforeTimeout(value: Int) = this.setBlePinBruteforceAttemptsBeforeTimeoutImpl(value)
+    fun setBlePinBruteforceCooldown(value: Int) = this.setBlePinBruteforceCooldownImpl(value)
+    fun setBlePinBruteforceInterAttempt(value: Int) = this.setBlePinBruteforceInterAttemptImpl(value)
+    fun setBlePinBruteforceTypingDelay(value: Int) = this.setBlePinBruteforceTypingDelayImpl(value)
+    fun setBlePinBruteforceStartDelay(value: Int) = this.setBlePinBruteforceStartDelayImpl(value)
+    fun setBlePinBruteforceAutoResume(value: Boolean) = this.setBlePinBruteforceAutoResumeImpl(value)
+    fun setBlePinBruteforceAutoStartOnConnect(value: Boolean) = this.setBlePinBruteforceAutoStartOnConnectImpl(value)
+    fun setBlePinBruteforcePauseOnDisconnect(value: Boolean) = this.setBlePinBruteforcePauseOnDisconnectImpl(value)
+    fun setBlePinBruteforceAutoReconnect(value: Boolean) = this.setBlePinBruteforceAutoReconnectImpl(value)
+    fun setBlePinBruteforceSessionKey(value: String) = this.setBlePinBruteforceSessionKeyImpl(value)
+    fun setBlePinBruteforceWordlist(uri: Uri, name: String?) = this.setBlePinBruteforceWordlistImpl(uri, name)
+    fun clearBlePinBruteforceWordlist() = this.clearBlePinBruteforceWordlistImpl()
+    fun startBlePinAdvertising(name: String) = this.startBlePinAdvertisingImpl(name)
+    fun stopBlePinAdvertising() = this.stopBlePinAdvertisingImpl()
+    fun startBlePinBruteforce() = this.startBlePinBruteforceImpl()
+    fun pauseBlePinBruteforce() = this.pauseBlePinBruteforceImpl()
+    fun resumeBlePinBruteforce() = this.resumeBlePinBruteforceImpl()
+    fun stopBlePinBruteforce() = this.stopBlePinBruteforceImpl()
+    fun nextBlePinBruteforce() = this.nextBlePinBruteforceImpl()
+    fun previousBlePinBruteforce() = this.previousBlePinBruteforceImpl()
+    fun clearBlePinBruteforceSession() = this.clearBlePinBruteforceSessionImpl()
+    fun forgetBlePinBond() = this.forgetBlePinBondImpl()
+    fun disconnectBlePinPeer() = this.disconnectBlePinPeerImpl()
+    fun refreshBlePinBruteforce() = this.refreshBlePinBruteforceImpl()
     fun setPinBruteforceAutoResume(value: Boolean) = this.setPinBruteforceAutoResumeImpl(value)
     fun setPinBruteforceSessionKey(value: String) = this.setPinBruteforceSessionKeyImpl(value)
     fun setPinBruteforceWordlist(uri: Uri, name: String?) = this.setPinBruteforceWordlistImpl(uri, name)
     fun clearPinBruteforceWordlist() = this.clearPinBruteforceWordlistImpl()
     fun startPinBruteforce() = this.startPinBruteforceImpl()
     fun stopPinBruteforce() = this.stopPinBruteforceImpl()
-    fun resumePinBruteforce() = this.resumePinBruteforceImpl()
     fun clearPinBruteforce() = this.clearPinBruteforceImpl()
     fun refreshPinBruteforce() = this.refreshPinBruteforceImpl()
 
@@ -1235,6 +1301,9 @@ class MainViewModel(internal val app: Application) {
         _bleConnected.value = false
         _bleScriptRunning.value = false
         _pinBruteforce.update { it.copy(state = "paused", starting = false) }
+        _blePinBruteforce.update {
+            it.copy(state = "paused", starting = false, bleAdvertising = false, bleConnected = false)
+        }
         _ld2450.update {
             it.copy(
                 active = false,
@@ -1246,6 +1315,7 @@ class MainViewModel(internal val app: Application) {
         }
         _bleScanStarting.value = false
         _bleScanRunning.value = false
+        _bleScanOwner.value = null
         _bleScanStopping.value = false
         _bleProfileRunning.value = false
         this.clearBleRealtimeStateImpl()
@@ -1406,9 +1476,10 @@ class MainViewModel(internal val app: Application) {
 
     fun releaseBleMouseButtons() = this.releaseBleMouseButtonsImpl()
 
-    fun startBleScan(active: Boolean) = this.startBleScanImpl(active)
+    fun startBleScan(active: Boolean, owner: BleScanOwner) =
+        this.startBleScanImpl(active, owner)
 
-    fun stopBleScan() = this.stopBleScanImpl()
+    fun stopBleScan(owner: BleScanOwner) = this.stopBleScanImpl(owner)
 
     fun clearBleScan() = this.clearBleScanImpl()
 
@@ -1483,7 +1554,7 @@ class MainViewModel(internal val app: Application) {
 
     fun startDeauth(bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int) = this.startDeauthImpl(bssid, channel, client, count, duration, intervalMs)
 
-    fun startDeauthDetector() = this.startDeauthDetectorImpl()
+    fun startDeauthDetector(band: WifiBand = WifiBand.AUTO) = this.startDeauthDetectorImpl(band)
 
     fun stopDeauthDetector() = this.stopDeauthDetectorImpl()
 
@@ -1505,7 +1576,7 @@ class MainViewModel(internal val app: Application) {
 
     fun selectDeauthDetectorTarget(target: NetworkTarget?) {
         _deauthDetectorSelectedTarget.value = target
-        target?.let { _deauthDetectorChannel.value = it.channel.coerceIn(1, 14) }
+        target?.let { _deauthDetectorChannel.value = com.swp81x.nrsuite.core.wifi.normalizeWifiChannel(it.channel, fallback = 1) }
     }
 
     fun startBeacon(ssids: List<String>, channel: Int, intervalMs: Int, hidden: Boolean, randomBssid: Boolean) = this.startBeaconImpl(ssids, channel, intervalMs, hidden, randomBssid)
@@ -1517,7 +1588,32 @@ class MainViewModel(internal val app: Application) {
 
     fun stopSniff() = this.stopSniffImpl()
 
+    fun startAutoHandshake(config: AutoHandshakeConfig) = this.startAutoHandshakeImpl(config)
+
+    fun stopAutoHandshake() = this.stopAutoHandshakeImpl()
+
+    fun resumeAutoHandshake(sessionId: String) = this.resumeAutoHandshakeImpl(sessionId)
+
+    fun deleteAutoHandshakeSession(sessionId: String) = this.deleteAutoHandshakeSessionImpl(sessionId)
+
+    fun clearAutoHandshakeSessions() = this.clearAutoHandshakeSessionsImpl()
+
+    fun setPwnModeEnabled(enabled: Boolean) = this.setPwnModeEnabledImpl(enabled)
+
+    fun addPwnPassword(password: String) = this.addPwnPasswordImpl(password)
+
+    fun removePwnPassword(password: String) = this.removePwnPasswordImpl(password)
+
+    fun deleteCapturedHandshake(entry: CapturedHandshakeEntry) = this.deleteCapturedHandshakeImpl(entry)
+
+    fun openCaptureInCracker(entry: CapturedHandshakeEntry) = this.openCaptureInCrackerImpl(entry)
+
+    fun resetNrugochiStats() = this.resetNrugochiStatsImpl()
+
     internal fun activeRadioLabel(includeBle: Boolean = true): String? {
+        // BLE HID PIN Bruteforce is hidden/experimental. Do not let stale
+        // persisted state from the hidden module block unrelated Wi-Fi
+        // modules. Its SDK/state is retained for future reuse only.
         if (includeBle && (_bleAdvertising.value || _bleConnected.value)) {
             return "BLE HID"
         }
@@ -1528,6 +1624,7 @@ class MainViewModel(internal val app: Application) {
             return "BLE GATT Profile"
         }
         return when {
+            autoHandshake.uiState.value.running -> "NRuGochi"
             _portalRunning.value -> {
                 if (_portalMode.value == "evil_twin") "Evil Twin" else "Captive Portal"
             }
@@ -1558,9 +1655,15 @@ class MainViewModel(internal val app: Application) {
         _actionError.value = null
     }
 
+    fun consumeToastMessage() {
+        _toastMessage.value = null
+    }
+
     internal fun updateForegroundService() {
         val context = app
         val activeText = when {
+            autoHandshake.uiState.value.running &&
+                autoHandshake.uiState.value.phase != AutoHandshakePhase.STOPPING -> "NRuGochi active"
             _pinBruteforce.value.running -> "PIN bruteforce active"
             _ld2450.value.active -> "mmWave radar active"
             _meshActive.value -> "Mesh active"
@@ -1586,9 +1689,16 @@ class MainViewModel(internal val app: Application) {
         if (activeText != null) {
             intent.action = NrSuiteForegroundService.ACTION_START
             intent.putExtra(NrSuiteForegroundService.EXTRA_TEXT, activeText)
-            ContextCompat.startForegroundService(context, intent)
+            runCatching {
+                ContextCompat.startForegroundService(context, intent)
+            }.onFailure { error ->
+                appendLog(
+                    "Foreground service start blocked: ${error.message}",
+                    level = LogLevel.ERROR,
+                )
+            }
         } else {
-            context.stopService(intent)
+            runCatching { context.stopService(intent) }
         }
     }
 
@@ -1817,6 +1927,11 @@ class MainViewModel(internal val app: Application) {
                         "pin_attempt" -> this@MainViewModel.handlePinAttemptEvent(event)
                         "pin_range_done" -> this@MainViewModel.handlePinRangeDoneEvent(event)
                         "pin_range_error" -> this@MainViewModel.handlePinRangeErrorEvent(event)
+                        "ble_pin_session_status" -> this@MainViewModel.handleBlePinSessionStatusEvent(event)
+                        "ble_pin_attempt" -> this@MainViewModel.handleBlePinAttemptEvent(event)
+                        "ble_pin_done" -> this@MainViewModel.handleBlePinDoneEvent(event)
+                        "ble_pin_error" -> this@MainViewModel.handleBlePinErrorEvent(event)
+                        "ble_pin_connection" -> this@MainViewModel.handleBlePinConnectionEvent(event)
                         "ld2450_targets" -> this@MainViewModel.handleLd2450TargetsEvent(event)
                         "ld2450_presence" -> this@MainViewModel.handleLd2450PresenceEvent(event)
                         "ld2450_error" -> this@MainViewModel.handleLd2450ErrorEvent(event)
@@ -2042,13 +2157,14 @@ class MainViewModel(internal val app: Application) {
             ?: "Selected folder"
     }
 
-    internal fun exportPcapToRootIfConfigured(sourceFile: File?) {
+    internal fun exportPcapToRootIfConfigured(sourceFile: File?, force: Boolean = false) {
         val rootUri = _exportDirectory.value ?: return
         if (sourceFile == null || !sourceFile.exists() || sourceFile.length() == 0L) return
 
         val key = sourceFile.absolutePath
         synchronized(exportedCapturePaths) {
-            if (!exportedCapturePaths.add(key)) return
+            if (!force && !exportedCapturePaths.add(key)) return
+            exportedCapturePaths.add(key)
         }
 
         scope.launch(Dispatchers.IO) {
@@ -2063,14 +2179,14 @@ class MainViewModel(internal val app: Application) {
                 } ?: throw IOException("Could not open export file")
 
                 appendLog(
-                    "Evil Twin PCAP exported to " +
+                    "PCAP exported to " +
                         "${displayNameForTreeUri(rootUri)}/Pcap/$displayName",
                 )
             }.onFailure { error ->
                 synchronized(exportedCapturePaths) {
                     exportedCapturePaths.remove(key)
                 }
-                appendLog("Could not export Evil Twin PCAP: ${error.message}", level = LogLevel.ERROR)
+                appendLog("Could not export PCAP: ${error.message}", level = LogLevel.ERROR)
             }
         }
     }

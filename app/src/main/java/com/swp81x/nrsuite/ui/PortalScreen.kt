@@ -1,5 +1,9 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wifi.nextWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
@@ -91,6 +95,7 @@ fun PortalScreen(
     onClearEventLog: () -> Unit,
     onStart: (ssid: String, channel: Int, targetBssid: String) -> Unit,
     onStop: () -> Unit,
+    allowedChannels: List<Int> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by rememberSaveable { mutableStateOf(true) }
@@ -137,13 +142,20 @@ fun PortalScreen(
                     channel = channel,
                     targetBssid = targetBssid,
                     validTargetBssid = validTargetBssid,
+                    allowedChannels = allowedChannels,
                     selectedHtmlName = selectedHtmlName,
                     htmlUploading = htmlUploading,
                     htmlProgress = htmlProgress,
                     htmlComplete = htmlComplete,
                     onToggle = { configExpanded = !configExpanded },
                     onSsidChange = { ssid = it },
-                    onChannelChange = { channel = it.coerceIn(1, 13) },
+                    onChannelChange = {
+                        channel = normalizeWifiChannel(
+                            it,
+                            allowedChannels.ifEmpty { com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS },
+                            fallback = channel,
+                        )
+                    },
                     onTargetBssidChange = { targetBssid = it },
                     onChooseHtml = onChooseHtml,
                     onClearHtml = onClearHtml,
@@ -298,6 +310,7 @@ private fun ConfigZone(
     channel: Int,
     targetBssid: String,
     validTargetBssid: Boolean,
+    allowedChannels: List<Int>,
     selectedHtmlName: String?,
     htmlUploading: Boolean,
     htmlProgress: Int,
@@ -360,11 +373,27 @@ private fun ConfigZone(
                     )
                     Spacer(Modifier.height(8.dp))
                     NumberStepper(
-                        label = "Channel (1–13)",
-                        valueText = channel.toString(),
+                        label = "Channel",
+                        valueText = "$channel · ${bandForWifiChannel(channel).label}",
                         enabled = !running,
-                        onDecrease = { onChannelChange(channel - 1) },
-                        onIncrease = { onChannelChange(channel + 1) },
+                        onDecrease = {
+                            onChannelChange(
+                                nextWifiChannel(
+                                    channel,
+                                    false,
+                                    allowedChannels.ifEmpty { com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS },
+                                )
+                            )
+                        },
+                        onIncrease = {
+                            onChannelChange(
+                                nextWifiChannel(
+                                    channel,
+                                    true,
+                                    allowedChannels.ifEmpty { com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS },
+                                )
+                            )
+                        },
                     )
 
                     Spacer(Modifier.height(12.dp))

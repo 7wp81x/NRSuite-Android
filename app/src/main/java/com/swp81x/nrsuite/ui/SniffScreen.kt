@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,9 +46,13 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.sniff.SniffRequest
+import com.swp81x.nrsuite.core.wifi.WifiBand
+import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import com.swp81x.nrsuite.ui.components.ChannelModeToggle
-import com.swp81x.nrsuite.ui.components.ChannelStepper
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
+import com.swp81x.nrsuite.ui.components.WifiBandConfigSection
+import com.swp81x.nrsuite.ui.components.WifiChannelStepper
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -73,11 +78,16 @@ fun SniffScreen(
     onScanWifi: () -> Unit,
     onStart: (SniffRequest) -> Unit,
     onStop: () -> Unit,
+    showBandSelector: Boolean = false,
+    fiveGhzAvailable: Boolean = false,
+    fiveGhzUnavailableMessage: String = "",
+    allowedChannels: List<Int> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by remember { mutableStateOf(true) }
     var fixedMode by remember { mutableStateOf(true) }
     var channel by remember { mutableStateOf(6) }
+    var band by rememberSaveable { mutableStateOf(WifiBand.AUTO) }
     var intervalMs by remember { mutableStateOf(300) }
     var deauthBeforeCapture by remember { mutableStateOf(false) }
     var eapolOnly by remember { mutableStateOf(false) }
@@ -103,6 +113,7 @@ fun SniffScreen(
                 expanded = configExpanded,
                 fixedMode = fixedMode,
                 channel = channel,
+                band = band,
                 intervalMs = intervalMs,
                 exportDirectoryName = exportDirectoryName,
                 onChooseExportDirectory = onChooseExportDirectory,
@@ -117,7 +128,8 @@ fun SniffScreen(
                 validDeauthClient = validDeauthClient,
                 onToggle = { configExpanded = !configExpanded },
                 onModeChange = { fixedMode = it },
-                onChannelChange = { channel = it.coerceIn(1, 13) },
+                onChannelChange = { channel = normalizeWifiChannel(it) },
+                onBandSelected = { band = it },
                 onIntervalChange = { intervalMs = it.coerceIn(50, 1000) },
                 onDeauthBeforeCaptureChange = { deauthBeforeCapture = it },
                 onEapolOnlyChange = { eapolOnly = it },
@@ -125,6 +137,10 @@ fun SniffScreen(
                 scanning = scanning,
                 networks = networks,
                 onScanWifi = onScanWifi,
+                showBandSelector = showBandSelector,
+                fiveGhzAvailable = fiveGhzAvailable,
+                fiveGhzUnavailableMessage = fiveGhzUnavailableMessage,
+                allowedChannels = allowedChannels,
                 onTargetBssidChange = { targetBssid = it },
                 onClientChange = { client = it },
                 onDeauthCountChange = { deauthCount = it.coerceAtLeast(0) },
@@ -160,6 +176,11 @@ fun SniffScreen(
                                 client = client.trim(),
                                 deauthCount = deauthCount,
                                 deauthIntervalMs = deauthIntervalMs,
+                                band = if (fixedMode) {
+                                    bandForWifiChannel(channel).wireName
+                                } else {
+                                    band.wireName
+                                },
                             )
                         )
                     }
@@ -186,6 +207,7 @@ private fun ConfigZone(
     expanded: Boolean,
     fixedMode: Boolean,
     channel: Int,
+    band: WifiBand,
     intervalMs: Int,
     exportDirectoryName: String,
     onChooseExportDirectory: () -> Unit,
@@ -201,6 +223,7 @@ private fun ConfigZone(
     onToggle: () -> Unit,
     onModeChange: (Boolean) -> Unit,
     onChannelChange: (Int) -> Unit,
+    onBandSelected: (WifiBand) -> Unit,
     onIntervalChange: (Int) -> Unit,
     onDeauthBeforeCaptureChange: (Boolean) -> Unit,
     onEapolOnlyChange: (Boolean) -> Unit,
@@ -208,6 +231,10 @@ private fun ConfigZone(
     scanning: Boolean,
     networks: List<JSONObject>,
     onScanWifi: () -> Unit,
+    showBandSelector: Boolean,
+    fiveGhzAvailable: Boolean,
+    fiveGhzUnavailableMessage: String,
+    allowedChannels: List<Int>,
     onTargetBssidChange: (String) -> Unit,
     onClientChange: (String) -> Unit,
     onDeauthCountChange: (Int) -> Unit,
@@ -272,15 +299,23 @@ private fun ConfigZone(
                             style = MaterialTheme.typography.labelLarge,
                         )
                         Spacer(Modifier.height(6.dp))
-                        ChannelStepper(
+                        WifiChannelStepper(
                             value = channel,
-                            min = 1,
-                            max = 13,
                             enabled = !sniffing,
-                            onDecrease = { onChannelChange(channel - 1) },
-                            onIncrease = { onChannelChange(channel + 1) },
+                            onChannelChange = onChannelChange,
+                            allowedChannels = allowedChannels.ifEmpty {
+                                com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
+                            },
                         )
                     } else {
+                        WifiBandConfigSection(
+                            visible = showBandSelector,
+                            band = band,
+                            fiveGhzAvailable = fiveGhzAvailable,
+                            fiveGhzUnavailableMessage = fiveGhzUnavailableMessage,
+                            onBandSelected = onBandSelected,
+                            enabled = !sniffing,
+                        )
                         Spacer(Modifier.height(10.dp))
                         Text(
                             text = "Hop interval",

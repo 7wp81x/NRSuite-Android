@@ -167,20 +167,20 @@ internal val modules = listOf(
     ModuleCardSpec(
         id = "wifi",
         title = "WiFi Scan",
-        description = "Active 2.4 GHz scan with SSID, BSSID, channel, RSSI, and security.",
+        description = "Active band-aware scan with SSID, BSSID, channel, RSSI, and security.",
         icon = Icons.Default.Wifi,
         category = "WiFi Recon",
-        radio = "2.4GHz",
+        radio = "2.4 / 5 GHz",
         available = true,
     ),
 
     ModuleCardSpec(
         id = "sniff",
         title = "Packet Sniffer",
-        description = "Capture 802.11 frames and export PCAP.",
+        description = "Capture 802.11 frames and export PCAP with band-aware configuration.",
         icon = Icons.Default.FilterCenterFocus,
         category = "WiFi Recon",
-        radio = "2.4GHz",
+        radio = "2.4 / 5 GHz",
         available = true,
     ),
 
@@ -229,6 +229,16 @@ internal val modules = listOf(
         title = "Evil Twin",
         description = "Portal + deauth + EAPOL capture workflow.",
         icon = Icons.Default.ContentCopy,
+        category = "WiFi Attacks",
+        radio = "2.4GHz",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "nrugochi",
+        title = "NRuGochi",
+        description = "Pwnagotchi-style channel hunting and automatic WPA2 handshake capture.",
+        icon = Icons.Default.Key,
         category = "WiFi Attacks",
         radio = "2.4GHz",
         available = true,
@@ -371,6 +381,20 @@ internal val modules = listOf(
         category = "HID",
         radio = "USB",
         available = true,
+    ),
+
+    // Hidden/experimental: retained for future unlocked-host or mesh HID work.
+    // Android/iOS lock screens generally ignore BLE HID input, so this module is
+    // intentionally not exposed in the normal module grid.
+    ModuleCardSpec(
+        id = "ble_pin_bruteforce",
+        title = "BLE HID PIN Bruteforce",
+        description = "Experimental BLE HID PIN range and wordlist testing with live controls.",
+        icon = Icons.Default.Bluetooth,
+        category = "HID",
+        radio = "BLE",
+        available = false,
+        statusLabel = "Experimental / hidden",
     ),
 
     ModuleCardSpec(

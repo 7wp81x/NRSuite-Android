@@ -60,7 +60,6 @@ import com.swp81x.nrsuite.core.hid.PinBruteforceMode
 import com.swp81x.nrsuite.core.hid.PinBruteforceSource
 import com.swp81x.nrsuite.core.hid.PinBruteforceUiState
 import com.swp81x.nrsuite.ui.components.NrFilterChip
-import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -77,28 +76,31 @@ fun PinBruteforceScreen(
     onPinLengthChange: (Int) -> Unit,
     onStartChange: (String) -> Unit,
     onEndChange: (String) -> Unit,
-    onCharsetChange: (String) -> Unit,
-    onCustomCharsChange: (String) -> Unit,
-    onPrefixChange: (String) -> Unit,
-    onSuffixChange: (String) -> Unit,
     onTimeoutChange: (Int) -> Unit,
+    onMaxAttemptsChange: (Int) -> Unit,
+    onPersistEveryChange: (Int) -> Unit,
     onAttemptsBeforeTimeoutChange: (Int) -> Unit,
     onCooldownChange: (Int) -> Unit,
     onInterAttemptChange: (Int) -> Unit,
+    onTypingDelayChange: (Int) -> Unit,
+    onStartDelayChange: (Int) -> Unit,
     onAutoResumeChange: (Boolean) -> Unit,
     onSessionKeyChange: (String) -> Unit,
     onWordlistSelected: (android.net.Uri, String?) -> Unit,
     onClearWordlist: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
-    onResume: () -> Unit,
     onRefresh: () -> Unit,
     onClearSession: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by remember { mutableStateOf(true) }
+    var advancedExpanded by remember { mutableStateOf(false) }
     var confirmStart by remember { mutableStateOf(false) }
     val controlsEnabled = connected && !state.running && !state.starting
+    val sessionActive =
+        state.persistedInNvs && state.state in setOf("armed", "running", "paused")
+    val configControlsEnabled = controlsEnabled && !sessionActive
     val wordlistPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -107,8 +109,8 @@ fun PinBruteforceScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        onRefresh()
+    LaunchedEffect(connected) {
+        if (connected) onRefresh()
     }
 
     LaunchedEffect(state.running) {
@@ -129,21 +131,23 @@ fun PinBruteforceScreen(
             ConfigCard(
                 connected = connected,
                 state = state,
-                controlsEnabled = controlsEnabled,
+                controlsEnabled = configControlsEnabled,
                 expanded = configExpanded,
+                advancedExpanded = advancedExpanded,
                 onToggle = { configExpanded = !configExpanded },
+                onToggleAdvanced = { advancedExpanded = !advancedExpanded },
                 onSourceChange = onSourceChange,
                 onPinLengthChange = onPinLengthChange,
                 onStartChange = onStartChange,
                 onEndChange = onEndChange,
-                onCharsetChange = onCharsetChange,
-                onCustomCharsChange = onCustomCharsChange,
-                onPrefixChange = onPrefixChange,
-                onSuffixChange = onSuffixChange,
                 onTimeoutChange = onTimeoutChange,
+                onMaxAttemptsChange = onMaxAttemptsChange,
+                onPersistEveryChange = onPersistEveryChange,
                 onAttemptsBeforeTimeoutChange = onAttemptsBeforeTimeoutChange,
                 onCooldownChange = onCooldownChange,
                 onInterAttemptChange = onInterAttemptChange,
+                onTypingDelayChange = onTypingDelayChange,
+                onStartDelayChange = onStartDelayChange,
                 onAutoResumeChange = onAutoResumeChange,
                 onSessionKeyChange = onSessionKeyChange,
                 onChooseWordlist = { wordlistPicker.launch(arrayOf("text/plain")) },
@@ -165,7 +169,9 @@ fun PinBruteforceScreen(
                 }
             }
             Spacer(Modifier.height(10.dp))
-            AttemptsCard(attempts)
+            if (attempts.isNotEmpty()) {
+                AttemptsCard(attempts)
+            }
             Spacer(Modifier.height(80.dp))
         }
 
@@ -182,7 +188,7 @@ fun PinBruteforceScreen(
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
                 enabled = connected && !state.starting,
-                containerColor = if (state.running) StatusRed else NrAccent,
+                containerColor = if (state.running) StatusRed else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 if (state.starting) {
@@ -207,7 +213,14 @@ fun PinBruteforceScreen(
             title = { Text("Arm PIN bruteforce?") },
             text = {
                 Text(
-                    "This will type PINs through HID into the target device. " +
+                    "Source: ${state.source?.wireName ?: "range"}\n" +
+                        "Max attempts: ${state.maxAttempts}\n" +
+                        (if (state.estimatedTotal > 0) {
+                            "Estimated total: ${state.estimatedTotal}\n"
+                        } else {
+                            ""
+                        }) +
+                        "\nThis will type PINs through HID into the target device. " +
                         "HID cannot detect success. Failed attempts may lock or wipe " +
                         "the target. Use only on devices you own or are authorized to test.",
                 )
@@ -245,7 +258,7 @@ private fun StatusCard(
     ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Lock, contentDescription = null, tint = NrAccent)
+                Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -268,8 +281,18 @@ private fun StatusCard(
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 StatusValue("Attempts", state.attemptsTotal.toString())
-                StatusValue("Cycle", state.attemptsInCycle.toString())
+                StatusValue("Max", state.maxAttempts.toString())
+                StatusValue("Progress", "${state.progressPercent}%")
                 StatusValue("Last PIN", state.lastPin.ifBlank { "-" })
+            }
+            if (state.estimatedTotal > 0) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Estimated total: ${state.estimatedTotal} attempt(s)" +
+                        if (state.stopReason.isNotBlank()) " · stop: ${state.stopReason}" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                )
             }
             when {
                 state.lastError.isNotBlank() -> {
@@ -316,7 +339,7 @@ private fun StatusValue(label: String, value: String) {
         Text(
             value,
             style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-            color = NrAccent,
+            color = MaterialTheme.colorScheme.primary,
         )
     }
 }
@@ -349,19 +372,21 @@ private fun ConfigCard(
     state: PinBruteforceUiState,
     controlsEnabled: Boolean,
     expanded: Boolean,
+    advancedExpanded: Boolean,
     onToggle: () -> Unit,
+    onToggleAdvanced: () -> Unit,
     onSourceChange: (String) -> Unit,
     onPinLengthChange: (Int) -> Unit,
     onStartChange: (String) -> Unit,
     onEndChange: (String) -> Unit,
-    onCharsetChange: (String) -> Unit,
-    onCustomCharsChange: (String) -> Unit,
-    onPrefixChange: (String) -> Unit,
-    onSuffixChange: (String) -> Unit,
     onTimeoutChange: (Int) -> Unit,
+    onMaxAttemptsChange: (Int) -> Unit,
+    onPersistEveryChange: (Int) -> Unit,
     onAttemptsBeforeTimeoutChange: (Int) -> Unit,
     onCooldownChange: (Int) -> Unit,
     onInterAttemptChange: (Int) -> Unit,
+    onTypingDelayChange: (Int) -> Unit,
+    onStartDelayChange: (Int) -> Unit,
     onAutoResumeChange: (Boolean) -> Unit,
     onSessionKeyChange: (String) -> Unit,
     onChooseWordlist: () -> Unit,
@@ -404,6 +429,16 @@ private fun ConfigCard(
 
             if (expanded) {
                 Spacer(Modifier.height(8.dp))
+                if (state.persistedInNvs && state.state in setOf("armed", "running", "paused")) {
+                    Text(
+                        text = "Session in progress: range/source fields are locked. " +
+                            "Last PIN: ${state.lastPin.ifBlank { "-" }} · " +
+                            "Attempts: ${state.attemptsTotal}. Clear the session to edit configuration.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusAmber,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                }
                 Text("Source", style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     NrFilterChip(
@@ -433,24 +468,11 @@ private fun ConfigCard(
                     }
                     TextField("Start", state.start, controlsEnabled, onStartChange)
                     TextField("End", state.end, controlsEnabled, onEndChange)
-                    Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        NrFilterChip(
-                            selected = state.charset == "digits",
-                            onClick = { if (controlsEnabled) onCharsetChange("digits") },
-                            enabled = controlsEnabled,
-                            label = "Digits",
-                        )
-                        NrFilterChip(
-                            selected = state.charset == "custom",
-                            onClick = { if (controlsEnabled) onCharsetChange("custom") },
-                            enabled = controlsEnabled,
-                            label = "Custom",
-                        )
-                    }
-                    if (state.charset == "custom") {
-                        TextField("Custom charset", state.customChars, controlsEnabled, onCustomCharsChange)
-                    }
+                    Text(
+                        text = "Range mode is digits 0-9 only. Use Wordlist for custom characters.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
                 } else {
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(
@@ -491,17 +513,11 @@ private fun ConfigCard(
                     )
                 }
 
-                Spacer(Modifier.height(8.dp))
-                TextField("Prefix", state.prefix, controlsEnabled, onPrefixChange)
-                TextField("Suffix", state.suffix, controlsEnabled, onSuffixChange)
-                Text(
-                    text = "Prefix and suffix are added before/after every PIN or wordlist line. " +
-                        "Example: prefix 1 + 0000 + suffix # -> 10000#.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
                 NumericField("Timeout per attempt (ms)", state.timeoutMs.toString(), controlsEnabled) {
                     onTimeoutChange(it.toIntOrNull() ?: state.timeoutMs)
+                }
+                NumericField("Max attempts (safety cap)", state.maxAttempts.toString(), controlsEnabled) {
+                    onMaxAttemptsChange(it.toIntOrNull() ?: state.maxAttempts)
                 }
                 NumericField(
                     "Attempts before cooldown (0 = off)",
@@ -513,21 +529,35 @@ private fun ConfigCard(
                 NumericField("Cooldown duration (ms)", state.cooldownMs.toString(), controlsEnabled) {
                     onCooldownChange(it.toIntOrNull() ?: state.cooldownMs)
                 }
-                NumericField("Inter-attempt delay (ms)", state.interAttemptMs.toString(), controlsEnabled) {
-                    onInterAttemptChange(it.toIntOrNull() ?: state.interAttemptMs)
+                TextButton(onClick = onToggleAdvanced, enabled = controlsEnabled) {
+                    Text(if (advancedExpanded) "Hide advanced" else "Advanced options")
                 }
-                TextField("Session key", state.sessionKey, controlsEnabled, onSessionKeyChange)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Continue on re-arm", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-                    NrFilterChip(
-                        selected = state.autoResume,
-                        onClick = { if (controlsEnabled) onAutoResumeChange(!state.autoResume) },
-                        enabled = controlsEnabled,
-                        label = if (state.autoResume) "On" else "Off",
-                    )
+                if (advancedExpanded) {
+                    NumericField("Persist every N attempts", state.persistEvery.toString(), controlsEnabled) {
+                        onPersistEveryChange(it.toIntOrNull() ?: state.persistEvery)
+                    }
+                    NumericField("Inter-attempt delay (ms)", state.interAttemptMs.toString(), controlsEnabled) {
+                        onInterAttemptChange(it.toIntOrNull() ?: state.interAttemptMs)
+                    }
+                    NumericField("Typing delay per character (ms)", state.typingDelayMs.toString(), controlsEnabled) {
+                        onTypingDelayChange(it.toIntOrNull() ?: state.typingDelayMs)
+                    }
+                    NumericField("Start delay after re-plug (ms)", state.startDelayMs.toString(), controlsEnabled) {
+                        onStartDelayChange(it.toIntOrNull() ?: state.startDelayMs)
+                    }
+                    TextField("Session key", state.sessionKey, controlsEnabled, onSessionKeyChange)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Continue on re-arm", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                        NrFilterChip(
+                            selected = state.autoResume,
+                            onClick = { if (controlsEnabled) onAutoResumeChange(!state.autoResume) },
+                            enabled = controlsEnabled,
+                            label = if (state.autoResume) "On" else "Off",
+                        )
+                    }
                 }
 
                 if (!connected) {
@@ -602,7 +632,7 @@ private fun AttemptsCard(attempts: List<PinAttemptRecord>) {
     ) {
         Column(Modifier.padding(14.dp)) {
             Text(
-                text = "Attempts (${attempts.size})",
+                text = "Attempt history",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )

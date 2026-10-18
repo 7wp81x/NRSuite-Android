@@ -3,9 +3,16 @@ package com.swp81x.nrsuite
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
 import com.swp81x.nrsuite.core.eapol.EapolParser
 import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.pcap.PcapWriter
+import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
 import com.swp81x.nrsuite.core.sniff.SniffRequest
+import com.swp81x.nrsuite.core.wifi.WIFI_2G_CHANNELS
+import com.swp81x.nrsuite.core.wifi.WIFI_5G_CHANNELS
+import com.swp81x.nrsuite.core.wifi.WifiBand
+import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -62,7 +69,25 @@ internal fun MainViewModel.persistBeaconListsImpl() {
     preferences.edit().putString(PREF_BEACON_LISTS, json.toString()).apply()
 }
 
+internal fun MainViewModel.setWifiBandImpl(band: WifiBand) {
+    if (_scanning.value) return
+    _wifiBand.value = band
+}
+
 internal fun MainViewModel.scanWifiImpl() {
+    scanWifiInternalImpl(_wifiBand.value)
+}
+
+/**
+ * Scans for targets from feature modules. These scans must always use the
+ * firmware's AUTO band selection and must not inherit the WiFi Scan screen's
+ * user-selected band filter.
+ */
+internal fun MainViewModel.scanWifiForTargetsImpl() {
+    scanWifiInternalImpl(WifiBand.AUTO)
+}
+
+private fun MainViewModel.scanWifiInternalImpl(band: WifiBand) {
     val activeSession = session
     if (activeSession == null) {
         appendLog("Connect to a device before scanning.")
@@ -74,9 +99,10 @@ internal fun MainViewModel.scanWifiImpl() {
     _networks.value = emptyList()
     _deauthDetectorTargets.value = emptyList()
     _scanning.value = true
+    val wireBand = band.takeIf { it != WifiBand.AUTO }?.wireName
     scope.launch {
-        appendLog("Starting WiFi scan...")
-        val count = activeSession.scanWifi()
+        appendLog("Starting WiFi scan (${band.label})...")
+        val count = activeSession.scanWifi(band = wireBand)
         _scanning.value = false
         when {
             count == null -> appendLog("WiFi scan timed out.")
@@ -87,6 +113,66 @@ internal fun MainViewModel.scanWifiImpl() {
             }
         }
     }
+}
+
+internal fun MainViewModel.setWifiCountryImpl(country: String) {
+    val activeSession = session
+    if (activeSession == null) {
+        appendLog("Connect to a device before changing the regulatory country.")
+        return
+    }
+    val cleanCountry = country.trim().uppercase()
+    if (cleanCountry.length != 2) {
+        appendLog("Invalid regulatory country code: $cleanCountry")
+        return
+    }
+    scope.launch {
+        val response = activeSession.setWifiCountry(cleanCountry)
+        if (response?.optBoolean("ok") == true) {
+            val five = response.optJSONArray("allowed_5ghz_channels")
+                ?.let { array ->
+                    (0 until array.length()).map { array.optInt(it) }.filter { it > 0 }
+                }
+                .orEmpty()
+            appendLog(
+                "Regulatory country set to $cleanCountry" +
+                    (if (five.isNotEmpty()) " (5 GHz: ${five.joinToString(",")})" else "")
+            )
+            addHistory("wifi", "Regulatory country set to $cleanCountry", HistoryLevel.SUCCESS)
+            _toastMessage.value = "Wi-Fi regulatory country set to $cleanCountry"
+        } else {
+            val message = "Failed to set regulatory country $cleanCountry: " +
+                (response?.optString("msg") ?: "timeout")
+            appendLog(message, level = LogLevel.ERROR)
+            _toastMessage.value = message
+        }
+    }
+}
+
+internal fun MainViewModel.currentAllowedWifiChannels(): List<Int> {
+    val connected = connectionState.value as? ConnectionState.Connected ?: return emptyList()
+    val allowed2g = connected.allowed2gChannels.ifEmpty { WIFI_2G_CHANNELS }
+    val allowed5g = if ("wifi_5ghz" in connected.features) {
+        connected.allowed5gChannels.ifEmpty { WIFI_5G_CHANNELS }
+    } else {
+        emptyList()
+    }
+    return (allowed2g + allowed5g).distinct()
+}
+
+internal fun MainViewModel.ensureWifiChannelAllowed(channel: Int, module: String): Boolean {
+    val connected = connectionState.value as? ConnectionState.Connected ?: return true
+    val allowed = currentAllowedWifiChannels()
+    if (allowed.isEmpty() || channel in allowed) return true
+    val country = connected.country ?: "unknown"
+    val message = "Channel $channel is not allowed in country $country. " +
+        "Change the Wi-Fi regulatory country in Settings."
+    appendLog(
+        "$module: $message (allowed: ${allowed.joinToString(",")}).",
+        level = LogLevel.ERROR,
+    )
+    _toastMessage.value = message
+    return false
 }
 
 internal fun MainViewModel.startDeauthImpl(bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int) {
@@ -125,21 +211,24 @@ internal fun MainViewModel.startDeauthImpl(bssid: String, channel: Int, client: 
         }
     }
 
+    val safeChannel = normalizeWifiChannel(channel)
+    if (!ensureWifiChannelAllowed(safeChannel, "Deauthentication")) return
     _deauthSent.value = 0
     _deauthTarget.value = cleanBssid
-    _deauthChannel.value = channel.coerceIn(1, 13)
+    _deauthChannel.value = safeChannel
     _deauthRunning.value = true
     updateForegroundService()
 
     scope.launch {
         appendLog(
-            "Starting deauth burst: $cleanBssid on channel $channel " +
+            "Starting deauth burst: $cleanBssid on channel $safeChannel " +
                 "(client=$cleanClient, count=${if (count <= 0) "firmware default" else count})."
         )
         val args = JSONObject().apply {
             put("bssid", cleanBssid)
             put("client", cleanClient)
-            put("channel", channel.coerceIn(1, 13))
+            put("band", bandForWifiChannel(safeChannel).wireName)
+            put("channel", safeChannel)
             put("count", count.coerceAtLeast(0))
             put("duration", duration.coerceAtLeast(0))
             put("deauth_interval_ms", intervalMs.coerceIn(10, 10_000))
@@ -177,11 +266,14 @@ internal fun MainViewModel.startBeaconImpl(ssids: List<String>, channel: Int, in
         return
     }
 
+    val safeChannel = normalizeWifiChannel(channel)
+    if (!ensureWifiChannelAllowed(safeChannel, "Beacon Broadcast")) return
     scope.launch {
-        appendLog("Starting beacon broadcast (${cleanSsids.size} SSID(s), channel $channel)...")
+        appendLog("Starting beacon broadcast (${cleanSsids.size} SSID(s), channel $safeChannel)...")
         val args = JSONObject().apply {
             put("ssids", cleanSsids.joinToString("\n"))
-            put("channel", channel.coerceIn(1, 13))
+            put("band", bandForWifiChannel(safeChannel).wireName)
+            put("channel", safeChannel)
             put("interval_ms", intervalMs.coerceIn(10, 2000))
             put("hidden", hidden)
             put("random_bssid", randomBssid)
@@ -192,12 +284,15 @@ internal fun MainViewModel.startBeaconImpl(ssids: List<String>, channel: Int, in
             updateForegroundService()
             _beaconSent.value = 0
             _beaconSsidCount.value = response.optInt("ssids", cleanSsids.size)
-            _beaconChannel.value = response.optInt("channel", channel)
+            _beaconChannel.value = response.optInt("channel", safeChannel)
             appendLog("Beacon broadcast started.")
             addHistory("beacon", "Beacon broadcast started (${cleanSsids.size} SSIDs)", HistoryLevel.SUCCESS)
             startBeaconStatusPollingImpl(activeSession)
         } else {
-            appendLog("Failed to start beacon broadcast: ${response?.optString("msg") ?: "timeout"}")
+            val message = "Failed to start beacon broadcast: " +
+                (response?.optString("msg") ?: "timeout")
+            appendLog(message, level = LogLevel.ERROR)
+            _toastMessage.value = message
         }
     }
 }
@@ -247,6 +342,13 @@ internal fun MainViewModel.startSniffImpl(request: SniffRequest) {
     }
     if (_sniffing.value) return
     if (!ensureRadioIdle("Packet Sniffer")) return
+    val safeChannel = normalizeWifiChannel(request.channel)
+    if (request.fixedMode && !ensureWifiChannelAllowed(safeChannel, "Packet Sniffer")) return
+    val effectiveBand = if (request.fixedMode) {
+        bandForWifiChannel(safeChannel).wireName
+    } else {
+        request.band
+    }
     beaconStatusJob?.cancel()
     beaconStatusJob = null
     _beaconRunning.value = false
@@ -324,10 +426,11 @@ internal fun MainViewModel.startSniffImpl(request: SniffRequest) {
                     JSONObject().apply {
                         put("bssid", cleanBssid)
                         put("client", cleanClient)
-                        put("channel", request.channel.coerceIn(1, 13))
+                        put("channel", safeChannel)
                         put("count", request.deauthCount.coerceAtLeast(0))
                         put("deauth_interval_ms", request.deauthIntervalMs.coerceIn(10, 10_000))
                         put("reason", 7)
+                        put("band", effectiveBand)
                     },
                     timeoutMs = 20_000,
                 )
@@ -342,7 +445,8 @@ internal fun MainViewModel.startSniffImpl(request: SniffRequest) {
         val cleanFilterBssid = request.targetBssid.trim().uppercase()
         val args = JSONObject().apply {
             put("mode", if (request.fixedMode) "fixed" else "hop")
-            put("channel", request.channel.coerceIn(1, 13))
+            put("band", effectiveBand)
+            put("channel", safeChannel)
             put("interval_ms", request.intervalMs.coerceIn(50, 2_000))
             if (request.eapolOnly) {
                 put("eapol_only", true)
@@ -354,7 +458,7 @@ internal fun MainViewModel.startSniffImpl(request: SniffRequest) {
         val response = activeSession.sendCommand("START_SNIFF", args, timeoutMs = 12_000)
         if (response?.optBoolean("ok") == true) {
             val message = if (request.fixedMode) {
-                "Sniffing started on channel ${request.channel.coerceIn(1, 13)}."
+                "Sniffing started on channel $safeChannel."
             } else {
                 "Channel-hopping sniffing started."
             }

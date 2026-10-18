@@ -43,12 +43,12 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 <details>
 <summary><strong>Wireless</strong></summary>
 
-- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags
+- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; AUTO 2.4/5 GHz and regulatory-country channel filtering on C5-capable firmware
 - [x] **Beacon Spam** - broadcast custom or hidden SSIDs
 - [x] **Deauthentication** - deauth frame injection
 - [x] **Evil Twin** - rogue AP with captive portal
 - [x] **Captive Portal** - custom HTML credential capture
-- [x] **Packet Sniffer** - monitor-mode capture with PCAP export
+- [x] **Packet Sniffer** - monitor-mode capture with PCAP export; per-module Auto/2.4/5 GHz hopping and target-channel-aware fixed capture
 - [x] **Hidden AP Revealer** - passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution
 - [ ] **PMKID Capture**
 
@@ -70,7 +70,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 <details>
 <summary><strong>BLE</strong></summary>
 
-- [x] **BLE Scanner** - device discovery with names, RSSI, manufacturer data, service UUIDs, and service badges
+- [x] **BLE Scanner** - device discovery with names, RSSI, manufacturer data, service UUIDs, service badges, and module-owned scan lifecycle
 - [x] **BLE GATT Profile** - read-only service/characteristic enumeration with integrated BLE target scanner
 - [x] **BLE HID** - Bluetooth LE keyboard/mouse HID and DuckyScript payloads
 - [ ] **FastPair Model Identification** - map FastPair model IDs to known device names/types
@@ -90,7 +90,8 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 
 - [x] **Ducky Script Editor** - create, import, and export DuckyScript payloads
 - [x] **BadUSB** - HID injection via USB
-- [x] **PIN Bruteforce** - Supervised native-HID range/wordlist tester; one-shot boot-arm like BadUSB; saved sessions and compact attempt feed
+- [x] **PIN Bruteforce** - Supervised native-HID range/wordlist tester; one-shot boot-arm like BadUSB; max-attempt cap, progress/ETA, configurable typing/start delays, saved sessions, compact attempt feed
+- [x] **BLE HID PIN Bruteforce** - Hidden/experimental BLE-HID tester retained for future unlocked-host and mesh HID work; lock-screen use is unsupported
 - [x] **Multi-device USB sessions** - connect and use multiple USB serial devices independently, with per-device permissions and connection state
 - [x] **BadUSB device picker** - choose the target USB device without interrupting other connections
 
@@ -100,6 +101,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 <summary><strong>Credentials</strong></summary>
 
 - [x] **WPA Handshake Capture/Crack** - capture and offline dictionary cracking
+- [x] **Nrugochi** - Pwnagotchi-style channel-density RECON/INTERACT loop, multi-AP authorized deauth with frame telemetry, all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` output, mood UI, and today/total stats
 - [x] **Credential Manager** - local storage and management of captured credentials
 
 </details>
@@ -109,7 +111,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 
 - [x] **Mass Storage** - list/delete files on ESP32 flash and enter USB MSC mode
 - [x] **ESP32 Flasher** - flash NRSuite firmware directly from the app over USB
-- [x] **Serial Monitor** - raw USB serial monitor for any ESP32 or USB-UART firmware
+- [x] **Serial Monitor** - raw USB serial monitor with reliable clipboard copy, bounded log retention, and visible save/export feedback
 - [x] **MAC Lookup** - offline OUI/vendor lookup for any MAC address
 - [x] **Persistent firmware device ID** - `NRxxxxxxx` NVS ID shown in the app so devices remain identifiable across reconnects
 
@@ -294,6 +296,7 @@ app/src/main/java/com/swp81x/nrsuite/
     RogueApScreen.kt / DeauthDetectorScreen.kt / ClientPresenceScreen.kt /
     HiddenApScreen.kt / TrackerDetectorScreen.kt   # Defense modules
     BleScannerScreen.kt / BleProfileScreen.kt / BleScreen.kt   # BLE recon + BLE HID
+    BlePinBruteforceScreen.kt                                  # BLE HID PIN live controls
     MacLookupScreen.kt / SerialMonitorScreen.kt    # Tools / firmware utilities
     *Screen.kt        # Remaining feature module screens
   MainActivity.kt
@@ -307,6 +310,7 @@ app/src/main/java/com/swp81x/nrsuite/
   MainViewModelBleProfile.kt     # BLE GATT enumeration
   MainViewModelStorage.kt        # Mass storage, BadUSB, DuckyScript
   MainViewModelPinBruteforce.kt  # PIN Bruteforce HID session state
+  MainViewModelBlePinBruteforce.kt # BLE HID PIN live session state
   MainViewModelCredentials.kt    # Credential sessions and WPA cracking
   MainViewModelDefense.kt        # Shared defense-module plumbing
   MainViewModelRogueAp.kt        # Rogue AP Detector

@@ -28,7 +28,14 @@ class NrSuiteForegroundService : Service() {
         acquireWakeLock()
         createNotificationChannel()
         val text = intent.getStringExtra(EXTRA_TEXT) ?: "NRSuite operation active"
-        startForeground(NrSuiteNotifications.operationNotificationId(), buildNotification(text))
+        val started = runCatching {
+            startForeground(NrSuiteNotifications.operationNotificationId(), buildNotification(text))
+        }.isSuccess
+        if (!started) {
+            releaseWakeLock()
+            stopSelf()
+            return START_NOT_STICKY
+        }
         return START_NOT_STICKY
     }
 

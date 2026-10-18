@@ -45,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +59,7 @@ import com.swp81x.nrsuite.core.defense.DeauthChannelMode
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
+import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.ui.util.rssiToProximity
 import com.swp81x.nrsuite.ui.util.threatProximityColor
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
@@ -65,6 +67,7 @@ import com.swp81x.nrsuite.ui.components.ChannelModeToggle
 import com.swp81x.nrsuite.ui.components.ModuleStatusCard
 import com.swp81x.nrsuite.ui.components.ModuleStatusState
 import com.swp81x.nrsuite.ui.components.NrFilterChip
+import com.swp81x.nrsuite.ui.components.WifiBandConfigSection
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -97,13 +100,17 @@ fun DeauthDetectorScreen(
     isScanning: Boolean,
     onFeedFilterChange: (DeauthFeedFilter) -> Unit,
     onClearFeed: () -> Unit,
-    onStart: () -> Unit,
+    onStart: (WifiBand) -> Unit,
     onStop: () -> Unit,
     onLocateClick: () -> Unit = {},
+    showBandSelector: Boolean = false,
+    fiveGhzAvailable: Boolean = false,
+    fiveGhzUnavailableMessage: String = "",
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by remember { mutableStateOf(true) }
     var confirmStart by remember { mutableStateOf(false) }
+    var band by rememberSaveable { mutableStateOf(WifiBand.AUTO) }
 
     LaunchedEffect(running) {
         if (running) configExpanded = false
@@ -139,6 +146,7 @@ fun DeauthDetectorScreen(
                 running = running,
                 expanded = configExpanded,
                 channelMode = channelMode,
+                band = band,
                 hopIntervalMs = hopIntervalMs,
                 currentHopChannel = currentHopChannel,
                 scanResults = scanResults,
@@ -146,7 +154,11 @@ fun DeauthDetectorScreen(
                 isScanning = isScanning,
                 onToggle = { configExpanded = !configExpanded },
                 onChannelModeChange = onChannelModeChange,
+                onBandSelected = { band = it },
                 onHopIntervalChange = onHopIntervalChange,
+                showBandSelector = showBandSelector,
+                fiveGhzAvailable = fiveGhzAvailable,
+                fiveGhzUnavailableMessage = fiveGhzUnavailableMessage,
                 onScanClick = onScanClick,
                 onSelectTarget = onSelectTarget,
             )
@@ -211,7 +223,7 @@ fun DeauthDetectorScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        onStart()
+                        onStart(band)
                         confirmStart = false
                     },
                 ) {
@@ -392,6 +404,7 @@ private fun ConfigZone(
     running: Boolean,
     expanded: Boolean,
     channelMode: DeauthChannelMode,
+    band: WifiBand,
     hopIntervalMs: Int,
     currentHopChannel: Int?,
     scanResults: List<NetworkTarget>,
@@ -399,7 +412,11 @@ private fun ConfigZone(
     isScanning: Boolean,
     onToggle: () -> Unit,
     onChannelModeChange: (DeauthChannelMode) -> Unit,
+    onBandSelected: (WifiBand) -> Unit,
     onHopIntervalChange: (Int) -> Unit,
+    showBandSelector: Boolean,
+    fiveGhzAvailable: Boolean,
+    fiveGhzUnavailableMessage: String,
     onScanClick: () -> Unit,
     onSelectTarget: (NetworkTarget) -> Unit,
 ) {
@@ -467,6 +484,16 @@ private fun ConfigZone(
                             )
                         },
                     )
+                    if (channelMode == DeauthChannelMode.HOPPING) {
+                        WifiBandConfigSection(
+                            visible = showBandSelector,
+                            band = band,
+                            fiveGhzAvailable = fiveGhzAvailable,
+                            fiveGhzUnavailableMessage = fiveGhzUnavailableMessage,
+                            onBandSelected = onBandSelected,
+                            enabled = controlsEnabled,
+                        )
+                    }
                     Spacer(Modifier.height(10.dp))
 
                     if (channelMode == DeauthChannelMode.TARGETED) {
