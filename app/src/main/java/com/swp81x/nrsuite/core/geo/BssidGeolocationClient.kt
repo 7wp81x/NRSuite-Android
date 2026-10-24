@@ -82,7 +82,43 @@ object BssidGeolocationClient {
         null
     }
 
-    private fun buildWlocRequest(bssid: String): ByteArray {
+    /**
+     * Requests all Wi-Fi access points returned around a known seed BSSID.
+     * Apple's WLOC response can include additional nearby APs when
+     * numWifiResults is set to 0. Only access-point records are decoded.
+     */
+    suspend fun lookupNearby(rawBssid: String): List<BssidGeolocationResult> =
+        withContext(Dispatchers.IO) {
+            val bssid = normalizeBssid(rawBssid)
+                ?: throw IllegalArgumentException("Invalid BSSID")
+
+            val request = buildWlocRequest(bssid, includeNearbyResults = true)
+            val endpoints = listOf(
+                "global" to GLOBAL_ENDPOINT,
+                "china" to CHINA_ENDPOINT,
+            )
+            var lastError: Throwable? = null
+
+            for ((source, endpoint) in endpoints) {
+                try {
+                    val response = postWloc(endpoint, request)
+                    val results = decodeWlocNearbyResponse(response, source)
+                    if (results.isNotEmpty()) return@withContext results
+                } catch (t: Throwable) {
+                    lastError = t
+                }
+            }
+
+            if (lastError != null && lastError !is NotFoundException) {
+                throw classifyError(lastError)
+            }
+            emptyList()
+        }
+
+    private fun buildWlocRequest(
+        bssid: String,
+        includeNearbyResults: Boolean = false,
+    ): ByteArray {
         val wifiDevice = ProtoWriter().apply {
             writeString(1, bssid)
         }.toByteArray()
@@ -95,7 +131,8 @@ object BssidGeolocationClient {
         val message = ProtoWriter().apply {
             writeBytes(2, wifiDevice)
             writeSInt32(3, 0)
-            writeSInt32(4, -1)
+            // -1 requests only the matching AP; 0 requests all returned APs.
+            writeSInt32(4, if (includeNearbyResults) 0 else -1)
             writeBytes(33, deviceType)
         }.toByteArray()
 
@@ -214,34 +251,50 @@ object BssidGeolocationClient {
         expectedBssid: String,
         source: String,
     ): BssidGeolocationResult? {
-        if (response.size <= 10) return null
-        val fields = parseFields(response.copyOfRange(10, response.size))
         val expected = normalizeBssid(expectedBssid) ?: return null
+        return parseWifiDevices(response, source).firstOrNull { it.bssid == expected }
+    }
 
-        for (field in fields) {
-            if (field.number != 2 || field.wireType != 2) continue
-            val deviceFields = parseFields(field.bytes ?: continue)
+    internal fun decodeWlocNearbyResponse(
+        response: ByteArray,
+        source: String,
+    ): List<BssidGeolocationResult> {
+        return parseWifiDevices(response, source).distinctBy { it.bssid }
+    }
+
+    private fun parseWifiDevices(
+        response: ByteArray,
+        source: String,
+    ): List<BssidGeolocationResult> {
+        if (response.size <= 10) return emptyList()
+        return parseFields(response.copyOfRange(10, response.size)).mapNotNull { field ->
+            if (field.number != 2 || field.wireType != 2) return@mapNotNull null
+            val deviceFields = parseFields(field.bytes ?: return@mapNotNull null)
             val bssid = deviceFields.firstOrNull { it.number == 1 && it.wireType == 2 }
                 ?.bytes
                 ?.toString(Charsets.UTF_8)
                 ?.let(::normalizeBssid)
-                ?: continue
-            if (bssid != expected) continue
+                ?: return@mapNotNull null
 
-            val locationBytes = deviceFields.firstOrNull { it.number == 2 && it.wireType == 2 }
+            val locationBytes = deviceFields
+                .firstOrNull { it.number == 2 && it.wireType == 2 }
                 ?.bytes
-                ?: return null
+                ?: return@mapNotNull null
             val locationFields = parseFields(locationBytes)
-            val latitudeRaw = locationFields.firstOrNull { it.number == 1 && it.wireType == 0 }
+            val latitudeRaw = locationFields
+                .firstOrNull { it.number == 1 && it.wireType == 0 }
                 ?.varint
-                ?: return null
-            val longitudeRaw = locationFields.firstOrNull { it.number == 2 && it.wireType == 0 }
+                ?: return@mapNotNull null
+            val longitudeRaw = locationFields
+                .firstOrNull { it.number == 2 && it.wireType == 0 }
                 ?.varint
-                ?: return null
+                ?: return@mapNotNull null
             val latitude = latitudeRaw / 100_000_000.0
             val longitude = longitudeRaw / 100_000_000.0
-            if (latitude == -180.0 && longitude == -180.0) return null
-            if (latitude !in -90.0..90.0 || longitude !in -180.0..180.0) return null
+            if (latitude == -180.0 && longitude == -180.0) return@mapNotNull null
+            if (latitude !in -90.0..90.0 || longitude !in -180.0..180.0) {
+                return@mapNotNull null
+            }
 
             val accuracy = locationFields
                 .firstOrNull { it.number == 3 && it.wireType == 0 }
@@ -249,7 +302,7 @@ object BssidGeolocationClient {
                 ?.takeIf { it > 0 }
                 ?.toDouble()
 
-            return BssidGeolocationResult(
+            BssidGeolocationResult(
                 bssid = bssid,
                 latitude = latitude,
                 longitude = longitude,
@@ -257,7 +310,6 @@ object BssidGeolocationClient {
                 source = source,
             )
         }
-        return null
     }
 
     private fun parseFields(data: ByteArray): List<ProtoField> {

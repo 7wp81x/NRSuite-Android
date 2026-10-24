@@ -419,7 +419,7 @@ internal fun MainViewModel.startSniffImpl(request: SniffRequest) {
     this.stopLocalPortalImpl()
 
     val captureName = "capture_${System.currentTimeMillis()}.pcap"
-    val exportUri = _exportDirectory.value
+    val exportUri = _wifiCaptureDirectory.value ?: _exportDirectory.value
     if (exportUri == null) {
         _requiresRootDirectory.value = true
         appendLog("Choose an NRSuite root directory before starting a capture.")
@@ -443,6 +443,7 @@ internal fun MainViewModel.startSniffImpl(request: SniffRequest) {
     pcapWriter = writer
     _capturePath.value = captureDisplayPath
     _sniffPacketCount.value = 0
+    _sniffCaptureBytes.value = 0
     _sniffHandshake.value = EapolHandshake()
     _sniffing.value = true
     updateForegroundService()
@@ -459,6 +460,7 @@ internal fun MainViewModel.startSniffImpl(request: SniffRequest) {
                 try {
                     writer.writePacket(frame)
                     _sniffPacketCount.update { it + 1 }
+                    _sniffCaptureBytes.value = writer.bytesWritten
                 } catch (t: Throwable) {
                     appendLog("PCAP write error: ${t.message}")
                 }
@@ -596,7 +598,10 @@ internal fun MainViewModel.stopSniffImpl() {
             )
         }
         withContext(Dispatchers.IO) {
-            runCatching { pcapWriter?.close() }
+            runCatching {
+                _sniffCaptureBytes.value = pcapWriter?.bytesWritten ?: _sniffCaptureBytes.value
+                pcapWriter?.close()
+            }
         }
         pcapWriter = null
         _capturePath.value?.let {

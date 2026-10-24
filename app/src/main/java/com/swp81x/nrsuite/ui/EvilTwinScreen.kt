@@ -64,6 +64,7 @@ import com.swp81x.nrsuite.ui.components.HtmlUploadSection
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.WifiChannelStepper
 import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -80,6 +81,7 @@ fun EvilTwinScreen(
     running: Boolean,
     scanning: Boolean,
     networks: List<JSONObject>,
+    allowedChannels: List<Int> = emptyList(),
     handshake: EapolHandshake,
     results: List<EvilTwinResult>,
     eventLog: List<String>,
@@ -249,6 +251,17 @@ fun EvilTwinScreen(
                     }
                 }
                 if (targetExpanded) {
+                    Spacer(Modifier.height(10.dp))
+                    Text("Channel", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(6.dp))
+                    WifiChannelStepper(
+                        value = channel,
+                        enabled = !running,
+                        onChannelChange = { channel = it },
+                        allowedChannels = allowedChannels.ifEmpty {
+                            com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
+                        },
+                    )
                     Spacer(Modifier.height(8.dp))
                     HtmlUploadSection(
                         selectedName = selectedHtmlName,

@@ -5,13 +5,13 @@ package com.swp81x.nrsuite.core.protocol
  *
  * This class is deliberately pure Kotlin/Java so it can be unit-tested without
  * an Android device. It mirrors the limits used by the ESP32 firmware
- * (`PROTO_MAX_CHUNK = 1024`).
+ * (`PROTO_MAX_CHUNK = 4096`).
  */
 object FrameCodec {
     const val MAGIC_0: Int = 0xAD
     const val MAGIC_1: Int = 0xDE
     const val HEADER_SIZE: Int = 8
-    const val MAX_PAYLOAD_SIZE: Int = 1024
+    const val MAX_PAYLOAD_SIZE: Int = 4096
 
     fun encode(type: FrameType, id: Int, payload: ByteArray = ByteArray(0)): ByteArray {
         require(id in 0..0xFF) { "Frame id must fit in one byte (0..255), was $id" }

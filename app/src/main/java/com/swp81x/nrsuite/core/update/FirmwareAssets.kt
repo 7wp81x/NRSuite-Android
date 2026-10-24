@@ -13,7 +13,13 @@ private val FIRMWARE_CHIP_ASSET_MATCHERS = listOf(
     FirmwareChipAssetMatcher("ESP32-S2", listOf("esp32s2", "esp32-s2")),
     FirmwareChipAssetMatcher(
         "ESP32",
-        listOf("esp32-generic", "esp32-devkit", "esp32dev"),
+        listOf(
+            "esp32classic",
+            "esp32-classic",
+            "esp32-generic",
+            "esp32-devkit",
+            "esp32dev",
+        ),
     ),
 )
 
@@ -21,7 +27,9 @@ private val FIRMWARE_CHIP_ASSET_MATCHERS = listOf(
  * Returns the chip targeted by a firmware file name.
  *
  * Release assets may be named either `nrsuite-esp32c5.bin`,
- * `nrsuite-esp32-c5.bin`, or include a version tag after the chip token.
+ * `nrsuite-esp32c5.bin`, `nrsuite-esp32classic.bin`, or include a version
+ * tag after the chip token. Legacy `-c5` and `-generic` names remain
+ * recognized for older releases.
  */
 fun firmwareChipFromAssetName(name: String?): String? {
     val normalized = name?.lowercase()?.substringAfterLast('/') ?: return null
@@ -39,7 +47,7 @@ fun firmwareAssetSuffixForChip(chip: String?): String? = when (chip) {
     "ESP32-C3" -> "esp32c3"
     "ESP32-S3" -> "esp32s3"
     "ESP32-S2" -> "esp32s2"
-    "ESP32" -> "esp32-generic"
+    "ESP32" -> "esp32classic"
     else -> null
 }
 

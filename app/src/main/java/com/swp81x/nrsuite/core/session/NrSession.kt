@@ -190,6 +190,31 @@ class NrSession(
             country = status.optString("country").takeIf { it.isNotBlank() },
             allowed2gChannels = parseChannelArray(status, "allowed_2ghz_channels"),
             allowed5gChannels = parseChannelArray(status, "allowed_5ghz_channels"),
+            irTxGpio = parseOptionalGpio(status, "ir_tx_gpio"),
+            irRxGpio = parseOptionalGpio(status, "ir_rx_gpio"),
+            irTxGpios = parseIntArray(status, "ir_tx_gpios"),
+            irRxGpios = parseIntArray(status, "ir_rx_gpios"),
+            irRxActive = status.optBoolean("ir_rx_active", false),
+        )
+    }
+
+    /** Update the connected state from an IR_STATUS or IR_SET_PINS response. */
+    fun updateIrStatus(response: JSONObject) {
+        val current = _state.value as? ConnectionState.Connected ?: return
+        _state.value = current.copy(
+            irTxGpio = if (response.has("ir_tx_gpio")) {
+                parseOptionalGpio(response, "ir_tx_gpio")
+            } else {
+                current.irTxGpio
+            },
+            irRxGpio = if (response.has("ir_rx_gpio")) {
+                parseOptionalGpio(response, "ir_rx_gpio")
+            } else {
+                current.irRxGpio
+            },
+            irTxGpios = parseIntArray(response, "ir_tx_gpios").ifEmpty { current.irTxGpios },
+            irRxGpios = parseIntArray(response, "ir_rx_gpios").ifEmpty { current.irRxGpios },
+            irRxActive = response.optBoolean("ir_rx_active", current.irRxActive),
         )
     }
 
@@ -213,6 +238,18 @@ class NrSession(
             }
         }.distinct()
     }
+
+    private fun parseIntArray(source: JSONObject, key: String): List<Int> {
+        val array = source.optJSONArray(key) ?: return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                add(array.optInt(index, -1))
+            }
+        }.filter { it >= 0 }.distinct()
+    }
+
+    private fun parseOptionalGpio(source: JSONObject, key: String): Int? =
+        source.optInt(key, -1).takeIf { it >= 0 }
 
     suspend fun sendCommand(
         cmd: String,

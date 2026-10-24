@@ -3,7 +3,6 @@ package com.swp81x.nrsuite.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import org.json.JSONObject
-import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
@@ -55,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.WifiChannelStepper
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
@@ -73,6 +73,7 @@ fun DeauthScreen(
     activeChannel: Int,
     scanning: Boolean,
     networks: List<JSONObject>,
+    allowedChannels: List<Int> = emptyList(),
     onScanWifi: () -> Unit,
     onStart: (bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int, loopMode: Boolean) -> Unit,
     onStop: () -> Unit,
@@ -119,6 +120,7 @@ fun DeauthScreen(
                 scanning = scanning,
                 sentFrames = sentFrames,
                 networks = networks,
+                allowedChannels = allowedChannels,
                 onScanWifi = onScanWifi,
                 onToggle = { configExpanded = !configExpanded },
                 onBssidChange = { bssid = it },
@@ -237,6 +239,7 @@ private fun ConfigZone(
     scanning: Boolean,
     sentFrames: Int,
     networks: List<JSONObject>,
+    allowedChannels: List<Int>,
     onScanWifi: () -> Unit,
     onToggle: () -> Unit,
     onBssidChange: (String) -> Unit,
@@ -342,10 +345,15 @@ private fun ConfigZone(
                     )
 
                     Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = "Channel: $channel · ${bandForWifiChannel(channel).label} (auto from selected target)",
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = NrOnSurfaceVariant,
+                    Text("Channel", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(6.dp))
+                    WifiChannelStepper(
+                        value = channel,
+                        enabled = !running,
+                        onChannelChange = onChannelChange,
+                        allowedChannels = allowedChannels.ifEmpty {
+                            com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
+                        },
                     )
                     Spacer(Modifier.height(10.dp))
                     Text("Mode", style = MaterialTheme.typography.labelLarge)

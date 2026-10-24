@@ -43,6 +43,39 @@ class BssidGeolocationClientTest {
     }
 
     @Test
+    fun decodesAllNearbyWifiDevices() {
+        val firstDevice = wifiDeviceField(
+            bssid = "AA:BB:CC:DD:EE:FF",
+            latitudeRaw = 1_234_567_890L,
+            longitudeRaw = -1_234_567_890L,
+            accuracy = 25L,
+        )
+        val secondDevice = wifiDeviceField(
+            bssid = "11:22:33:44:55:66",
+            latitudeRaw = 2_000_000_000L,
+            longitudeRaw = 3_000_000_000L,
+            accuracy = 40L,
+        )
+        val duplicateDevice = wifiDeviceField(
+            bssid = "AA:BB:CC:DD:EE:FF",
+            latitudeRaw = 1_234_567_890L,
+            longitudeRaw = -1_234_567_890L,
+            accuracy = 25L,
+        )
+        val response = ByteArray(10) + firstDevice + secondDevice + duplicateDevice
+
+        val results = BssidGeolocationClient.decodeWlocNearbyResponse(response, "global")
+
+        assertEquals(2, results.size)
+        assertEquals("AA:BB:CC:DD:EE:FF", results[0].bssid)
+        assertEquals(12.3456789, results[0].latitude, 0.00000001)
+        assertEquals(-12.3456789, results[0].longitude, 0.00000001)
+        assertEquals("11:22:33:44:55:66", results[1].bssid)
+        assertEquals(20.0, results[1].latitude, 0.00000001)
+        assertEquals(30.0, results[1].longitude, 0.00000001)
+    }
+
+    @Test
     fun ignoresResponseForDifferentBssid() {
         val location = fieldVarint(1, 1_000_000_000L) + fieldVarint(2, 2_000_000_000L)
         val device = fieldBytes(1, "11:22:33:44:55:66".toByteArray()) + fieldBytes(2, location)
@@ -55,6 +88,19 @@ class BssidGeolocationClientTest {
                 "global",
             )
         )
+    }
+
+    private fun wifiDeviceField(
+        bssid: String,
+        latitudeRaw: Long,
+        longitudeRaw: Long,
+        accuracy: Long,
+    ): ByteArray {
+        val location = fieldVarint(1, latitudeRaw) +
+            fieldVarint(2, longitudeRaw) +
+            fieldVarint(3, accuracy)
+        val device = fieldBytes(1, bssid.toByteArray()) + fieldBytes(2, location)
+        return fieldBytes(2, device)
     }
 
     private fun fieldVarint(field: Int, value: Long): ByteArray {

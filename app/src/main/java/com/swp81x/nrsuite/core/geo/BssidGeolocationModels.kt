@@ -48,3 +48,26 @@ data class BssidGeolocationHistoryEntry(
         source = source,
     )
 }
+
+data class BssidNearbyAccessPoint(
+    val bssid: String,
+    val latitude: Double,
+    val longitude: Double,
+    val accuracyMeters: Double?,
+    val source: String,
+    val distanceMeters: Double,
+)
+
+sealed interface BssidNearbyState {
+    data object Idle : BssidNearbyState
+    data class Loading(val seedBssid: String) : BssidNearbyState
+    data class Success(
+        val seedBssid: String,
+        val accessPoints: List<BssidNearbyAccessPoint>,
+        val radiusMeters: Double,
+    ) : BssidNearbyState
+    data class Failure(
+        val seedBssid: String,
+        val error: BssidGeolocationError,
+    ) : BssidNearbyState
+}

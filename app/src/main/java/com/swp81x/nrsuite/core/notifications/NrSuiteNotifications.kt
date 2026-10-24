@@ -22,6 +22,8 @@ object NrSuiteNotifications {
     private const val ALERT_NOTIFICATION_ID = 2001
     private const val CREDENTIAL_NOTIFICATION_ID = 2002
     private const val BLE_NOTIFICATION_ID = 2003
+    private const val IR_DATABASE_NOTIFICATION_ID = 3001
+    private const val IR_SEARCH_NOTIFICATION_ID = 3002
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -129,6 +131,121 @@ object NrSuiteNotifications {
                 .build(),
         )
     }
+
+
+    fun buildIrDatabaseNotification(
+        context: Context,
+        title: String,
+        text: String,
+        progressPercent: Int? = null,
+        indeterminate: Boolean = false,
+        ongoing: Boolean = true,
+    ): Notification {
+        val builder = NotificationCompat.Builder(context, CHANNEL_DOWNLOADS)
+            .setSmallIcon(R.drawable.ic_stat_ir)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(mainActivityIntent(context))
+            .setOnlyAlertOnce(true)
+            .setOngoing(ongoing)
+            .setAutoCancel(!ongoing)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+        if (ongoing) {
+            if (progressPercent == null) {
+                builder.setProgress(0, 0, indeterminate)
+            } else {
+                builder.setProgress(100, progressPercent.coerceIn(0, 100), false)
+            }
+        }
+        return builder.build()
+    }
+
+    @SuppressLint("MissingPermission")
+    fun notifyIrDatabaseProgress(
+        context: Context,
+        title: String,
+        text: String,
+        progressPercent: Int? = null,
+        indeterminate: Boolean = false,
+    ) {
+        if (!notificationsAllowed(context)) return
+        NotificationManagerCompat.from(context).notify(
+            IR_DATABASE_NOTIFICATION_ID,
+            buildIrDatabaseNotification(
+                context = context,
+                title = title,
+                text = text,
+                progressPercent = progressPercent,
+                indeterminate = indeterminate,
+                ongoing = true,
+            ),
+        )
+    }
+
+    @SuppressLint("MissingPermission")
+    fun notifyIrDatabaseResult(context: Context, title: String, text: String) {
+        if (!notificationsAllowed(context)) return
+        NotificationManagerCompat.from(context).notify(
+            IR_DATABASE_NOTIFICATION_ID,
+            buildIrDatabaseNotification(
+                context = context,
+                title = title,
+                text = text,
+                ongoing = false,
+            ),
+        )
+    }
+
+
+    @SuppressLint("MissingPermission")
+    fun notifyIrSearchProgress(
+        context: Context,
+        title: String,
+        text: String,
+        progressPercent: Int?,
+    ) {
+        if (!notificationsAllowed(context)) return
+        val builder = NotificationCompat.Builder(context, CHANNEL_OPERATIONS)
+            .setSmallIcon(R.drawable.ic_stat_ir)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(mainActivityIntent(context))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+        if (progressPercent == null) {
+            builder.setProgress(0, 0, true)
+        } else {
+            builder.setProgress(100, progressPercent.coerceIn(0, 100), false)
+        }
+        NotificationManagerCompat.from(context).notify(
+            IR_SEARCH_NOTIFICATION_ID,
+            builder.build(),
+        )
+    }
+
+    @SuppressLint("MissingPermission")
+    fun notifyIrSearchResult(context: Context, title: String, text: String) {
+        if (!notificationsAllowed(context)) return
+        NotificationManagerCompat.from(context).notify(
+            IR_SEARCH_NOTIFICATION_ID,
+            NotificationCompat.Builder(context, CHANNEL_OPERATIONS)
+                .setSmallIcon(R.drawable.ic_stat_ir)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setContentIntent(mainActivityIntent(context))
+                .setOngoing(false)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build(),
+        )
+    }
+
+    fun irDatabaseNotificationId(): Int = IR_DATABASE_NOTIFICATION_ID
 
     fun operationNotificationId(): Int = OPERATION_NOTIFICATION_ID
 

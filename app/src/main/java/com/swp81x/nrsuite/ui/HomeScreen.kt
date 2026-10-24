@@ -16,6 +16,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -28,6 +29,9 @@ import com.swp81x.nrsuite.ui.theme.LogColorError
 import com.swp81x.nrsuite.ui.theme.LogColorInfo
 import com.swp81x.nrsuite.ui.theme.LogColorSuccess
 import com.swp81x.nrsuite.ui.theme.LogColorUsb
+import com.swp81x.nrsuite.ui.components.IrModuleConfigRow
+import com.swp81x.nrsuite.ui.components.RfidModuleConfigRow
+import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.sp
@@ -71,6 +75,7 @@ import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputAntenna
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Storage
@@ -94,6 +99,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -394,24 +401,10 @@ internal fun HomeScreen(
         item {
             val categories = listOf(
                 CategorySpec(
-                    name = "WiFi Recon",
+                    name = "WiFi",
                     icon = Icons.Default.WifiFind,
-                    iconTint = categoryColor("WiFi Recon"),
-                    moduleIds = listOf("wifi", "sniff", "hidden_ap"),
-                    available = true,
-                ),
-                CategorySpec(
-                    name = "WiFi Attacks",
-                    icon = Icons.Default.WifiOff,
-                    iconTint = categoryColor("WiFi Attacks"),
-                    moduleIds = listOf("beacon", "deauth", "nrugochi", "evil_twin", "portal"),
-                    available = true,
-                ),
-                CategorySpec(
-                    name = "WiFi Defense",
-                    icon = Icons.Default.Shield,
-                    iconTint = categoryColor("WiFi Defense"),
-                    moduleIds = listOf("deauth_detector", "rogue_ap", "client_presence"),
+                    iconTint = categoryColor("WiFi"),
+                    moduleIds = WIFI_ALL_MODULE_IDS,
                     available = true,
                 ),
                 CategorySpec(
@@ -474,9 +467,8 @@ internal fun HomeScreen(
                     name = "IR",
                     icon = Icons.Default.SettingsRemote,
                     iconTint = categoryColor("IR"),
-                    moduleIds = listOf("ir"),
-                    available = false,
-                    statusLabel = "Unavailable",
+                    moduleIds = IR_CATEGORY_MODULE_IDS,
+                    available = true,
                 ),
                 CategorySpec(
                     name = "RF",
@@ -584,25 +576,187 @@ internal fun CategoryCard(
 }
 
 @Composable
+private fun ModuleInfoTag(label: String) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        color = NrOnSurfaceVariant,
+        modifier = Modifier
+            .background(NrSurfaceVariant, RoundedCornerShape(7.dp))
+            .border(0.5.dp, NrOutline, RoundedCornerShape(7.dp))
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+    )
+}
+
+@Composable
 internal fun CategoryModulesScreen(
     modules: List<ModuleCardSpec>,
     onOpenModule: (String) -> Unit,
     modifier: Modifier = Modifier,
+    showWifiFilters: Boolean = false,
+    wifiGroupFilter: Int = 0,
+    onWifiGroupFilterSelected: (Int) -> Unit = {},
+    onOpenWifiConfig: () -> Unit = {},
+    showIrInfo: Boolean = false,
+    irTxLabel: String = "",
+    irRxLabel: String = "",
+    onOpenIrConfig: () -> Unit = {},
+    showRfidInfo: Boolean = false,
+    rfidInterfaceLabel: String = "I2C",
+    rfidSdaLabel: String = "SDA --",
+    rfidSclLabel: String = "SCL --",
+    onOpenRfidConfig: () -> Unit = {},
+    showSensorConfigAction: Boolean = false,
+    onOpenSensorConfig: () -> Unit = {},
+    configAccent: Color? = null,
 ) {
+    val filtered = if (showWifiFilters) {
+        val ids = when (wifiGroupFilter) {
+            1 -> WIFI_ATTACK_MODULE_IDS
+            2 -> WIFI_DEFEND_MODULE_IDS
+            else -> WIFI_RECON_MODULE_IDS
+        }
+        modules.filter { it.id in ids }
+    } else {
+        modules
+    }
+    val effectiveAccent = configAccent ?: MaterialTheme.colorScheme.primary
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        if (showWifiFilters) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    ModuleInfoTag("2.4 GHz")
+                    ModuleInfoTag("5 GHz")
+                    Spacer(Modifier.weight(1f))
+                    TextButton(
+                        onClick = onOpenWifiConfig,
+                        colors = ButtonDefaults.textButtonColors(contentColor = NrOnSurfaceVariant),
+                    ) {
+                        Icon(
+                            Icons.Default.Tune,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = effectiveAccent,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "WiFi Config",
+                            color = NrOnSurfaceVariant,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+            }
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val groups = listOf(
+                        "Recon" to categoryColor("WiFi Recon"),
+                        "Attack" to categoryColor("WiFi Attacks"),
+                        "Defend" to categoryColor("WiFi Defense"),
+                    )
+                    groups.forEachIndexed { index, (label, accent) ->
+                        FilterChip(
+                            selected = wifiGroupFilter == index,
+                            onClick = { onWifiGroupFilterSelected(index) },
+                            label = {
+                                Text(
+                                    text = label,
+                                    fontWeight = if (wifiGroupFilter == index) {
+                                        FontWeight.SemiBold
+                                    } else {
+                                        FontWeight.Medium
+                                    },
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = accent.copy(alpha = 0.18f),
+                                selectedLabelColor = accent,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        if (showIrInfo) {
+            item {
+                IrModuleConfigRow(
+                    txLabel = irTxLabel,
+                    rxLabel = irRxLabel,
+                    onOpenConfig = onOpenIrConfig,
+                    modifier = Modifier.fillMaxWidth(),
+                    accentColor = effectiveAccent,
+                )
+            }
+        }
+        if (showRfidInfo) {
+            item {
+                RfidModuleConfigRow(
+                    interfaceLabel = rfidInterfaceLabel,
+                    sdaLabel = rfidSdaLabel,
+                    sclLabel = rfidSclLabel,
+                    onOpenConfig = onOpenRfidConfig,
+                    modifier = Modifier.fillMaxWidth(),
+                    accentColor = effectiveAccent,
+                )
+            }
+        }
+        if (showSensorConfigAction) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Sensor configuration",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NrOnSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        onClick = onOpenSensorConfig,
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = NrOnSurfaceVariant,
+                        ),
+                    ) {
+                        Icon(
+                            Icons.Default.Tune,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = effectiveAccent,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "Sensor Config",
+                            color = NrOnSurfaceVariant,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+            }
+        }
         item {
             Text(
-                text = "${modules.size} modules",
+                text = "${filtered.size} modules",
                 style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
                 modifier = Modifier.padding(bottom = 4.dp),
             )
         }
-        items(modules, key = { it.id }, contentType = { "module" }) { module ->
+        items(filtered, key = { it.id }, contentType = { "module" }) { module ->
             ModuleCard(
                 module = module,
                 onClick = { if (module.available) onOpenModule(module.id) },

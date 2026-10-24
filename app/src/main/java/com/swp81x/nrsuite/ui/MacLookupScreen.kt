@@ -5,8 +5,10 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,10 +20,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -32,6 +37,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -43,14 +49,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.swp81x.nrsuite.core.geo.BssidGeolocationErrorKind
 import com.swp81x.nrsuite.core.geo.BssidGeolocationHistoryEntry
 import com.swp81x.nrsuite.core.geo.BssidGeolocationResult
 import com.swp81x.nrsuite.core.geo.BssidGeolocationState
+import com.swp81x.nrsuite.core.geo.BssidNearbyAccessPoint
+import com.swp81x.nrsuite.core.geo.BssidNearbyState
 import com.swp81x.nrsuite.core.geo.normalizeBssid
 import com.swp81x.nrsuite.core.oui.MacLookupResult
 import com.swp81x.nrsuite.ui.components.BssidMapView
@@ -73,12 +85,14 @@ private val HISTORY_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"
 fun MacLookupScreen(
     result: MacLookupResult?,
     geolocationState: BssidGeolocationState,
+    nearbyState: BssidNearbyState,
     history: List<BssidGeolocationHistoryEntry>,
     onLookup: (String) -> Unit,
     onSelectHistory: (String) -> Unit,
     onDeleteHistory: (String) -> Unit,
     onClearHistory: () -> Unit,
     onClear: () -> Unit,
+    onNearbyToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
@@ -138,6 +152,16 @@ fun MacLookupScreen(
                     }
                     is BssidGeolocationState.Success -> {
                         val location = geolocationState.result
+                        val nearbyAccessPoints =
+                            (nearbyState as? BssidNearbyState.Success)
+                                ?.takeIf {
+                                    it.seedBssid.equals(location.bssid, ignoreCase = true)
+                                }
+                                ?.accessPoints
+                                .orEmpty()
+                        var showFullscreenMap by rememberSaveable(location.bssid) {
+                            mutableStateOf(false)
+                        }
                         LocationResultCard(
                             result = location,
                             fromCache = geolocationState.fromCache,
@@ -157,18 +181,40 @@ fun MacLookupScreen(
                             shape = RoundedCornerShape(12.dp),
                         ) {
                             Column(Modifier.padding(10.dp)) {
-                                Text(
-                                    text = "Map preview",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = "Map preview",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                                    )
+                                    IconButton(onClick = { showFullscreenMap = true }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Fullscreen,
+                                            contentDescription = "Expand map",
+                                        )
+                                    }
+                                }
+                                NearbyApsToggleRow(
+                                    state = nearbyState,
+                                    onToggle = onNearbyToggle,
                                 )
+                                Spacer(Modifier.height(8.dp))
                                 BssidMapView(
                                     bssid = location.bssid,
                                     latitude = location.latitude,
                                     longitude = location.longitude,
                                     accuracyMeters = location.accuracyMeters,
                                     source = location.source,
+                                    nearbyAccessPoints = nearbyAccessPoints,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(260.dp),
                                 )
                                 Text(
                                     text = "Tiles: © OpenStreetMap contributors",
@@ -176,7 +222,17 @@ fun MacLookupScreen(
                                     color = NrOnSurfaceVariant,
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
                                 )
+                                if (nearbyAccessPoints.isNotEmpty()) {
+                                    NearbyApsList(nearbyAccessPoints)
+                                }
                             }
+                        }
+                        if (showFullscreenMap) {
+                            FullscreenBssidMapDialog(
+                                location = location,
+                                nearbyAccessPoints = nearbyAccessPoints,
+                                onDismiss = { showFullscreenMap = false },
+                            )
                         }
                     }
                 }
@@ -242,6 +298,179 @@ fun MacLookupScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FullscreenBssidMapDialog(
+    location: BssidGeolocationResult,
+    nearbyAccessPoints: List<BssidNearbyAccessPoint>,
+    onDismiss: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+        ) {
+            BssidMapView(
+                bssid = location.bssid,
+                latitude = location.latitude,
+                longitude = location.longitude,
+                accuracyMeters = location.accuracyMeters,
+                source = location.source,
+                nearbyAccessPoints = nearbyAccessPoints,
+                modifier = Modifier.fillMaxSize(),
+                shape = RectangleShape,
+            )
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close fullscreen map",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NearbyApsToggleRow(
+    state: BssidNearbyState,
+    onToggle: (Boolean) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Nearby access points",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Discover other APs near this location. AP-only; client devices are not tracked.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NrOnSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = state !is BssidNearbyState.Idle,
+                onCheckedChange = onToggle,
+                enabled = state !is BssidNearbyState.Loading,
+            )
+        }
+
+        when (state) {
+            BssidNearbyState.Idle -> Unit
+            is BssidNearbyState.Loading -> {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 6.dp),
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .width(16.dp)
+                            .height(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Searching for nearby access points...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+            }
+            is BssidNearbyState.Success -> {
+                Text(
+                    text = if (state.accessPoints.isEmpty()) {
+                        "No nearby access points found within " +
+                            "${(state.radiusMeters / 1000).toInt()} km."
+                    } else {
+                        "${state.accessPoints.size} nearby AP(s) shown within " +
+                            "${(state.radiusMeters / 1000).toInt()} km. Tap a blue pin for details."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (state.accessPoints.isEmpty()) StatusAmber else StatusGreen,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+            is BssidNearbyState.Failure -> {
+                Text(
+                    text = "Nearby lookup failed: ${state.error.message}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusRed,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NearbyApsList(accessPoints: List<BssidNearbyAccessPoint>) {
+    Spacer(Modifier.height(10.dp))
+    Text(
+        text = "Nearby AP details",
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(horizontal = 4.dp),
+    )
+    accessPoints.take(10).forEach { ap ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = ap.bssid,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "${formatNearbyDistance(ap.distanceMeters)} away · " +
+                        (ap.accuracyMeters?.let { "±${it.toInt()} m" } ?: "accuracy unknown") +
+                        " · ${ap.source}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NrOnSurfaceVariant,
+                )
+            }
+        }
+    }
+    if (accessPoints.size > 10) {
+        Text(
+            text = "+${accessPoints.size - 10} more nearby AP(s) on the map",
+            style = MaterialTheme.typography.labelSmall,
+            color = NrOnSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+        )
+    }
+}
+
+private fun formatNearbyDistance(meters: Double): String {
+    return if (meters < 1000.0) {
+        "${meters.toInt()} m"
+    } else {
+        "%.1f km".format(meters / 1000.0)
     }
 }
 

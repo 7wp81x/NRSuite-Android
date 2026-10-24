@@ -202,7 +202,7 @@ fun BlePinBruteforceScreen(
             Spacer(Modifier.height(80.dp))
         }
 
-        if (connected && state.bleConnected && !state.running && !state.starting) {
+        if (connected && state.bleConnected && !state.running) {
             ModuleActionFab(
                 onClick = {
                     if (state.paused) onResume() else confirmStart = true
@@ -210,8 +210,8 @@ fun BlePinBruteforceScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
-                enabled = state.source != null,
-                containerColor = MaterialTheme.colorScheme.primary,
+                enabled = state.source != null && !state.starting,
+                containerColor = if (state.starting) StatusAmber else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 if (state.starting) {

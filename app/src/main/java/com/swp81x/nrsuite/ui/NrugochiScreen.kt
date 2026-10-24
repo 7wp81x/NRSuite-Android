@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -351,7 +352,6 @@ private fun NrugochiBodyCard(state: AutoHandshakeUiState) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 NrugochiStat("CH", state.currentChannel?.toString() ?: "--", Modifier.weight(1f))
-                NrugochiStat("HS CYCLE", state.cycleHandshakeCount.toString(), Modifier.weight(1f))
                 NrugochiStat("TODAY", state.stats.todayCaptures.toString(), Modifier.weight(1f))
                 NrugochiStat("TOTAL", state.stats.totalCaptures.toString(), Modifier.weight(1f))
             }
@@ -796,6 +796,10 @@ private fun NrugochiCapturedTab(
 
 @Composable
 private fun NrugochiTargetsCard(state: AutoHandshakeUiState) {
+    val visibleTargets = remember(state.targets) {
+        state.targets.filter { it.status != AutoHandshakeTargetStatus.UNSUPPORTED }
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
@@ -803,22 +807,60 @@ private fun NrugochiTargetsCard(state: AutoHandshakeUiState) {
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
-            Text(
-                text = "Recon targets",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(6.dp))
-            if (state.targets.isEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    text = "Waiting for the first scan. Channels are ranked by AP density, then APs by RSSI.",
+                    text = "Recon targets",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                if (visibleTargets.isNotEmpty()) {
+                    Text(
+                        text = visibleTargets.size.toString(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NrOnSurfaceVariant,
+                        modifier = Modifier
+                            .background(NrSurfaceVariant, RoundedCornerShape(50))
+                            .border(0.5.dp, NrOutline, RoundedCornerShape(50))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            if (visibleTargets.isEmpty()) {
+                Text(
+                    text = if (state.targets.isEmpty()) {
+                        "Waiting for the first scan. Channels are ranked by AP density, then APs by RSSI."
+                    } else {
+                        "No supported WPA2-PSK targets are currently in range."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
             } else {
-                state.targets.take(12).forEach { target ->
-                    NrugochiTargetRow(target)
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 260.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    items(
+                        items = visibleTargets,
+                        key = { it.bssidKey },
+                    ) { target ->
+                        NrugochiTargetRow(target)
+                    }
+                }
+                if (state.targets.size > visibleTargets.size) {
                     Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "${state.targets.size - visibleTargets.size} unsupported target(s) hidden.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NrOnSurfaceVariant,
+                    )
                 }
             }
         }
@@ -1073,7 +1115,7 @@ private fun nrugochiSubtitle(connected: Boolean, state: AutoHandshakeUiState): S
     }
     return when (state.phase) {
         AutoHandshakePhase.RECON -> "Scanning channels..."
-        AutoHandshakePhase.INTERACT -> "Channel ${state.currentChannel ?: "--"} · ${state.cycleHandshakeCount} handshake(s)"
+        AutoHandshakePhase.INTERACT -> "Channel ${state.currentChannel ?: "--"} · hunting handshakes"
         AutoHandshakePhase.SCANNING -> "Scanning..."
         AutoHandshakePhase.SURVEYING -> "Surveying..."
         AutoHandshakePhase.RANKING -> "Ranking..."

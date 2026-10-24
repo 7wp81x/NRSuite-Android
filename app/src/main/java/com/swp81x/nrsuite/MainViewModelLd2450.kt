@@ -118,6 +118,56 @@ internal fun MainViewModel.refreshLd2450Impl() {
     }
 }
 
+internal fun MainViewModel.setLd2450PinsImpl(rxGpio: Int, txGpio: Int) {
+    val activeSession = session ?: run {
+        _ld2450.update { it.copy(errorMessage = "Connect an NRSuite ESP32 first.") }
+        return
+    }
+    if (_ld2450.value.configSaving) return
+    _ld2450.update { it.copy(configSaving = true, errorMessage = null) }
+    scope.launch {
+        try {
+            val args = JSONObject()
+                .put("rx_gpio", rxGpio)
+                .put("tx_gpio", txGpio)
+            val response = activeSession.sendCommand(
+                "LD2450_SET_CONFIG",
+                args,
+                timeoutMs = 6_000,
+            )
+            if (response == null) {
+                _ld2450.update { it.copy(errorMessage = "LD2450 configuration timed out.") }
+                return@launch
+            }
+            applyLd2450Status(response)
+            val ok = response.optBoolean("ok")
+            if (ok) {
+                appendLog("LD2450 UART configured: RX GPIO $rxGpio / TX GPIO $txGpio.", tag = "ld2450")
+                addHistory(
+                    "ld2450",
+                    "LD2450 GPIOs saved: RX $rxGpio / TX $txGpio",
+                    HistoryLevel.SUCCESS,
+                )
+            } else {
+                val message = response.optString("msg", "Could not save LD2450 GPIOs.")
+                _ld2450.update { it.copy(errorMessage = message) }
+                appendLog("LD2450 configuration failed: $message", level = LogLevel.ERROR, tag = "ld2450")
+            }
+        } catch (t: Throwable) {
+            _ld2450.update {
+                it.copy(errorMessage = t.message ?: "Could not save LD2450 GPIOs.")
+            }
+            appendLog(
+                "LD2450 configuration failed: ${t.message ?: t.javaClass.simpleName}",
+                level = LogLevel.ERROR,
+                tag = "ld2450",
+            )
+        } finally {
+            _ld2450.update { it.copy(configSaving = false) }
+        }
+    }
+}
+
 internal fun MainViewModel.setLd2450MaxRangeImpl(valueCm: Int) {
     _ld2450.update { it.copy(maxRangeCm = valueCm.coerceIn(100, 800)) }
 }
@@ -233,7 +283,13 @@ private fun MainViewModel.applyLd2450Status(json: JSONObject) {
     val active = json.optBoolean("active", _ld2450.value.active)
     val hasData = json.optBoolean("has_data", _ld2450.value.hasData)
     val targetCount = json.optInt("target_count", _ld2450.value.targetCount)
+    val responseOk = json.optBoolean("ok", true)
+    val responseMessage = json.optString("msg")
     val noData = active && !hasData
+    val hasRxPin = json.has("rx_pin") && !json.isNull("rx_pin")
+    val hasTxPin = json.has("tx_pin") && !json.isNull("tx_pin")
+    val rxOptions = json.parseGpioArray("ld2450_rx_gpios")
+    val txOptions = json.parseGpioArray("ld2450_tx_gpios")
     _ld2450.update {
         it.copy(
             active = active,
@@ -248,17 +304,38 @@ private fun MainViewModel.applyLd2450Status(json: JSONObject) {
             } else {
                 it.lastFrameAgeMs
             },
+            configured = json.optBoolean("configured", it.configured),
+            rxGpio = if (hasRxPin) json.optionalGpio("rx_pin") else it.rxGpio,
+            txGpio = if (hasTxPin) json.optionalGpio("tx_pin") else it.txGpio,
+            rxGpios = rxOptions.ifEmpty { it.rxGpios },
+            txGpios = txOptions.ifEmpty { it.txGpios },
             errorKind = when {
+                !responseOk -> "config"
                 noData -> "no_data"
                 json.optString("kind").isNotBlank() -> json.optString("kind")
                 else -> null
             },
             errorMessage = when {
+                !responseOk && responseMessage.isNotBlank() -> responseMessage
                 noData -> "No LD2450 frames received"
-                json.optString("msg").isNotBlank() -> json.optString("msg")
                 else -> null
             },
             lastUpdatedAt = System.currentTimeMillis(),
         )
+    }
+}
+
+private fun JSONObject.optionalGpio(name: String): Int? {
+    if (!has(name) || isNull(name)) return null
+    return optInt(name, -1).takeIf { it >= 0 }
+}
+
+private fun JSONObject.parseGpioArray(name: String): List<Int> {
+    val array = optJSONArray(name) ?: return emptyList()
+    return buildList {
+        for (index in 0 until array.length()) {
+            val gpio = array.optInt(index, -1)
+            if (gpio >= 0) add(gpio)
+        }
     }
 }

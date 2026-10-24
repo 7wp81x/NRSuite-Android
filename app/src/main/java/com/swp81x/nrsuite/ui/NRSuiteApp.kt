@@ -71,6 +71,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Radar
@@ -153,6 +154,16 @@ internal enum class AppTab(val label: String) {
     MODULES("Modules"),
     LOGS("Logs"),
 }
+
+internal val WIFI_RECON_MODULE_IDS = listOf("wifi", "sniff", "hidden_ap")
+internal val WIFI_ATTACK_MODULE_IDS =
+    listOf("beacon", "deauth", "nrugochi", "evil_twin", "portal")
+internal val WIFI_DEFEND_MODULE_IDS =
+    listOf("deauth_detector", "rogue_ap", "client_presence")
+internal val WIFI_ALL_MODULE_IDS =
+    WIFI_RECON_MODULE_IDS + WIFI_ATTACK_MODULE_IDS + WIFI_DEFEND_MODULE_IDS
+internal val IR_CATEGORY_MODULE_IDS =
+    listOf("ir", "ir_receiver", "ir_search", "ir_jammer")
 
 internal data class CategorySpec(
     val name: String,
@@ -440,13 +451,52 @@ internal val modules = listOf(
 
     ModuleCardSpec(
         id = "ir",
-        title = "IR",
-        description = "Infrared transmit/receive module (planned).",
+        title = "IR Remotes",
+        description = "Browse IR remotes, import Flipper .ir files, and transmit through phone or ESP32 IR.",
         icon = Icons.Default.SettingsRemote,
         category = "IR",
         radio = "IR",
-        available = false,
-        statusLabel = "Unavailable",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "ir_receiver",
+        title = "IR Receiver",
+        description = "Capture raw IR signals from the ESP32 receiver and save them as Flipper .ir files.",
+        icon = Icons.Default.SettingsRemote,
+        category = "IR",
+        radio = "IR",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "ir_search",
+        title = "IR Finder",
+        description = "Find a working IR button by stepping through matching category, brand, and button candidates.",
+        icon = Icons.Default.Search,
+        category = "IR",
+        radio = "IR",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "ir_jammer",
+        title = "IR Jammer",
+        description = "Time-limited IR interference test tool. Explicit confirmation and automatic stop required.",
+        icon = Icons.Default.Stop,
+        category = "IR",
+        radio = "IR",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "ir_config",
+        title = "IR Configuration",
+        description = "Choose the IR backend, manage the IR database, and configure ESP32 RX/TX pins.",
+        icon = Icons.Default.Settings,
+        category = "IR",
+        radio = "IR",
+        available = true,
     ),
 
     ModuleCardSpec(
@@ -463,7 +513,7 @@ internal val modules = listOf(
     ModuleCardSpec(
         id = "rfid",
         title = "RFID",
-        description = "RFID/NFC read and emulation module (planned).",
+        description = "Temporarily unavailable while PN532 hardware support is paused.",
         icon = Icons.Default.Nfc,
         category = "RFID",
         radio = "13.56MHz",

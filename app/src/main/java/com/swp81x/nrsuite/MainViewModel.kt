@@ -18,6 +18,8 @@ import com.swp81x.nrsuite.core.ble.BleServiceProfile
 import com.swp81x.nrsuite.core.geo.BssidGeolocationHistoryEntry
 import com.swp81x.nrsuite.core.geo.BssidGeolocationHistoryStore
 import com.swp81x.nrsuite.core.geo.BssidGeolocationState
+import com.swp81x.nrsuite.core.geo.BssidNearbyAccessPoint
+import com.swp81x.nrsuite.core.geo.BssidNearbyState
 import com.swp81x.nrsuite.core.ble.TrackerObservation
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.OuiRule
@@ -45,11 +47,32 @@ import com.swp81x.nrsuite.core.hid.BlePinAttemptRecord
 import com.swp81x.nrsuite.core.hid.BlePinBruteforceUiState
 import com.swp81x.nrsuite.core.hid.PinAttemptRecord
 import com.swp81x.nrsuite.core.sensors.Ld2450UiState
+import com.swp81x.nrsuite.core.rfid.RfidUiState
 import com.swp81x.nrsuite.core.hid.PinBruteforceUiState
 import com.swp81x.nrsuite.core.flasher.UsbSerialFlasherTransport
 import com.swp81x.nrsuite.core.eapol.EapolParser
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.history.HistoryEntry
+import com.swp81x.nrsuite.core.ir.IrCommonButton
+import com.swp81x.nrsuite.core.ir.IrDatabaseDownloader
+import com.swp81x.nrsuite.core.ir.IrDatabaseMetadata
+import com.swp81x.nrsuite.core.ir.IrDatabaseMetadataStore
+import com.swp81x.nrsuite.core.ir.IrDatabaseUiState
+import com.swp81x.nrsuite.core.ir.IrCommonButtonsState
+import com.swp81x.nrsuite.core.ir.IrPhoneCapabilities
+import com.swp81x.nrsuite.core.ir.IrJammerUiState
+import com.swp81x.nrsuite.core.ir.IrLearnedButton
+import com.swp81x.nrsuite.core.ir.IrReceivedSignal
+import com.swp81x.nrsuite.core.ir.IrPhoneTransmitter
+import com.swp81x.nrsuite.core.ir.IrRemote
+import com.swp81x.nrsuite.core.ir.IrRemoteIndexStore
+import com.swp81x.nrsuite.core.ir.IrRemoteSummary
+import com.swp81x.nrsuite.core.ir.IrScanProgress
+import com.swp81x.nrsuite.core.ir.IrSearchRunState
+import com.swp81x.nrsuite.core.ir.IrSearchUiState
+import com.swp81x.nrsuite.core.ir.IrSignal
+import com.swp81x.nrsuite.core.ir.IrTransmitBackend
+import com.swp81x.nrsuite.core.ir.IrZipExtractor
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.mesh.MeshCredentialStore
@@ -155,6 +178,13 @@ class MainViewModel(internal val app: Application) {
 
     private val _exportDirectoryName = MutableStateFlow("Not configured")
     val exportDirectoryName: StateFlow<String> = _exportDirectoryName.asStateFlow()
+
+    internal val _wifiCaptureDirectory = MutableStateFlow<Uri?>(null)
+    val wifiCaptureDirectory: StateFlow<Uri?> = _wifiCaptureDirectory.asStateFlow()
+
+    private val _wifiCaptureDirectoryName = MutableStateFlow<String?>(null)
+    val wifiCaptureDirectoryName: StateFlow<String?> =
+        _wifiCaptureDirectoryName.asStateFlow()
 
     internal val _requiresRootDirectory = MutableStateFlow(false)
     val requiresRootDirectory: StateFlow<Boolean> = _requiresRootDirectory.asStateFlow()
@@ -338,6 +368,75 @@ class MainViewModel(internal val app: Application) {
         MutableStateFlow<List<BssidGeolocationHistoryEntry>>(emptyList())
     val bssidGeolocationHistory: StateFlow<List<BssidGeolocationHistoryEntry>> =
         _bssidGeolocationHistory.asStateFlow()
+    internal val _bssidNearbyState =
+        MutableStateFlow<BssidNearbyState>(BssidNearbyState.Idle)
+    val bssidNearbyState: StateFlow<BssidNearbyState> = _bssidNearbyState.asStateFlow()
+    internal val bssidNearbyCache =
+        mutableMapOf<String, List<BssidNearbyAccessPoint>>()
+
+    internal val irRemoteIndexStore = IrRemoteIndexStore(File(app.filesDir, "ir"))
+    internal val irPhoneTransmitter = IrPhoneTransmitter(app)
+    internal val _irRemotes = MutableStateFlow<List<IrRemoteSummary>>(emptyList())
+    val irRemotes: StateFlow<List<IrRemoteSummary>> = _irRemotes.asStateFlow()
+    internal val _irSelectedRemote = MutableStateFlow<IrRemote?>(null)
+    val irSelectedRemote: StateFlow<IrRemote?> = _irSelectedRemote.asStateFlow()
+    internal val _irLoadingRemote = MutableStateFlow(false)
+    val irLoadingRemote: StateFlow<Boolean> = _irLoadingRemote.asStateFlow()
+    internal val _irImporting = MutableStateFlow(false)
+    val irImporting: StateFlow<Boolean> = _irImporting.asStateFlow()
+    internal val _irScanProgress = MutableStateFlow<IrScanProgress?>(null)
+    val irScanProgress: StateFlow<IrScanProgress?> = _irScanProgress.asStateFlow()
+    internal val _irTransmitting = MutableStateFlow(false)
+    val irTransmitting: StateFlow<Boolean> = _irTransmitting.asStateFlow()
+    internal val _irCapabilities = MutableStateFlow(IrPhoneCapabilities())
+    val irCapabilities: StateFlow<IrPhoneCapabilities> = _irCapabilities.asStateFlow()
+    internal val _irStatusMessage = MutableStateFlow<String?>(null)
+    val irStatusMessage: StateFlow<String?> = _irStatusMessage.asStateFlow()
+    internal val _irErrorMessage = MutableStateFlow<String?>(null)
+    val irErrorMessage: StateFlow<String?> = _irErrorMessage.asStateFlow()
+    internal val _irTransmitBackend = MutableStateFlow(IrTransmitBackend.AUTO)
+    val irTransmitBackend: StateFlow<IrTransmitBackend> = _irTransmitBackend.asStateFlow()
+    internal val _irLoopMode = MutableStateFlow(false)
+    val irLoopMode: StateFlow<Boolean> = _irLoopMode.asStateFlow()
+    internal val _irActiveLoopSignalId = MutableStateFlow<String?>(null)
+    val irActiveLoopSignalId: StateFlow<String?> = _irActiveLoopSignalId.asStateFlow()
+    internal val _irLoopIntervalMs = MutableStateFlow(250)
+    val irLoopIntervalMs: StateFlow<Int> = _irLoopIntervalMs.asStateFlow()
+    internal val _irPendingCapture = MutableStateFlow<IrReceivedSignal?>(null)
+    val irPendingCapture: StateFlow<IrReceivedSignal?> = _irPendingCapture.asStateFlow()
+    internal val _irLearnedButtons = MutableStateFlow<List<IrLearnedButton>>(emptyList())
+    val irLearnedButtons: StateFlow<List<IrLearnedButton>> = _irLearnedButtons.asStateFlow()
+    internal val _irNextButtonNumber = MutableStateFlow(1)
+    val irNextButtonNumber: StateFlow<Int> = _irNextButtonNumber.asStateFlow()
+    internal val _irJammerState = MutableStateFlow(IrJammerUiState())
+    val irJammerState: StateFlow<IrJammerUiState> = _irJammerState.asStateFlow()
+    internal val _irSavingReceivedRemote = MutableStateFlow(false)
+    val irSavingReceivedRemote: StateFlow<Boolean> = _irSavingReceivedRemote.asStateFlow()
+    internal val _irFinderCategory = MutableStateFlow("")
+    val irFinderCategory: StateFlow<String> = _irFinderCategory.asStateFlow()
+    internal val _irFinderBrand = MutableStateFlow("All brands")
+    val irFinderBrand: StateFlow<String> = _irFinderBrand.asStateFlow()
+    internal var lastIrCapturePattern: List<Int>? = null
+    internal var lastIrCaptureAtMs: Long = 0L
+    internal val _irSearchState = MutableStateFlow(IrSearchUiState())
+    val irSearchState: StateFlow<IrSearchUiState> = _irSearchState.asStateFlow()
+    internal val _irCommonButtonsState = MutableStateFlow(IrCommonButtonsState())
+    val irCommonButtonsState: StateFlow<IrCommonButtonsState> =
+        _irCommonButtonsState.asStateFlow()
+    internal val irCommonButtonCache = mutableMapOf<String, List<IrCommonButton>>()
+    internal val irDatabaseMetadataStore = IrDatabaseMetadataStore(File(app.filesDir, "ir"))
+    internal val irDatabaseDownloader = IrDatabaseDownloader(File(app.cacheDir, "ir_database"))
+    internal val irZipExtractor = IrZipExtractor(app.contentResolver)
+    internal val _irDatabaseState = MutableStateFlow(IrDatabaseUiState())
+    val irDatabaseState: StateFlow<IrDatabaseUiState> = _irDatabaseState.asStateFlow()
+    internal val _irDatabaseMetadata = MutableStateFlow<IrDatabaseMetadata?>(null)
+    val irDatabaseMetadata: StateFlow<IrDatabaseMetadata?> =
+        _irDatabaseMetadata.asStateFlow()
+    internal var irTransmitJob: Job? = null
+    internal var irSearchJob: Job? = null
+    internal var irDatabaseJob: Job? = null
+    internal var irJammerJob: Job? = null
+    internal var lastIrSearchNotificationState: IrSearchRunState = IrSearchRunState.IDLE
 
     internal val _requiresOuiDatabase = MutableStateFlow(false)
     val requiresOuiDatabase: StateFlow<Boolean> = _requiresOuiDatabase.asStateFlow()
@@ -426,6 +525,9 @@ class MainViewModel(internal val app: Application) {
 
     internal val _sniffPacketCount = MutableStateFlow(0L)
     val sniffPacketCount: StateFlow<Long> = _sniffPacketCount.asStateFlow()
+
+    internal val _sniffCaptureBytes = MutableStateFlow(0L)
+    val sniffCaptureBytes: StateFlow<Long> = _sniffCaptureBytes.asStateFlow()
 
     internal val _sniffHandshake = MutableStateFlow(EapolHandshake())
     val sniffHandshake: StateFlow<EapolHandshake> = _sniffHandshake.asStateFlow()
@@ -708,6 +810,9 @@ class MainViewModel(internal val app: Application) {
     internal val _ld2450 = MutableStateFlow(Ld2450UiState())
     val ld2450: StateFlow<Ld2450UiState> = _ld2450.asStateFlow()
 
+    internal val _rfid = MutableStateFlow(RfidUiState())
+    val rfid: StateFlow<RfidUiState> = _rfid.asStateFlow()
+
     internal val _bleAdvertising = MutableStateFlow(false)
     val bleAdvertising: StateFlow<Boolean> = _bleAdvertising.asStateFlow()
 
@@ -875,12 +980,18 @@ class MainViewModel(internal val app: Application) {
 
     init {
         initSafely("exportDirectory") { loadExportDirectory() }
+        initSafely("wifiCaptureDirectory") { loadWifiCaptureDirectory() }
         initSafely("beaconLists") { this.loadBeaconListsImpl() }
         initSafely("ouiRules") { this.loadOuiRulesImpl() }
         initSafely("ouiDatabase") { this.loadOuiDatabaseImpl() }
         initSafely("duckyScripts") { this.loadDuckyScriptsImpl() }
         initSafely("history") { loadHistory() }
+        initSafely("rfidHistory") { this.loadRfidHistoryImpl() }
         initSafely("bssidGeolocationHistory") { this.loadBssidGeolocationHistoryImpl() }
+        initSafely("irLibrary") { this.loadIrLibraryImpl() }
+        initSafely("irPreferences") { this.loadIrPreferencesImpl() }
+        initSafely("irCapabilities") { this.refreshIrCapabilitiesImpl() }
+        initSafely("irSearchNotifications") { this.observeIrSearchNotificationsImpl() }
         initSafely("credentialSessions") { this.loadCredentialSessionsImpl() }
         initSafely("autoHandshakeSessions") { this.loadAutoHandshakeSessionsImpl() }
         initSafely("meshCredentials") { this.refreshMeshGlobalCredentialsImpl() }
@@ -965,6 +1076,66 @@ class MainViewModel(internal val app: Application) {
         this.deleteBssidGeolocationHistoryImpl(bssid)
     fun clearBssidGeolocationHistory() = this.clearBssidGeolocationHistoryImpl()
     fun clearBssidGeolocation() = this.clearBssidGeolocationImpl()
+    fun setBssidNearbyApsEnabled(enabled: Boolean) =
+        this.setBssidNearbyApsEnabledImpl(enabled)
+
+    fun importIrFile(uri: Uri) = this.importIrFileImpl(uri)
+    fun refreshIrLibrary() = this.rescanIrLibraryImpl()
+    fun openIrRemote(id: String) = this.openIrRemoteImpl(id)
+    fun closeIrRemote() = this.closeIrRemoteImpl()
+    fun toggleIrFavorite(id: String) = this.toggleIrFavoriteImpl(id)
+    fun deleteIrRemote(id: String) = this.deleteIrRemoteImpl(id)
+    fun sendIrSignal(signal: IrSignal) = this.sendIrSignalImpl(signal)
+    fun toggleIrSignal(signal: IrSignal) = this.toggleIrSignalImpl(signal)
+    fun setIrLoopMode(enabled: Boolean) = this.setIrLoopModeImpl(enabled)
+    fun setIrTransmitBackend(backend: IrTransmitBackend) =
+        this.setIrTransmitBackendImpl(backend)
+    fun setIrLoopIntervalMs(intervalMs: Int) = this.setIrLoopIntervalMsImpl(intervalMs)
+    fun stopIrTransmission() = this.stopIrTransmissionImpl()
+    fun prepareIrCommonButtons(category: String, brand: String, minRemotes: Int) =
+        this.prepareIrCommonButtonsImpl(category, brand, minRemotes)
+    fun refreshIrCommonButtons(category: String, brand: String, minRemotes: Int) =
+        this.refreshIrCommonButtonsImpl(category, brand, minRemotes)
+    fun refreshIrEsp32Status() = this.refreshIrEsp32StatusImpl()
+    fun setIrEsp32Pins(txGpio: Int, rxGpio: Int) = this.setIrEsp32PinsImpl(txGpio, rxGpio)
+    fun startIrEsp32Rx() = this.startIrEsp32RxImpl()
+    fun stopIrEsp32Rx() = this.stopIrEsp32RxImpl()
+    fun savePendingIrButton(name: String) = this.savePendingIrButtonImpl(name)
+    fun discardPendingIrButton() = this.discardPendingIrButtonImpl()
+    fun replayPendingIrButton() = this.replayPendingIrButtonImpl()
+    fun deleteIrLearnedButton(id: String) = this.deleteIrLearnedButtonImpl(id)
+    fun renameIrLearnedButton(id: String, name: String) =
+        this.renameIrLearnedButtonImpl(id, name)
+    fun replayIrLearnedButton(id: String) = this.replayIrLearnedButtonImpl(id)
+    fun clearIrLearnedButtons() = this.clearIrLearnedButtonsImpl()
+    fun saveIrLearnedRemote(remoteName: String) = this.saveIrLearnedRemoteImpl(remoteName)
+    fun removeIrSearchMarkedResult(remoteId: String, buttonName: String) =
+        this.removeIrSearchMarkedResultImpl(remoteId, buttonName)
+    fun setIrFinderSelection(category: String, brand: String) =
+        this.setIrFinderSelectionImpl(category, brand)
+    fun startIrJammer(durationMs: Int) = this.startIrJammerImpl(durationMs)
+    fun stopIrJammer() = this.stopIrJammerImpl()
+    fun downloadIrDatabase() = this.downloadIrDatabaseImpl()
+    fun retryIrDatabaseOperation() = this.retryIrDatabaseOperationImpl()
+    fun cancelIrDatabaseOperation() = this.cancelIrDatabaseOperationImpl()
+    fun importIrZip(uri: Uri) = this.importIrZipImpl(uri)
+    fun deleteIrDatabase() = this.deleteIrDatabaseImpl()
+    fun startIrSearch(
+        category: String,
+        brand: String,
+        selectedButtons: List<String>,
+        intervalMs: Int,
+    ) = this.startIrSearchImpl(category, brand, selectedButtons, intervalMs)
+    fun pauseIrSearch() = this.pauseIrSearchImpl()
+    fun resumeIrSearch() = this.resumeIrSearchImpl()
+    fun previousIrSearch() = this.previousIrSearchImpl()
+    fun nextIrSearch() = this.nextIrSearchImpl()
+    fun manualSendIrSearch() = this.manualSendIrSearchImpl()
+    fun toggleIrSearchLoop() = this.toggleIrSearchLoopImpl()
+    fun stopIrSearch() = this.stopIrSearchImpl()
+    fun markIrSearchFound() = this.markIrSearchFoundImpl()
+    fun refreshIrCapabilities() = this.refreshIrCapabilitiesImpl()
+    fun clearIrMessages() = this.clearIrMessagesImpl()
 
     fun clearMacLookup() {
         _macLookupResult.value = null
@@ -1082,6 +1253,30 @@ class MainViewModel(internal val app: Application) {
         _exportDirectory.value = uri
         _exportDirectoryName.value = displayNameForTreeUri(uri)
         ensureRootStructure(uri)
+    }
+
+    fun setWifiCaptureDirectory(uri: Uri?) {
+        if (uri == null) {
+            _wifiCaptureDirectory.value = null
+            _wifiCaptureDirectoryName.value = null
+            preferences.edit().remove(PREF_WIFI_CAPTURE_DIRECTORY).apply()
+            appendLog("WiFi capture output reset to the global NRSuite root.")
+            return
+        }
+        val resolver = app.contentResolver
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching { resolver.takePersistableUriPermission(uri, flags) }
+        _wifiCaptureDirectory.value = uri
+        _wifiCaptureDirectoryName.value = displayNameForTreeUri(uri)
+        preferences.edit().putString(PREF_WIFI_CAPTURE_DIRECTORY, uri.toString()).apply()
+        appendLog("WiFi capture output: ${_wifiCaptureDirectoryName.value}")
+    }
+
+    private fun loadWifiCaptureDirectory() {
+        val stored = preferences.getString(PREF_WIFI_CAPTURE_DIRECTORY, null) ?: return
+        val uri = runCatching { Uri.parse(stored) }.getOrNull() ?: return
+        _wifiCaptureDirectory.value = uri
+        _wifiCaptureDirectoryName.value = displayNameForTreeUri(uri)
     }
 
     fun refreshDevices() = this.refreshDevicesImpl()
@@ -1220,6 +1415,8 @@ class MainViewModel(internal val app: Application) {
     fun startLd2450() = this.startLd2450Impl()
     fun stopLd2450() = this.stopLd2450Impl()
     fun refreshLd2450() = this.refreshLd2450Impl()
+    fun setLd2450Pins(rxGpio: Int, txGpio: Int) =
+        this.setLd2450PinsImpl(rxGpio, txGpio)
     fun setLd2450MaxRange(valueCm: Int) = this.setLd2450MaxRangeImpl(valueCm)
     fun setLd2450ZoneAlert(enabled: Boolean) = this.setLd2450ZoneAlertImpl(enabled)
     fun setLd2450MeshBroadcast(enabled: Boolean) = this.setLd2450MeshBroadcastImpl(enabled)
@@ -1228,6 +1425,14 @@ class MainViewModel(internal val app: Application) {
     fun setLd2450SleepDuration(valueMs: Int) = this.setLd2450SleepDurationImpl(valueMs)
     fun setLd2450LimitDotCount(enabled: Boolean) = this.setLd2450LimitDotCountImpl(enabled)
     fun setLd2450MaxDots(value: Int) = this.setLd2450MaxDotsImpl(value)
+
+    fun refreshRfidStatus() = this.refreshRfidStatusImpl()
+    fun saveRfidConfig(sdaGpio: Int, sclGpio: Int) =
+        this.saveRfidConfigImpl(sdaGpio, sclGpio)
+    fun startRfidScan() = this.startRfidScanImpl()
+    fun stopRfidScan() = this.stopRfidScanImpl()
+    fun clearRfidHistory() = this.clearRfidHistoryImpl()
+    fun handleRfidDisconnected() = this.handleRfidDisconnectedImpl()
 
     fun setAutoUpdateCheck(enabled: Boolean) = this.setAutoUpdateCheckImpl(enabled)
     fun checkForUpdates(force: Boolean = false) = this.checkForUpdatesImpl(force)
@@ -1301,8 +1506,11 @@ class MainViewModel(internal val app: Application) {
         bleStatusJob?.cancel()
         bleStatusJob = null
 
+        _scanning.value = false
         _beaconRunning.value = false
         _portalRunning.value = false
+        _portalHtmlUploading.value = false
+        _evilTwinHtmlUploading.value = false
         _sniffing.value = false
         _deauthRunning.value = false
         _deauthDetectorRunning.value = false
@@ -1337,6 +1545,17 @@ class MainViewModel(internal val app: Application) {
                 targetCount = 0,
             )
         }
+        _rfid.update {
+            it.copy(
+                connected = false,
+                scanning = false,
+                starting = false,
+                stopping = false,
+                configSaving = false,
+            )
+        }
+        _storageLoading.value = false
+        _badUsbUploading.value = false
         _bleScanStarting.value = false
         _bleScanRunning.value = false
         _bleScanOwner.value = null
@@ -1708,6 +1927,7 @@ class MainViewModel(internal val app: Application) {
                 autoHandshake.uiState.value.phase != AutoHandshakePhase.STOPPING -> "NRuGochi active"
             _pinBruteforce.value.running -> "PIN bruteforce active"
             _ld2450.value.active -> "mmWave radar active"
+            _rfid.value.running -> "RFID scan active"
             _meshActive.value -> "Mesh active"
             _sniffing.value -> "Capture active"
             _beaconRunning.value -> "Beacon broadcast active"
@@ -1780,6 +2000,9 @@ class MainViewModel(internal val app: Application) {
                         is ConnectionState.Failed -> tracked?.opening = false
                         is ConnectionState.Disconnected -> {
                             tracked?.opening = false
+                            if (fingerprint == activeDeviceFingerprint) {
+                                this@MainViewModel.handleRfidDisconnectedImpl()
+                            }
                         }
                     }
                     if (state is ConnectionState.Disconnected &&
@@ -1990,6 +2213,16 @@ class MainViewModel(internal val app: Application) {
                         "ld2450_targets" -> this@MainViewModel.handleLd2450TargetsEvent(event)
                         "ld2450_presence" -> this@MainViewModel.handleLd2450PresenceEvent(event)
                         "ld2450_error" -> this@MainViewModel.handleLd2450ErrorEvent(event)
+                        "rfid_status" -> this@MainViewModel.handleRfidStatusEvent(event)
+                        "rfid_tag" -> this@MainViewModel.handleRfidTagEvent(event)
+                        "rfid_error" -> this@MainViewModel.handleRfidErrorEvent(event)
+                        "ir_rx" -> this@MainViewModel.handleIrRxEvent(event)
+                        "ir_error" -> {
+                            _irErrorMessage.value = event.optString("msg")
+                                .takeIf { it.isNotBlank() }
+                                ?: "ESP32 IR error."
+                        }
+                        "ir_tx_done" -> Unit
                         "heartbeat" -> Unit
                     }
                 }
@@ -2266,6 +2499,7 @@ class MainViewModel(internal val app: Application) {
     companion object {
         private const val PREFERENCES_NAME = "nrsuite"
         private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
+        private const val PREF_WIFI_CAPTURE_DIRECTORY = "wifi_capture_directory_uri"
         private const val PREF_HISTORY = "session_history"
         private const val PREF_RECENT_MODULES = "recent_modules"
         private const val DISCONNECT_TEARDOWN_WAIT_MS = 8_000L

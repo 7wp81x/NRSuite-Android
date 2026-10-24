@@ -65,7 +65,6 @@ fun ModuleCard(
     val attentionLabel = statusLabel?.takeIf {
         it in setOf("Firmware required", "Not supported", "OUI DB required", "Unavailable")
     }
-    val deviceNeededLabel = statusLabel?.takeIf { it == "Device needed" }
 
     Card(
         modifier = modifier
@@ -133,34 +132,6 @@ fun ModuleCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
-                if (module.radio.isNotBlank() || deviceNeededLabel != null) {
-                    Spacer(Modifier.size(5.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (module.radio.isNotBlank()) {
-                            Text(
-                                text = module.radio,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = NrOnSurfaceVariant,
-                                modifier = Modifier
-                                    .border(0.5.dp, NrOutline, RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                            )
-                        }
-                        if (deviceNeededLabel != null) {
-                            if (module.radio.isNotBlank()) {
-                                Spacer(Modifier.width(6.dp))
-                            }
-                            Text(
-                                text = deviceNeededLabel,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = NrOnSurfaceVariant,
-                                modifier = Modifier
-                                    .border(0.5.dp, NrOutline, RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                            )
-                        }
-                    }
-                }
             }
 
             if (module.isRunning) {

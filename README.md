@@ -2,11 +2,33 @@
 
 # NRSuite
 
-NRSuite is an Android companion app paired with custom ESP32 firmware, built to bring Wi-Fi and BLE security research tooling into a fast, portable phone-based workflow - no laptop required.
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
+[![Platform: Android](https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84?logo=android&logoColor=white)](#requirements)
+[![Firmware: ESP32](https://img.shields.io/badge/firmware-ESP32-E7352C?logo=espressif&logoColor=white)](https://github.com/7wp81x/nrsuite-firmware)
+[![Status: Beta](https://img.shields.io/badge/status-beta-yellow.svg)](../../releases)
+[![Discord](https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/nnU9QSX5UZ)
 
-It connects to any ESP32 dev board flashed with NRSuite firmware over USB-OTG (serial), and drives it as a Wi-Fi/BLE offense and defense platform.
+**NRSuite turns a phone and a cheap ESP32 board into a portable Wi-Fi/BLE security research platform** - no laptop required.
+
+Install the Android app, flash an ESP32 over USB-OTG with NRSuite firmware, and the app drives it as a combined offense/defense toolkit: Wi-Fi recon and attack modules, passive threat detection, BLE tooling, IR, BadUSB/HID, and more - all from a single pocketable setup.
 
 > **Authorized use only.** NRSuite is for security research and testing on networks and devices you own or are explicitly authorized to test. See [LEGAL.md](./LEGAL.md).
+
+---
+
+## Quick Start
+
+```sh
+# 1. Clone and build the app
+git clone https://github.com/7wp81x/nrsuite-android.git
+cd nrsuite-android
+./gradlew assembleDebug
+
+# 2. Flash an ESP32 with NRSuite firmware (in-app flasher, or see nrsuite-firmware)
+# 3. Connect ESP32 <-> phone via USB-OTG, open the app, grant USB permission
+```
+
+Prefer not to build from source? Grab the latest signed [prebuilt APK](../../releases) instead - see [Installation](#installation).
 
 ---
 
@@ -22,6 +44,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 
 ## Table of Contents
 
+- [Quick Start](#quick-start)
 - [Community](#community)
 - [Features](#features)
 - [Installation](#installation)
@@ -34,7 +57,9 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 - [Contributing](#contributing)
 - [Related Repos](#related-repos)
 - [Versioning](#versioning--compatibility)
+- [Security](#security)
 - [License](#license)
+- [Disclaimer](#disclaimer)
 
 ---
 
@@ -65,6 +90,18 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 - [ ] **Karma/MANA Detector**
 - [ ] **Unauthorized RFID Reader Detector**
 - [ ] **Jam Detector** (detection only - see [FEATURES.md](./FEATURES.md#explicitly-out-of-scope))
+
+</details>
+
+<details>
+<summary><strong>IR</strong></summary>
+
+- [x] **IR Remotes** - Flipper `.ir` import, Flipper-IRDB download/update, local library, favorites, search, categories, brands, and loop mode
+- [x] **IR Receiver** - ESP32 RMT raw capture, pending capture naming, replay, learned-button storage, and `.ir` export
+- [x] **IR Finder** - category/brand targeting, common-button selection, auto-step, loop, pause/resume, previous/next, manual send, and saved results
+- [x] **IR Jammer** - supervised timed/unlimited modes, authorization confirmation, wake-lock, and automatic stop
+- [x] **IR Configuration** - category-level Phone/ESP32/Auto backend, ESP32 TX/RX GPIO selection, loop interval, and IRDB management
+- [x] **Phone and ESP32 IR TX** - shared encoded signal path with dynamic backend selection
 
 </details>
 
@@ -120,28 +157,36 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 
 ### Visible but not yet functional
 
-The following modules appear in the app as disabled ("Unavailable") placeholder cards, reserving their place in the catalog ahead of firmware support:
+The following modules appear in the app as disabled ("Unavailable") placeholder cards, reserving their place in the catalog ahead of hardware support:
 
-- [ ] **IR** (infrared transmit/receive)
 - [ ] **RF** (Sub-GHz)
-- [ ] **RFID/NFC**
+- [ ] **RFID/NFC** - PN532 code is retained but hidden/disabled pending reliable hardware validation
 
 ### Planned
 
 For a full status and roadmap breakdown across every phase, see [FEATURES.md](./FEATURES.md).
 
 <details>
-<summary><strong>Mesh (ESP-NOW) - Planned</strong></summary>
+<summary><strong>Mesh (ESP-NOW) - Experimental</strong></summary>
 
-- [ ] **Shared Group Key Provisioning**
-- [ ] **Dynamic Master Election**
-- [ ] **Client Idle/Standby Mode**
-- [ ] **Encrypted ESP-NOW Transport**
-- [ ] **Activation Handshake**
-- [ ] **Session Locking**
-- [ ] **Heartbeat/Auto-Timeout**
-- [ ] **Distributed Sensor Reporting**
-- [ ] **Triangulation Engine**
+> Mesh code from the merged mesh branches is present but remains experimental and is not part of the non-mesh release acceptance matrix.
+
+- [x] **Shared Group Key Provisioning**
+- [x] **Dynamic Master Election**
+- [x] **Client Idle/Standby Mode**
+- [x] **Encrypted ESP-NOW Transport**
+- [x] **Activation Handshake**
+- [x] **Session Locking**
+- [x] **Heartbeat/Auto-Timeout**
+- [x] **Peer snapshots, chip metadata, RSSI, and online state**
+- [x] **Configurable mesh channel `1..13` and recovery hopping**
+- [x] **Master-requested channel switching with ACK/commit flow**
+- [x] **Distributed node-health sensor reporting**
+- [x] **Distributed same-channel Deauth Detector reporting** - hardware-validated on S3 + S2
+- [ ] **Fixed/hop detector windows final hardware validation**
+- [ ] **Same-frame deauth correlation**
+- [ ] **Distributed Rogue AP evidence**
+- [ ] **Triangulation / RSSI locator**
 
 </details>
 
@@ -173,7 +218,6 @@ For a full status and roadmap breakdown across every phase, see [FEATURES.md](./
 <details>
 <summary><strong>Peripheral Radios - Planned</strong></summary>
 
-- [ ] **IR** - Capture/Replay, Universal Remote DB, TV-off brute-force
 - [ ] **Sub-GHz (CC1101)** - Scanner, Capture/Replay, Protocol Decoder
 - [ ] **nRF24** - RC/Device Scanner, MouseJack-style analysis, Packet Sniffer
 - [ ] **RFID/NFC** - Read, Emulate, Write/Clone, Access Control Analyzer
@@ -392,7 +436,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide: branching model, PR
 
 | App version | Firmware version | Protocol spec |
 |---|---|---|
-| v1.0.0-beta.2 | v1.0.0-beta.2 | v1.0 |
+| v1.0.0-beta.3 | v1.0.0-beta.3 | v1.0 (non-mesh); mesh protocol 1.1 is experimental |
 
 This table is updated with each release. Always check compatibility before mixing app and firmware versions.
 

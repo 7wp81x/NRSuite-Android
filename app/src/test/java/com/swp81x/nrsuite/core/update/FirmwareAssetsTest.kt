@@ -24,6 +24,7 @@ class FirmwareAssetsTest {
         assertEquals("ESP32-C3", firmwareChipFromAssetName("beta-nrsuite-esp32c3-v1.bin"))
         assertEquals("ESP32-S3", firmwareChipFromAssetName("nrsuite-esp32s3.bin"))
         assertEquals("ESP32-S2", firmwareChipFromAssetName("nrsuite-esp32-s2.bin"))
+        assertEquals("ESP32", firmwareChipFromAssetName("nrsuite-esp32classic.bin"))
         assertEquals("ESP32", firmwareChipFromAssetName("nrsuite-esp32-generic.bin"))
         assertEquals(null, firmwareChipFromAssetName("checksums.txt"))
     }
