@@ -185,6 +185,7 @@ internal fun SettingsScreen(
     firmwareManualRecovery: Boolean = false,
     onArmManualFirmwareRecovery: (targetChip: String) -> Unit = {},
     onFlashManualFirmwareNow: () -> Unit = {},
+    onFlashManualFirmwareWithReset: () -> Unit = {},
     onDisarmManualFirmwareRecovery: () -> Unit = {},
     firmwareReleases: List<ReleaseInfo> = emptyList(),
     firmwareAssetDownload: FirmwareAssetDownloadState = FirmwareAssetDownloadState.Idle,
@@ -786,8 +787,8 @@ internal fun SettingsScreen(
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "Hold BOOT, unplug/replug USB, release BOOT. " +
-                                    "The flash will start when the device appears.",
+                                text = "Hold BOOT, tap RESET (or unplug/replug while holding BOOT), " +
+                                    "then release BOOT. The no-reset flash starts when the device appears.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = NrOnSurfaceVariant,
                             )
@@ -805,6 +806,12 @@ internal fun SettingsScreen(
                                 ) {
                                     Text("Cancel")
                                 }
+                            }
+                            TextButton(
+                                onClick = onFlashManualFirmwareWithReset,
+                                enabled = !firmwareFlashing,
+                            ) {
+                                Text("Try automatic DTR/RTS reset instead")
                             }
                         }
                     }

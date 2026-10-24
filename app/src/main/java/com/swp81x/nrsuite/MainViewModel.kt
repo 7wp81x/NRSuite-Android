@@ -1449,6 +1449,7 @@ class MainViewModel(internal val app: Application) {
     fun armManualFirmwareRecovery(targetChip: String) =
         this.armManualFirmwareRecoveryImpl(targetChip)
     fun flashManualFirmwareNow() = this.flashManualFirmwareNowImpl()
+    fun flashManualFirmwareWithReset() = this.flashManualFirmwareWithResetImpl()
     fun disarmManualFirmwareRecovery() = this.disarmManualFirmwareRecoveryImpl()
     fun clearUpdateDownloads() = this.clearUpdateDownloadsImpl()
 

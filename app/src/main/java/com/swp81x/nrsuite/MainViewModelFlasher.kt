@@ -144,6 +144,33 @@ internal fun MainViewModel.flashManualFirmwareNowImpl() {
     )
 }
 
+internal fun MainViewModel.flashManualFirmwareWithResetImpl() {
+    if (_firmwareFlashUri.value == null) {
+        appendLog("No firmware image is selected for manual bootloader recovery.", level = LogLevel.ERROR)
+        return
+    }
+    if (_firmwareFlashing.value) return
+
+    val entry = _firmwareTargetDevice.value
+        ?.takeIf { usbManager.hasPermission(it.device) }
+        ?: _devices.value.firstOrNull { usbManager.hasPermission(it.device) }
+    if (entry == null) {
+        _firmwareFlashStatus.value =
+            "No flash target with USB permission. Reconnect the device, then retry."
+        return
+    }
+
+    _firmwareTargetDevice.value = entry
+    val chip = manualRecoveryTargetChip ?: "ESP32"
+    _firmwareManualRecovery.value = false
+    appendLog("Retrying with automatic DTR/RTS reset for $chip.", tag = "flasher")
+    startFirmwareFlashImpl(
+        targetChip = chip,
+        skipReset = false,
+        eraseBeforeFlash = false,
+    )
+}
+
 internal fun MainViewModel.tryManualFirmwareFlashOnAttachImpl() {
     if (!_firmwareManualRecovery.value) return
     val entry = _devices.value.firstOrNull { usbManager.hasPermission(it.device) }
@@ -241,15 +268,17 @@ internal fun MainViewModel.startFirmwareFlashImpl(
                     resetMode = resetMode,
                     eraseBeforeFlash = eraseBeforeFlash,
                     onStage = { stage -> _firmwareFlashStatus.value = stage },
-                ) { percent ->
-                    val written = (bytes.size.toLong() * percent / 100L).toInt()
-                    _firmwareFlashProgress.value = percent
-                    _firmwareFlashStatus.value = if (percent >= 100) {
-                        "Firmware written — rebooting device..."
-                    } else {
-                        "Writing... $percent%  (${written / 1024} / ${bytes.size / 1024} KB)"
-                    }
-                }
+                    onProgress = { percent ->
+                        val written = (bytes.size.toLong() * percent / 100L).toInt()
+                        _firmwareFlashProgress.value = percent
+                        _firmwareFlashStatus.value = if (percent >= 100) {
+                            "Firmware written — rebooting device..."
+                        } else {
+                            "Writing... $percent%  (${written / 1024} / ${bytes.size / 1024} KB)"
+                        }
+                    },
+                    onLog = { message -> appendLog(message, tag = "flasher") },
+                )
             }
 
             _firmwareFlashProgress.value = 100

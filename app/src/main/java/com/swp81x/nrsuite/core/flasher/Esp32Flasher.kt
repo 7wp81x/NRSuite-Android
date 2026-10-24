@@ -2,6 +2,7 @@ package com.swp81x.nrsuite.core.flasher
 
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.util.ArrayDeque
 import kotlin.math.max
 
 /**
@@ -32,6 +33,14 @@ class Esp32Flasher(
 
     private val decoder = SlipDecoder()
 
+    // A single USB read can contain more than one SLIP frame. Keep decoded
+    // frames queued instead of dropping every frame after the first one. Some
+    // ROM bootloaders send multiple SYNC replies, and losing a later frame can
+    // otherwise make the next command (notably SPI_ATTACH) time out.
+    private val pendingResponses = ArrayDeque<Response>()
+
+    private var diagnostic: (String) -> Unit = {}
+
     fun flash(
         firmware: ByteArray,
         offset: Int = 0,
@@ -39,15 +48,24 @@ class Esp32Flasher(
         eraseBeforeFlash: Boolean = false,
         onStage: (String) -> Unit = {},
         onProgress: (Int) -> Unit = {},
+        onLog: (String) -> Unit = {},
     ) {
         require(firmware.isNotEmpty()) { "Firmware image is empty" }
         require(offset >= 0) { "Flash offset must be >= 0" }
 
+        diagnostic = onLog
+        val openStarted = System.nanoTime()
         transport.open()
         try {
-            enterBootloader(resetMode)
+            log("Serial port opened in ${elapsedMs(openStarted)} ms; settling ${PORT_SETTLE_MS} ms.")
+            Thread.sleep(PORT_SETTLE_MS)
             resetInput()
-            sync()
+            log("Serial input flushed; connecting to ROM bootloader (mode=$resetMode).")
+
+            connectToRomBootloader(resetMode)
+            Thread.sleep(POST_SYNC_SETTLE_MS)
+
+            onStage("Configuring flash access...")
             flashSpiAttach()
 
             if (eraseBeforeFlash) {
@@ -71,6 +89,7 @@ class Esp32Flasher(
                 // than hanging silently on the first post-erase command.
                 onStage("Reconnecting after erase...")
                 sync()
+                Thread.sleep(POST_SYNC_SETTLE_MS)
             }
             onStage("Writing firmware...")
             flashBegin(firmware.size, offset)
@@ -93,23 +112,65 @@ class Esp32Flasher(
         }
     }
 
+    private fun connectToRomBootloader(mode: ResetMode) {
+        if (mode == ResetMode.NONE) {
+            log("Manual bootloader mode: skipping DTR/RTS reset and syncing as-is.")
+            sync()
+            return
+        }
+
+        var lastError: Throwable? = null
+        repeat(BOOTLOADER_RESET_ATTEMPTS) { attempt ->
+            resetInput()
+            log("Bootloader reset attempt ${attempt + 1}/$BOOTLOADER_RESET_ATTEMPTS (mode=$mode).")
+            enterBootloader(mode)
+            resetInput()
+
+            try {
+                sync()
+                return
+            } catch (t: Throwable) {
+                lastError = t
+                log("Sync after reset attempt ${attempt + 1} failed: ${t.message ?: t.javaClass.simpleName}")
+                Thread.sleep(RESET_RETRY_DELAY_MS)
+            }
+        }
+
+        throw IOException(
+            "Could not enter the ROM bootloader after $BOOTLOADER_RESET_ATTEMPTS reset attempts. " +
+                (lastError?.message ?: "No response from the device."),
+        )
+    }
+
     private fun enterBootloader(mode: ResetMode) {
         when (mode) {
             ResetMode.CLASSIC -> classicReset()
             ResetMode.USB_JTAG -> usbJtagSerialReset()
             ResetMode.NONE -> Unit
         }
-        Thread.sleep(120)
+        // Give the ROM time to finish its reset/boot log before looking for
+        // the SYNC response. Keep line states idle while we wait.
+        Thread.sleep(POST_RESET_DELAY_MS)
     }
 
     private fun classicReset() {
-        transport.setDtr(false)
-        transport.setRts(true)
-        Thread.sleep(100)
-        transport.setDtr(true)
+        // Matches esptool.py's ClassicReset sequence, with explicit idle
+        // line states at both ends so a failed attempt cannot leave the board
+        // held in reset or bootloader mode.
+        transport.setDtr(false) // IO0 = HIGH
         transport.setRts(false)
+        Thread.sleep(20)
+
+        transport.setDtr(false) // IO0 = HIGH
+        transport.setRts(true)  // EN = LOW, chip in reset
+        Thread.sleep(100)
+
+        transport.setDtr(true)  // IO0 = LOW
+        transport.setRts(false) // EN = HIGH, chip out of reset
         Thread.sleep(50)
-        transport.setDtr(false)
+
+        transport.setDtr(false) // IO0 = HIGH, done
+        transport.setRts(false)
     }
 
     private fun usbJtagSerialReset() {
@@ -128,25 +189,38 @@ class Esp32Flasher(
     }
 
     private fun resetInput() {
-        transport.flushInput()
+        runCatching { transport.flushInput() }
         decoder.reset()
+        pendingResponses.clear()
     }
 
     private fun sync() {
         var lastError: Throwable? = null
-        repeat(5) {
-            resetInput()
+        repeat(SYNC_ATTEMPTS) { attempt ->
+            log("ROM SYNC attempt ${attempt + 1}/$SYNC_ATTEMPTS...")
             try {
-                sendCommand(
+                val response = sendCommand(
                     op = OP_SYNC,
                     data = SYNC_PAYLOAD,
                     checksum = 0,
-                    timeoutMs = 1_200,
+                    timeoutMs = SYNC_TIMEOUT_MS,
                 )
+                log(
+                    "ROM SYNC ACK received (value=0x%08x, data=%d bytes)."
+                        .format(response.value, response.data.size),
+                )
+
+                // ESP ROM bootloaders can emit additional SYNC replies after
+                // the first ACK. Drain and discard them before issuing the
+                // first flash command so they cannot be mistaken for a later
+                // command response.
+                Thread.sleep(SYNC_DRAIN_MS)
+                resetInput()
                 return
             } catch (t: Throwable) {
                 lastError = t
-                Thread.sleep(100)
+                log("ROM SYNC attempt ${attempt + 1} failed: ${t.message ?: t.javaClass.simpleName}")
+                Thread.sleep(SYNC_RETRY_DELAY_MS)
             }
         }
         throw IOException(
@@ -156,11 +230,31 @@ class Esp32Flasher(
     }
 
     private fun flashSpiAttach() {
-        // hspi_arg = 0, followed by the ROM-only "is legacy" byte field.
-        checkCommand(
-            description = "enable SPI flash",
-            op = OP_SPI_ATTACH,
-            data = ByteArray(8),
+        var lastError: Throwable? = null
+        repeat(SPI_ATTACH_ATTEMPTS) { attempt ->
+            log(
+                "SPI attach attempt ${attempt + 1}/$SPI_ATTACH_ATTEMPTS " +
+                    "(timeout=${SPI_ATTACH_TIMEOUT_MS} ms)...",
+            )
+            try {
+                // hspi_arg = 0, followed by the ROM-only "is legacy" byte field.
+                checkCommand(
+                    description = "enable SPI flash",
+                    op = OP_SPI_ATTACH,
+                    data = ByteArray(8),
+                    timeoutMs = SPI_ATTACH_TIMEOUT_MS,
+                )
+                log("SPI flash access enabled.")
+                return
+            } catch (t: Throwable) {
+                lastError = t
+                log("SPI attach attempt ${attempt + 1} failed: ${t.message ?: t.javaClass.simpleName}")
+                Thread.sleep(SPI_ATTACH_RETRY_DELAY_MS)
+            }
+        }
+        throw IOException(
+            "Could not enable SPI flash after $SPI_ATTACH_ATTEMPTS attempts. " +
+                (lastError?.message ?: "No response from the ROM bootloader."),
         )
     }
 
@@ -292,6 +386,10 @@ class Esp32Flasher(
         checksum: Int,
         timeoutMs: Int,
     ): Response {
+        // Start each command from a clean RX state. This discards any late
+        // response from a previous retry and clears partially decoded SLIP.
+        resetInput()
+
         val packet = ByteArrayOutputStream(8 + data.size).apply {
             write(0x00)
             write(op)
@@ -300,34 +398,50 @@ class Esp32Flasher(
             write(data)
         }.toByteArray()
 
+        if (op != OP_FLASH_DATA) {
+            log("TX ROM op=0x%02x payload=%d bytes timeout=%d ms.".format(op, data.size, timeoutMs))
+        }
         transport.write(SlipCodec.encode(packet), WRITE_TIMEOUT_MS)
 
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
-            val remaining = (deadline - System.currentTimeMillis()).toInt().coerceAtLeast(1)
-            val response = readResponse(remaining)
-            if (response == null) {
-                continue
-            }
+        val deadline = nowMs() + timeoutMs
+        while (nowMs() < deadline) {
+            val remaining = (deadline - nowMs()).toInt().coerceAtLeast(1)
+            val response = readResponse(remaining) ?: continue
             if (response.op == op) {
+                if (op != OP_FLASH_DATA) {
+                    log("RX ROM op=0x%02x data=%d bytes.".format(response.op, response.data.size))
+                }
                 return response
             }
+            log(
+                "Ignoring out-of-order ROM response op=0x%02x while waiting for op=0x%02x."
+                    .format(response.op, op),
+            )
         }
         throw IOException("Timed out waiting for ROM response to op 0x%02x".format(op))
     }
 
     private fun readResponse(timeoutMs: Int): Response? {
-        val deadline = System.currentTimeMillis() + timeoutMs
+        pendingResponses.pollFirst()?.let { return it }
+
+        val deadline = nowMs() + timeoutMs
         val buffer = ByteArray(READ_BUFFER_SIZE)
-        while (System.currentTimeMillis() < deadline) {
-            val remaining = (deadline - System.currentTimeMillis()).toInt().coerceAtLeast(1)
+        while (nowMs() < deadline) {
+            val remaining = (deadline - nowMs()).toInt().coerceAtLeast(1)
             val readTimeout = remaining.coerceAtMost(MAX_READ_TIMEOUT_MS)
             val count = transport.read(buffer, readTimeout)
             if (count <= 0) {
                 continue
             }
+
+            // Queue every complete frame from this read. Returning from
+            // inside this loop would silently discard any additional frames
+            // that arrived in the same USB transfer.
             for (frame in decoder.feed(buffer.copyOf(count))) {
-                parseResponse(frame)?.let { return it }
+                parseResponse(frame)?.let { pendingResponses.addLast(it) }
+            }
+            if (pendingResponses.isNotEmpty()) {
+                return pendingResponses.removeFirst()
             }
         }
         return null
@@ -385,6 +499,14 @@ class Esp32Flasher(
         return value
     }
 
+    private fun nowMs(): Long = System.nanoTime() / 1_000_000L
+
+    private fun elapsedMs(startNanos: Long): Long = (System.nanoTime() - startNanos) / 1_000_000L
+
+    private fun log(message: String) {
+        runCatching { diagnostic(message) }
+    }
+
     companion object {
         private const val OP_FLASH_BEGIN = 0x02
         private const val OP_FLASH_DATA = 0x03
@@ -408,6 +530,19 @@ class Esp32Flasher(
         private const val ERASE_REGION_MIN_TIMEOUT_MS = 10_000
         private const val READ_BUFFER_SIZE = 4096
         private const val MAX_READ_TIMEOUT_MS = 250
+
+        private const val PORT_SETTLE_MS = 250L
+        private const val POST_RESET_DELAY_MS = 200L
+        private const val POST_SYNC_SETTLE_MS = 50L
+        private const val BOOTLOADER_RESET_ATTEMPTS = 3
+        private const val RESET_RETRY_DELAY_MS = 200L
+        private const val SYNC_ATTEMPTS = 5
+        private const val SYNC_TIMEOUT_MS = 2_000
+        private const val SYNC_RETRY_DELAY_MS = 100L
+        private const val SYNC_DRAIN_MS = 100L
+        private const val SPI_ATTACH_ATTEMPTS = 2
+        private const val SPI_ATTACH_TIMEOUT_MS = 15_000
+        private const val SPI_ATTACH_RETRY_DELAY_MS = 150L
 
         private val SYNC_PAYLOAD = byteArrayOf(0x07, 0x07, 0x12, 0x20) + ByteArray(32) { 0x55 }
     }
