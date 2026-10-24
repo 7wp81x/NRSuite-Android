@@ -147,7 +147,9 @@ object IrProtocolEncoder {
             oneFrame += 600
         }
         // Sony expects the frame to be transmitted at least three times.
-        oneFrame.removeLast()
+        // removeAt(lastIndex) avoids java.util.List.removeLast(), which requires
+        // API 35 and resolves through the platform method on newer Android lint.
+        oneFrame.removeAt(oneFrame.lastIndex)
         val used = oneFrame.sum()
         oneFrame += (45_000 - used).coerceAtLeast(0)
         return (oneFrame + oneFrame + oneFrame).toIntArray()
