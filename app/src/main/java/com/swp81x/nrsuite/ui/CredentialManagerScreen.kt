@@ -103,11 +103,6 @@ fun CredentialManagerScreen(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            StatusIndicator(
-                label = if (sessions.isEmpty()) "No saved sessions" else "${displayedSessions.size} of ${sessions.size} session(s)",
-                color = StatusNeutral,
-            )
-
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
@@ -142,31 +137,6 @@ fun CredentialManagerScreen(
                     onClick = { sourceFilter = CredentialSource.PORTAL },
                     label = "Portal",
                 )
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = NrSurface),
-                border = BorderStroke(0.5.dp, StatusAmber.copy(alpha = 0.5f)),
-                shape = RoundedCornerShape(12.dp),
-            ) {
-                Row(
-                    modifier = Modifier.padding(10.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = StatusAmber,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Authorized testing only. Passwords are stored app-privately and only correct attempts are saved.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                }
             }
 
             if (sessions.isEmpty()) {

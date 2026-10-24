@@ -8,6 +8,8 @@ import com.swp81x.nrsuite.core.credentials.CredentialStatus
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
 import com.swp81x.nrsuite.core.eapol.EapolParser
 import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.pcap.PcapWriter
 import com.swp81x.nrsuite.core.session.ConnectionState
@@ -110,8 +112,12 @@ internal fun MainViewModel.startPortalInternalImpl(ssid: String, channel: Int, t
         }
     }
 
+    val safeChannel = normalizeWifiChannel(channel)
+    if (!ensureWifiChannelAllowed(safeChannel, if (mode == "evil_twin") "Evil Twin" else "Captive Portal")) {
+        return
+    }
     _portalSsid.value = cleanSsid
-    _portalChannel.value = channel.coerceIn(1, 13)
+    _portalChannel.value = safeChannel
     _portalViews.value = 0
     _portalClients.value = 0
     _portalCapturedData.value = 0
@@ -120,13 +126,26 @@ internal fun MainViewModel.startPortalInternalImpl(ssid: String, channel: Int, t
     scope.launch {
         val args = JSONObject().apply {
             put("ssid", cleanSsid)
-            put("channel", channel.coerceIn(1, 13))
+            put("band", bandForWifiChannel(safeChannel).wireName)
+            put("channel", safeChannel)
             put("bssid", cleanBssid.ifBlank { "" })
         }
-        appendLog("Starting captive portal '$cleanSsid' on channel ${channel.coerceIn(1, 13)}...")
+        appendLog("Starting captive portal '$cleanSsid' on channel $safeChannel...")
         val response = activeSession.sendCommand("START_PORTAL", args, timeoutMs = 15_000)
         if (response?.optBoolean("ok") != true) {
-            appendLog("Failed to start portal: ${response?.optString("msg") ?: "timeout"}")
+            val errorCode = response?.optString("error").orEmpty()
+            val errorMessage = when (errorCode) {
+                "regulatory_channel_blocked" ->
+                    "Channel $safeChannel is not allowed in the current country. " +
+                        "Change the Wi-Fi regulatory country in Settings."
+                "softap_start_failed" ->
+                    "The access point failed to start on channel $safeChannel. " +
+                        "Try another allowed channel."
+                else -> response?.optString("msg")?.takeIf { it.isNotBlank() } ?: "timeout"
+            }
+            appendLog("Failed to start portal: $errorMessage")
+            portalLogImpl("Portal start failed: $errorMessage")
+            _toastMessage.value = errorMessage
             return@launch
         }
 

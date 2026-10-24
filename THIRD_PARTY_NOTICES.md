@@ -10,6 +10,46 @@ Notable bundled/runtime components include:
 - libusb (where bundled for native USB support) — GNU LGPL 2.1
 - Other Gradle dependencies retain the licenses declared by their respective
   upstream projects and published Maven metadata.
+- Firmware PN532 support uses Adafruit PN532 — BSD 3-Clause —
+  https://github.com/adafruit/Adafruit-PN532 — and Adafruit BusIO — MIT —
+  https://github.com/adafruit/Adafruit_BusIO
 
 When distributing an APK, retain this notice and all upstream license/notice
 files required by the corresponding dependencies.
+
+## Geolocation research references
+
+The independent BSSID geolocation client was informed by the publicly visible
+behavior and wire format documented by:
+
+- WaveDigger — GNU AGPL-3.0 — https://github.com/7wp81x/wavedigger
+- apple-corelocation-experiments — https://github.com/acheong08/apple-corelocation-experiments
+
+No WaveDigger or apple-corelocation-experiments source code is bundled here.
+The NRSuite implementation is a separate minimal Kotlin implementation.
+
+## Map rendering
+
+- Leaflet 1.9.4 — BSD 2-Clause — https://leafletjs.com/
+- OpenStreetMap tile imagery — © OpenStreetMap contributors, ODbL —
+  https://www.openstreetmap.org/copyright
+
+Leaflet is bundled under `app/src/main/assets/leaflet/`. Map tile usage must
+respect the selected tile provider's usage policy; the current prototype uses
+the public OpenStreetMap tile service.
+
+## IR protocol references
+
+The independent Kotlin `.ir` parser and protocol encoders were informed by
+publicly documented Flipper Zero IR protocol behavior and open-source IR
+transmitter implementations:
+
+- Flipper Zero firmware IR encoders/decoders — GPL-3.0 —
+  https://github.com/flipperdevices/flipperzero-firmware
+- android-ir-blaster IR protocol encoders — GPL-3.0 —
+  https://github.com/iodn/android-ir-blaster
+- Termux-IRBlaster — MIT — https://github.com/7wp81x/Termux-IRBlaster
+
+No application source code from these projects is bundled as a whole. NRSuite
+uses its own Kotlin parser/encoder implementation derived from the documented
+wire timing and field layouts.

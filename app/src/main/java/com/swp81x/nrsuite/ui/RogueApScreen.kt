@@ -87,42 +87,15 @@ fun RogueApScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp),
         ) {
-            if (ouiDatabaseStatus !is OuiDatabaseStatus.Ready) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(0.5.dp, StatusAmber),
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.WarningAmber,
-                            tint = StatusAmber,
-                            contentDescription = null,
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = "Vendor database not downloaded",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                text = "Vendor-based signals (unrecognized hardware, vendor mismatch) " +
-                                    "will be unavailable until this is downloaded.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = NrOnSurfaceVariant,
-                            )
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        TextButton(onClick = onDownloadOuiDatabase) {
-                            Text("Download")
-                        }
-                    }
-                }
+            if (ouiDatabaseStatus is OuiDatabaseStatus.NotDownloaded ||
+                ouiDatabaseStatus is OuiDatabaseStatus.Downloading ||
+                ouiDatabaseStatus is OuiDatabaseStatus.Error
+            ) {
+                Text(
+                    text = "Vendor database unavailable — OUI-based signals will be limited.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusAmber,
+                )
                 Spacer(Modifier.height(10.dp))
             }
 

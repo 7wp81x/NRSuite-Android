@@ -9,18 +9,22 @@ This document lists all current and planned features across the NRSuite ecosyste
 
 ## 1. Offense Modules (Wi-Fi / BLE)
 
-- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags
+- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; screen-local Auto/2.4/5 GHz filter
+- [x] **Wi-Fi regulatory country** - C5-only Settings control for the persisted country/channel mask
 - [x] **Beacon Spam** - Broadcast custom or hidden SSIDs
-- [x] **Deauthentication** - Deauth frame injection
+- [x] **Deauthentication** - Finite burst or stoppable duration-based loop mode with mutually exclusive count/duration controls
 - [x] **Evil Twin** - Rogue AP with captive portal
 - [x] **Captive Portal** - Credential harvesting UI
-- [x] **Packet Sniffer** - Monitor-mode capture, pcap export
+- [x] **Packet Sniffer** - Monitor-mode capture, pcap export, per-module Auto/2.4/5 GHz hopping, target-channel-aware fixed mode, and post-start deauth assist with periodic retries
 - [x] **WPA Handshake Capture/Crack** - Offline dictionary cracking
+- [x] **Nrugochi** - Pwnagotchi-style channel-density hunting: RECON -> INTERACT, multi-AP authorized deauth (8 frames/AP default with requested/sent/failed telemetry), all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` files, mood/status UI, and today/total stats (hardware validation pending)
 - [x] **BLE HID** - Bluetooth LE keyboard/mouse HID and DuckyScript payloads
-- [x] **BLE Scanner** - Device discovery with names, RSSI, manufacturer data, and service badges
-- [x] **BLE GATT Profile** - Read-only GATT service/characteristic enumeration with integrated BLE target scanner
+- [x] **BLE Scanner** - Device discovery with names, RSSI, manufacturer data, and service badges; module-owned scan lifecycle
+- [x] **BLE GATT Profile** - Read-only GATT service/characteristic enumeration with integrated BLE target scanner and module-owned scan controls
 - [ ] **FastPair Model ID** - Map FastPair model IDs to known device names/types
 - [x] **BadUSB** - HID injection via USB
+- [x] **PIN Bruteforce** - Supervised native-HID range/wordlist tester; one-shot boot-arm like BadUSB; max-attempt cap, progress/ETA, configurable typing/start delays, saved sessions
+- [x] **BLE HID PIN Bruteforce** - Hidden/experimental BLE-HID range/wordlist tester retained for future use; lock-screen use is unsupported
 - [x] **Credential Manager** - Local storage of harvested creds
 
 ## 2. Defense Modules
@@ -34,12 +38,17 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **Unauthorized RFID Reader Detector** - Detect unattended/skimmer-style RF field polling nearby
 - [ ] **Jam Detector (Sub-GHz / 2.4GHz)** - Wideband noise-floor anomaly detection (detection only - see Legal notes)
 
-## 3. Tools & Firmware Utilities
+## 3. Sensor Modules
 
-- [x] **MAC Lookup** - Offline OUI/vendor lookup for any MAC address; also backs vendor heuristics in defense modules
-- [x] **Serial Monitor** - Raw USB serial monitor for any ESP32 or USB-UART firmware, independent of the NRSuite wire protocol
+- [x] **mmWave Radar (LD2450)** - 120° fan with green blurred dots, heartbeat scan/sleep mode, position-based dot persistence, configurable/unlimited dot cap, scan wave animation, max-range display control, no-data/parse-error/zero-target states; zone config and mesh broadcast intentionally disabled on feature/non-mesh
 
-## 4. Mesh Network (ESP-NOW)
+## 4. Tools & Firmware Utilities
+
+- [x] **ESP32 Flasher** - Merged firmware flashing for ESP32, S2, S3, C3, and C5; release-asset matching and target-chip validation
+- [x] **BSSID Geolocation** - Offline OUI/vendor lookup combined with approximate Wi-Fi AP location, persistent `Overview / Lookup History` tabs, retry/cache fallback, embedded Leaflet map, and external Google Maps link
+- [x] **Serial Monitor** - Raw USB serial monitor with reliable clipboard copy, bounded log retention, and visible save/export success or failure feedback
+
+## 5. Mesh Network (ESP-NOW)
 
 - [x] **Shared Group Key Provisioning** - HKDF-derived auth/transport keys provisioned over USB and stored in NVS
 - [x] **Dynamic Master Election** - USB-authenticated candidate election with self-demotion
@@ -52,7 +61,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **Distributed Detector Reporting** - Deauth/Rogue AP reports and same-frame correlation (Phase 3B+)
 - [ ] **Triangulation Engine (app-side)** - Log-distance path-loss + trilateration from 3+ node RSSI reports
 
-## 5. Mesh Chat
+## 6. Mesh Chat
 
 - [ ] **ESP-NOW Chat Transport** - Reuses mesh group-key infra
 - [ ] **Multi-hop Relay** - Flood-fill with message-ID dedup
@@ -62,7 +71,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **Quick/Canned Messages** - Preset messages for fast field use
 - [ ] **Chat/Sensor Traffic Prioritization** - Alerts pre-empt chat traffic on shared channel
 
-## 6. Remote Camera Node (ESP32-CAM)
+## 7. Remote Camera Node (ESP32-CAM)
 
 - [ ] **Live Feed Streaming** - Separate Wi-Fi link (not over ESP-NOW - bandwidth)
 - [ ] **Snapshot-on-Trigger** - Captures still on detection events from other modules
@@ -71,7 +80,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **SD Card Buffering** - Local storage if master link is down
 - [ ] **Mesh Manager Integration** - Camera nodes shown alongside sensor/chat nodes
 
-## 7. Long-Range Relay (LoRa)
+## 8. Long-Range Relay (LoRa)
 
 - [ ] **LoRa Node-to-Node Link** - SX1276/78, kilometers of range, requires soldering
 - [ ] **LoRa Chat Bridge** - Bridges distant node clusters into mesh chat
@@ -79,7 +88,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **Long-baseline Locator Beacon** - Improves triangulation geometry via wider node spacing
 - [ ] **Multi-hop Routing** - Beyond simple flood-relay, given larger distances/node counts
 
-## 8. Peripheral Radios (planned expansion modules)
+## 9. Peripheral Radios (planned expansion modules)
 
 - [ ] **IR** - Capture/Replay - IR LED + receiver, cheap GPIO add-on
 - [ ] **IR** - Universal Remote DB - Common protocol library (NEC, SIRC, RC5)
@@ -95,7 +104,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **RFID/NFC** - Write/Clone - To blank/magic tags
 - [ ] **RFID/NFC** - Access Control Analyzer - Identify tag type + known weaknesses (e.g., MIFARE Classic)
 
-## 9. System / USB
+## 10. System / USB
 
 - [x] **Multi-device USB sessions** - Multiple simultaneous USB serial sessions with per-device permission, connect/disconnect, and reconnect state. User-initiated disconnect uses idle-session reuse for S2 CDC stability.
 - [x] **BadUSB device picker** - Select which connected device receives BadUSB independent of the primary Wireless/Flasher session.

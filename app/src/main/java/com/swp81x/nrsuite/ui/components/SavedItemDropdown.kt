@@ -36,11 +36,14 @@ fun SavedItemDropdown(
     names: List<String>,
     enabled: Boolean = true,
     itemSupportingText: (String) -> String? = { null },
+    sortNames: Boolean = true,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val sortedNames = remember(names) { names.sorted() }
+    val sortedNames = remember(names, sortNames) {
+        if (sortNames) names.sorted() else names
+    }
     val hasItems = sortedNames.isNotEmpty()
 
     Box(modifier = modifier.fillMaxWidth()) {

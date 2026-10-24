@@ -7,6 +7,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.platform.LocalContext
 import com.swp81x.nrsuite.ui.components.SavedItemDropdown
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -44,6 +45,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +56,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.WifiChannelStepper
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
@@ -73,6 +76,7 @@ fun BeaconScreen(
     onDeleteList: (String) -> Unit,
     onStart: (List<String>, Int, Int, Boolean, Boolean) -> Unit,
     onStop: () -> Unit,
+    allowedChannels: List<Int> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by remember { mutableStateOf(true) }
@@ -86,6 +90,11 @@ fun BeaconScreen(
     var newListName by remember { mutableStateOf("") }
     var selectedListName by remember { mutableStateOf<String?>(null) }
     var pendingDeleteList by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(running) {
+        if (running) configExpanded = false
+    }
+
     val context = LocalContext.current
     val importPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -118,6 +127,7 @@ fun BeaconScreen(
                 expanded = configExpanded,
                 ssidsText = ssidsText,
                 channel = channel,
+                allowedChannels = allowedChannels,
                 intervalMs = intervalMs,
                 hidden = hidden,
                 randomBssid = randomBssid,
@@ -131,7 +141,13 @@ fun BeaconScreen(
                 onDeleteRequest = { pendingDeleteList = it },
                 onImportFile = { importPicker.launch(arrayOf("text/plain", "*/*")) },
                 onSsidsChange = { ssidsText = it },
-                onChannelChange = { channel = it.coerceIn(1, 13) },
+                onChannelChange = {
+                    channel = normalizeWifiChannel(
+                        it,
+                        allowedChannels.ifEmpty { com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS },
+                        fallback = channel,
+                    )
+                },
                 onIntervalChange = { intervalMs = it.coerceIn(10, 2000) },
                 onHiddenChange = { hidden = it },
                 onRandomBssidChange = { randomBssid = it },
@@ -267,6 +283,7 @@ private fun ConfigZone(
     expanded: Boolean,
     ssidsText: String,
     channel: Int,
+    allowedChannels: List<Int>,
     intervalMs: Int,
     hidden: Boolean,
     randomBssid: Boolean,
@@ -374,13 +391,15 @@ private fun ConfigZone(
                     }
 
                     Spacer(Modifier.height(10.dp))
-                    NumberStepper(
-                        label = "Channel",
+                    Text("Channel", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(6.dp))
+                    WifiChannelStepper(
                         value = channel,
-                        valueText = channel.toString(),
                         enabled = !running,
-                        onDecrease = { onChannelChange(channel - 1) },
-                        onIncrease = { onChannelChange(channel + 1) },
+                        onChannelChange = onChannelChange,
+                        allowedChannels = allowedChannels.ifEmpty {
+                            com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
+                        },
                     )
 
                     Spacer(Modifier.height(6.dp))
@@ -407,14 +426,6 @@ private fun ConfigZone(
                         onCheckedChange = { onRandomBssidChange(!it) },
                     )
 
-                    if (!connected) {
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            text = "Connect a device from the Device tab before starting a broadcast.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusAmber,
-                        )
-                    }
                 }
             }
         }
@@ -556,14 +567,7 @@ private fun ResultZone(
                 )
             }
 
-            if (!connected) {
-                Spacer(Modifier.height(24.dp))
-                Text(
-                    text = "Connect an ESP32 to configure and start beacon broadcast.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
-            } else if (!running && sentFrames == 0) {
+            if (connected && !running && sentFrames == 0) {
                 Spacer(Modifier.height(24.dp))
                 Text(
                     text = "Enter one or more SSIDs, then tap the play button.",

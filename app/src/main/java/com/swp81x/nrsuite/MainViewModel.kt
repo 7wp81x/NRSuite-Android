@@ -13,7 +13,13 @@ import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.ble.BleDeviceObservation
+import com.swp81x.nrsuite.core.ble.BleScanOwner
 import com.swp81x.nrsuite.core.ble.BleServiceProfile
+import com.swp81x.nrsuite.core.geo.BssidGeolocationHistoryEntry
+import com.swp81x.nrsuite.core.geo.BssidGeolocationHistoryStore
+import com.swp81x.nrsuite.core.geo.BssidGeolocationState
+import com.swp81x.nrsuite.core.geo.BssidNearbyAccessPoint
+import com.swp81x.nrsuite.core.geo.BssidNearbyState
 import com.swp81x.nrsuite.core.ble.TrackerObservation
 import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.OuiRule
@@ -34,13 +40,48 @@ import com.swp81x.nrsuite.core.credentials.CredentialStatus
 import com.swp81x.nrsuite.core.credentials.CredentialStore
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
 import com.swp81x.nrsuite.core.flasher.Esp32Flasher
+import com.swp81x.nrsuite.core.handshake.AutoHandshakeConfig
+import com.swp81x.nrsuite.core.handshake.CapturedHandshakeEntry
+import com.swp81x.nrsuite.core.handshake.AutoHandshakePhase
+import com.swp81x.nrsuite.core.hid.BlePinAttemptRecord
+import com.swp81x.nrsuite.core.hid.BlePinBruteforceUiState
+import com.swp81x.nrsuite.core.hid.PinAttemptRecord
+import com.swp81x.nrsuite.core.sensors.Ld2450UiState
+import com.swp81x.nrsuite.core.rfid.RfidUiState
+import com.swp81x.nrsuite.core.hid.PinBruteforceUiState
 import com.swp81x.nrsuite.core.flasher.UsbSerialFlasherTransport
 import com.swp81x.nrsuite.core.eapol.EapolParser
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.history.HistoryEntry
+import com.swp81x.nrsuite.core.ir.IrCommonButton
+import com.swp81x.nrsuite.core.ir.IrDatabaseDownloader
+import com.swp81x.nrsuite.core.ir.IrDatabaseMetadata
+import com.swp81x.nrsuite.core.ir.IrDatabaseMetadataStore
+import com.swp81x.nrsuite.core.ir.IrDatabaseUiState
+import com.swp81x.nrsuite.core.ir.IrCommonButtonsState
+import com.swp81x.nrsuite.core.ir.IrPhoneCapabilities
+import com.swp81x.nrsuite.core.ir.IrJammerUiState
+import com.swp81x.nrsuite.core.ir.IrLearnedButton
+import com.swp81x.nrsuite.core.ir.IrReceivedSignal
+import com.swp81x.nrsuite.core.ir.IrPhoneTransmitter
+import com.swp81x.nrsuite.core.ir.IrRemote
+import com.swp81x.nrsuite.core.ir.IrRemoteIndexStore
+import com.swp81x.nrsuite.core.ir.IrRemoteSummary
+import com.swp81x.nrsuite.core.ir.IrScanProgress
+import com.swp81x.nrsuite.core.ir.IrSearchRunState
+import com.swp81x.nrsuite.core.ir.IrSearchUiState
+import com.swp81x.nrsuite.core.ir.IrSignal
+import com.swp81x.nrsuite.core.ir.IrTransmitBackend
+import com.swp81x.nrsuite.core.ir.IrZipExtractor
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.mesh.MeshCredentialStore
+import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
+import com.swp81x.nrsuite.core.update.AppUpdateInfo
+import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
+import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
+import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
+import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.mesh.MeshNodeStatus
 import com.swp81x.nrsuite.core.mesh.StoredMeshCredentials
 import com.swp81x.nrsuite.core.oui.MacLookupResult
@@ -52,6 +93,7 @@ import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
 import com.swp81x.nrsuite.core.wifi.DetectedSsid
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
+import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.core.wifi.PcapSsidParser
 import com.swp81x.nrsuite.core.wpa.WpaCracker
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeVerifier
@@ -124,6 +166,8 @@ class MainViewModel(internal val app: Application) {
 
     internal val usbOperationMutex = Mutex()
 
+    internal val autoHandshake = AutoHandshakeRuntime()
+
     internal val usbManager =
         app.getSystemService(Context.USB_SERVICE) as UsbManager
     internal val preferences =
@@ -135,11 +179,20 @@ class MainViewModel(internal val app: Application) {
     private val _exportDirectoryName = MutableStateFlow("Not configured")
     val exportDirectoryName: StateFlow<String> = _exportDirectoryName.asStateFlow()
 
+    internal val _wifiCaptureDirectory = MutableStateFlow<Uri?>(null)
+    val wifiCaptureDirectory: StateFlow<Uri?> = _wifiCaptureDirectory.asStateFlow()
+
+    private val _wifiCaptureDirectoryName = MutableStateFlow<String?>(null)
+    val wifiCaptureDirectoryName: StateFlow<String?> =
+        _wifiCaptureDirectoryName.asStateFlow()
+
     internal val _requiresRootDirectory = MutableStateFlow(false)
     val requiresRootDirectory: StateFlow<Boolean> = _requiresRootDirectory.asStateFlow()
 
     internal val _actionError = MutableStateFlow<String?>(null)
     val actionError: StateFlow<String?> = _actionError.asStateFlow()
+    internal val _toastMessage = MutableStateFlow<String?>(null)
+    val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
 
     internal val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()
@@ -248,18 +301,142 @@ class MainViewModel(internal val app: Application) {
     private val _events = MutableStateFlow<List<JSONObject>>(emptyList())
     val events: StateFlow<List<JSONObject>> = _events.asStateFlow()
 
+    internal val _autoUpdateCheck = MutableStateFlow(
+        preferences.getBoolean(PREF_AUTO_UPDATE_CHECK, true),
+    )
+    val autoUpdateCheck: StateFlow<Boolean> = _autoUpdateCheck.asStateFlow()
+
+    internal val _appUpdate = MutableStateFlow<AppUpdateInfo?>(null)
+    val appUpdate: StateFlow<AppUpdateInfo?> = _appUpdate.asStateFlow()
+
+    internal val _appUpdateDownload =
+        MutableStateFlow<AppUpdateDownloadState>(AppUpdateDownloadState.Idle)
+    val appUpdateDownload: StateFlow<AppUpdateDownloadState> =
+        _appUpdateDownload.asStateFlow()
+
+    internal val _firmwareUpdate = MutableStateFlow<FirmwareUpdateInfo?>(null)
+    val firmwareUpdate: StateFlow<FirmwareUpdateInfo?> = _firmwareUpdate.asStateFlow()
+
+    internal val _firmwareReleases = MutableStateFlow<List<ReleaseInfo>>(emptyList())
+    val firmwareReleases: StateFlow<List<ReleaseInfo>> = _firmwareReleases.asStateFlow()
+
+    internal val _firmwareAssetDownload =
+        MutableStateFlow<FirmwareAssetDownloadState>(FirmwareAssetDownloadState.Idle)
+    val firmwareAssetDownload: StateFlow<FirmwareAssetDownloadState> =
+        _firmwareAssetDownload.asStateFlow()
+
+    internal var downloadedFirmwarePath: String? = null
+
+    internal val _firmwareManualRecovery = MutableStateFlow(false)
+    val firmwareManualRecovery: StateFlow<Boolean> = _firmwareManualRecovery.asStateFlow()
+
+    internal var manualRecoveryTargetChip: String? = null
+
+    internal val _updateCheckInProgress = MutableStateFlow(false)
+    val updateCheckInProgress: StateFlow<Boolean> = _updateCheckInProgress.asStateFlow()
+
+    internal val _updateError = MutableStateFlow<String?>(null)
+    val updateError: StateFlow<String?> = _updateError.asStateFlow()
+
     internal val _networks = MutableStateFlow<List<JSONObject>>(emptyList())
     val networks: StateFlow<List<JSONObject>> = _networks.asStateFlow()
+
+    internal val _wifiBand = MutableStateFlow(WifiBand.AUTO)
+    val wifiBand: StateFlow<WifiBand> = _wifiBand.asStateFlow()
 
     internal val _ouiRules = MutableStateFlow<List<OuiRule>>(emptyList())
     val ouiRules: StateFlow<List<OuiRule>> = _ouiRules.asStateFlow()
 
-    internal val ouiDatabaseRepository = OuiDatabaseRepository(File(app.filesDir, "oui/oui.csv"))
+    internal val ouiDatabaseRepository = OuiDatabaseRepository(
+        com.swp81x.nrsuite.core.download.NrSuiteDownloadManager.destinationFile(
+            app,
+            "oui/oui.csv",
+        ),
+    )
     val ouiDatabaseStatus: StateFlow<OuiDatabaseStatus> = ouiDatabaseRepository.status
     val ouiDatabaseDownloadProgress: StateFlow<Float?> = ouiDatabaseRepository.progress
 
+    internal val bssidGeolocationHistoryStore =
+        BssidGeolocationHistoryStore(File(app.filesDir, "geo"))
     internal val _macLookupResult = MutableStateFlow<MacLookupResult?>(null)
     val macLookupResult: StateFlow<MacLookupResult?> = _macLookupResult.asStateFlow()
+    internal val _bssidGeolocationState =
+        MutableStateFlow<BssidGeolocationState>(BssidGeolocationState.Idle)
+    val bssidGeolocationState: StateFlow<BssidGeolocationState> =
+        _bssidGeolocationState.asStateFlow()
+    internal val _bssidGeolocationHistory =
+        MutableStateFlow<List<BssidGeolocationHistoryEntry>>(emptyList())
+    val bssidGeolocationHistory: StateFlow<List<BssidGeolocationHistoryEntry>> =
+        _bssidGeolocationHistory.asStateFlow()
+    internal val _bssidNearbyState =
+        MutableStateFlow<BssidNearbyState>(BssidNearbyState.Idle)
+    val bssidNearbyState: StateFlow<BssidNearbyState> = _bssidNearbyState.asStateFlow()
+    internal val bssidNearbyCache =
+        mutableMapOf<String, List<BssidNearbyAccessPoint>>()
+
+    internal val irRemoteIndexStore = IrRemoteIndexStore(File(app.filesDir, "ir"))
+    internal val irPhoneTransmitter = IrPhoneTransmitter(app)
+    internal val _irRemotes = MutableStateFlow<List<IrRemoteSummary>>(emptyList())
+    val irRemotes: StateFlow<List<IrRemoteSummary>> = _irRemotes.asStateFlow()
+    internal val _irSelectedRemote = MutableStateFlow<IrRemote?>(null)
+    val irSelectedRemote: StateFlow<IrRemote?> = _irSelectedRemote.asStateFlow()
+    internal val _irLoadingRemote = MutableStateFlow(false)
+    val irLoadingRemote: StateFlow<Boolean> = _irLoadingRemote.asStateFlow()
+    internal val _irImporting = MutableStateFlow(false)
+    val irImporting: StateFlow<Boolean> = _irImporting.asStateFlow()
+    internal val _irScanProgress = MutableStateFlow<IrScanProgress?>(null)
+    val irScanProgress: StateFlow<IrScanProgress?> = _irScanProgress.asStateFlow()
+    internal val _irTransmitting = MutableStateFlow(false)
+    val irTransmitting: StateFlow<Boolean> = _irTransmitting.asStateFlow()
+    internal val _irCapabilities = MutableStateFlow(IrPhoneCapabilities())
+    val irCapabilities: StateFlow<IrPhoneCapabilities> = _irCapabilities.asStateFlow()
+    internal val _irStatusMessage = MutableStateFlow<String?>(null)
+    val irStatusMessage: StateFlow<String?> = _irStatusMessage.asStateFlow()
+    internal val _irErrorMessage = MutableStateFlow<String?>(null)
+    val irErrorMessage: StateFlow<String?> = _irErrorMessage.asStateFlow()
+    internal val _irTransmitBackend = MutableStateFlow(IrTransmitBackend.AUTO)
+    val irTransmitBackend: StateFlow<IrTransmitBackend> = _irTransmitBackend.asStateFlow()
+    internal val _irLoopMode = MutableStateFlow(false)
+    val irLoopMode: StateFlow<Boolean> = _irLoopMode.asStateFlow()
+    internal val _irActiveLoopSignalId = MutableStateFlow<String?>(null)
+    val irActiveLoopSignalId: StateFlow<String?> = _irActiveLoopSignalId.asStateFlow()
+    internal val _irLoopIntervalMs = MutableStateFlow(250)
+    val irLoopIntervalMs: StateFlow<Int> = _irLoopIntervalMs.asStateFlow()
+    internal val _irPendingCapture = MutableStateFlow<IrReceivedSignal?>(null)
+    val irPendingCapture: StateFlow<IrReceivedSignal?> = _irPendingCapture.asStateFlow()
+    internal val _irLearnedButtons = MutableStateFlow<List<IrLearnedButton>>(emptyList())
+    val irLearnedButtons: StateFlow<List<IrLearnedButton>> = _irLearnedButtons.asStateFlow()
+    internal val _irNextButtonNumber = MutableStateFlow(1)
+    val irNextButtonNumber: StateFlow<Int> = _irNextButtonNumber.asStateFlow()
+    internal val _irJammerState = MutableStateFlow(IrJammerUiState())
+    val irJammerState: StateFlow<IrJammerUiState> = _irJammerState.asStateFlow()
+    internal val _irSavingReceivedRemote = MutableStateFlow(false)
+    val irSavingReceivedRemote: StateFlow<Boolean> = _irSavingReceivedRemote.asStateFlow()
+    internal val _irFinderCategory = MutableStateFlow("")
+    val irFinderCategory: StateFlow<String> = _irFinderCategory.asStateFlow()
+    internal val _irFinderBrand = MutableStateFlow("All brands")
+    val irFinderBrand: StateFlow<String> = _irFinderBrand.asStateFlow()
+    internal var lastIrCapturePattern: List<Int>? = null
+    internal var lastIrCaptureAtMs: Long = 0L
+    internal val _irSearchState = MutableStateFlow(IrSearchUiState())
+    val irSearchState: StateFlow<IrSearchUiState> = _irSearchState.asStateFlow()
+    internal val _irCommonButtonsState = MutableStateFlow(IrCommonButtonsState())
+    val irCommonButtonsState: StateFlow<IrCommonButtonsState> =
+        _irCommonButtonsState.asStateFlow()
+    internal val irCommonButtonCache = mutableMapOf<String, List<IrCommonButton>>()
+    internal val irDatabaseMetadataStore = IrDatabaseMetadataStore(File(app.filesDir, "ir"))
+    internal val irDatabaseDownloader = IrDatabaseDownloader(File(app.cacheDir, "ir_database"))
+    internal val irZipExtractor = IrZipExtractor(app.contentResolver)
+    internal val _irDatabaseState = MutableStateFlow(IrDatabaseUiState())
+    val irDatabaseState: StateFlow<IrDatabaseUiState> = _irDatabaseState.asStateFlow()
+    internal val _irDatabaseMetadata = MutableStateFlow<IrDatabaseMetadata?>(null)
+    val irDatabaseMetadata: StateFlow<IrDatabaseMetadata?> =
+        _irDatabaseMetadata.asStateFlow()
+    internal var irTransmitJob: Job? = null
+    internal var irSearchJob: Job? = null
+    internal var irDatabaseJob: Job? = null
+    internal var irJammerJob: Job? = null
+    internal var lastIrSearchNotificationState: IrSearchRunState = IrSearchRunState.IDLE
 
     internal val _requiresOuiDatabase = MutableStateFlow(false)
     val requiresOuiDatabase: StateFlow<Boolean> = _requiresOuiDatabase.asStateFlow()
@@ -348,6 +525,9 @@ class MainViewModel(internal val app: Application) {
 
     internal val _sniffPacketCount = MutableStateFlow(0L)
     val sniffPacketCount: StateFlow<Long> = _sniffPacketCount.asStateFlow()
+
+    internal val _sniffCaptureBytes = MutableStateFlow(0L)
+    val sniffCaptureBytes: StateFlow<Long> = _sniffCaptureBytes.asStateFlow()
 
     internal val _sniffHandshake = MutableStateFlow(EapolHandshake())
     val sniffHandshake: StateFlow<EapolHandshake> = _sniffHandshake.asStateFlow()
@@ -615,6 +795,24 @@ class MainViewModel(internal val app: Application) {
     internal val _badUsbArmedFingerprints = MutableStateFlow<Set<String>>(emptySet())
     val badUsbArmedFingerprints: StateFlow<Set<String>> = _badUsbArmedFingerprints.asStateFlow()
 
+    internal val _pinBruteforce = MutableStateFlow(PinBruteforceUiState())
+    val pinBruteforce: StateFlow<PinBruteforceUiState> = _pinBruteforce.asStateFlow()
+
+    internal val _pinAttempts = MutableStateFlow<List<PinAttemptRecord>>(emptyList())
+    val pinAttempts: StateFlow<List<PinAttemptRecord>> = _pinAttempts.asStateFlow()
+
+    internal val _blePinBruteforce = MutableStateFlow(BlePinBruteforceUiState())
+    val blePinBruteforce: StateFlow<BlePinBruteforceUiState> = _blePinBruteforce.asStateFlow()
+
+    internal val _blePinAttempts = MutableStateFlow<List<BlePinAttemptRecord>>(emptyList())
+    val blePinAttempts: StateFlow<List<BlePinAttemptRecord>> = _blePinAttempts.asStateFlow()
+
+    internal val _ld2450 = MutableStateFlow(Ld2450UiState())
+    val ld2450: StateFlow<Ld2450UiState> = _ld2450.asStateFlow()
+
+    internal val _rfid = MutableStateFlow(RfidUiState())
+    val rfid: StateFlow<RfidUiState> = _rfid.asStateFlow()
+
     internal val _bleAdvertising = MutableStateFlow(false)
     val bleAdvertising: StateFlow<Boolean> = _bleAdvertising.asStateFlow()
 
@@ -647,6 +845,9 @@ class MainViewModel(internal val app: Application) {
 
     internal val _bleScanStopping = MutableStateFlow(false)
     val bleScanStopping: StateFlow<Boolean> = _bleScanStopping.asStateFlow()
+
+    internal val _bleScanOwner = MutableStateFlow<BleScanOwner?>(null)
+    val bleScanOwner: StateFlow<BleScanOwner?> = _bleScanOwner.asStateFlow()
 
     internal val _bleScanActive = MutableStateFlow(true)
     val bleScanActive: StateFlow<Boolean> = _bleScanActive.asStateFlow()
@@ -769,6 +970,7 @@ class MainViewModel(internal val app: Application) {
 
     internal var pcapWriter: PcapWriter? = null
     internal var pcapJob: Job? = null
+    internal var sniffDeauthJob: Job? = null
 
     private fun initSafely(name: String, block: () -> Unit) {
         runCatching(block).onFailure { error ->
@@ -778,15 +980,24 @@ class MainViewModel(internal val app: Application) {
 
     init {
         initSafely("exportDirectory") { loadExportDirectory() }
+        initSafely("wifiCaptureDirectory") { loadWifiCaptureDirectory() }
         initSafely("beaconLists") { this.loadBeaconListsImpl() }
         initSafely("ouiRules") { this.loadOuiRulesImpl() }
         initSafely("ouiDatabase") { this.loadOuiDatabaseImpl() }
         initSafely("duckyScripts") { this.loadDuckyScriptsImpl() }
         initSafely("history") { loadHistory() }
+        initSafely("rfidHistory") { this.loadRfidHistoryImpl() }
+        initSafely("bssidGeolocationHistory") { this.loadBssidGeolocationHistoryImpl() }
+        initSafely("irLibrary") { this.loadIrLibraryImpl() }
+        initSafely("irPreferences") { this.loadIrPreferencesImpl() }
+        initSafely("irCapabilities") { this.refreshIrCapabilitiesImpl() }
+        initSafely("irSearchNotifications") { this.observeIrSearchNotificationsImpl() }
         initSafely("credentialSessions") { this.loadCredentialSessionsImpl() }
+        initSafely("autoHandshakeSessions") { this.loadAutoHandshakeSessionsImpl() }
         initSafely("meshCredentials") { this.refreshMeshGlobalCredentialsImpl() }
         initSafely("meshHealthSweep") { this.startMeshHealthSweepImpl() }
         initSafely("usbDevices") { this.refreshDevicesImpl() }
+        initSafely("updateChecks") { this.initUpdateChecksImpl() }
     }
 
     fun onModuleOpened(moduleId: String) {
@@ -806,6 +1017,12 @@ class MainViewModel(internal val app: Application) {
                 _deauthDetectorTargets.value = emptyList()
             }
 
+            "nrugochi" -> {
+                if (!autoHandshake.uiState.value.running) {
+                    autoHandshake.currentTarget = null
+                }
+            }
+
             "deauth_detector" -> {
                 if (!_deauthDetectorRunning.value) {
                     _deauthDetectorTargets.value = emptyList()
@@ -823,6 +1040,20 @@ class MainViewModel(internal val app: Application) {
                     _meshPeerCount.value = 0
                 }
             }
+
+            "ld2450" -> {
+                if (!_ld2450.value.active) {
+                    _ld2450.update {
+                        it.copy(
+                            targets = emptyList(),
+                            targetCount = 0,
+                            hasData = false,
+                            errorKind = null,
+                            errorMessage = null,
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -838,6 +1069,73 @@ class MainViewModel(internal val app: Application) {
     fun downloadOuiDatabase() = this.downloadOuiDatabaseImpl()
 
     fun lookupMac(mac: String) = this.lookupMacImpl(mac)
+    fun lookupBssidGeolocation(bssid: String) = this.lookupBssidGeolocationImpl(bssid)
+    fun selectBssidGeolocationHistory(bssid: String) =
+        this.selectBssidGeolocationHistoryImpl(bssid)
+    fun deleteBssidGeolocationHistory(bssid: String) =
+        this.deleteBssidGeolocationHistoryImpl(bssid)
+    fun clearBssidGeolocationHistory() = this.clearBssidGeolocationHistoryImpl()
+    fun clearBssidGeolocation() = this.clearBssidGeolocationImpl()
+    fun setBssidNearbyApsEnabled(enabled: Boolean) =
+        this.setBssidNearbyApsEnabledImpl(enabled)
+
+    fun importIrFile(uri: Uri) = this.importIrFileImpl(uri)
+    fun refreshIrLibrary() = this.rescanIrLibraryImpl()
+    fun openIrRemote(id: String) = this.openIrRemoteImpl(id)
+    fun closeIrRemote() = this.closeIrRemoteImpl()
+    fun toggleIrFavorite(id: String) = this.toggleIrFavoriteImpl(id)
+    fun deleteIrRemote(id: String) = this.deleteIrRemoteImpl(id)
+    fun sendIrSignal(signal: IrSignal) = this.sendIrSignalImpl(signal)
+    fun toggleIrSignal(signal: IrSignal) = this.toggleIrSignalImpl(signal)
+    fun setIrLoopMode(enabled: Boolean) = this.setIrLoopModeImpl(enabled)
+    fun setIrTransmitBackend(backend: IrTransmitBackend) =
+        this.setIrTransmitBackendImpl(backend)
+    fun setIrLoopIntervalMs(intervalMs: Int) = this.setIrLoopIntervalMsImpl(intervalMs)
+    fun stopIrTransmission() = this.stopIrTransmissionImpl()
+    fun prepareIrCommonButtons(category: String, brand: String, minRemotes: Int) =
+        this.prepareIrCommonButtonsImpl(category, brand, minRemotes)
+    fun refreshIrCommonButtons(category: String, brand: String, minRemotes: Int) =
+        this.refreshIrCommonButtonsImpl(category, brand, minRemotes)
+    fun refreshIrEsp32Status() = this.refreshIrEsp32StatusImpl()
+    fun setIrEsp32Pins(txGpio: Int, rxGpio: Int) = this.setIrEsp32PinsImpl(txGpio, rxGpio)
+    fun startIrEsp32Rx() = this.startIrEsp32RxImpl()
+    fun stopIrEsp32Rx() = this.stopIrEsp32RxImpl()
+    fun savePendingIrButton(name: String) = this.savePendingIrButtonImpl(name)
+    fun discardPendingIrButton() = this.discardPendingIrButtonImpl()
+    fun replayPendingIrButton() = this.replayPendingIrButtonImpl()
+    fun deleteIrLearnedButton(id: String) = this.deleteIrLearnedButtonImpl(id)
+    fun renameIrLearnedButton(id: String, name: String) =
+        this.renameIrLearnedButtonImpl(id, name)
+    fun replayIrLearnedButton(id: String) = this.replayIrLearnedButtonImpl(id)
+    fun clearIrLearnedButtons() = this.clearIrLearnedButtonsImpl()
+    fun saveIrLearnedRemote(remoteName: String) = this.saveIrLearnedRemoteImpl(remoteName)
+    fun removeIrSearchMarkedResult(remoteId: String, buttonName: String) =
+        this.removeIrSearchMarkedResultImpl(remoteId, buttonName)
+    fun setIrFinderSelection(category: String, brand: String) =
+        this.setIrFinderSelectionImpl(category, brand)
+    fun startIrJammer(durationMs: Int) = this.startIrJammerImpl(durationMs)
+    fun stopIrJammer() = this.stopIrJammerImpl()
+    fun downloadIrDatabase() = this.downloadIrDatabaseImpl()
+    fun retryIrDatabaseOperation() = this.retryIrDatabaseOperationImpl()
+    fun cancelIrDatabaseOperation() = this.cancelIrDatabaseOperationImpl()
+    fun importIrZip(uri: Uri) = this.importIrZipImpl(uri)
+    fun deleteIrDatabase() = this.deleteIrDatabaseImpl()
+    fun startIrSearch(
+        category: String,
+        brand: String,
+        selectedButtons: List<String>,
+        intervalMs: Int,
+    ) = this.startIrSearchImpl(category, brand, selectedButtons, intervalMs)
+    fun pauseIrSearch() = this.pauseIrSearchImpl()
+    fun resumeIrSearch() = this.resumeIrSearchImpl()
+    fun previousIrSearch() = this.previousIrSearchImpl()
+    fun nextIrSearch() = this.nextIrSearchImpl()
+    fun manualSendIrSearch() = this.manualSendIrSearchImpl()
+    fun toggleIrSearchLoop() = this.toggleIrSearchLoopImpl()
+    fun stopIrSearch() = this.stopIrSearchImpl()
+    fun markIrSearchFound() = this.markIrSearchFoundImpl()
+    fun refreshIrCapabilities() = this.refreshIrCapabilitiesImpl()
+    fun clearIrMessages() = this.clearIrMessagesImpl()
 
     fun clearMacLookup() {
         _macLookupResult.value = null
@@ -859,7 +1157,8 @@ class MainViewModel(internal val app: Application) {
         channel: Int,
         targetBssid: String,
         intervalMs: Int,
-    ) = this.startClientPresenceImpl(mode, fixed, channel, targetBssid, intervalMs)
+        band: WifiBand = WifiBand.AUTO,
+    ) = this.startClientPresenceImpl(mode, fixed, channel, targetBssid, intervalMs, band)
 
     fun startClientPresence() = this.startClientPresenceImpl(
         _clientPresenceMode.value,
@@ -882,13 +1181,13 @@ class MainViewModel(internal val app: Application) {
     }
 
     fun setClientPresenceChannel(channel: Int) {
-        _clientPresenceChannel.value = channel.coerceIn(1, 14)
+        _clientPresenceChannel.value = com.swp81x.nrsuite.core.wifi.normalizeWifiChannel(channel, fallback = 1)
     }
 
     fun selectClientPresenceTarget(target: NetworkTarget?) {
         _clientPresenceTargetBssid.value = target?.bssid ?: ""
         target?.let {
-            _clientPresenceChannel.value = it.channel.coerceIn(1, 14)
+            _clientPresenceChannel.value = com.swp81x.nrsuite.core.wifi.normalizeWifiChannel(it.channel, fallback = 1)
             _clientPresenceFixed.value = true
         }
     }
@@ -898,9 +1197,10 @@ class MainViewModel(internal val app: Application) {
         _clientPresenceFrameCount.value = 0
     }
 
-    fun startHiddenAp() = this.startHiddenApImpl(
+    fun startHiddenAp(band: WifiBand = WifiBand.AUTO) = this.startHiddenApImpl(
         _hiddenApFixed.value,
         _hiddenApChannel.value,
+        band,
     )
 
     fun stopHiddenAp() = this.stopHiddenApImpl()
@@ -910,7 +1210,7 @@ class MainViewModel(internal val app: Application) {
     }
 
     fun setHiddenApChannel(channel: Int) {
-        _hiddenApChannel.value = channel.coerceIn(1, 14)
+        _hiddenApChannel.value = com.swp81x.nrsuite.core.wifi.normalizeWifiChannel(channel, fallback = 1)
     }
 
     fun clearHiddenAp() {
@@ -953,6 +1253,30 @@ class MainViewModel(internal val app: Application) {
         _exportDirectory.value = uri
         _exportDirectoryName.value = displayNameForTreeUri(uri)
         ensureRootStructure(uri)
+    }
+
+    fun setWifiCaptureDirectory(uri: Uri?) {
+        if (uri == null) {
+            _wifiCaptureDirectory.value = null
+            _wifiCaptureDirectoryName.value = null
+            preferences.edit().remove(PREF_WIFI_CAPTURE_DIRECTORY).apply()
+            appendLog("WiFi capture output reset to the global NRSuite root.")
+            return
+        }
+        val resolver = app.contentResolver
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching { resolver.takePersistableUriPermission(uri, flags) }
+        _wifiCaptureDirectory.value = uri
+        _wifiCaptureDirectoryName.value = displayNameForTreeUri(uri)
+        preferences.edit().putString(PREF_WIFI_CAPTURE_DIRECTORY, uri.toString()).apply()
+        appendLog("WiFi capture output: ${_wifiCaptureDirectoryName.value}")
+    }
+
+    private fun loadWifiCaptureDirectory() {
+        val stored = preferences.getString(PREF_WIFI_CAPTURE_DIRECTORY, null) ?: return
+        val uri = runCatching { Uri.parse(stored) }.getOrNull() ?: return
+        _wifiCaptureDirectory.value = uri
+        _wifiCaptureDirectoryName.value = displayNameForTreeUri(uri)
     }
 
     fun refreshDevices() = this.refreshDevicesImpl()
@@ -1029,8 +1353,105 @@ class MainViewModel(internal val app: Application) {
     fun disconnectDevice(device: UsbDevice) = this.disconnectDeviceImpl(device)
 
     fun scanWifi() = this.scanWifiImpl()
+    fun scanWifiForTargets() = this.scanWifiForTargetsImpl()
+    fun setWifiBand(band: WifiBand) = this.setWifiBandImpl(band)
+    fun setWifiCountry(country: String) = this.setWifiCountryImpl(country)
 
     fun setBadUsbPayload(uri: Uri, name: String?) = this.setBadUsbPayloadImpl(uri, name)
+
+    fun setPinBruteforceSource(source: String) = this.setPinBruteforceSourceImpl(source)
+    fun setPinBruteforcePinLength(value: Int) = this.setPinBruteforcePinLengthImpl(value)
+    fun setPinBruteforceStart(value: String) = this.setPinBruteforceStartImpl(value)
+    fun setPinBruteforceEnd(value: String) = this.setPinBruteforceEndImpl(value)
+    fun setPinBruteforceTimeout(value: Int) = this.setPinBruteforceTimeoutImpl(value)
+    fun setPinBruteforceMaxAttempts(value: Int) = this.setPinBruteforceMaxAttemptsImpl(value)
+    fun setPinBruteforcePersistEvery(value: Int) = this.setPinBruteforcePersistEveryImpl(value)
+    fun setPinBruteforceAttemptsBeforeTimeout(value: Int) = this.setPinBruteforceAttemptsBeforeTimeoutImpl(value)
+    fun setPinBruteforceCooldown(value: Int) = this.setPinBruteforceCooldownImpl(value)
+    fun setPinBruteforceInterAttempt(value: Int) = this.setPinBruteforceInterAttemptImpl(value)
+    fun setPinBruteforceTypingDelay(value: Int) = this.setPinBruteforceTypingDelayImpl(value)
+    fun setPinBruteforceStartDelay(value: Int) = this.setPinBruteforceStartDelayImpl(value)
+
+    fun setBlePinBruteforceSource(source: String) = this.setBlePinBruteforceSourceImpl(source)
+    fun setBlePinBruteforcePinLength(value: Int) = this.setBlePinBruteforcePinLengthImpl(value)
+    fun setBlePinBruteforceStart(value: String) = this.setBlePinBruteforceStartImpl(value)
+    fun setBlePinBruteforceEnd(value: String) = this.setBlePinBruteforceEndImpl(value)
+    fun setBlePinBruteforceTimeout(value: Int) = this.setBlePinBruteforceTimeoutImpl(value)
+    fun setBlePinBruteforceMaxAttempts(value: Int) = this.setBlePinBruteforceMaxAttemptsImpl(value)
+    fun setBlePinBruteforcePersistEvery(value: Int) = this.setBlePinBruteforcePersistEveryImpl(value)
+    fun setBlePinBruteforceAttemptsBeforeTimeout(value: Int) = this.setBlePinBruteforceAttemptsBeforeTimeoutImpl(value)
+    fun setBlePinBruteforceCooldown(value: Int) = this.setBlePinBruteforceCooldownImpl(value)
+    fun setBlePinBruteforceInterAttempt(value: Int) = this.setBlePinBruteforceInterAttemptImpl(value)
+    fun setBlePinBruteforceTypingDelay(value: Int) = this.setBlePinBruteforceTypingDelayImpl(value)
+    fun setBlePinBruteforceStartDelay(value: Int) = this.setBlePinBruteforceStartDelayImpl(value)
+    fun setBlePinBruteforceAutoResume(value: Boolean) = this.setBlePinBruteforceAutoResumeImpl(value)
+    fun setBlePinBruteforceAutoStartOnConnect(value: Boolean) = this.setBlePinBruteforceAutoStartOnConnectImpl(value)
+    fun setBlePinBruteforcePauseOnDisconnect(value: Boolean) = this.setBlePinBruteforcePauseOnDisconnectImpl(value)
+    fun setBlePinBruteforceAutoReconnect(value: Boolean) = this.setBlePinBruteforceAutoReconnectImpl(value)
+    fun setBlePinBruteforceSessionKey(value: String) = this.setBlePinBruteforceSessionKeyImpl(value)
+    fun setBlePinBruteforceWordlist(uri: Uri, name: String?) = this.setBlePinBruteforceWordlistImpl(uri, name)
+    fun clearBlePinBruteforceWordlist() = this.clearBlePinBruteforceWordlistImpl()
+    fun startBlePinAdvertising(name: String) = this.startBlePinAdvertisingImpl(name)
+    fun stopBlePinAdvertising() = this.stopBlePinAdvertisingImpl()
+    fun startBlePinBruteforce() = this.startBlePinBruteforceImpl()
+    fun pauseBlePinBruteforce() = this.pauseBlePinBruteforceImpl()
+    fun resumeBlePinBruteforce() = this.resumeBlePinBruteforceImpl()
+    fun stopBlePinBruteforce() = this.stopBlePinBruteforceImpl()
+    fun nextBlePinBruteforce() = this.nextBlePinBruteforceImpl()
+    fun previousBlePinBruteforce() = this.previousBlePinBruteforceImpl()
+    fun clearBlePinBruteforceSession() = this.clearBlePinBruteforceSessionImpl()
+    fun forgetBlePinBond() = this.forgetBlePinBondImpl()
+    fun disconnectBlePinPeer() = this.disconnectBlePinPeerImpl()
+    fun refreshBlePinBruteforce() = this.refreshBlePinBruteforceImpl()
+    fun setPinBruteforceAutoResume(value: Boolean) = this.setPinBruteforceAutoResumeImpl(value)
+    fun setPinBruteforceSessionKey(value: String) = this.setPinBruteforceSessionKeyImpl(value)
+    fun setPinBruteforceWordlist(uri: Uri, name: String?) = this.setPinBruteforceWordlistImpl(uri, name)
+    fun clearPinBruteforceWordlist() = this.clearPinBruteforceWordlistImpl()
+    fun startPinBruteforce() = this.startPinBruteforceImpl()
+    fun stopPinBruteforce() = this.stopPinBruteforceImpl()
+    fun clearPinBruteforce() = this.clearPinBruteforceImpl()
+    fun refreshPinBruteforce() = this.refreshPinBruteforceImpl()
+
+    fun startLd2450() = this.startLd2450Impl()
+    fun stopLd2450() = this.stopLd2450Impl()
+    fun refreshLd2450() = this.refreshLd2450Impl()
+    fun setLd2450Pins(rxGpio: Int, txGpio: Int) =
+        this.setLd2450PinsImpl(rxGpio, txGpio)
+    fun setLd2450MaxRange(valueCm: Int) = this.setLd2450MaxRangeImpl(valueCm)
+    fun setLd2450ZoneAlert(enabled: Boolean) = this.setLd2450ZoneAlertImpl(enabled)
+    fun setLd2450MeshBroadcast(enabled: Boolean) = this.setLd2450MeshBroadcastImpl(enabled)
+    fun setLd2450HeartbeatEnabled(enabled: Boolean) = this.setLd2450HeartbeatEnabledImpl(enabled)
+    fun setLd2450ScanDuration(valueMs: Int) = this.setLd2450ScanDurationImpl(valueMs)
+    fun setLd2450SleepDuration(valueMs: Int) = this.setLd2450SleepDurationImpl(valueMs)
+    fun setLd2450LimitDotCount(enabled: Boolean) = this.setLd2450LimitDotCountImpl(enabled)
+    fun setLd2450MaxDots(value: Int) = this.setLd2450MaxDotsImpl(value)
+
+    fun refreshRfidStatus() = this.refreshRfidStatusImpl()
+    fun saveRfidConfig(sdaGpio: Int, sclGpio: Int) =
+        this.saveRfidConfigImpl(sdaGpio, sclGpio)
+    fun startRfidScan() = this.startRfidScanImpl()
+    fun stopRfidScan() = this.stopRfidScanImpl()
+    fun clearRfidHistory() = this.clearRfidHistoryImpl()
+    fun handleRfidDisconnected() = this.handleRfidDisconnectedImpl()
+
+    fun setAutoUpdateCheck(enabled: Boolean) = this.setAutoUpdateCheckImpl(enabled)
+    fun checkForUpdates(force: Boolean = false) = this.checkForUpdatesImpl(force)
+    fun clearUpdateError() {
+        _updateError.value = null
+    }
+    fun downloadAppUpdate() = this.downloadAppUpdateImpl()
+    fun installAppUpdate() = this.installAppUpdateImpl()
+
+    fun downloadFirmwareAsset(releaseTag: String, assetName: String) =
+        this.downloadFirmwareAssetImpl(releaseTag, assetName)
+    fun downloadFirmwareUpdate() = this.downloadFirmwareUpdateForCurrentDeviceImpl()
+    fun prepareFirmwareFlasherForUpdate() = this.prepareFirmwareFlasherForUpdateImpl()
+    fun armManualFirmwareRecovery(targetChip: String) =
+        this.armManualFirmwareRecoveryImpl(targetChip)
+    fun flashManualFirmwareNow() = this.flashManualFirmwareNowImpl()
+    fun flashManualFirmwareWithReset() = this.flashManualFirmwareWithResetImpl()
+    fun disarmManualFirmwareRecovery() = this.disarmManualFirmwareRecoveryImpl()
+    fun clearUpdateDownloads() = this.clearUpdateDownloadsImpl()
 
     fun clearBadUsbPayload() = this.clearBadUsbPayloadImpl()
 
@@ -1081,11 +1502,16 @@ class MainViewModel(internal val app: Application) {
         portalPcapJob = null
         pcapJob?.cancel()
         pcapJob = null
+        sniffDeauthJob?.cancel()
+        sniffDeauthJob = null
         bleStatusJob?.cancel()
         bleStatusJob = null
 
+        _scanning.value = false
         _beaconRunning.value = false
         _portalRunning.value = false
+        _portalHtmlUploading.value = false
+        _evilTwinHtmlUploading.value = false
         _sniffing.value = false
         _deauthRunning.value = false
         _deauthDetectorRunning.value = false
@@ -1107,8 +1533,33 @@ class MainViewModel(internal val app: Application) {
         _bleAdvertising.value = false
         _bleConnected.value = false
         _bleScriptRunning.value = false
+        _pinBruteforce.update { it.copy(state = "paused", starting = false) }
+        _blePinBruteforce.update {
+            it.copy(state = "paused", starting = false, bleAdvertising = false, bleConnected = false)
+        }
+        _ld2450.update {
+            it.copy(
+                active = false,
+                starting = false,
+                stopping = false,
+                targets = emptyList(),
+                targetCount = 0,
+            )
+        }
+        _rfid.update {
+            it.copy(
+                connected = false,
+                scanning = false,
+                starting = false,
+                stopping = false,
+                configSaving = false,
+            )
+        }
+        _storageLoading.value = false
+        _badUsbUploading.value = false
         _bleScanStarting.value = false
         _bleScanRunning.value = false
+        _bleScanOwner.value = null
         _bleScanStopping.value = false
         _bleProfileRunning.value = false
         this.clearBleRealtimeStateImpl()
@@ -1269,9 +1720,10 @@ class MainViewModel(internal val app: Application) {
 
     fun releaseBleMouseButtons() = this.releaseBleMouseButtonsImpl()
 
-    fun startBleScan(active: Boolean) = this.startBleScanImpl(active)
+    fun startBleScan(active: Boolean, owner: BleScanOwner) =
+        this.startBleScanImpl(active, owner)
 
-    fun stopBleScan() = this.stopBleScanImpl()
+    fun stopBleScan(owner: BleScanOwner) = this.stopBleScanImpl(owner)
 
     fun clearBleScan() = this.clearBleScanImpl()
 
@@ -1344,9 +1796,27 @@ class MainViewModel(internal val app: Application) {
 
 
 
-    fun startDeauth(bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int) = this.startDeauthImpl(bssid, channel, client, count, duration, intervalMs)
+    fun startDeauth(
+        bssid: String,
+        channel: Int,
+        client: String,
+        count: Int,
+        duration: Int,
+        intervalMs: Int,
+        loopMode: Boolean = false,
+    ) = this.startDeauthImpl(
+        bssid,
+        channel,
+        client,
+        count,
+        duration,
+        intervalMs,
+        loopMode,
+    )
 
-    fun startDeauthDetector() = this.startDeauthDetectorImpl()
+    fun stopDeauth() = this.stopDeauthImpl()
+
+    fun startDeauthDetector(band: WifiBand = WifiBand.AUTO) = this.startDeauthDetectorImpl(band)
 
     fun stopDeauthDetector() = this.stopDeauthDetectorImpl()
 
@@ -1368,7 +1838,7 @@ class MainViewModel(internal val app: Application) {
 
     fun selectDeauthDetectorTarget(target: NetworkTarget?) {
         _deauthDetectorSelectedTarget.value = target
-        target?.let { _deauthDetectorChannel.value = it.channel.coerceIn(1, 14) }
+        target?.let { _deauthDetectorChannel.value = com.swp81x.nrsuite.core.wifi.normalizeWifiChannel(it.channel, fallback = 1) }
     }
 
     fun startBeacon(ssids: List<String>, channel: Int, intervalMs: Int, hidden: Boolean, randomBssid: Boolean) = this.startBeaconImpl(ssids, channel, intervalMs, hidden, randomBssid)
@@ -1380,7 +1850,32 @@ class MainViewModel(internal val app: Application) {
 
     fun stopSniff() = this.stopSniffImpl()
 
+    fun startAutoHandshake(config: AutoHandshakeConfig) = this.startAutoHandshakeImpl(config)
+
+    fun stopAutoHandshake() = this.stopAutoHandshakeImpl()
+
+    fun resumeAutoHandshake(sessionId: String) = this.resumeAutoHandshakeImpl(sessionId)
+
+    fun deleteAutoHandshakeSession(sessionId: String) = this.deleteAutoHandshakeSessionImpl(sessionId)
+
+    fun clearAutoHandshakeSessions() = this.clearAutoHandshakeSessionsImpl()
+
+    fun setPwnModeEnabled(enabled: Boolean) = this.setPwnModeEnabledImpl(enabled)
+
+    fun addPwnPassword(password: String) = this.addPwnPasswordImpl(password)
+
+    fun removePwnPassword(password: String) = this.removePwnPasswordImpl(password)
+
+    fun deleteCapturedHandshake(entry: CapturedHandshakeEntry) = this.deleteCapturedHandshakeImpl(entry)
+
+    fun openCaptureInCracker(entry: CapturedHandshakeEntry) = this.openCaptureInCrackerImpl(entry)
+
+    fun resetNrugochiStats() = this.resetNrugochiStatsImpl()
+
     internal fun activeRadioLabel(includeBle: Boolean = true): String? {
+        // BLE HID PIN Bruteforce is hidden/experimental. Do not let stale
+        // persisted state from the hidden module block unrelated Wi-Fi
+        // modules. Its SDK/state is retained for future reuse only.
         if (includeBle && (_bleAdvertising.value || _bleConnected.value)) {
             return "BLE HID"
         }
@@ -1391,6 +1886,7 @@ class MainViewModel(internal val app: Application) {
             return "BLE GATT Profile"
         }
         return when {
+            autoHandshake.uiState.value.running -> "NRuGochi"
             _portalRunning.value -> {
                 if (_portalMode.value == "evil_twin") "Evil Twin" else "Captive Portal"
             }
@@ -1421,13 +1917,25 @@ class MainViewModel(internal val app: Application) {
         _actionError.value = null
     }
 
+    fun consumeToastMessage() {
+        _toastMessage.value = null
+    }
+
     internal fun updateForegroundService() {
         val context = app
         val activeText = when {
+            autoHandshake.uiState.value.running &&
+                autoHandshake.uiState.value.phase != AutoHandshakePhase.STOPPING -> "NRuGochi active"
+            _pinBruteforce.value.running -> "PIN bruteforce active"
+            _ld2450.value.active -> "mmWave radar active"
+            _rfid.value.running -> "RFID scan active"
             _meshActive.value -> "Mesh active"
-            _sniffing.value -> "Packet capture active"
+            _sniffing.value -> "Capture active"
             _beaconRunning.value -> "Beacon broadcast active"
-            _portalRunning.value -> "Captive portal active"
+            _portalRunning.value -> when (_portalMode.value) {
+                "evil_twin" -> "Evil Twin active · ${_portalClients.value} client(s)"
+                else -> "Captive Portal active · ${_portalClients.value} client(s)"
+            }
             _deauthRunning.value -> "Deauth burst active"
             _deauthDetectorRunning.value -> "Deauth detector active"
             _rogueApRunning.value -> "Rogue AP detector active"
@@ -1436,16 +1944,24 @@ class MainViewModel(internal val app: Application) {
             _hiddenApRunning.value -> "Hidden AP revealer active"
             _bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value -> "BLE scanner active"
             _bleProfileRunning.value -> "BLE profile active"
-            _bleAdvertising.value || _bleConnected.value -> "BLE HID active"
+            _bleConnected.value -> "BLE HID connected · ${_blePeer.value.ifBlank { "device" }}"
+            _bleAdvertising.value -> "BLE HID advertising"
             else -> null
         }
         val intent = Intent(context, NrSuiteForegroundService::class.java)
         if (activeText != null) {
             intent.action = NrSuiteForegroundService.ACTION_START
             intent.putExtra(NrSuiteForegroundService.EXTRA_TEXT, activeText)
-            ContextCompat.startForegroundService(context, intent)
+            runCatching {
+                ContextCompat.startForegroundService(context, intent)
+            }.onFailure { error ->
+                appendLog(
+                    "Foreground service start blocked: ${error.message}",
+                    level = LogLevel.ERROR,
+                )
+            }
         } else {
-            context.stopService(intent)
+            runCatching { context.stopService(intent) }
         }
     }
 
@@ -1480,10 +1996,14 @@ class MainViewModel(internal val app: Application) {
                         is ConnectionState.Connected -> {
                             tracked?.opening = false
                             tracked?.openedOnce = true
+                            this@MainViewModel.checkForUpdates()
                         }
                         is ConnectionState.Failed -> tracked?.opening = false
                         is ConnectionState.Disconnected -> {
                             tracked?.opening = false
+                            if (fingerprint == activeDeviceFingerprint) {
+                                this@MainViewModel.handleRfidDisconnectedImpl()
+                            }
                         }
                     }
                     if (state is ConnectionState.Disconnected &&
@@ -1598,6 +2118,12 @@ class MainViewModel(internal val app: Application) {
                                 _evilTwinPasswords.update {
                                     (it + CapturedPassword(submittedPassword, capturedAt)).takeLast(50)
                                 }
+                                NrSuiteNotifications.notifyCredential(
+                                    app,
+                                    "Evil Twin credential received",
+                                    "$ip · password candidate (${submittedPassword.length} chars)",
+                                )
+                                updateForegroundService()
                                 this@MainViewModel.verifyEvilTwinPasswordsImpl()
                             } else if (_portalMode.value == "portal" && details.isNotEmpty()) {
                                 val capturedAt = java.time.LocalTime.now()
@@ -1619,6 +2145,12 @@ class MainViewModel(internal val app: Application) {
                                 }
                                 _portalCredentials.update { (it + credential).takeLast(100) }
                                 appendLog("Portal credential captured (${details.size} field(s)).")
+                                NrSuiteNotifications.notifyCredential(
+                                    app,
+                                    "Portal credential received",
+                                    "$ip · ${details.size} field(s)",
+                                )
+                                updateForegroundService()
                             }
                         }
                         "client_associated" -> {
@@ -1627,11 +2159,25 @@ class MainViewModel(internal val app: Application) {
                             val rssi = event.optInt("rssi")
                             appendLog("Client associated: $client ($rssi dBm).")
                             this@MainViewModel.portalLogImpl("Client associated: $client ($rssi dBm)")
+                            updateForegroundService()
                         }
                         "deauth_stats" -> {
-                            _deauthSent.value = event.optInt("sent_frames", _deauthSent.value)
-                            appendLog("Deauth stats: ${_deauthSent.value} frame(s) sent.")
-                            this@MainViewModel.portalLogImpl("Deauth stats: ${_deauthSent.value} frame(s) sent")
+                            val sent = event.optInt("sent_frames", _deauthSent.value)
+                            val failed = event.optInt("failed_frames", 0)
+                            val status = event.optString("status", "finished")
+                            _deauthSent.value = sent
+                            if (failed > 0) {
+                                appendLog("Deauth stats: $sent sent, $failed failed.")
+                            } else {
+                                appendLog("Deauth stats: $sent frame(s) sent.")
+                            }
+                            this@MainViewModel.portalLogImpl(
+                                "Deauth stats: $sent sent, $failed failed"
+                            )
+                            if (status != "running") {
+                                _deauthRunning.value = false
+                                updateForegroundService()
+                            }
                         }
                         "deauth_detected" -> this@MainViewModel.recordDeauthDetectorFrame(event)
                         "deauth_detector_hop" -> {
@@ -1656,6 +2202,28 @@ class MainViewModel(internal val app: Application) {
                                 _hiddenApCurrentHopChannel.value ?: 1,
                             )
                         }
+                        "pin_session_status" -> this@MainViewModel.handlePinSessionStatusEvent(event)
+                        "pin_attempt" -> this@MainViewModel.handlePinAttemptEvent(event)
+                        "pin_range_done" -> this@MainViewModel.handlePinRangeDoneEvent(event)
+                        "pin_range_error" -> this@MainViewModel.handlePinRangeErrorEvent(event)
+                        "ble_pin_session_status" -> this@MainViewModel.handleBlePinSessionStatusEvent(event)
+                        "ble_pin_attempt" -> this@MainViewModel.handleBlePinAttemptEvent(event)
+                        "ble_pin_done" -> this@MainViewModel.handleBlePinDoneEvent(event)
+                        "ble_pin_error" -> this@MainViewModel.handleBlePinErrorEvent(event)
+                        "ble_pin_connection" -> this@MainViewModel.handleBlePinConnectionEvent(event)
+                        "ld2450_targets" -> this@MainViewModel.handleLd2450TargetsEvent(event)
+                        "ld2450_presence" -> this@MainViewModel.handleLd2450PresenceEvent(event)
+                        "ld2450_error" -> this@MainViewModel.handleLd2450ErrorEvent(event)
+                        "rfid_status" -> this@MainViewModel.handleRfidStatusEvent(event)
+                        "rfid_tag" -> this@MainViewModel.handleRfidTagEvent(event)
+                        "rfid_error" -> this@MainViewModel.handleRfidErrorEvent(event)
+                        "ir_rx" -> this@MainViewModel.handleIrRxEvent(event)
+                        "ir_error" -> {
+                            _irErrorMessage.value = event.optString("msg")
+                                .takeIf { it.isNotBlank() }
+                                ?: "ESP32 IR error."
+                        }
+                        "ir_tx_done" -> Unit
                         "heartbeat" -> Unit
                     }
                 }
@@ -1878,13 +2446,14 @@ class MainViewModel(internal val app: Application) {
             ?: "Selected folder"
     }
 
-    internal fun exportPcapToRootIfConfigured(sourceFile: File?) {
+    internal fun exportPcapToRootIfConfigured(sourceFile: File?, force: Boolean = false) {
         val rootUri = _exportDirectory.value ?: return
         if (sourceFile == null || !sourceFile.exists() || sourceFile.length() == 0L) return
 
         val key = sourceFile.absolutePath
         synchronized(exportedCapturePaths) {
-            if (!exportedCapturePaths.add(key)) return
+            if (!force && !exportedCapturePaths.add(key)) return
+            exportedCapturePaths.add(key)
         }
 
         scope.launch(Dispatchers.IO) {
@@ -1899,14 +2468,14 @@ class MainViewModel(internal val app: Application) {
                 } ?: throw IOException("Could not open export file")
 
                 appendLog(
-                    "Evil Twin PCAP exported to " +
+                    "PCAP exported to " +
                         "${displayNameForTreeUri(rootUri)}/Pcap/$displayName",
                 )
             }.onFailure { error ->
                 synchronized(exportedCapturePaths) {
                     exportedCapturePaths.remove(key)
                 }
-                appendLog("Could not export Evil Twin PCAP: ${error.message}", level = LogLevel.ERROR)
+                appendLog("Could not export PCAP: ${error.message}", level = LogLevel.ERROR)
             }
         }
     }
@@ -1931,6 +2500,7 @@ class MainViewModel(internal val app: Application) {
     companion object {
         private const val PREFERENCES_NAME = "nrsuite"
         private const val PREF_EXPORT_DIRECTORY = "export_directory_uri"
+        private const val PREF_WIFI_CAPTURE_DIRECTORY = "wifi_capture_directory_uri"
         private const val PREF_HISTORY = "session_history"
         private const val PREF_RECENT_MODULES = "recent_modules"
         private const val DISCONNECT_TEARDOWN_WAIT_MS = 8_000L

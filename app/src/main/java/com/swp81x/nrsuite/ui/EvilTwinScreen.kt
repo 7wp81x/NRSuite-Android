@@ -61,8 +61,10 @@ import androidx.compose.ui.unit.sp
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
 import com.swp81x.nrsuite.core.wpa.EvilTwinResult
 import com.swp81x.nrsuite.ui.components.HtmlUploadSection
+import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.WifiChannelStepper
 import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -79,6 +81,7 @@ fun EvilTwinScreen(
     running: Boolean,
     scanning: Boolean,
     networks: List<JSONObject>,
+    allowedChannels: List<Int> = emptyList(),
     handshake: EapolHandshake,
     results: List<EvilTwinResult>,
     eventLog: List<String>,
@@ -117,10 +120,11 @@ fun EvilTwinScreen(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-        TabRow(selectedTabIndex = selectedTab) {
-            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Overview") })
-            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Logs (${eventLog.size})") })
-        }
+        RoundedTabRow(
+            selectedIndex = selectedTab,
+            tabs = listOf("Overview", "Logs (${eventLog.size})"),
+            onSelect = { selectedTab = it },
+        )
 
         if (selectedTab == 0) {
         Card(
@@ -247,6 +251,17 @@ fun EvilTwinScreen(
                     }
                 }
                 if (targetExpanded) {
+                    Spacer(Modifier.height(10.dp))
+                    Text("Channel", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(6.dp))
+                    WifiChannelStepper(
+                        value = channel,
+                        enabled = !running,
+                        onChannelChange = { channel = it },
+                        allowedChannels = allowedChannels.ifEmpty {
+                            com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
+                        },
+                    )
                     Spacer(Modifier.height(8.dp))
                     HtmlUploadSection(
                         selectedName = selectedHtmlName,

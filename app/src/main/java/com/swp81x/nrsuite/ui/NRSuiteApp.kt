@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.PersonSearch
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Radio
@@ -70,6 +71,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Radar
@@ -153,6 +155,16 @@ internal enum class AppTab(val label: String) {
     LOGS("Logs"),
 }
 
+internal val WIFI_RECON_MODULE_IDS = listOf("wifi", "sniff", "hidden_ap")
+internal val WIFI_ATTACK_MODULE_IDS =
+    listOf("beacon", "deauth", "nrugochi", "evil_twin", "portal")
+internal val WIFI_DEFEND_MODULE_IDS =
+    listOf("deauth_detector", "rogue_ap", "client_presence")
+internal val WIFI_ALL_MODULE_IDS =
+    WIFI_RECON_MODULE_IDS + WIFI_ATTACK_MODULE_IDS + WIFI_DEFEND_MODULE_IDS
+internal val IR_CATEGORY_MODULE_IDS =
+    listOf("ir", "ir_receiver", "ir_search", "ir_jammer")
+
 internal data class CategorySpec(
     val name: String,
     val icon: ImageVector,
@@ -167,20 +179,20 @@ internal val modules = listOf(
     ModuleCardSpec(
         id = "wifi",
         title = "WiFi Scan",
-        description = "Active 2.4 GHz scan with SSID, BSSID, channel, RSSI, and security.",
+        description = "Active band-aware scan with SSID, BSSID, channel, RSSI, and security.",
         icon = Icons.Default.Wifi,
         category = "WiFi Recon",
-        radio = "2.4GHz",
+        radio = "2.4 / 5 GHz",
         available = true,
     ),
 
     ModuleCardSpec(
         id = "sniff",
         title = "Packet Sniffer",
-        description = "Capture 802.11 frames and export PCAP.",
+        description = "Capture 802.11 frames and export PCAP with band-aware configuration.",
         icon = Icons.Default.FilterCenterFocus,
         category = "WiFi Recon",
-        radio = "2.4GHz",
+        radio = "2.4 / 5 GHz",
         available = true,
     ),
 
@@ -229,6 +241,16 @@ internal val modules = listOf(
         title = "Evil Twin",
         description = "Portal + deauth + EAPOL capture workflow.",
         icon = Icons.Default.ContentCopy,
+        category = "WiFi Attacks",
+        radio = "2.4GHz",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "nrugochi",
+        title = "NRuGochi",
+        description = "Pwnagotchi-style channel hunting and automatic WPA2 handshake capture.",
+        icon = Icons.Default.Key,
         category = "WiFi Attacks",
         radio = "2.4GHz",
         available = true,
@@ -295,6 +317,16 @@ internal val modules = listOf(
     ),
 
     ModuleCardSpec(
+        id = "ld2450",
+        title = "mmWave Radar",
+        description = "Track up to 3 targets with X/Y, distance, and speed.",
+        icon = Icons.Default.Radar,
+        category = "Sensors",
+        radio = "24GHz",
+        available = true,
+    ),
+
+    ModuleCardSpec(
         id = "mesh",
         title = "Mesh",
         description = "Provision, monitor, and control the ESP-NOW mesh.",
@@ -306,11 +338,11 @@ internal val modules = listOf(
 
     ModuleCardSpec(
         id = "mac_lookup",
-        title = "MAC Lookup",
-        description = "Offline OUI and vendor lookup for any MAC address.",
-        icon = Icons.Default.Search,
+        title = "BSSID Geolocation",
+        description = "Offline vendor lookup plus approximate Wi-Fi access-point location.",
+        icon = Icons.Default.LocationOn,
         category = "Tools",
-        radio = "2.4GHz",
+        radio = "Wi-Fi",
         available = true,
     ),
 
@@ -351,6 +383,30 @@ internal val modules = listOf(
         category = "HID",
         radio = "USB",
         available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "pin_bruteforce",
+        title = "PIN Bruteforce",
+        description = "Supervised HID PIN range and wordlist testing.",
+        icon = Icons.Default.Lock,
+        category = "HID",
+        radio = "USB",
+        available = true,
+    ),
+
+    // Hidden/experimental: retained for future unlocked-host or mesh HID work.
+    // Android/iOS lock screens generally ignore BLE HID input, so this module is
+    // intentionally not exposed in the normal module grid.
+    ModuleCardSpec(
+        id = "ble_pin_bruteforce",
+        title = "BLE HID PIN Bruteforce",
+        description = "Experimental BLE HID PIN range and wordlist testing with live controls.",
+        icon = Icons.Default.Bluetooth,
+        category = "HID",
+        radio = "BLE",
+        available = false,
+        statusLabel = "Experimental / hidden",
     ),
 
     ModuleCardSpec(
@@ -395,13 +451,52 @@ internal val modules = listOf(
 
     ModuleCardSpec(
         id = "ir",
-        title = "IR",
-        description = "Infrared transmit/receive module (planned).",
+        title = "IR Remotes",
+        description = "Browse IR remotes, import Flipper .ir files, and transmit through phone or ESP32 IR.",
         icon = Icons.Default.SettingsRemote,
         category = "IR",
         radio = "IR",
-        available = false,
-        statusLabel = "Unavailable",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "ir_receiver",
+        title = "IR Receiver",
+        description = "Capture raw IR signals from the ESP32 receiver and save them as Flipper .ir files.",
+        icon = Icons.Default.SettingsRemote,
+        category = "IR",
+        radio = "IR",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "ir_search",
+        title = "IR Finder",
+        description = "Find a working IR button by stepping through matching category, brand, and button candidates.",
+        icon = Icons.Default.Search,
+        category = "IR",
+        radio = "IR",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "ir_jammer",
+        title = "IR Jammer",
+        description = "Time-limited IR interference test tool. Explicit confirmation and automatic stop required.",
+        icon = Icons.Default.Stop,
+        category = "IR",
+        radio = "IR",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "ir_config",
+        title = "IR Configuration",
+        description = "Choose the IR backend, manage the IR database, and configure ESP32 RX/TX pins.",
+        icon = Icons.Default.Settings,
+        category = "IR",
+        radio = "IR",
+        available = true,
     ),
 
     ModuleCardSpec(
@@ -418,7 +513,7 @@ internal val modules = listOf(
     ModuleCardSpec(
         id = "rfid",
         title = "RFID",
-        description = "RFID/NFC read and emulation module (planned).",
+        description = "Temporarily unavailable while PN532 hardware support is paused.",
         icon = Icons.Default.Nfc,
         category = "RFID",
         radio = "13.56MHz",

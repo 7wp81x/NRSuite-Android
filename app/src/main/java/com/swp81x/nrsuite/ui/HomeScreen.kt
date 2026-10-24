@@ -16,6 +16,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -28,6 +29,9 @@ import com.swp81x.nrsuite.ui.theme.LogColorError
 import com.swp81x.nrsuite.ui.theme.LogColorInfo
 import com.swp81x.nrsuite.ui.theme.LogColorSuccess
 import com.swp81x.nrsuite.ui.theme.LogColorUsb
+import com.swp81x.nrsuite.ui.components.IrModuleConfigRow
+import com.swp81x.nrsuite.ui.components.RfidModuleConfigRow
+import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.sp
@@ -42,6 +46,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -66,9 +71,11 @@ import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputAntenna
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Storage
@@ -92,6 +99,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -117,6 +126,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -126,6 +136,11 @@ import com.swp81x.nrsuite.MainViewModel
 import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.core.update.AppUpdateInfo
+import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
+import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
+import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
+import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
@@ -190,7 +205,15 @@ internal fun HomeScreen(
     recentModuleIds: List<String>,
     ouiDatabaseStatus: OuiDatabaseStatus,
     ouiDatabaseProgress: Float?,
+    appUpdate: AppUpdateInfo?,
+    appUpdateDownload: AppUpdateDownloadState,
+    firmwareUpdate: FirmwareUpdateInfo?,
+    firmwareAssetDownload: FirmwareAssetDownloadState,
     onDownloadOuiDatabase: () -> Unit,
+    onDownloadAppUpdate: () -> Unit,
+    onInstallAppUpdate: () -> Unit,
+    onDownloadFirmwareUpdate: () -> Unit,
+    onOpenFirmwareFlasher: () -> Unit,
     onOpenModule: (String) -> Unit,
     onOpenCategory: (String) -> Unit,
     onRefreshDevices: () -> Unit,
@@ -209,15 +232,60 @@ internal fun HomeScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item {
-            DashboardDeviceCard(
-                state = connectionState,
-                onDisconnect = onDisconnect,
-                onManageDevice = onManageDevice,
-            )
+        appUpdate?.let { update ->
+            item {
+                val downloadState = appUpdateDownload
+                UpdateAvailableCard(
+                    title = "App update available",
+                    latest = update.latest,
+                    buttonLabel = when (downloadState) {
+                        is AppUpdateDownloadState.Downloading -> {
+                            downloadState.percent?.let { "Downloading ${it.toInt()}%" }
+                                ?: "Downloading…"
+                        }
+                        AppUpdateDownloadState.ReadyToInstall -> "Update"
+                        is AppUpdateDownloadState.Failed -> "Retry"
+                        AppUpdateDownloadState.Idle -> "Download"
+                    },
+                    buttonEnabled = downloadState !is AppUpdateDownloadState.Downloading,
+                    onButtonClick = when (downloadState) {
+                        AppUpdateDownloadState.ReadyToInstall -> onInstallAppUpdate
+                        else -> onDownloadAppUpdate
+                    },
+                )
+            }
         }
 
-        if (ouiDatabaseStatus !is OuiDatabaseStatus.Ready) {
+        if (connectionState is ConnectionState.Connected) {
+            firmwareUpdate?.let { update ->
+                item {
+                    val downloadState = firmwareAssetDownload
+                    UpdateAvailableCard(
+                        title = "Firmware update available",
+                        latest = update.latest,
+                        buttonLabel = when (downloadState) {
+                            is FirmwareAssetDownloadState.Downloading -> {
+                                downloadState.percent?.let { "Downloading ${it.toInt()}%" }
+                                    ?: "Downloading…"
+                            }
+                            is FirmwareAssetDownloadState.Downloaded -> "Flash"
+                            is FirmwareAssetDownloadState.Failed -> "Retry"
+                            FirmwareAssetDownloadState.Idle -> "Download"
+                        },
+                        buttonEnabled = downloadState !is FirmwareAssetDownloadState.Downloading,
+                        onButtonClick = when (downloadState) {
+                            is FirmwareAssetDownloadState.Downloaded -> onOpenFirmwareFlasher
+                            else -> onDownloadFirmwareUpdate
+                        },
+                    )
+                }
+            }
+        }
+
+        if (ouiDatabaseStatus is OuiDatabaseStatus.NotDownloaded ||
+            ouiDatabaseStatus is OuiDatabaseStatus.Downloading ||
+            ouiDatabaseStatus is OuiDatabaseStatus.Error
+        ) {
             item {
                 OuiDatabaseDashboardWarning(
                     status = ouiDatabaseStatus,
@@ -225,6 +293,14 @@ internal fun HomeScreen(
                     onDownload = onDownloadOuiDatabase,
                 )
             }
+        }
+
+        item {
+            DashboardDeviceCard(
+                state = connectionState,
+                onDisconnect = onDisconnect,
+                onManageDevice = onManageDevice,
+            )
         }
 
         if (connectionState !is ConnectionState.Connected) {
@@ -325,24 +401,10 @@ internal fun HomeScreen(
         item {
             val categories = listOf(
                 CategorySpec(
-                    name = "WiFi Recon",
+                    name = "WiFi",
                     icon = Icons.Default.WifiFind,
-                    iconTint = categoryColor("WiFi Recon"),
-                    moduleIds = listOf("wifi", "sniff", "hidden_ap"),
-                    available = true,
-                ),
-                CategorySpec(
-                    name = "WiFi Attacks",
-                    icon = Icons.Default.WifiOff,
-                    iconTint = categoryColor("WiFi Attacks"),
-                    moduleIds = listOf("beacon", "deauth", "evil_twin", "portal"),
-                    available = true,
-                ),
-                CategorySpec(
-                    name = "WiFi Defense",
-                    icon = Icons.Default.Shield,
-                    iconTint = categoryColor("WiFi Defense"),
-                    moduleIds = listOf("deauth_detector", "rogue_ap", "client_presence"),
+                    iconTint = categoryColor("WiFi"),
+                    moduleIds = WIFI_ALL_MODULE_IDS,
                     available = true,
                 ),
                 CategorySpec(
@@ -350,6 +412,13 @@ internal fun HomeScreen(
                     icon = Icons.Default.Bluetooth,
                     iconTint = categoryColor("BLE"),
                     moduleIds = listOf("ble_scanner", "ble_profile", "tracker_detector"),
+                    available = true,
+                ),
+                CategorySpec(
+                    name = "Sensors",
+                    icon = Icons.Default.Radar,
+                    iconTint = categoryColor("Sensors"),
+                    moduleIds = listOf("ld2450"),
                     available = true,
                 ),
                 CategorySpec(
@@ -377,7 +446,7 @@ internal fun HomeScreen(
                     name = "HID",
                     icon = Icons.Default.Keyboard,
                     iconTint = categoryColor("HID"),
-                    moduleIds = listOf("ducky", "ble", "badusb"),
+                    moduleIds = listOf("ducky", "ble", "badusb", "pin_bruteforce"),
                     available = true,
                 ),
                 CategorySpec(
@@ -398,9 +467,8 @@ internal fun HomeScreen(
                     name = "IR",
                     icon = Icons.Default.SettingsRemote,
                     iconTint = categoryColor("IR"),
-                    moduleIds = listOf("ir"),
-                    available = false,
-                    statusLabel = "Unavailable",
+                    moduleIds = IR_CATEGORY_MODULE_IDS,
+                    available = true,
                 ),
                 CategorySpec(
                     name = "RF",
@@ -508,25 +576,187 @@ internal fun CategoryCard(
 }
 
 @Composable
+private fun ModuleInfoTag(label: String) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        color = NrOnSurfaceVariant,
+        modifier = Modifier
+            .background(NrSurfaceVariant, RoundedCornerShape(7.dp))
+            .border(0.5.dp, NrOutline, RoundedCornerShape(7.dp))
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+    )
+}
+
+@Composable
 internal fun CategoryModulesScreen(
     modules: List<ModuleCardSpec>,
     onOpenModule: (String) -> Unit,
     modifier: Modifier = Modifier,
+    showWifiFilters: Boolean = false,
+    wifiGroupFilter: Int = 0,
+    onWifiGroupFilterSelected: (Int) -> Unit = {},
+    onOpenWifiConfig: () -> Unit = {},
+    showIrInfo: Boolean = false,
+    irTxLabel: String = "",
+    irRxLabel: String = "",
+    onOpenIrConfig: () -> Unit = {},
+    showRfidInfo: Boolean = false,
+    rfidInterfaceLabel: String = "I2C",
+    rfidSdaLabel: String = "SDA --",
+    rfidSclLabel: String = "SCL --",
+    onOpenRfidConfig: () -> Unit = {},
+    showSensorConfigAction: Boolean = false,
+    onOpenSensorConfig: () -> Unit = {},
+    configAccent: Color? = null,
 ) {
+    val filtered = if (showWifiFilters) {
+        val ids = when (wifiGroupFilter) {
+            1 -> WIFI_ATTACK_MODULE_IDS
+            2 -> WIFI_DEFEND_MODULE_IDS
+            else -> WIFI_RECON_MODULE_IDS
+        }
+        modules.filter { it.id in ids }
+    } else {
+        modules
+    }
+    val effectiveAccent = configAccent ?: MaterialTheme.colorScheme.primary
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        if (showWifiFilters) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    ModuleInfoTag("2.4 GHz")
+                    ModuleInfoTag("5 GHz")
+                    Spacer(Modifier.weight(1f))
+                    TextButton(
+                        onClick = onOpenWifiConfig,
+                        colors = ButtonDefaults.textButtonColors(contentColor = NrOnSurfaceVariant),
+                    ) {
+                        Icon(
+                            Icons.Default.Tune,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = effectiveAccent,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "WiFi Config",
+                            color = NrOnSurfaceVariant,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+            }
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val groups = listOf(
+                        "Recon" to categoryColor("WiFi Recon"),
+                        "Attack" to categoryColor("WiFi Attacks"),
+                        "Defend" to categoryColor("WiFi Defense"),
+                    )
+                    groups.forEachIndexed { index, (label, accent) ->
+                        FilterChip(
+                            selected = wifiGroupFilter == index,
+                            onClick = { onWifiGroupFilterSelected(index) },
+                            label = {
+                                Text(
+                                    text = label,
+                                    fontWeight = if (wifiGroupFilter == index) {
+                                        FontWeight.SemiBold
+                                    } else {
+                                        FontWeight.Medium
+                                    },
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = accent.copy(alpha = 0.18f),
+                                selectedLabelColor = accent,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        if (showIrInfo) {
+            item {
+                IrModuleConfigRow(
+                    txLabel = irTxLabel,
+                    rxLabel = irRxLabel,
+                    onOpenConfig = onOpenIrConfig,
+                    modifier = Modifier.fillMaxWidth(),
+                    accentColor = effectiveAccent,
+                )
+            }
+        }
+        if (showRfidInfo) {
+            item {
+                RfidModuleConfigRow(
+                    interfaceLabel = rfidInterfaceLabel,
+                    sdaLabel = rfidSdaLabel,
+                    sclLabel = rfidSclLabel,
+                    onOpenConfig = onOpenRfidConfig,
+                    modifier = Modifier.fillMaxWidth(),
+                    accentColor = effectiveAccent,
+                )
+            }
+        }
+        if (showSensorConfigAction) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Sensor configuration",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = NrOnSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        onClick = onOpenSensorConfig,
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = NrOnSurfaceVariant,
+                        ),
+                    ) {
+                        Icon(
+                            Icons.Default.Tune,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = effectiveAccent,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "Sensor Config",
+                            color = NrOnSurfaceVariant,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+            }
+        }
         item {
             Text(
-                text = "${modules.size} modules",
+                text = "${filtered.size} modules",
                 style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
                 modifier = Modifier.padding(bottom = 4.dp),
             )
         }
-        items(modules, key = { it.id }, contentType = { "module" }) { module ->
+        items(filtered, key = { it.id }, contentType = { "module" }) { module ->
             ModuleCard(
                 module = module,
                 onClick = { if (module.available) onOpenModule(module.id) },
@@ -619,6 +849,77 @@ internal fun DashboardDeviceCard(
 }
 
 @Composable
+private fun UpdateAvailableCard(
+    title: String,
+    latest: ReleaseInfo,
+    buttonLabel: String = "Download",
+    buttonEnabled: Boolean = true,
+    onButtonClick: (() -> Unit)? = null,
+) {
+    val context = LocalContext.current
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = NrSurfaceVariant),
+        border = BorderStroke(0.5.dp, StatusAmber),
+        shape = RoundedCornerShape(10.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Download,
+                contentDescription = null,
+                tint = StatusAmber,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = latest.tag,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(
+                onClick = {
+                    if (onButtonClick != null) {
+                        onButtonClick()
+                    } else {
+                        val url = latest.downloadUrl ?: latest.htmlUrl
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        }
+                    }
+                },
+                enabled = buttonEnabled,
+                modifier = Modifier.widthIn(min = 112.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    text = buttonLabel,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 internal fun ModulesScreen(
     modules: List<ModuleCardSpec>,
     onOpenModule: (String) -> Unit,
@@ -700,12 +1001,14 @@ private fun OuiDatabaseDashboardWarning(
         else -> StatusAmber
     }
     val title = when (status) {
+        OuiDatabaseStatus.Checking -> ""
         OuiDatabaseStatus.NotDownloaded -> "OUI/vendor database not downloaded"
         OuiDatabaseStatus.Downloading -> "Updating OUI/vendor database…"
         is OuiDatabaseStatus.Error -> "OUI/vendor database download failed"
         is OuiDatabaseStatus.Ready -> ""
     }
     val message = when (status) {
+        OuiDatabaseStatus.Checking -> ""
         OuiDatabaseStatus.NotDownloaded ->
             "Vendor names and OUI-based signals will be unavailable until this is downloaded."
         OuiDatabaseStatus.Downloading ->

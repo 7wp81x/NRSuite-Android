@@ -38,6 +38,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,6 +83,10 @@ fun BleScannerScreen(
     var configExpanded by remember { mutableStateOf(true) }
     var confirmStart by remember { mutableStateOf(false) }
     var connectableOnly by remember { mutableStateOf(false) }
+
+    LaunchedEffect(running) {
+        if (running) configExpanded = false
+    }
 
     val shownDevices = remember(devices, connectableOnly) {
         if (connectableOnly) devices.filter { it.connectable } else devices

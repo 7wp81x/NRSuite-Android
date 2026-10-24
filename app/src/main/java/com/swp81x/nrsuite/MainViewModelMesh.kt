@@ -616,6 +616,8 @@ internal fun MainViewModel.resetMeshRuntimeStateImpl() {
     _meshPeerCount.value = 0
     _meshNodes.value = emptyList()
     _meshProvisioning.value = false
+    _meshActionInProgress.value = false
+    _meshCheckingPassphrase.value = false
 }
 
 internal fun MainViewModel.refreshMeshGlobalCredentialsImpl() {

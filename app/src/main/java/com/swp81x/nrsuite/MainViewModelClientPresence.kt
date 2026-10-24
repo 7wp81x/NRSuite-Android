@@ -3,6 +3,9 @@ package com.swp81x.nrsuite
 import com.swp81x.nrsuite.core.defense.ClientObservation
 import com.swp81x.nrsuite.core.defense.ClientPresenceMode
 import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.wifi.WifiBand
+import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -16,6 +19,7 @@ internal fun MainViewModel.startClientPresenceImpl(
     channel: Int,
     targetBssid: String,
     intervalMs: Int,
+    band: WifiBand = WifiBand.AUTO,
 ) {
     val activeSession = session
     if (activeSession == null) {
@@ -33,7 +37,10 @@ internal fun MainViewModel.startClientPresenceImpl(
         }
     }
 
-    val safeChannel = channel.coerceIn(1, 14)
+    val safeChannel = normalizeWifiChannel(channel, fallback = 1)
+    val fixedChannel = fixed || mode == ClientPresenceMode.ACTIVE
+    if (fixedChannel && !ensureWifiChannelAllowed(safeChannel, "Client Detector")) return
+    val wireBand = if (fixedChannel) bandForWifiChannel(safeChannel).wireName else band.wireName
     _clientPresenceMode.value = mode
     _clientPresenceFixed.value = fixed
     _clientPresenceChannel.value = safeChannel
@@ -51,6 +58,7 @@ internal fun MainViewModel.startClientPresenceImpl(
                 JSONObject().apply {
                     put("bssid", cleanTarget)
                     put("client", "FF:FF:FF:FF:FF:FF")
+                    put("band", bandForWifiChannel(safeChannel).wireName)
                     put("channel", safeChannel)
                     put("count", 10)
                     put("deauth_interval_ms", 100)
@@ -66,6 +74,7 @@ internal fun MainViewModel.startClientPresenceImpl(
 
         val args = JSONObject().apply {
             put("mode", if (fixed) "fixed" else "hop")
+            put("band", wireBand)
             put("channel", safeChannel)
             put("interval_ms", intervalMs.coerceIn(50, 2_000))
         }
@@ -114,6 +123,8 @@ internal fun MainViewModel.triggerClientReconnectBurstImpl() {
     if (target.isBlank() || !MainViewModel.MAC_PATTERN.matches(target)) return
 
     val activeSession = session ?: return
+    val targetChannel = _clientPresenceChannel.value
+    if (!ensureWifiChannelAllowed(targetChannel, "Client Detector")) return
     scope.launch {
         appendLog("Forcing reconnect burst to $target...")
         runCatching { activeSession.sendCommand("STOP_CLIENT_DETECT", timeoutMs = 4_000) }
@@ -122,7 +133,8 @@ internal fun MainViewModel.triggerClientReconnectBurstImpl() {
             JSONObject().apply {
                 put("bssid", target)
                 put("client", "FF:FF:FF:FF:FF:FF")
-                put("channel", _clientPresenceChannel.value)
+                put("band", bandForWifiChannel(targetChannel).wireName)
+                put("channel", targetChannel)
                 put("count", 10)
                 put("deauth_interval_ms", 100)
                 put("reason", 7)
@@ -136,7 +148,8 @@ internal fun MainViewModel.triggerClientReconnectBurstImpl() {
 
         val args = JSONObject().apply {
             put("mode", if (_clientPresenceFixed.value) "fixed" else "hop")
-            put("channel", _clientPresenceChannel.value)
+            put("band", bandForWifiChannel(targetChannel).wireName)
+            put("channel", targetChannel)
             put("interval_ms", 300)
         }
         val response = activeSession.sendCommand("START_CLIENT_DETECT", args, timeoutMs = 10_000)

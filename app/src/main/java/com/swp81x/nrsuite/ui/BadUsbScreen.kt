@@ -99,6 +99,10 @@ fun BadUsbScreen(
         }
     }
 
+    LaunchedEffect(uploading) {
+        if (uploading) configExpanded = false
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier

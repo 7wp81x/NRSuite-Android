@@ -176,6 +176,7 @@ internal fun MainViewModel.clearCredentialSessionsImpl() {
 
 internal fun MainViewModel.selectCrackerSessionImpl(session: CredentialSession?) {
     if (_crackerRunning.value) return
+    this.clearPendingNrugochiCaptureImpl()
     if (session != null) {
         resetCrackerCustomPcapStateImpl()
     }
@@ -192,6 +193,7 @@ internal fun MainViewModel.selectCrackerSessionImpl(session: CredentialSession?)
 
 internal fun MainViewModel.setCrackerCustomPcapImpl(uri: Uri, name: String?) {
     if (_crackerRunning.value) return
+    this.clearPendingNrugochiCaptureImpl()
     _crackerSelectedSession.value = null
     _crackerCustomPcapUri.value = uri
     _crackerCustomPcapName.value = name ?: uri.lastPathSegment ?: "capture.pcap"
@@ -274,6 +276,7 @@ internal fun MainViewModel.setCrackerCustomSsidImpl(value: String) {
 
 internal fun MainViewModel.clearCrackerCustomPcapImpl() {
     if (_crackerRunning.value) return
+    this.clearPendingNrugochiCaptureImpl()
     resetCrackerCustomPcapStateImpl()
     _crackerResult.value = null
     _crackerStatus.value = "Select a saved handshake, or choose a custom PCAP."
@@ -310,6 +313,7 @@ internal fun MainViewModel.clearCrackerWordlistImpl() {
 internal fun MainViewModel.startCrackerImpl() {
     if (_crackerRunning.value) return
 
+    val pendingNrugochiCapture = autoHandshake.pendingCrackerCapture
     val wordlistUri = _crackerWordlistUri.value
     if (wordlistUri == null) {
         appendLog("WPA cracker: select a wordlist first.", level = LogLevel.ERROR)
@@ -433,6 +437,9 @@ internal fun MainViewModel.startCrackerImpl() {
                         bssid = handshake.bssid,
                         password = found,
                     )
+                    if (pendingNrugochiCapture != null) {
+                        persistNrugochiCrackResultImpl(found)
+                    }
                 }
                 appendLog("WPA cracker: password found.")
                 addHistory(
@@ -443,6 +450,9 @@ internal fun MainViewModel.startCrackerImpl() {
             } else {
                 _crackerStatus.value = "Password not found in the selected wordlist."
                 appendLog("WPA cracker: password not found.")
+                if (pendingNrugochiCapture != null) {
+                    markNrugochiCrackFailedImpl()
+                }
             }
         } catch (e: CancellationException) {
             _crackerStatus.value = "Cracker stopped."

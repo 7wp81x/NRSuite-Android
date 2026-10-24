@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -50,6 +51,9 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeveloperBoard
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Edit
@@ -80,6 +84,9 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -125,10 +132,19 @@ import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.defense.OuiRuleAction
 import com.swp81x.nrsuite.core.defense.normalizeOuiPrefix
 import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.core.update.AppUpdateInfo
+import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
+import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
+import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
+import com.swp81x.nrsuite.core.update.ReleaseInfo
+import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
+import com.swp81x.nrsuite.core.update.firmwareChipFromAssetName
+import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrFilterChip
+import com.swp81x.nrsuite.ui.components.SavedItemDropdown
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -145,18 +161,6 @@ import org.json.JSONObject
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.ui.theme.LogBgError
-
-private fun inferChipFromFirmwareName(name: String?): String? {
-    val normalized = name?.lowercase() ?: return null
-    return when {
-        "esp32s3" in normalized || "esp32-s3" in normalized -> "ESP32-S3"
-        "esp32c3" in normalized || "esp32-c3" in normalized -> "ESP32-C3"
-        "esp32s2" in normalized || "esp32-s2" in normalized -> "ESP32-S2"
-        "esp32-generic" in normalized || "esp32dev" in normalized || "esp32_dev" in normalized -> "ESP32"
-        "esp32" in normalized -> "ESP32"
-        else -> null
-    }
-}
 
 @Composable
 internal fun SettingsScreen(
@@ -178,20 +182,49 @@ internal fun SettingsScreen(
     onRequestPermission: (UsbDevice) -> Unit,
     onSelectFlashTarget: (UsbDevice) -> Unit,
     onStartFirmwareFlash: (targetChip: String, skipReset: Boolean, eraseBeforeFlash: Boolean) -> Unit,
+    firmwareManualRecovery: Boolean = false,
+    onArmManualFirmwareRecovery: (targetChip: String) -> Unit = {},
+    onFlashManualFirmwareNow: () -> Unit = {},
+    onFlashManualFirmwareWithReset: () -> Unit = {},
+    onDisarmManualFirmwareRecovery: () -> Unit = {},
+    firmwareReleases: List<ReleaseInfo> = emptyList(),
+    firmwareAssetDownload: FirmwareAssetDownloadState = FirmwareAssetDownloadState.Idle,
+    onDownloadFirmwareAsset: (releaseTag: String, assetName: String) -> Unit = { _, _ -> },
     ouiRules: List<OuiRule> = emptyList(),
     onAddOuiRule: (ouiPrefix: String, label: String, action: OuiRuleAction) -> Unit = { _, _, _ -> },
     onDeleteOuiRule: (id: String) -> Unit = {},
     ouiDatabaseStatus: OuiDatabaseStatus = OuiDatabaseStatus.NotDownloaded,
     ouiDatabaseProgress: Float? = null,
     onDownloadOuiDatabase: () -> Unit = {},
+    autoUpdateCheck: Boolean = true,
+    updateCheckInProgress: Boolean = false,
+    appUpdate: AppUpdateInfo? = null,
+    appUpdateDownload: AppUpdateDownloadState = AppUpdateDownloadState.Idle,
+    firmwareUpdate: FirmwareUpdateInfo? = null,
+    updateError: String? = null,
+    onAutoUpdateCheckChange: (Boolean) -> Unit = {},
+    onCheckForUpdates: () -> Unit = {},
+    onAutoCheckForUpdates: () -> Unit = {},
+    onDownloadAppUpdate: () -> Unit = {},
+    onInstallAppUpdate: () -> Unit = {},
+    onDownloadFirmwareUpdate: () -> Unit = {},
+    onOpenFirmwareFlasher: () -> Unit = {},
+    onClearUpdateDownloads: () -> Unit = {},
     flasherOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val currentFirmware = (connectionState as? ConnectionState.Connected)?.firmwareVersion
     val context = androidx.compose.ui.platform.LocalContext.current
+    val currentAppVersion = remember(context) {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull() ?: "unknown"
+    }
     val accent = MaterialTheme.colorScheme.primary
-    val chip = (connectionState as? ConnectionState.Connected)?.chip
+    val connectedInfo = connectionState as? ConnectionState.Connected
+    val chip = connectedInfo?.chip
     val boardName = when (chip) {
+        "ESP32-C5" -> "ESP32-C5"
         "ESP32-C3" -> "ESP32-C3"
         "ESP32-S3" -> "ESP32-S3"
         "ESP32-S2" -> "ESP32-S2"
@@ -205,12 +238,32 @@ internal fun SettingsScreen(
     var manualBootloader by remember { mutableStateOf(false) }
     var advancedExpanded by remember { mutableStateOf(false) }
     var showFlashConfirm by remember { mutableStateOf(false) }
+    var selectedFirmwareReleaseTag by remember { mutableStateOf<String?>(null) }
+    var selectedFirmwareAssetName by remember { mutableStateOf<String?>(null) }
+    var firmwareSourceRemote by remember { mutableStateOf(true) }
     LaunchedEffect(firmwareFileName, chip) {
-        val inferred = inferChipFromFirmwareName(firmwareFileName)
+        val inferred = firmwareChipFromFirmwareName(firmwareFileName)
         when {
             inferred != null -> selectedTargetChip = inferred
             !chip.isNullOrBlank() -> selectedTargetChip = chip
         }
+    }
+
+    LaunchedEffect(firmwareAssetDownload) {
+        if (firmwareAssetDownload is FirmwareAssetDownloadState.Downloaded) {
+            firmwareSourceRemote = true
+        }
+    }
+    LaunchedEffect(firmwareReleases, selectedTargetChip) {
+        val compatibleReleases = firmwareReleases.filter {
+            it.compatibleFirmwareAssets(selectedTargetChip).isNotEmpty()
+        }
+        val release = compatibleReleases.firstOrNull { it.tag == selectedFirmwareReleaseTag }
+            ?: compatibleReleases.firstOrNull()
+        selectedFirmwareReleaseTag = release?.tag
+        val assets = release?.compatibleFirmwareAssets(selectedTargetChip).orEmpty()
+        selectedFirmwareAssetName = assets.firstOrNull { it.name == selectedFirmwareAssetName }?.name
+            ?: assets.firstOrNull()?.name
     }
     LaunchedEffect(devices) {
         if (devices.size == 1 &&
@@ -218,6 +271,12 @@ internal fun SettingsScreen(
             usbManager.hasPermission(devices[0].device)
         ) {
             onSelectFlashTarget(devices[0].device)
+        }
+    }
+
+    LaunchedEffect(flasherOnly, autoUpdateCheck) {
+        if (flasherOnly && autoUpdateCheck) {
+            onAutoCheckForUpdates()
         }
     }
 
@@ -356,51 +415,226 @@ internal fun SettingsScreen(
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = if (firmwareFileName != null && firmwareFlashSize > 0) {
-                        "$firmwareFileName  (${firmwareFlashSize / 1024} KB)"
-                    } else {
-                        firmwareFileName ?: "No merged firmware .bin selected"
-                    },
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    text = "Choose a cached GitHub release or a local .bin file.",
+                    style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
-                if (firmwareFileName == null) {
-                    Button(
-                        onClick = onChooseFirmware,
-                        enabled = targetHasPermission && !firmwareFlashing,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = accent,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
-                    ) {
-                        Text("Choose firmware .bin")
-                    }
-                } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = onChooseFirmware,
-                            enabled = targetHasPermission && !firmwareFlashing,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
-                        ) {
-                            Text("Change")
-                        }
-                        TextButton(
-                            onClick = onClearFirmware,
-                            enabled = !firmwareFlashing,
-                        ) {
-                            Text("Clear")
-                        }
-                    }
-                }
-                if (!targetHasPermission) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Select a device above to choose firmware.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = StatusAmber,
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NrFilterChip(
+                        selected = firmwareSourceRemote,
+                        onClick = { firmwareSourceRemote = true },
+                        enabled = !firmwareFlashing,
+                        label = "Remote",
+                    )
+                    NrFilterChip(
+                        selected = !firmwareSourceRemote,
+                        onClick = { firmwareSourceRemote = false },
+                        enabled = !firmwareFlashing,
+                        label = "Local file",
                     )
                 }
+                Spacer(Modifier.height(10.dp))
+
+                if (!firmwareSourceRemote) {
+                    Text(
+                        text = if (firmwareFileName != null && firmwareFlashSize > 0) {
+                            "$firmwareFileName  (${firmwareFlashSize / 1024} KB)"
+                        } else {
+                            firmwareFileName ?: "No local firmware .bin selected"
+                        },
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = NrOnSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (firmwareFileName == null) {
+                        Button(
+                            onClick = onChooseFirmware,
+                            enabled = targetHasPermission && !firmwareFlashing,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = accent,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                        ) {
+                            Text("Choose firmware .bin")
+                        }
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = onChooseFirmware,
+                                enabled = targetHasPermission && !firmwareFlashing,
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
+                            ) {
+                                Text("Change")
+                            }
+                            TextButton(
+                                onClick = onClearFirmware,
+                                enabled = !firmwareFlashing,
+                            ) {
+                                Text("Clear")
+                            }
+                        }
+                    }
+                    if (!targetHasPermission) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Select a device above to choose a local firmware.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
+                        )
+                    }
+                } else {
+                    if (updateCheckInProgress) {
+                        Text(
+                            text = "Checking for updates…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    } else if (firmwareReleases.isEmpty()) {
+                        Text(
+                            text = "No firmware releases cached yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        OutlinedButton(
+                            onClick = onCheckForUpdates,
+                            enabled = autoUpdateCheck,
+                        ) {
+                            Text("Check now")
+                        }
+                        if (updateError != null) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = updateError,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusRed,
+                            )
+                        }
+                    } else {
+                        val selectedRelease = firmwareReleases.firstOrNull {
+                            it.tag == selectedFirmwareReleaseTag
+                        }
+                        val allAssets = selectedRelease?.assets.orEmpty()
+                        val compatibleAssets = selectedRelease
+                            ?.compatibleFirmwareAssets(selectedTargetChip)
+                            .orEmpty()
+                        val selectedAsset = allAssets.firstOrNull {
+                            it.name == selectedFirmwareAssetName
+                        } ?: compatibleAssets.firstOrNull()
+
+                        SavedItemDropdown(
+                            label = "Firmware version",
+                            selectedName = selectedRelease?.tag,
+                            names = firmwareReleases.map { it.tag },
+                            enabled = !firmwareFlashing,
+                            sortNames = false,
+                            itemSupportingText = { tag ->
+                                val release = firmwareReleases.firstOrNull { it.tag == tag }
+                                val isLatest = tag == firmwareReleases.firstOrNull()?.tag
+                                val compatible = release
+                                    ?.compatibleFirmwareAssets(selectedTargetChip)
+                                    ?.isNotEmpty() == true
+                                when {
+                                    isLatest && compatible -> "Latest · compatible with $selectedTargetChip"
+                                    isLatest -> "Latest"
+                                    compatible -> "Compatible with $selectedTargetChip"
+                                    else -> "No $selectedTargetChip asset"
+                                }
+                            },
+                            onSelect = { tag ->
+                                selectedFirmwareReleaseTag = tag
+                                selectedFirmwareAssetName = null
+                            },
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+                        SavedItemDropdown(
+                            label = "Firmware image",
+                            selectedName = selectedAsset?.name,
+                            names = allAssets.map { it.name },
+                            enabled = !firmwareFlashing && allAssets.isNotEmpty(),
+                            sortNames = false,
+                            itemSupportingText = { name ->
+                                firmwareChipFromAssetName(name)?.let { "Target: $it" }
+                                    ?: "Unknown target chip"
+                            },
+                            onSelect = { name ->
+                                selectedFirmwareAssetName = name
+                                firmwareChipFromAssetName(name)?.let { selectedTargetChip = it }
+                            },
+                        )
+
+                        if (compatibleAssets.isEmpty()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "This release has no asset for $selectedTargetChip. " +
+                                    "Select a version/firmware that matches the target chip.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusAmber,
+                            )
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                        val downloadState = firmwareAssetDownload
+                        val downloaded = downloadState is FirmwareAssetDownloadState.Downloaded
+                        Button(
+                            onClick = {
+                                val release = selectedRelease ?: return@Button
+                                val asset = selectedAsset ?: return@Button
+                                onDownloadFirmwareAsset(release.tag, asset.name)
+                            },
+                            enabled = selectedRelease != null &&
+                                selectedAsset != null &&
+                                downloadState !is FirmwareAssetDownloadState.Downloading &&
+                                !downloaded &&
+                                !firmwareFlashing,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = accent,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                        ) {
+                            when (downloadState) {
+                                is FirmwareAssetDownloadState.Downloading -> {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        downloadState.percent?.let {
+                                            "Downloading ${it.toInt()}%"
+                                        } ?: "Downloading…",
+                                    )
+                                }
+                                is FirmwareAssetDownloadState.Downloaded -> Text("Downloaded")
+                                is FirmwareAssetDownloadState.Failed -> Text("Retry download")
+                                FirmwareAssetDownloadState.Idle -> Text("Download selected firmware")
+                            }
+                        }
+                        if (downloadState is FirmwareAssetDownloadState.Failed) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = downloadState.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusRed,
+                            )
+                        }
+                        if (downloaded) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Firmware ready to flash. Use the button below.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusGreen,
+                            )
+                        }
+                    }
+                }
+
                 Spacer(Modifier.height(12.dp))
 
                 Text(
@@ -435,7 +669,21 @@ internal fun SettingsScreen(
                     color = NrOnSurfaceVariant,
                 )
                 Spacer(Modifier.height(6.dp))
-                TextButton(onClick = { advancedExpanded = !advancedExpanded }) {
+                OutlinedButton(
+                    onClick = { advancedExpanded = !advancedExpanded },
+                    enabled = !firmwareFlashing,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(
+                        imageVector = if (advancedExpanded) {
+                            Icons.Default.ExpandLess
+                        } else {
+                            Icons.Default.ExpandMore
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
                     Text(if (advancedExpanded) "Hide advanced options" else "Advanced options")
                 }
                 if (advancedExpanded) {
@@ -460,14 +708,6 @@ internal fun SettingsScreen(
                         color = NrOnSurfaceVariant,
                     )
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "This writes the complete merged .bin at offset 0x0. " +
-                        "The flash blocks being written are erased automatically. " +
-                        "It is not an OTA/incremental update.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = StatusAmber,
-                )
                 Spacer(Modifier.height(10.dp))
                 Button(
                     onClick = { showFlashConfirm = true },
@@ -530,6 +770,62 @@ internal fun SettingsScreen(
                         },
                     )
                 }
+
+                if (firmwareManualRecovery) {
+                    Spacer(Modifier.height(10.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = NrSurfaceVariant),
+                        border = BorderStroke(0.5.dp, StatusAmber),
+                        shape = RoundedCornerShape(10.dp),
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Manual bootloader recovery armed",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Hold BOOT, tap RESET (or unplug/replug while holding BOOT), " +
+                                    "then release BOOT. The no-reset flash starts when the device appears.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NrOnSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = onFlashManualFirmwareNow,
+                                    enabled = !firmwareFlashing,
+                                ) {
+                                    Text("Flash now")
+                                }
+                                TextButton(
+                                    onClick = onDisarmManualFirmwareRecovery,
+                                    enabled = !firmwareFlashing,
+                                ) {
+                                    Text("Cancel")
+                                }
+                            }
+                            TextButton(
+                                onClick = onFlashManualFirmwareWithReset,
+                                enabled = !firmwareFlashing,
+                            ) {
+                                Text("Try automatic DTR/RTS reset instead")
+                            }
+                        }
+                    }
+                } else if (!firmwareFlashing &&
+                    firmwareFlashStatus?.startsWith("Flash failed") == true
+                ) {
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = { onArmManualFirmwareRecovery(selectedTargetChip) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Use manual bootloader")
+                    }
+                }
             }
         }
         }
@@ -546,6 +842,24 @@ internal fun SettingsScreen(
             ouiRules = ouiRules,
             onAddOuiRule = onAddOuiRule,
             onDeleteOuiRule = onDeleteOuiRule,
+        )
+
+        UpdatesCard(
+            currentVersion = currentAppVersion,
+            autoUpdateCheck = autoUpdateCheck,
+            updateCheckInProgress = updateCheckInProgress,
+            appUpdate = appUpdate,
+            appUpdateDownload = appUpdateDownload,
+            firmwareUpdate = firmwareUpdate,
+            firmwareAssetDownload = firmwareAssetDownload,
+            updateError = updateError,
+            onAutoUpdateCheckChange = onAutoUpdateCheckChange,
+            onCheckForUpdates = onCheckForUpdates,
+            onDownloadAppUpdate = onDownloadAppUpdate,
+            onInstallAppUpdate = onInstallAppUpdate,
+            onDownloadFirmwareUpdate = onDownloadFirmwareUpdate,
+            onOpenFirmwareFlasher = onOpenFirmwareFlasher,
+            onClearUpdateDownloads = onClearUpdateDownloads,
         )
 
         Card(
@@ -796,6 +1110,195 @@ private fun OuiRuleRow(
 }
 
 @Composable
+private fun UpdatesCard(
+    currentVersion: String,
+    autoUpdateCheck: Boolean,
+    updateCheckInProgress: Boolean,
+    appUpdate: AppUpdateInfo?,
+    appUpdateDownload: AppUpdateDownloadState,
+    firmwareUpdate: FirmwareUpdateInfo?,
+    firmwareAssetDownload: FirmwareAssetDownloadState,
+    updateError: String?,
+    onAutoUpdateCheckChange: (Boolean) -> Unit,
+    onCheckForUpdates: () -> Unit,
+    onDownloadAppUpdate: () -> Unit,
+    onInstallAppUpdate: () -> Unit,
+    onDownloadFirmwareUpdate: () -> Unit,
+    onOpenFirmwareFlasher: () -> Unit,
+    onClearUpdateDownloads: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(0.5.dp, NrOutline),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text("Updates", fontWeight = FontWeight.SemiBold)
+            Text(
+                text = "App version $currentVersion",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = NrOnSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Check automatically", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = "Checks GitHub when the app opens, at most once per hour.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = autoUpdateCheck,
+                    onCheckedChange = onAutoUpdateCheckChange,
+                )
+            }
+
+            if (updateError != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = updateError,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusRed,
+                )
+            }
+
+            appUpdate?.let { update ->
+                Spacer(Modifier.height(10.dp))
+                val downloadState = appUpdateDownload
+                UpdateInfoRow(
+                    label = "App update available",
+                    latest = update.latest,
+                    buttonLabel = when (downloadState) {
+                        is AppUpdateDownloadState.Downloading -> {
+                            downloadState.percent?.let { "Downloading ${it.toInt()}%" }
+                                ?: "Downloading…"
+                        }
+                        AppUpdateDownloadState.ReadyToInstall -> "Update"
+                        is AppUpdateDownloadState.Failed -> "Retry"
+                        AppUpdateDownloadState.Idle -> "Download"
+                    },
+                    buttonEnabled = downloadState !is AppUpdateDownloadState.Downloading,
+                    onButtonClick = when (downloadState) {
+                        AppUpdateDownloadState.ReadyToInstall -> onInstallAppUpdate
+                        else -> onDownloadAppUpdate
+                    },
+                )
+            }
+
+            firmwareUpdate?.let { update ->
+                Spacer(Modifier.height(10.dp))
+                val downloadState = firmwareAssetDownload
+                UpdateInfoRow(
+                    label = "Firmware update available",
+                    latest = update.latest,
+                    buttonLabel = when (downloadState) {
+                        is FirmwareAssetDownloadState.Downloading -> {
+                            downloadState.percent?.let { "Downloading ${it.toInt()}%" }
+                                ?: "Downloading…"
+                        }
+                        is FirmwareAssetDownloadState.Downloaded -> "Flash"
+                        is FirmwareAssetDownloadState.Failed -> "Retry"
+                        FirmwareAssetDownloadState.Idle -> "Download"
+                    },
+                    buttonEnabled = downloadState !is FirmwareAssetDownloadState.Downloading,
+                    onButtonClick = when (downloadState) {
+                        is FirmwareAssetDownloadState.Downloaded -> onOpenFirmwareFlasher
+                        else -> onDownloadFirmwareUpdate
+                    },
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = onCheckForUpdates,
+                enabled = !updateCheckInProgress,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (updateCheckInProgress) {
+                    Text("Checking...")
+                } else {
+                    Text("Check now")
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            TextButton(
+                onClick = onClearUpdateDownloads,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Clear downloaded updates")
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateInfoRow(
+    label: String,
+    latest: ReleaseInfo,
+    buttonLabel: String = "Download",
+    buttonEnabled: Boolean = true,
+    onButtonClick: (() -> Unit)? = null,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Default.Download,
+            contentDescription = null,
+            tint = StatusAmber,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = latest.tag,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = NrOnSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        OutlinedButton(
+            onClick = {
+                if (onButtonClick != null) {
+                    onButtonClick()
+                } else {
+                    val url = latest.downloadUrl ?: latest.htmlUrl
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    }
+                }
+            },
+            enabled = buttonEnabled,
+            modifier = Modifier.widthIn(min = 112.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+        ) {
+            Text(
+                text = buttonLabel,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
 private fun OuiDatabaseCard(
     status: OuiDatabaseStatus,
     progress: Float?,
@@ -819,6 +1322,13 @@ private fun OuiDatabaseCard(
             Spacer(Modifier.height(10.dp))
 
             when (status) {
+                OuiDatabaseStatus.Checking -> {
+                    Text(
+                        text = "Checking local database…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
                 OuiDatabaseStatus.NotDownloaded -> {
                     Text(
                         text = "Not downloaded.",
@@ -873,7 +1383,8 @@ private fun OuiDatabaseCard(
             Spacer(Modifier.height(10.dp))
             Button(
                 onClick = onDownload,
-                enabled = status !is OuiDatabaseStatus.Downloading,
+                enabled = status !is OuiDatabaseStatus.Downloading &&
+                    status !is OuiDatabaseStatus.Checking,
             ) {
                 Text(if (status is OuiDatabaseStatus.Ready) "Update database" else "Download database")
             }

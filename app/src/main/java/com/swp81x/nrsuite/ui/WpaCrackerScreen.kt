@@ -106,19 +106,6 @@ fun WpaCrackerScreen(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            StatusIndicator(
-                label = when {
-                    running -> "Cracking..."
-                    result != null -> "Password found"
-                    else -> "Offline WPA/WPA2 cracker"
-                },
-                color = when {
-                    running -> StatusAmber
-                    result != null -> StatusGreen
-                    else -> NrOnSurfaceVariant
-                },
-            )
-
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = NrSurface),

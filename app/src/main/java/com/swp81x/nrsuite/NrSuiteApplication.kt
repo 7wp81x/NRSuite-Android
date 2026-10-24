@@ -10,6 +10,7 @@ import android.hardware.usb.UsbManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.swp81x.nrsuite.core.usb.UsbDeviceOwnerClient
+import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
 
 /**
  * Application-scoped owner for the long-running NRSuite bridge controller.
@@ -42,6 +43,7 @@ class NrSuiteApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        NrSuiteNotifications.createChannels(this)
         UsbDeviceOwnerClient.init(this)
         runCatching {
             ContextCompat.registerReceiver(

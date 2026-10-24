@@ -43,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,10 +56,12 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.ClientObservation
 import com.swp81x.nrsuite.core.defense.ClientPresenceMode
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
+import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.ChannelModeToggle
-import com.swp81x.nrsuite.ui.components.ChannelStepper
+import com.swp81x.nrsuite.ui.components.WifiBandConfigSection
+import com.swp81x.nrsuite.ui.components.WifiChannelStepper
 import com.swp81x.nrsuite.ui.components.ModuleStatusCard
 import com.swp81x.nrsuite.ui.components.ModuleStatusState
 import com.swp81x.nrsuite.ui.components.NrFilterChip
@@ -93,14 +96,19 @@ fun ClientPresenceScreen(
     onChannelChange: (Int) -> Unit,
     onScanWifi: () -> Unit,
     onSelectTarget: (NetworkTarget) -> Unit,
-    onStart: () -> Unit,
+    onStart: (WifiBand) -> Unit,
     onStop: () -> Unit,
     onTriggerReconnect: () -> Unit,
     onClear: () -> Unit,
+    showBandSelector: Boolean = false,
+    fiveGhzAvailable: Boolean = false,
+    fiveGhzUnavailableMessage: String = "",
+    allowedChannels: List<Int> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by remember { mutableStateOf(true) }
     var confirmStart by remember { mutableStateOf(false) }
+    var band by rememberSaveable { mutableStateOf(WifiBand.AUTO) }
     val validTarget = targetBssid.isNotBlank()
     val canStart = connected && (mode == ClientPresenceMode.PASSIVE || validTarget)
 
@@ -141,6 +149,7 @@ fun ClientPresenceScreen(
                 mode = mode,
                 fixed = fixed,
                 channel = channel,
+                band = band,
                 targetBssid = targetBssid,
                 scanning = scanning,
                 networks = networks,
@@ -148,8 +157,13 @@ fun ClientPresenceScreen(
                 onModeChange = onModeChange,
                 onFixedChange = onFixedChange,
                 onChannelChange = onChannelChange,
+                onBandSelected = { band = it },
                 onScanWifi = onScanWifi,
                 onSelectTarget = onSelectTarget,
+                showBandSelector = showBandSelector,
+                fiveGhzAvailable = fiveGhzAvailable,
+                fiveGhzUnavailableMessage = fiveGhzUnavailableMessage,
+                allowedChannels = allowedChannels,
             )
             Spacer(Modifier.height(10.dp))
 
@@ -202,7 +216,7 @@ fun ClientPresenceScreen(
                 TextButton(
                     onClick = {
                         confirmStart = false
-                        onStart()
+                        onStart(band)
                     },
                 ) { Text("Start") }
             },
@@ -266,6 +280,7 @@ private fun ConfigZone(
     mode: ClientPresenceMode,
     fixed: Boolean,
     channel: Int,
+    band: WifiBand,
     targetBssid: String,
     scanning: Boolean,
     networks: List<JSONObject>,
@@ -273,8 +288,13 @@ private fun ConfigZone(
     onModeChange: (ClientPresenceMode) -> Unit,
     onFixedChange: (Boolean) -> Unit,
     onChannelChange: (Int) -> Unit,
+    onBandSelected: (WifiBand) -> Unit,
     onScanWifi: () -> Unit,
     onSelectTarget: (NetworkTarget) -> Unit,
+    showBandSelector: Boolean,
+    fiveGhzAvailable: Boolean,
+    fiveGhzUnavailableMessage: String,
+    allowedChannels: List<Int>,
 ) {
     val controlsEnabled = connected && !running
 
@@ -400,25 +420,26 @@ private fun ConfigZone(
                             Spacer(Modifier.height(4.dp))
                             Text("Channel", style = MaterialTheme.typography.labelLarge)
                             Spacer(Modifier.height(4.dp))
-                            ChannelStepper(
+                            WifiChannelStepper(
                                 value = channel,
-                                min = 1,
-                                max = 14,
                                 enabled = controlsEnabled,
-                                onDecrease = { onChannelChange((channel - 1).coerceAtLeast(1)) },
-                                onIncrease = { onChannelChange((channel + 1).coerceAtMost(14)) },
+                                onChannelChange = onChannelChange,
+                                allowedChannels = allowedChannels.ifEmpty {
+                                    com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
+                                },
+                            )
+                        } else {
+                            WifiBandConfigSection(
+                                visible = showBandSelector,
+                                band = band,
+                                fiveGhzAvailable = fiveGhzAvailable,
+                                fiveGhzUnavailableMessage = fiveGhzUnavailableMessage,
+                                onBandSelected = onBandSelected,
+                                enabled = controlsEnabled,
                             )
                         }
                     }
 
-                    if (!connected) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = "Connect a device before starting client detection.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusRed,
-                        )
-                    }
                 }
             }
         }

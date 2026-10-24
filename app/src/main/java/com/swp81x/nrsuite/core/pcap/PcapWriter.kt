@@ -34,6 +34,10 @@ class PcapWriter(
     var packetCount: Long = 0
         private set
 
+    private var _bytesWritten: Long = 0L
+    val bytesWritten: Long
+        get() = _bytesWritten
+
     @Synchronized
     fun writePacket(data: ByteArray) {
         val now = System.currentTimeMillis()
@@ -45,6 +49,7 @@ class PcapWriter(
         writeUInt32(data.size.toLong())
         writeUInt32(data.size.toLong())
         output.write(data)
+        _bytesWritten += data.size.toLong()
         packetCount++
     }
 
@@ -72,6 +77,7 @@ class PcapWriter(
     private fun writeUInt16(value: Int) {
         output.write(value and 0xFF)
         output.write((value ushr 8) and 0xFF)
+        _bytesWritten += 2L
     }
 
     private fun writeUInt32(value: Long) {
@@ -79,6 +85,7 @@ class PcapWriter(
         output.write(((value ushr 8) and 0xFF).toInt())
         output.write(((value ushr 16) and 0xFF).toInt())
         output.write(((value ushr 24) and 0xFF).toInt())
+        _bytesWritten += 4L
     }
 
     companion object {

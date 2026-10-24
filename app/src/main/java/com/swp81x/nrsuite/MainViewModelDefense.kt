@@ -5,6 +5,9 @@ import com.swp81x.nrsuite.core.defense.DeauthAlert
 import com.swp81x.nrsuite.core.defense.DeauthChannelMode
 import com.swp81x.nrsuite.core.defense.DeauthFeedEntry
 import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.wifi.WifiBand
+import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -12,7 +15,7 @@ import org.json.JSONObject
 
 // Deauth detector state and command handling.
 
-internal fun MainViewModel.startDeauthDetectorImpl() {
+internal fun MainViewModel.startDeauthDetectorImpl(band: WifiBand = WifiBand.AUTO) {
     val activeSession = session
     if (activeSession == null) {
         appendLog("Connect to a device before starting the deauth detector.")
@@ -28,7 +31,13 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
     }
     if (!ensureRadioIdle("Deauth Detector")) return
 
-    val channel = _deauthDetectorChannel.value.coerceIn(1, 14)
+    val channel = normalizeWifiChannel(_deauthDetectorChannel.value, fallback = 1)
+    if (mode == DeauthChannelMode.TARGETED && !ensureWifiChannelAllowed(channel, "Deauth Detector")) return
+    val wireBand = if (mode == DeauthChannelMode.HOPPING) {
+        band.wireName
+    } else {
+        bandForWifiChannel(channel).wireName
+    }
     val hopIntervalMs = _deauthDetectorHopIntervalMs.value.coerceIn(100, 2_000)
 
     _deauthDetectorActiveAlert.value = null
@@ -56,6 +65,7 @@ internal fun MainViewModel.startDeauthDetectorImpl() {
     scope.launch {
         val args = JSONObject().apply {
             put("mode", if (mode == DeauthChannelMode.HOPPING) "hop" else "fixed")
+            put("band", wireBand)
             put("rssi_min", -127)
             if (mode == DeauthChannelMode.HOPPING) {
                 put("interval_ms", hopIntervalMs)

@@ -1,5 +1,7 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
@@ -59,7 +61,9 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.components.HtmlUploadSection
+import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.WifiChannelStepper
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
@@ -90,6 +94,7 @@ fun PortalScreen(
     onClearEventLog: () -> Unit,
     onStart: (ssid: String, channel: Int, targetBssid: String) -> Unit,
     onStop: () -> Unit,
+    allowedChannels: List<Int> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by rememberSaveable { mutableStateOf(true) }
@@ -114,18 +119,11 @@ fun PortalScreen(
                 .fillMaxSize()
                 .padding(12.dp),
         ) {
-            TabRow(selectedTabIndex = selectedTab) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text("Overview") },
-                )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = { Text("Logs (${eventLog.size})") },
-                )
-            }
+            RoundedTabRow(
+                selectedIndex = selectedTab,
+                tabs = listOf("Overview", "Logs (${eventLog.size})"),
+                onSelect = { selectedTab = it },
+            )
 
             Spacer(Modifier.height(10.dp))
 
@@ -143,13 +141,20 @@ fun PortalScreen(
                     channel = channel,
                     targetBssid = targetBssid,
                     validTargetBssid = validTargetBssid,
+                    allowedChannels = allowedChannels,
                     selectedHtmlName = selectedHtmlName,
                     htmlUploading = htmlUploading,
                     htmlProgress = htmlProgress,
                     htmlComplete = htmlComplete,
                     onToggle = { configExpanded = !configExpanded },
                     onSsidChange = { ssid = it },
-                    onChannelChange = { channel = it.coerceIn(1, 13) },
+                    onChannelChange = {
+                        channel = normalizeWifiChannel(
+                            it,
+                            allowedChannels.ifEmpty { com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS },
+                            fallback = channel,
+                        )
+                    },
                     onTargetBssidChange = { targetBssid = it },
                     onChooseHtml = onChooseHtml,
                     onClearHtml = onClearHtml,
@@ -304,6 +309,7 @@ private fun ConfigZone(
     channel: Int,
     targetBssid: String,
     validTargetBssid: Boolean,
+    allowedChannels: List<Int>,
     selectedHtmlName: String?,
     htmlUploading: Boolean,
     htmlProgress: Int,
@@ -365,12 +371,15 @@ private fun ConfigZone(
                         singleLine = true,
                     )
                     Spacer(Modifier.height(8.dp))
-                    NumberStepper(
-                        label = "Channel (1–13)",
-                        valueText = channel.toString(),
+                    Text("Channel", style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.height(6.dp))
+                    WifiChannelStepper(
+                        value = channel,
                         enabled = !running,
-                        onDecrease = { onChannelChange(channel - 1) },
-                        onIncrease = { onChannelChange(channel + 1) },
+                        onChannelChange = onChannelChange,
+                        allowedChannels = allowedChannels.ifEmpty {
+                            com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
+                        },
                     )
 
                     Spacer(Modifier.height(12.dp))
@@ -385,53 +394,8 @@ private fun ConfigZone(
                         onClear = onClearHtml,
                     )
 
-                    if (!connected) {
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            text = "Connect a device from the Device tab before starting the portal.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusAmber,
-                        )
-                    }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun NumberStepper(
-    label: String,
-    valueText: String,
-    enabled: Boolean,
-    onDecrease: () -> Unit,
-    onIncrease: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onDecrease, enabled = enabled) {
-            Icon(
-                imageVector = Icons.Default.Remove,
-                contentDescription = "Decrease $label",
-            )
-        }
-        Text(
-            text = valueText,
-            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-            modifier = Modifier.padding(horizontal = 8.dp),
-        )
-        IconButton(onClick = onIncrease, enabled = enabled) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = "Increase $label",
-            )
         }
     }
 }
@@ -609,14 +573,7 @@ private fun ResultZone(
                 MetricRow("Captured form posts", capturedData.toString())
             }
 
-            if (!connected) {
-                Spacer(Modifier.height(24.dp))
-                Text(
-                    text = "Connect an ESP32 to start the captive portal.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
-            } else if (!running) {
+            if (connected && !running) {
                 Spacer(Modifier.height(24.dp))
                 Text(
                     text = "Configure the AP, optionally choose an HTML file, then tap start.",

@@ -42,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,8 +54,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.HiddenApObservation
 import com.swp81x.nrsuite.core.defense.HiddenSsidCandidate
+import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.ui.components.ChannelModeToggle
-import com.swp81x.nrsuite.ui.components.ChannelStepper
+import com.swp81x.nrsuite.ui.components.WifiBandConfigSection
+import com.swp81x.nrsuite.ui.components.WifiChannelStepper
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -83,15 +86,20 @@ fun HiddenApScreen(
     onFixedChange: (Boolean) -> Unit,
     onChannelChange: (Int) -> Unit,
     onDeauthToggle: (Boolean) -> Unit,
-    onStart: () -> Unit,
+    onStart: (WifiBand) -> Unit,
     onStop: () -> Unit,
     onForceReconnect: (HiddenApObservation) -> Unit,
     onClearCandidates: () -> Unit,
     onClearObservations: () -> Unit,
+    showBandSelector: Boolean = false,
+    fiveGhzAvailable: Boolean = false,
+    fiveGhzUnavailableMessage: String = "",
+    allowedChannels: List<Int> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by remember { mutableStateOf(true) }
     var confirmStart by remember { mutableStateOf(false) }
+    var band by rememberSaveable { mutableStateOf(WifiBand.AUTO) }
 
     LaunchedEffect(running) {
         if (running) configExpanded = false
@@ -121,11 +129,17 @@ fun HiddenApScreen(
                 expanded = configExpanded,
                 fixed = fixed,
                 channel = channel,
+                band = band,
                 deauthEnabled = deauthEnabled,
                 onToggle = { configExpanded = !configExpanded },
                 onFixedChange = onFixedChange,
                 onChannelChange = onChannelChange,
+                onBandSelected = { band = it },
                 onDeauthToggle = onDeauthToggle,
+                showBandSelector = showBandSelector,
+                fiveGhzAvailable = fiveGhzAvailable,
+                fiveGhzUnavailableMessage = fiveGhzUnavailableMessage,
+                allowedChannels = allowedChannels,
             )
 
             Spacer(Modifier.height(10.dp))
@@ -199,7 +213,7 @@ fun HiddenApScreen(
                 TextButton(
                     onClick = {
                         confirmStart = false
-                        onStart()
+                        onStart(band)
                     },
                 ) { Text("Start") }
             },
@@ -276,11 +290,17 @@ private fun HiddenApConfigCard(
     expanded: Boolean,
     fixed: Boolean,
     channel: Int,
+    band: WifiBand,
     deauthEnabled: Boolean,
     onToggle: () -> Unit,
     onFixedChange: (Boolean) -> Unit,
     onChannelChange: (Int) -> Unit,
+    onBandSelected: (WifiBand) -> Unit,
     onDeauthToggle: (Boolean) -> Unit,
+    showBandSelector: Boolean,
+    fiveGhzAvailable: Boolean,
+    fiveGhzUnavailableMessage: String,
+    allowedChannels: List<Int>,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -335,13 +355,22 @@ private fun HiddenApConfigCard(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Spacer(Modifier.height(4.dp))
-                    ChannelStepper(
+                    WifiChannelStepper(
                         value = channel,
-                        min = 1,
-                        max = 14,
                         enabled = !running,
-                        onDecrease = { onChannelChange((channel - 1).coerceAtLeast(1)) },
-                        onIncrease = { onChannelChange((channel + 1).coerceAtMost(14)) },
+                        onChannelChange = onChannelChange,
+                        allowedChannels = allowedChannels.ifEmpty {
+                            com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
+                        },
+                    )
+                } else {
+                    WifiBandConfigSection(
+                        visible = showBandSelector,
+                        band = band,
+                        fiveGhzAvailable = fiveGhzAvailable,
+                        fiveGhzUnavailableMessage = fiveGhzUnavailableMessage,
+                        onBandSelected = onBandSelected,
+                        enabled = !running,
                     )
                 }
 

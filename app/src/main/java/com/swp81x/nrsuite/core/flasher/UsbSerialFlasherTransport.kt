@@ -44,6 +44,12 @@ class UsbSerialFlasherTransport(
                 UsbSerialPort.STOPBITS_1,
                 UsbSerialPort.PARITY_NONE,
             )
+            // Make the idle control-line state explicit after configuration.
+            // CP210x opening/setParameters must not leave the auto-reset
+            // circuit holding EN or GPIO0 low.
+            openedPort.setDTR(false)
+            openedPort.setRTS(false)
+            runCatching { openedPort.purgeHwBuffers(true, false) }
         } catch (t: Throwable) {
             runCatching { openedPort.close() }
             runCatching { openedConnection.close() }
