@@ -47,6 +47,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 - [Quick Start](#quick-start)
 - [Community](#community)
 - [Features](#features)
+- [Usage Guide](#usage-guide)
 - [Installation](#installation)
 - [Getting Started](#getting-started)
 - [Requirements](#requirements)
@@ -224,6 +225,21 @@ For a full status and roadmap breakdown across every phase, see [FEATURES.md](./
 - [ ] **LoRa** - long-range relay node support
 
 </details>
+
+---
+
+## Usage Guide
+
+See [docs/USAGE-GUIDE.md](docs/USAGE-GUIDE.md) for:
+
+- First connection and root-directory setup
+- Navigation and category-level configuration
+- WiFi Config, shared channel controls, and Packet Sniffer workflows
+- IR Config, IR Remotes, Receiver, Finder, and Jammer usage
+- Sensor Config and HLK-LD2450 UART wiring
+- BLE/USB essentials, troubleshooting, and safety notes
+
+The guide is intentionally general and is not tied to a single release version.
 
 ---
 
