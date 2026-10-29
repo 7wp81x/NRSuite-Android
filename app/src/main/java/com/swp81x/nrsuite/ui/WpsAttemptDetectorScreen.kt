@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -21,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.WifiFind
 import androidx.compose.material3.Card
@@ -29,29 +29,34 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
+import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
-import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import com.swp81x.nrsuite.core.wps.WpsAttemptDetectorUiState
 import com.swp81x.nrsuite.core.wps.WpsAttemptRisk
 import com.swp81x.nrsuite.core.wps.WpsAttemptSession
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.components.NrFilterChip
-import com.swp81x.nrsuite.ui.components.WifiChannelStepper
-import com.swp81x.nrsuite.ui.components.WifiChannelSummaryPill
+import com.swp81x.nrsuite.ui.components.ScanButtonContent
+import com.swp81x.nrsuite.ui.components.ScanTargetList
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -62,22 +67,62 @@ import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
 import com.swp81x.nrsuite.ui.util.signalQualityColor
+import org.json.JSONObject
 
 @Composable
 fun WpsAttemptDetectorScreen(
     connected: Boolean,
     state: WpsAttemptDetectorUiState,
-    allowedChannels: List<Int>,
-    onStart: (fixed: Boolean, channel: Int, intervalMs: Int) -> Unit,
+    scanning: Boolean,
+    networks: List<JSONObject>,
+    onScanWpsTargets: () -> Unit,
+    onStart: (targets: List<NetworkTarget>, allChannels: Boolean, intervalMs: Int) -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var fixedMode by rememberSaveable { mutableStateOf(true) }
-    var channel by rememberSaveable { mutableIntStateOf(6) }
+    val context = LocalContext.current
+    var selectedBssids by rememberSaveable { mutableStateOf<Set<String>>(emptySet()) }
+    var autoSelectPending by rememberSaveable { mutableStateOf(true) }
+    var allChannels by rememberSaveable { mutableStateOf(false) }
     var intervalMs by rememberSaveable { mutableIntStateOf(300) }
     var riskFilter by rememberSaveable { mutableIntStateOf(0) }
 
-    val channels = allowedChannels.ifEmpty { WIFI_AUTO_CHANNELS }
+    val wpsNetworks = remember(networks) {
+        networks.filter { network ->
+            val security = network.optString("security").uppercase()
+            network.optBoolean("wps") &&
+                !security.startsWith("OPEN") &&
+                !security.startsWith("NONE")
+        }.sortedByDescending { it.optInt("rssi", -999) }
+    }
+    val currentBssids = remember(wpsNetworks) {
+        wpsNetworks.mapNotNull { it.optString("bssid").takeIf { bssid -> bssid.isNotBlank() } }.toSet()
+    }
+    LaunchedEffect(wpsNetworks, autoSelectPending) {
+        if (autoSelectPending && wpsNetworks.isNotEmpty()) {
+            selectedBssids = currentBssids
+        }
+    }
+    LaunchedEffect(currentBssids) {
+        selectedBssids = selectedBssids.intersect(currentBssids)
+    }
+
+    val selectedTargets = remember(wpsNetworks, selectedBssids) {
+        wpsNetworks.filter { it.optString("bssid") in selectedBssids }.map { network ->
+            NetworkTarget(
+                ssid = network.optString("ssid").ifBlank { "(hidden)" },
+                bssid = network.optString("bssid"),
+                channel = network.optInt("channel", 1),
+                rssi = network.optInt("rssi", -100),
+                security = network.optString("security", "?"),
+                wps = true,
+                vendor = network.optString("vendor").takeIf { it.isNotBlank() },
+                ouiWhitelisted = network.optBoolean("oui_whitelisted"),
+                ouiBlacklisted = network.optBoolean("oui_blacklisted"),
+            )
+        }
+    }
+    val selectedChannels = selectedTargets.map { it.channel }.distinct().sorted()
     val filtered = state.sessions.filter { session ->
         when (riskFilter) {
             1 -> session.risk == WpsAttemptRisk.LOW
@@ -122,8 +167,9 @@ fun WpsAttemptDetectorScreen(
                             Text(
                                 text = when {
                                     state.starting -> "Starting passive monitor..."
-                                    state.running -> "Monitoring WPS protocol activity"
-                                    state.sessions.isEmpty() -> "Passively detect observed WPS attempts"
+                                    state.running && state.allChannels -> "Monitoring all allowed channels"
+                                    state.running -> "Monitoring ${state.selectedTargetCount} selected WPS AP(s)"
+                                    state.sessions.isEmpty() -> "Scan WPS APs, select targets, then monitor"
                                     else -> "${state.sessions.size} attempt session(s)"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
@@ -133,7 +179,7 @@ fun WpsAttemptDetectorScreen(
                     }
                     if (!connected) {
                         Text(
-                            text = "Connect a device before starting.",
+                            text = "Connect a device before scanning or monitoring.",
                             style = MaterialTheme.typography.bodySmall,
                             color = StatusAmber,
                         )
@@ -162,82 +208,139 @@ fun WpsAttemptDetectorScreen(
                 shape = RoundedCornerShape(12.dp),
             ) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "Monitor configuration",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (fixedMode) {
-                            WifiChannelSummaryPill(channel)
-                        } else {
-                            Text(
-                                text = "HOPPING",
-                                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                color = MaterialTheme.colorScheme.primary,
+                    Text(
+                        text = "Targets & monitoring",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+
+                    SwitchRow(
+                        label = "Monitor all allowed channels",
+                        checked = allChannels,
+                        enabled = !state.running && !state.starting,
+                        onCheckedChange = {
+                            allChannels = it
+                            if (it) autoSelectPending = false
+                        },
+                    )
+
+                    if (!allChannels) {
+                        OutlinedButton(
+                            onClick = {
+                                autoSelectPending = true
+                                selectedBssids = emptySet()
+                                onScanWpsTargets()
+                            },
+                            enabled = connected && !scanning && !state.running && !state.starting,
+                        ) {
+                            ScanButtonContent(
+                                scanning = scanning,
+                                idleLabel = "Scan WPS targets",
                             )
                         }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        NrFilterChip(
-                            selected = fixedMode,
-                            onClick = { fixedMode = true },
-                            label = "Fixed channel",
-                            enabled = !state.running && !state.starting,
-                        )
-                        NrFilterChip(
-                            selected = !fixedMode,
-                            onClick = { fixedMode = false },
-                            label = "Hop channels",
-                            enabled = !state.running && !state.starting,
-                        )
-                    }
-                    if (fixedMode) {
-                        WifiChannelStepper(
-                            value = channel,
-                            enabled = !state.running && !state.starting,
-                            onChannelChange = {
-                                channel = normalizeWifiChannel(it, channels, channel)
-                            },
-                            allowedChannels = channels,
-                        )
-                    } else {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Hop interval",
-                                style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier.weight(1f),
+
+                        if (wpsNetworks.isNotEmpty()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "${selectedTargets.size} selected · " +
+                                        if (selectedChannels.isEmpty()) "no channels" else
+                                            "channels ${selectedChannels.joinToString(",")}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(
+                                    onClick = {
+                                        autoSelectPending = false
+                                        selectedBssids = currentBssids
+                                    },
+                                    enabled = !state.running && !state.starting,
+                                ) {
+                                    Text("Select all")
+                                }
+                                TextButton(
+                                    onClick = {
+                                        autoSelectPending = false
+                                        selectedBssids = emptySet()
+                                    },
+                                    enabled = !state.running && !state.starting,
+                                ) {
+                                    Text("Clear")
+                                }
+                            }
+                            ScanTargetList(
+                                networks = wpsNetworks,
+                                selectedBssids = selectedBssids,
+                                onToggle = { network ->
+                                    autoSelectPending = false
+                                    val bssid = network.optString("bssid")
+                                    selectedBssids = if (bssid in selectedBssids) {
+                                        selectedBssids - bssid
+                                    } else {
+                                        selectedBssids + bssid
+                                    }
+                                },
+                                enabled = !state.running && !state.starting,
+                                multiSelect = true,
+                                maxHeight = 300.dp,
                             )
+                        } else {
                             Text(
-                                text = "$intervalMs ms",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                                color = NrOnSurface,
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = if (intervalMs <= 100) "fast" else if (intervalMs >= 1000) "slow" else "balanced",
-                                style = MaterialTheme.typography.labelSmall,
+                                text = if (scanning) {
+                                    "Scanning for WPS-enabled access points..."
+                                } else {
+                                    "No WPS targets selected. Scan nearby WPS APs first."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
                                 color = NrOnSurfaceVariant,
                             )
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf(100, 300, 600, 1000).forEach { value ->
-                                NrFilterChip(
-                                    selected = intervalMs == value,
-                                    onClick = { intervalMs = value },
-                                    label = "${value}ms",
-                                    enabled = !state.running && !state.starting,
-                                )
-                            }
+                    } else {
+                        Text(
+                            text = "Advanced mode monitors all allowed 2.4/5 GHz channels. " +
+                                "Use only when the target AP is not visible in a scan.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
+                        )
+                    }
+
+                    Text(
+                        text = "Hop interval",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        listOf(100, 300, 600, 1000).forEach { value ->
+                            NrFilterChip(
+                                selected = intervalMs == value,
+                                onClick = { intervalMs = value },
+                                label = "${value}ms",
+                                enabled = !state.running && !state.starting,
+                            )
                         }
                     }
                     Text(
-                        text = "Passive only: parses EAP Identity/WSC M1–M8 activity. No WPS frames are transmitted.",
+                        text = "Passive only: parses EAP Identity/WSC M1–M8 activity. " +
+                            "No WPS frames are transmitted.",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
                 }
+            }
+
+            if (state.running || state.sessions.isNotEmpty()) {
+                val channelsText = if (state.allChannels) {
+                    "all allowed channels"
+                } else {
+                    state.monitoredChannels.joinToString(",").ifBlank { "—" }
+                }
+                Text(
+                    text = "Monitoring ${if (state.allChannels) "all channels" else "${state.selectedTargetCount} AP(s)"} · $channelsText",
+                    style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
             }
 
             if (state.sessions.isNotEmpty()) {
@@ -322,10 +425,14 @@ fun WpsAttemptDetectorScreen(
         if (connected) {
             ModuleActionFab(
                 onClick = {
-                    if (state.running || state.starting) {
-                        onStop()
-                    } else {
-                        onStart(fixedMode, channel, intervalMs)
+                    when {
+                        state.running || state.starting -> onStop()
+                        !allChannels && selectedTargets.isEmpty() -> Toast.makeText(
+                            context,
+                            "Select at least one WPS target or enable all-channel monitoring.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        else -> onStart(selectedTargets, allChannels, intervalMs)
                     }
                 },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
@@ -343,6 +450,30 @@ fun WpsAttemptDetectorScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SwitchRow(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+        )
     }
 }
 

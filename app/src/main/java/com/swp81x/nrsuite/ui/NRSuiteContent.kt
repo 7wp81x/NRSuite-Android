@@ -1462,7 +1462,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 WpsAttemptDetectorScreen(
                     connected = connectionState is ConnectionState.Connected,
                     state = wpsAttemptDetectorState,
-                    allowedChannels = allowedWifiChannels,
+                    scanning = scanning,
+                    networks = networks,
+                    onScanWpsTargets = viewModel::scanWifiForTargets,
                     onStart = viewModel::startWpsAttemptDetector,
                     onStop = viewModel::stopWpsAttemptDetector,
                     modifier = Modifier,

@@ -1110,6 +1110,7 @@ class MainViewModel(internal val app: Application) {
             }
 
             "wps_attempt_detector" -> {
+                _networks.value = emptyList()
                 this.resetWpsAttemptDetectorImpl()
             }
 
@@ -1811,8 +1812,11 @@ class MainViewModel(internal val app: Application) {
 
     fun resetWpsLockDetector() = this.resetWpsLockDetectorImpl()
 
-    fun startWpsAttemptDetector(fixed: Boolean, channel: Int, intervalMs: Int) =
-        this.startWpsAttemptDetectorImpl(fixed, channel, intervalMs)
+    fun startWpsAttemptDetector(
+        targets: List<NetworkTarget>,
+        allChannels: Boolean,
+        intervalMs: Int,
+    ) = this.startWpsAttemptDetectorImpl(targets, allChannels, intervalMs)
 
     fun stopWpsAttemptDetector() = this.stopWpsAttemptDetectorImpl()
 

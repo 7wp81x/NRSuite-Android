@@ -1,8 +1,8 @@
 package com.swp81x.nrsuite
 
-import com.swp81x.nrsuite.core.defense.OuiRuleAction
 import com.swp81x.nrsuite.core.defense.matchOuiRule
 import com.swp81x.nrsuite.core.log.LogLevel
+import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
 import com.swp81x.nrsuite.core.wps.WpsAttemptRisk
 import com.swp81x.nrsuite.core.wps.WpsAttemptSession
@@ -10,11 +10,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 
 internal fun MainViewModel.startWpsAttemptDetectorImpl(
-    fixed: Boolean,
-    channel: Int,
+    targets: List<NetworkTarget>,
+    allChannels: Boolean,
     intervalMs: Int,
 ) {
     val activeSession = session
@@ -24,16 +25,31 @@ internal fun MainViewModel.startWpsAttemptDetectorImpl(
         return
     }
     if (_wpsAttemptDetector.value.starting || _wpsAttemptDetector.value.running) return
+    val cleanTargets = targets.distinctBy { it.bssid.uppercase() }
+    if (!allChannels && cleanTargets.isEmpty()) {
+        _toastMessage.value = "Scan and select at least one WPS target first."
+        return
+    }
+    val channels = cleanTargets.map { it.channel }.distinct().sorted()
+    if (channels.any { it <= 0 }) {
+        _toastMessage.value = "Selected targets have invalid channels."
+        return
+    }
     if (!ensureRadioIdle("WPS Attempt Detector")) return
 
-    val safeChannel = channel.coerceIn(1, 177)
     val safeInterval = intervalMs.coerceIn(100, 2_000)
+    val band = when {
+        allChannels -> "auto"
+        channels.isNotEmpty() && channels.all { it > 14 } -> "5g"
+        else -> "auto"
+    }
     _wpsAttemptDetector.update {
         it.copy(
             starting = true,
             running = false,
-            fixedMode = fixed,
-            channel = safeChannel,
+            allChannels = allChannels,
+            selectedTargetCount = cleanTargets.size,
+            monitoredChannels = channels,
             hopIntervalMs = safeInterval,
             sessions = emptyList(),
             error = null,
@@ -44,13 +60,13 @@ internal fun MainViewModel.startWpsAttemptDetectorImpl(
     wpsAttemptDetectJob = scope.launch(Dispatchers.IO) {
         try {
             val args = JSONObject().apply {
-                put("mode", if (fixed) "fixed" else "hop")
-                put("channel", safeChannel)
+                put("mode", if (allChannels || channels.size > 1) "hop" else "fixed")
+                put("band", band)
                 put("interval_ms", safeInterval)
-                put(
-                    "band",
-                    if (fixed) bandForWifiChannel(safeChannel).wireName else "auto",
-                )
+                if (channels.isNotEmpty()) {
+                    put("channels", JSONArray(channels))
+                    put("targets", JSONArray(cleanTargets.map { it.bssid }))
+                }
             }
             val response = activeSession.sendCommand(
                 "WPS_ATTEMPT_DETECT_START",
@@ -65,11 +81,13 @@ internal fun MainViewModel.startWpsAttemptDetectorImpl(
                         error = null,
                     )
                 }
-                appendLog(
-                    "WPS Attempt Detector started " +
-                        (if (fixed) "on channel $safeChannel" else "in channel-hopping mode") +
-                        "."
-                )
+                val targetLabel = if (allChannels) {
+                    "all allowed channels"
+                } else {
+                    "${cleanTargets.size} selected WPS target(s) on " +
+                        channels.joinToString(",")
+                }
+                appendLog("WPS Attempt Detector started: $targetLabel.")
             } else {
                 val message = response?.optString("msg")?.takeIf { it.isNotBlank() }
                     ?: response?.optString("error")?.takeIf { it.isNotBlank() }
@@ -117,7 +135,6 @@ internal fun MainViewModel.handleWpsAttemptSessionEventImpl(event: JSONObject) {
     if (sessionId <= 0L || bssid.isBlank() || client.isBlank()) return
 
     val vendor = ouiDatabaseRepository.lookup(client)?.vendor
-    val rule = matchOuiRule(client, _ouiRules.value)
     val randomized = client.take(2).toIntOrNull(16)?.let { (it and 0x02) != 0 } ?: false
     val updated = WpsAttemptSession(
         sessionId = sessionId,
@@ -134,11 +151,6 @@ internal fun MainViewModel.handleWpsAttemptSessionEventImpl(event: JSONObject) {
         durationMs = event.optLong("duration_ms", 0L),
         vendor = vendor,
         randomizedMac = randomized,
-        risk = if (rule?.action == OuiRuleAction.WHITELIST) {
-            WpsAttemptRisk.LOW
-        } else {
-            WpsAttemptRisk.LOW
-        },
     )
 
     _wpsAttemptDetector.update { state ->

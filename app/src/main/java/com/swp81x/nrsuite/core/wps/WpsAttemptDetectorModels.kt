@@ -28,8 +28,9 @@ data class WpsAttemptSession(
 data class WpsAttemptDetectorUiState(
     val starting: Boolean = false,
     val running: Boolean = false,
-    val fixedMode: Boolean = true,
-    val channel: Int = 6,
+    val allChannels: Boolean = false,
+    val selectedTargetCount: Int = 0,
+    val monitoredChannels: List<Int> = emptyList(),
     val hopIntervalMs: Int = 300,
     val sessions: List<WpsAttemptSession> = emptyList(),
     val error: String? = null,

@@ -226,11 +226,20 @@ The detector never performs an active WPS PIN attempt to test lock state.
 
 Use **WiFi → Defend → WPS Attempt Detector**.
 
+1. Tap **Scan WPS targets**.
+2. Select one or more nearby WPS APs. New scan results are selected by default.
+3. Start monitoring.
+4. The detector monitors only the selected BSSIDs and their channels.
+   - One selected channel: fixed monitoring.
+   - Multiple selected channels: hopping only across those channels.
+5. For advanced cases, enable **Monitor all allowed channels**.
+
 The detector passively parses EAP Identity and EAP-WSC M1–M8 activity. It does
 not transmit WPS frames or attempt authentication.
 
 Configuration:
-- Fixed channel or channel hopping
+- Selected WPS targets and derived channels
+- Advanced all-channel monitoring
 - Hop interval
 - Start/Stop FAB
 
