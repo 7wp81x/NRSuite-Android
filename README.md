@@ -146,6 +146,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 - [x] **WPA Handshake Capture/Crack** - capture and offline dictionary cracking
 - [x] **Deauth telemetry** - unlimited loop plus elapsed time, frames/sec, sent, and failed counters
 - [x] **WPS Pixie Dust** - live registrar flow with module-isolated target scans, AP-lock preflight, M3-only capture, on-phone Pixiewps recovery, same-session recovered-PIN continuation, and PIN/PSK persistence on ESP32-S3/C5
+- [x] **WPS Lock Detector** - passive scan of nearby WPS APs with `Locked`, `Likely unlocked`, and `Unknown` lock-state reporting
 - [x] **Nrugochi** - Pwnagotchi-style channel-density RECON/INTERACT loop, multi-AP authorized deauth with frame telemetry, all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` output, mood UI, and today/total stats
 - [x] **Credential Manager** - local storage and management of captured credentials
 - [ ] **Credential QR sharing** - standard Wi-Fi QR for saved PSKs, with WPS PIN shown separately
@@ -380,6 +381,7 @@ app/src/main/java/com/swp81x/nrsuite/
     MacLookupScreen.kt / SerialMonitorScreen.kt    # Tools / firmware utilities
     ProbeMonitorScreen.kt / ChannelAnalyzerScreen.kt # Wi-Fi recon additions
     WpsPixieLiveScreen.kt / WpsPixieScreen.kt      # WPS Pixie Dust live and offline workflows
+    WpsLockDetectorScreen.kt                     # Passive WPS lock-state scan and AP details
     *Screen.kt        # Remaining feature module screens
   MainActivity.kt
   MainViewModel.kt               # Application-scoped controller
@@ -391,6 +393,7 @@ app/src/main/java/com/swp81x/nrsuite/
   MainViewModelProbeMonitor.kt   # Probe request aggregation
   MainViewModelWpsPixie.kt       # WPS PIN storage, material import, and offline crack state
   MainViewModelWpsPixieLive.kt   # Live WPS Pixie Dust registrar workflow
+  MainViewModelWpsLockDetector.kt # Passive WPS access-point lock-state scan
   MainViewModelBle.kt            # BLE HID
   MainViewModelBleScanner.kt     # BLE device discovery
   MainViewModelBleProfile.kt     # BLE GATT enumeration

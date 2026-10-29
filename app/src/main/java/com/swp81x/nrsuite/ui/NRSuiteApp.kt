@@ -160,7 +160,7 @@ internal val WIFI_RECON_MODULE_IDS = listOf("wifi", "sniff", "probe_monitor", "c
 internal val WIFI_ATTACK_MODULE_IDS =
     listOf("wps_pixie_live", "evil_twin", "portal", "nrugochi", "deauth", "beacon")
 internal val WIFI_DEFEND_MODULE_IDS =
-    listOf("deauth_detector", "rogue_ap", "client_presence")
+    listOf("deauth_detector", "rogue_ap", "client_presence", "wps_lock_detector")
 internal val WIFI_ALL_MODULE_IDS =
     WIFI_RECON_MODULE_IDS + WIFI_ATTACK_MODULE_IDS + WIFI_DEFEND_MODULE_IDS
 internal val IR_CATEGORY_MODULE_IDS =
@@ -304,6 +304,16 @@ internal val modules = listOf(
         icon = Icons.Default.PersonSearch,
         category = "WiFi Defense",
         radio = "2.4GHz",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "wps_lock_detector",
+        title = "WPS Lock Detector",
+        description = "Passively discover WPS access points and report locked, likely unlocked, or unknown lock state.",
+        icon = Icons.Default.Lock,
+        category = "WiFi Defense",
+        radio = "2.4 / 5 GHz",
         available = true,
     ),
 

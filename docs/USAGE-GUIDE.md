@@ -207,6 +207,21 @@ Captive Portal and Evil Twin share one local HTML template library:
 See [Captive Portal / Evil Twin HTML authoring](CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)
 for page structure and test guidance.
 
+### WPS Lock Detector
+
+Use **WiFi → Defend → WPS Lock Detector**.
+
+1. Connect the ESP32.
+2. Tap the scan FAB.
+3. Review nearby WPS-enabled APs.
+4. Filter by `Locked`, `Likely unlocked`, or `Unknown`.
+5. Tap an AP to inspect WPS version, configuration methods, selected registrar,
+   vendor, and the exact lock-attribute result.
+
+`Likely unlocked` means the WPS IE was parsed and the AP did not advertise the
+AP Setup Locked attribute. It is not a guarantee that a PIN attempt will succeed.
+The detector never performs an active WPS PIN attempt to test lock state.
+
 ### WPS Pixie Dust
 
 Use **WiFi → Attack → WPS Pixie Dust**.
