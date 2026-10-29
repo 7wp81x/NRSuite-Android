@@ -29,6 +29,7 @@ internal fun MainViewModel.startWpsLockScanImpl() {
         )
     }
     appendLog("WPS Lock Detector: scanning for WPS-enabled access points...")
+    updateForegroundService()
 
     wpsLockScanJob = scope.launch(Dispatchers.IO) {
         var success = false
@@ -68,6 +69,7 @@ internal fun MainViewModel.startWpsLockScanImpl() {
                     lastScanAtMs = if (success) System.currentTimeMillis() else it.lastScanAtMs,
                 )
             }
+            updateForegroundService()
         }
     }
 }
@@ -101,6 +103,9 @@ internal fun MainViewModel.handleWpsLockApEventImpl(event: JSONObject) {
                 it.bssid.equals(bssid, ignoreCase = true)
             } + ap).sortedByDescending { it.rssi },
         )
+    }
+    if (wifiScanDestination == WifiScanDestination.WPS) {
+        observeWpsLockScanTargetImpl(ap)
     }
 }
 

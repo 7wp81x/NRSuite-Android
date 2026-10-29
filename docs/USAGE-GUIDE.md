@@ -237,6 +237,10 @@ Use **WiFi → Defend → WPS Attempt Detector**.
 The detector passively parses EAP Identity and EAP-WSC M1–M8 activity. It does
 not transmit WPS frames or attempt authentication.
 
+While monitoring, NRSuite keeps a foreground-service notification active so the
+USB session and detector can continue when the app is backgrounded. A task
+notification is also raised when a WPS attempt session is first detected.
+
 Configuration:
 - Selected WPS targets and derived channels
 - Advanced all-channel monitoring
@@ -261,6 +265,8 @@ Use **WiFi → Attack → WPS Pixie Dust**.
 
 - WPS target scans are isolated to that module; other Wi-Fi scans do not populate
   the WPS target list.
+- The WPS target scan reports `WPS LOCKED`, `LIKELY UNLOCKED`, or
+  `WPS LOCK UNKNOWN` when the AP advertises WPS lock metadata.
 - Select a WPS-enabled target after a scan, then start the live attempt.
 - The live status card appears only after an attempt has activity or a result.
 - Leaving the module clears transient WPS state and targets.

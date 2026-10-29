@@ -582,6 +582,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "ble_scanner" -> bleScannerScanRunning || bleScannerScanStarting
                 "tracker_detector" -> trackerScanRunning
                 "ble_profile" -> bleProfileRunning || profileScanRunning || profileScanStarting
+                "wps_lock_detector" -> wpsLockDetectorState.scanning
+                "wps_attempt_detector" -> wpsAttemptDetectorState.running || wpsAttemptDetectorState.starting
                 "mesh" -> meshActive
                 "ld2450" -> ld2450.running
                 "rfid" -> rfid.running

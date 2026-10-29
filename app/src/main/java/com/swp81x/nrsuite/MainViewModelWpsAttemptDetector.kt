@@ -2,6 +2,7 @@ package com.swp81x.nrsuite
 
 import com.swp81x.nrsuite.core.defense.matchOuiRule
 import com.swp81x.nrsuite.core.log.LogLevel
+import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
 import com.swp81x.nrsuite.core.wps.WpsAttemptRisk
@@ -55,6 +56,7 @@ internal fun MainViewModel.startWpsAttemptDetectorImpl(
             error = null,
         )
     }
+    updateForegroundService()
 
     wpsAttemptDetectJob?.cancel()
     wpsAttemptDetectJob = scope.launch(Dispatchers.IO) {
@@ -81,6 +83,7 @@ internal fun MainViewModel.startWpsAttemptDetectorImpl(
                         error = null,
                     )
                 }
+                updateForegroundService()
                 val targetLabel = if (allChannels) {
                     "all allowed channels"
                 } else {
@@ -95,6 +98,7 @@ internal fun MainViewModel.startWpsAttemptDetectorImpl(
                 _wpsAttemptDetector.update {
                     it.copy(starting = false, running = false, error = message)
                 }
+                updateForegroundService()
                 appendLog("WPS Attempt Detector start failed: $message", level = LogLevel.ERROR)
                 _toastMessage.value = "WPS Attempt Detector failed: $message"
             }
@@ -105,6 +109,7 @@ internal fun MainViewModel.startWpsAttemptDetectorImpl(
             _wpsAttemptDetector.update {
                 it.copy(starting = false, running = false, error = message)
             }
+            updateForegroundService()
             appendLog("WPS Attempt Detector start failed: $message", level = LogLevel.ERROR)
             _toastMessage.value = "WPS Attempt Detector failed: $message"
         }
@@ -119,6 +124,7 @@ internal fun MainViewModel.stopWpsAttemptDetectorImpl() {
     _wpsAttemptDetector.update {
         it.copy(starting = false, running = false)
     }
+    updateForegroundService()
     val activeSession = session
     scope.launch {
         runCatching {
@@ -153,6 +159,13 @@ internal fun MainViewModel.handleWpsAttemptSessionEventImpl(event: JSONObject) {
         randomizedMac = randomized,
     )
 
+    if (event.optString("state") == "started") {
+        NrSuiteNotifications.notifyTaskAlert(
+            app,
+            "WPS attempt detected",
+            "${updated.client} → ${updated.ssid} (${updated.bssid})",
+        )
+    }
     _wpsAttemptDetector.update { state ->
         val sessions = (
             state.sessions.filterNot { it.sessionId == sessionId } + updated
@@ -165,6 +178,7 @@ internal fun MainViewModel.handleWpsAttemptSessionEventImpl(event: JSONObject) {
             lastStatusAtMs = System.currentTimeMillis(),
         )
     }
+    updateForegroundService()
 }
 
 private fun scoreWpsAttemptRisk(sessions: List<WpsAttemptSession>): List<WpsAttemptSession> {
@@ -209,6 +223,7 @@ internal fun MainViewModel.resetWpsAttemptDetectorImpl() {
     wpsAttemptDetectJob = null
     val wasActive = _wpsAttemptDetector.value.running || _wpsAttemptDetector.value.starting
     _wpsAttemptDetector.value = com.swp81x.nrsuite.core.wps.WpsAttemptDetectorUiState()
+    updateForegroundService()
     if (wasActive) {
         val activeSession = session
         scope.launch {

@@ -1,6 +1,7 @@
 package com.swp81x.nrsuite.ui.components
 
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wps.WpsLockState
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -28,6 +29,8 @@ import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
+import com.swp81x.nrsuite.ui.theme.StatusGreen
+import com.swp81x.nrsuite.ui.theme.StatusRed
 import com.swp81x.nrsuite.ui.util.ouiStatusColor
 import com.swp81x.nrsuite.ui.util.securityColor
 import com.swp81x.nrsuite.ui.util.signalQualityColor
@@ -48,6 +51,7 @@ fun NetworkTargetRow(
     selected: Boolean,
     wps: Boolean = false,
     wpsColor: androidx.compose.ui.graphics.Color = StatusAmber,
+    wpsLockState: WpsLockState? = null,
     vendor: String? = null,
     ouiWhitelisted: Boolean = false,
     ouiBlacklisted: Boolean = false,
@@ -123,6 +127,15 @@ fun NetworkTargetRow(
                     if (wps) {
                         Spacer(Modifier.width(6.dp))
                         NetworkStatusBadge(text = "WPS", color = wpsColor)
+                    }
+                    if (wpsLockState != null) {
+                        Spacer(Modifier.width(6.dp))
+                        val (label, color) = when (wpsLockState) {
+                            WpsLockState.LOCKED -> "WPS LOCKED" to StatusRed
+                            WpsLockState.LIKELY_UNLOCKED -> "LIKELY UNLOCKED" to StatusGreen
+                            WpsLockState.UNKNOWN -> "WPS LOCK UNKNOWN" to NrOnSurfaceVariant
+                        }
+                        NetworkStatusBadge(text = label, color = color)
                     }
                 }
             }

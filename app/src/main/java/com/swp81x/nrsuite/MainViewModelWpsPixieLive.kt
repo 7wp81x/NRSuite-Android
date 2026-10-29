@@ -97,12 +97,27 @@ internal fun MainViewModel.scanWpsTargetsImpl() {
     logWpsPixieLive("Scanning for WPS-enabled access points...")
     wpsTargetScanJob = scope.launch {
         try {
-            val count = activeSession.scanWifi(band = null)
-            logWpsPixieLive("Scan complete: ${count ?: 0} network result(s).")
-            if (count == null) {
-                appendLog("WPS Pixie: Wi-Fi scan timed out.", level = LogLevel.ERROR)
+            val response = runCatching {
+                activeSession.sendCommand(
+                    "WPS_LOCK_SCAN",
+                    JSONObject().apply {
+                        put("band", "auto")
+                        put("dwell_ms", 120)
+                    },
+                    timeoutMs = 45_000,
+                )
+            }.getOrNull()
+            val count = response?.optInt("count", _wpsPixieLive.value.targets.size) ?: 0
+            if (response?.optBoolean("ok") == true) {
+                logWpsPixieLive("Scan complete: $count WPS target(s).")
+                appendLog("WPS Pixie: WPS scan complete ($count targets).")
             } else {
-                appendLog("WPS Pixie: Wi-Fi scan complete ($count results).")
+                val message = response?.optString("error")?.takeIf { it.isNotBlank() }
+                    ?: response?.optString("msg")?.takeIf { it.isNotBlank() }
+                    ?: "scan timed out"
+                _wpsPixieLive.update { it.copy(error = message) }
+                logWpsPixieLive("Scan failed: $message")
+                appendLog("WPS Pixie: WPS scan failed: $message", level = LogLevel.ERROR)
             }
         } finally {
             if (wifiScanDestination == WifiScanDestination.WPS) {
@@ -133,6 +148,31 @@ internal fun MainViewModel.observeWpsScanTargetImpl(target: NetworkTarget) {
             "WPS target: ${normalized.ssid.ifBlank { "(hidden)" }} (${normalized.bssid})",
         )
     }
+}
+
+internal fun MainViewModel.observeWpsLockScanTargetImpl(ap: com.swp81x.nrsuite.core.wps.WpsLockAccessPoint) {
+    val target = NetworkTarget(
+        ssid = ap.ssid,
+        bssid = ap.bssid,
+        channel = ap.channel,
+        rssi = ap.rssi,
+        security = ap.security,
+        wps = true,
+        vendor = ap.vendor,
+        ouiWhitelisted = ap.ouiWhitelisted,
+        ouiBlacklisted = ap.ouiBlacklisted,
+        wpsLockState = ap.lockState,
+    )
+    _wpsPixieLive.update { state ->
+        state.copy(
+            targets = (state.targets.filterNot {
+                it.bssid.equals(ap.bssid, ignoreCase = true)
+            } + target).sortedByDescending { it.rssi },
+        )
+    }
+    logWpsPixieLive(
+        "WPS target: ${ap.ssid.ifBlank { "(hidden)" }} (${ap.bssid}) · ${ap.lockState.name.lowercase().replace('_', ' ')}",
+    )
 }
 
 internal fun MainViewModel.selectWpsTargetImpl(target: NetworkTarget) {

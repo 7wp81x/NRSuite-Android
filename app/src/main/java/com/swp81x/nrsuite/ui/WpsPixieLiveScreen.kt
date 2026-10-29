@@ -375,6 +375,7 @@ private fun TargetConfigCard(
                                 selected = selected?.bssid?.equals(target.bssid, ignoreCase = true) == true,
                                 wps = target.wps,
                                 wpsColor = StatusGreen,
+                                wpsLockState = target.wpsLockState,
                                 vendor = target.vendor,
                                 ouiWhitelisted = target.ouiWhitelisted,
                                 ouiBlacklisted = target.ouiBlacklisted,

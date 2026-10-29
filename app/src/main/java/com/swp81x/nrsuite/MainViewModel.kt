@@ -2073,6 +2073,9 @@ class MainViewModel(internal val app: Application) {
             _probeMonitorRunning.value -> "Probe Request Monitor"
             _hiddenApStarting.value -> "Hidden AP Revealer starting"
             _hiddenApRunning.value -> "Hidden AP Revealer"
+            _wpsAttemptDetector.value.starting || _wpsAttemptDetector.value.running ->
+                "WPS Attempt Detector"
+            _wpsLockDetector.value.scanning -> "WPS Lock Detector"
             _scanning.value -> "WiFi Scan"
             else -> null
         }
@@ -2117,6 +2120,9 @@ class MainViewModel(internal val app: Application) {
             _probeMonitorRunning.value -> "Probe Request Monitor active"
             _hiddenApStarting.value -> "Hidden AP Revealer scanning"
             _hiddenApRunning.value -> "Hidden AP revealer active"
+            _wpsAttemptDetector.value.starting || _wpsAttemptDetector.value.running ->
+                "WPS Attempt Detector active · ${_wpsAttemptDetector.value.sessions.size} attempt(s)"
+            _wpsLockDetector.value.scanning -> "WPS Lock Detector scanning"
             _bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value -> "BLE scanner active"
             _bleProfileRunning.value -> "BLE profile active"
             _bleConnected.value -> "BLE HID connected · ${_blePeer.value.ifBlank { "device" }}"
