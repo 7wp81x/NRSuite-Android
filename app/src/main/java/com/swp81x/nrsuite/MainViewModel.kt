@@ -99,6 +99,7 @@ import com.swp81x.nrsuite.core.wpa.WpaCracker
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeVerifier
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeParser
 import com.swp81x.nrsuite.core.wpa.WpaHandshake
+import com.swp81x.nrsuite.core.wps.WpsAttemptDetectorUiState
 import com.swp81x.nrsuite.core.wps.WpsLockDetectorUiState
 import com.swp81x.nrsuite.core.wps.WpsLockAccessPoint
 import com.swp81x.nrsuite.core.wps.WpsPinRecord
@@ -814,6 +815,9 @@ class MainViewModel(internal val app: Application) {
     internal val _wpsLockDetector = MutableStateFlow(WpsLockDetectorUiState())
     val wpsLockDetector: StateFlow<WpsLockDetectorUiState> = _wpsLockDetector.asStateFlow()
     internal var wpsLockScanJob: Job? = null
+    internal val _wpsAttemptDetector = MutableStateFlow(WpsAttemptDetectorUiState())
+    val wpsAttemptDetector: StateFlow<WpsAttemptDetectorUiState> = _wpsAttemptDetector.asStateFlow()
+    internal var wpsAttemptDetectJob: Job? = null
     internal var wpsPixiePrepareWatchdogJob: Job? = null
     internal var wpsPixieM1WatchdogJob: Job? = null
     internal val wpsPixieLiveAuthKeyCache = mutableMapOf<String, ByteArray>()
@@ -1103,6 +1107,10 @@ class MainViewModel(internal val app: Application) {
 
             "wps_lock_detector" -> {
                 this.resetWpsLockDetectorImpl()
+            }
+
+            "wps_attempt_detector" -> {
+                this.resetWpsAttemptDetectorImpl()
             }
 
             "probe_monitor" -> {
@@ -1611,6 +1619,9 @@ class MainViewModel(internal val app: Application) {
         wpsLockScanJob?.cancel()
         wpsLockScanJob = null
         _wpsLockDetector.update { it.copy(scanning = false) }
+        wpsAttemptDetectJob?.cancel()
+        wpsAttemptDetectJob = null
+        _wpsAttemptDetector.update { it.copy(running = false, starting = false) }
 
         _scanning.value = false
         _beaconRunning.value = false
@@ -1799,6 +1810,13 @@ class MainViewModel(internal val app: Application) {
     fun startWpsLockScan() = this.startWpsLockScanImpl()
 
     fun resetWpsLockDetector() = this.resetWpsLockDetectorImpl()
+
+    fun startWpsAttemptDetector(fixed: Boolean, channel: Int, intervalMs: Int) =
+        this.startWpsAttemptDetectorImpl(fixed, channel, intervalMs)
+
+    fun stopWpsAttemptDetector() = this.stopWpsAttemptDetectorImpl()
+
+    fun resetWpsAttemptDetector() = this.resetWpsAttemptDetectorImpl()
 
     fun selectWpsTarget(target: NetworkTarget) = this.selectWpsTargetImpl(target)
 
@@ -2205,6 +2223,10 @@ class MainViewModel(internal val app: Application) {
 
                         "wps_lock_ap" -> {
                             this@MainViewModel.handleWpsLockApEventImpl(event)
+                        }
+
+                        "wps_attempt_session" -> {
+                            this@MainViewModel.handleWpsAttemptSessionEventImpl(event)
                         }
 
                         "scan_ap" -> {

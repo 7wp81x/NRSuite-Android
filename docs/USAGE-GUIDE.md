@@ -222,6 +222,30 @@ Use **WiFi → Defend → WPS Lock Detector**.
 AP Setup Locked attribute. It is not a guarantee that a PIN attempt will succeed.
 The detector never performs an active WPS PIN attempt to test lock state.
 
+### WPS Attempt Detector
+
+Use **WiFi → Defend → WPS Attempt Detector**.
+
+The detector passively parses EAP Identity and EAP-WSC M1–M8 activity. It does
+not transmit WPS frames or attempt authentication.
+
+Configuration:
+- Fixed channel or channel hopping
+- Hop interval
+- Start/Stop FAB
+
+Observed attempt cards show:
+- Source MAC, vendor, and randomized-MAC indicator
+- Target SSID/BSSID
+- Channel/band and RSSI
+- Current WPS stage and observed frame count
+- Session duration
+- Low / Medium / High risk and the reasons behind the score
+
+Risk is heuristic. A single WPS exchange is generally Low; repeated attempts,
+multiple source MACs, or NACK/M2D activity can raise it. The wording is
+intentionally **“WPS attempt detected”**, not “attack confirmed.”
+
 ### WPS Pixie Dust
 
 Use **WiFi → Attack → WPS Pixie Dust**.

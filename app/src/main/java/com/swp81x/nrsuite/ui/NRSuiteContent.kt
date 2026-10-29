@@ -250,6 +250,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val probeMonitorFrameCount by viewModel.probeMonitorFrameCount.collectAsState()
     val channelAnalyzerNetworks by viewModel.channelAnalyzerNetworks.collectAsState()
     val wpsLockDetectorState by viewModel.wpsLockDetector.collectAsState()
+    val wpsAttemptDetectorState by viewModel.wpsAttemptDetector.collectAsState()
     val htmlTemplates by viewModel.htmlTemplates.collectAsState()
     val htmlTemplateMessage by viewModel.htmlTemplateMessage.collectAsState()
     val deauthRunning by viewModel.deauthRunning.collectAsState()
@@ -1453,6 +1454,17 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     accessPoints = wpsLockDetectorState.accessPoints,
                     error = wpsLockDetectorState.error,
                     onScan = viewModel::startWpsLockScan,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "wps_attempt_detector" -> {
+                WpsAttemptDetectorScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    state = wpsAttemptDetectorState,
+                    allowedChannels = allowedWifiChannels,
+                    onStart = viewModel::startWpsAttemptDetector,
+                    onStop = viewModel::stopWpsAttemptDetector,
                     modifier = Modifier,
                 )
             }
