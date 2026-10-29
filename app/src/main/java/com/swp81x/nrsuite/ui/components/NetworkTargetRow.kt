@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -31,6 +32,12 @@ import com.swp81x.nrsuite.ui.util.ouiStatusColor
 import com.swp81x.nrsuite.ui.util.securityColor
 import com.swp81x.nrsuite.ui.util.signalQualityColor
 
+enum class TargetSelectionControl {
+    RADIO,
+    CHECKBOX,
+    NONE,
+}
+
 @Composable
 fun NetworkTargetRow(
     ssid: String,
@@ -40,9 +47,12 @@ fun NetworkTargetRow(
     security: String,
     selected: Boolean,
     wps: Boolean = false,
+    wpsColor: androidx.compose.ui.graphics.Color = StatusAmber,
     vendor: String? = null,
     ouiWhitelisted: Boolean = false,
     ouiBlacklisted: Boolean = false,
+    showSelectionIndicator: Boolean = true,
+    selectionControl: TargetSelectionControl = TargetSelectionControl.RADIO,
     enabled: Boolean = true,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -112,15 +122,25 @@ fun NetworkTargetRow(
                     }
                     if (wps) {
                         Spacer(Modifier.width(6.dp))
-                        NetworkStatusBadge(text = "WPS", color = StatusAmber)
+                        NetworkStatusBadge(text = "WPS", color = wpsColor)
                     }
                 }
             }
-            RadioButton(
-                selected = selected,
-                onClick = null,
-                enabled = enabled,
-            )
+            if (showSelectionIndicator) {
+                when (selectionControl) {
+                    TargetSelectionControl.RADIO -> RadioButton(
+                        selected = selected,
+                        onClick = null,
+                        enabled = enabled,
+                    )
+                    TargetSelectionControl.CHECKBOX -> Checkbox(
+                        checked = selected,
+                        onCheckedChange = null,
+                        enabled = enabled,
+                    )
+                    TargetSelectionControl.NONE -> Unit
+                }
+            }
         }
     }
 }

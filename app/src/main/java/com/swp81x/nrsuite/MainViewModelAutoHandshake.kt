@@ -1320,6 +1320,7 @@ private suspend fun MainViewModel.collectAutoHandshakeScan(
         }
     }
     val commandResult = try {
+        wifiScanDestination = null
         activeSession.scanWifi(timeoutMs = timeoutMs)
     } finally {
         delay(250L)

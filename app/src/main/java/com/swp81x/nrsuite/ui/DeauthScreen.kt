@@ -3,6 +3,7 @@ package com.swp81x.nrsuite.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import org.json.JSONObject
+import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
@@ -51,14 +52,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.swp81x.nrsuite.ui.components.NetworkTargetRow
+import com.swp81x.nrsuite.ui.components.ScanButtonContent
+import com.swp81x.nrsuite.ui.components.ScanTargetList
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
+import com.swp81x.nrsuite.ui.components.WifiChannelSummaryPill
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
+import com.swp81x.nrsuite.ui.theme.StatusInfo
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
 
@@ -69,13 +73,16 @@ fun DeauthScreen(
     connected: Boolean,
     running: Boolean,
     sentFrames: Int,
+    failedFrames: Int,
+    elapsedMs: Long,
+    pps: Double,
     targetBssid: String,
     activeChannel: Int,
     scanning: Boolean,
     networks: List<JSONObject>,
     allowedChannels: List<Int> = emptyList(),
     onScanWifi: () -> Unit,
-    onStart: (bssid: String, channel: Int, client: String, count: Int, duration: Int, intervalMs: Int, loopMode: Boolean) -> Unit,
+    onStart: (targets: List<NetworkTarget>, client: String, count: Int, intervalMs: Int, loopMode: Boolean) -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -85,16 +92,15 @@ fun DeauthScreen(
     var channel by remember { mutableStateOf(6) }
     var loopMode by remember { mutableStateOf(false) }
     var count by remember { mutableStateOf(20) }
-    var duration by remember { mutableStateOf(30) }
     var intervalMs by remember { mutableStateOf(100) }
     var confirmStart by remember { mutableStateOf(false) }
+    var selectedTargets by remember { mutableStateOf<Map<String, NetworkTarget>>(emptyMap()) }
     val context = LocalContext.current
 
     LaunchedEffect(running) {
         if (running) configExpanded = false
     }
 
-    val validBssid = MAC_REGEX.matches(bssid.trim())
     val validClient = MAC_REGEX.matches(client.trim())
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -113,9 +119,7 @@ fun DeauthScreen(
                 channel = channel,
                 loopMode = loopMode,
                 count = count,
-                duration = duration,
                 intervalMs = intervalMs,
-                validBssid = validBssid,
                 validClient = validClient,
                 scanning = scanning,
                 sentFrames = sentFrames,
@@ -128,19 +132,48 @@ fun DeauthScreen(
                 onChannelChange = { channel = normalizeWifiChannel(it) },
                 onLoopModeChange = { loopMode = it },
                 onCountChange = { count = it.coerceIn(1, 2_000) },
-                onDurationChange = { duration = it.coerceIn(0, 3_600) },
                 onIntervalChange = { intervalMs = it.coerceIn(10, 10_000) },
+                selectedBssids = selectedTargets.keys,
+                onToggleTarget = { network ->
+                    val bssidValue = network.optString("bssid")
+                    val target = NetworkTarget(
+                        ssid = network.optString("ssid").ifBlank { "(hidden)" },
+                        bssid = bssidValue,
+                        channel = network.optInt("channel", 1),
+                        rssi = network.optInt("rssi", -100),
+                        security = network.optString("security", "?"),
+                        wps = network.optBoolean("wps"),
+                        vendor = network.optString("vendor").takeIf { it.isNotBlank() },
+                        ouiWhitelisted = network.optBoolean("oui_whitelisted"),
+                        ouiBlacklisted = network.optBoolean("oui_blacklisted"),
+                    )
+                    selectedTargets = if (selectedTargets.containsKey(bssidValue)) {
+                        selectedTargets - bssidValue
+                    } else {
+                        selectedTargets + (bssidValue to target)
+                    }
+                    bssid = bssidValue
+                    channel = target.channel
+                },
+                onClearTargets = {
+                    selectedTargets = emptyMap()
+                    bssid = ""
+                },
             )
 
-            Spacer(Modifier.height(10.dp))
-
-            ResultZone(
-                connected = connected,
-                running = running,
-                sentFrames = sentFrames,
-                targetBssid = targetBssid,
-                activeChannel = activeChannel,
-            )
+            if (running || sentFrames > 0 || failedFrames > 0 || elapsedMs > 0) {
+                Spacer(Modifier.height(10.dp))
+                ResultZone(
+                    connected = connected,
+                    running = running,
+                    sentFrames = sentFrames,
+                    failedFrames = failedFrames,
+                    elapsedMs = elapsedMs,
+                    pps = pps,
+                    targetBssid = targetBssid,
+                    activeChannel = activeChannel,
+                )
+            }
         }
 
         if (connected) {
@@ -148,11 +181,14 @@ fun DeauthScreen(
                 onClick = {
                     when {
                         running -> onStop()
-                        !validBssid -> Toast.makeText(
-                            context,
-                            "Select a valid target BSSID first.",
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        selectedTargets.isEmpty() -> {
+                            configExpanded = true
+                            Toast.makeText(
+                                context,
+                                "Scan and select at least one target first.",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
                         !validClient -> Toast.makeText(
                             context,
                             "Enter a valid client MAC or use FF:FF:FF:FF:FF:FF.",
@@ -164,7 +200,7 @@ fun DeauthScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = if (running) StatusAmber else MaterialTheme.colorScheme.primary,
+                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(
@@ -180,18 +216,25 @@ fun DeauthScreen(
             onDismissRequest = { confirmStart = false },
             title = { Text("Send deauth frames?") },
             text = {
+                val targets = selectedTargets.values.toList()
+                val channels = targets.map { it.channel }.distinct().sorted()
                 val modeDescription = if (loopMode) {
-                    "Mode: Loop — ${if (duration == 0) "until stopped" else "${duration}s"}\n" +
-                        "Interval: $intervalMs ms\n\n"
+                    if (targets.size > 1) {
+                        "Mode: Channel-hopping loop — $count frames/target, until stopped\n"
+                    } else {
+                        "Mode: Loop — until stopped\n"
+                    }
                 } else {
-                    "Mode: Burst — $count frame(s)\n" +
-                        "Interval: $intervalMs ms\n\n"
+                    "Mode: Burst — $count frame(s) per target\n"
                 }
                 Text(
-                    "Target: $bssid\n" +
+                    "Targets: ${targets.size}\n" +
+                        targets.take(5).joinToString("\n") { "• ${it.ssid.ifBlank { "(hidden)" }} (${it.bssid})" } +
+                        (if (targets.size > 5) "\n• +${targets.size - 5} more" else "") +
+                        "\nChannels: ${channels.joinToString(", ")}\n" +
                         "Client: $client\n" +
-                        "Channel: $channel\n" +
                         modeDescription +
+                        "Interval: $intervalMs ms\n\n" +
                         "This disrupts connectivity for affected clients. Only use this on networks you own or are authorized to test."
                 )
             },
@@ -200,11 +243,9 @@ fun DeauthScreen(
                     onClick = {
                         confirmStart = false
                         onStart(
-                            bssid.trim(),
-                            channel,
+                            selectedTargets.values.toList(),
                             client.trim(),
                             count,
-                            duration,
                             intervalMs,
                             loopMode,
                         )
@@ -232,9 +273,7 @@ private fun ConfigZone(
     channel: Int,
     loopMode: Boolean,
     count: Int,
-    duration: Int,
     intervalMs: Int,
-    validBssid: Boolean,
     validClient: Boolean,
     scanning: Boolean,
     sentFrames: Int,
@@ -247,8 +286,10 @@ private fun ConfigZone(
     onChannelChange: (Int) -> Unit,
     onLoopModeChange: (Boolean) -> Unit,
     onCountChange: (Int) -> Unit,
-    onDurationChange: (Int) -> Unit,
     onIntervalChange: (Int) -> Unit,
+    selectedBssids: Set<String>,
+    onToggleTarget: (JSONObject) -> Unit,
+    onClearTargets: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -276,9 +317,9 @@ private fun ConfigZone(
                     )
                     Text(
                         text = when {
-                            running -> "Burst running"
+                            running -> "Deauth running"
                             sentFrames > 0 -> "$sentFrames frame(s) sent"
-                            else -> "Targeted deauthentication burst"
+                            else -> "Select one or more AP targets"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
@@ -299,38 +340,36 @@ private fun ConfigZone(
                         onClick = onScanWifi,
                         enabled = connected && !scanning && !running,
                     ) {
-                        Text(if (scanning) "Scanning..." else "Scan WiFi for targets")
+                        ScanButtonContent(
+                            scanning = scanning,
+                            idleLabel = "Scan WiFi for targets",
+                        )
                     }
 
                     if (networks.isNotEmpty()) {
                         Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = "Select target",
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        networks.forEach { network ->
-                            val ssid = network.optString("ssid").ifBlank { "(hidden)" }
-                            val bssidValue = network.optString("bssid")
-                            val channelValue = network.optInt("channel", 1)
-                            NetworkTargetRow(
-                                ssid = ssid,
-                                bssid = bssidValue,
-                                channel = channelValue,
-                                rssi = network.optInt("rssi", -100),
-                                security = network.optString("security", "?"),
-                                wps = network.optBoolean("wps"),
-                                vendor = network.optString("vendor").takeIf { it.isNotBlank() },
-                                ouiWhitelisted = network.optBoolean("oui_whitelisted"),
-                                ouiBlacklisted = network.optBoolean("oui_blacklisted"),
-                                selected = bssid.trim().equals(bssidValue, ignoreCase = true),
-                                enabled = !running,
-                                onClick = {
-                                    onBssidChange(bssidValue)
-                                    onChannelChange(channelValue)
-                                },
-                                modifier = Modifier.padding(vertical = 3.dp),
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "${selectedBssids.size} selected",
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.weight(1f),
                             )
+                            if (selectedBssids.isNotEmpty() && !running) {
+                                TextButton(onClick = onClearTargets) {
+                                    Text("Clear")
+                                }
+                            }
                         }
+                        ScanTargetList(
+                            networks = networks,
+                            selectedBssids = selectedBssids,
+                            onToggle = onToggleTarget,
+                            enabled = !running,
+                            multiSelect = true,
+                        )
                     }
 
                     Spacer(Modifier.height(8.dp))
@@ -345,7 +384,17 @@ private fun ConfigZone(
                     )
 
                     Spacer(Modifier.height(10.dp))
-                    Text("Channel", style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Manual channel",
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                        WifiChannelSummaryPill(channel)
+                    }
                     Spacer(Modifier.height(6.dp))
                     WifiChannelStepper(
                         value = channel,
@@ -373,21 +422,13 @@ private fun ConfigZone(
                         )
                     }
                     Spacer(Modifier.height(8.dp))
-                    if (!loopMode) {
+                    if (!loopMode || selectedBssids.size > 1) {
                         NumberStepper(
-                            label = "Frame count",
+                            label = if (loopMode) "Frames / target" else "Frame count",
                             valueText = count.toString(),
                             enabled = !running,
                             onDecrease = { onCountChange(count - 5) },
                             onIncrease = { onCountChange(count + 5) },
-                        )
-                    } else {
-                        NumberStepper(
-                            label = "Duration",
-                            valueText = if (duration == 0) "until stopped" else "${duration}s",
-                            enabled = !running,
-                            onDecrease = { onDurationChange(maxOf(0, duration - 5)) },
-                            onIncrease = { onDurationChange(duration + 5) },
                         )
                     }
                     NumberStepper(
@@ -400,12 +441,14 @@ private fun ConfigZone(
 
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = if (loopMode) {
-                            "Loop mode repeats deauth frames at the selected interval. " +
-                                "Duration 0 runs until you press Stop."
-                        } else {
-                            "Burst mode sends exactly the selected frame count, then stops. " +
-                                "Count and duration are mutually exclusive."
+                        text = when {
+                            loopMode && selectedBssids.size > 1 ->
+                                "Channel-hopping loop sends one burst to each selected target, " +
+                                    "then repeats until you press Stop."
+                            loopMode ->
+                                "Loop mode repeats deauth frames until you press Stop."
+                            else ->
+                                "Burst mode sends the selected frame count to each target once."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
@@ -467,6 +510,9 @@ private fun ResultZone(
     connected: Boolean,
     running: Boolean,
     sentFrames: Int,
+    failedFrames: Int,
+    elapsedMs: Long,
+    pps: Double,
     targetBssid: String,
     activeChannel: Int,
     modifier: Modifier = Modifier,
@@ -491,14 +537,14 @@ private fun ResultZone(
             StatusIndicator(
                 label = when {
                     !connected -> "No device connected"
-                    running -> "Sending burst"
-                    sentFrames > 0 -> "Completed"
-                    else -> "Ready"
+                    running -> "Deauth running"
+                    sentFrames > 0 || failedFrames > 0 -> "Stopped"
+                    else -> "Idle"
                 },
                 color = when {
                     !connected -> StatusNeutral
-                    running -> StatusAmber
-                    sentFrames > 0 -> StatusGreen
+                    running -> StatusGreen
+                    sentFrames > 0 || failedFrames > 0 -> StatusInfo
                     else -> StatusNeutral
                 },
             )
@@ -514,6 +560,46 @@ private fun ResultZone(
                 style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily.Monospace),
                 fontWeight = FontWeight.Bold,
             )
+
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                Column {
+                    Text(
+                        text = "Rate",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                    Text(
+                        text = "%.1f pps".format(pps),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Column {
+                    Text(
+                        text = "Elapsed",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                    Text(
+                        text = formatElapsed(elapsedMs),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Column {
+                    Text(
+                        text = "Failed",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                    Text(
+                        text = failedFrames.toString(),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
 
             if (targetBssid.isNotBlank()) {
                 Spacer(Modifier.height(12.dp))
@@ -541,4 +627,12 @@ private fun ResultZone(
             }
         }
     }
+}
+
+
+private fun formatElapsed(elapsedMs: Long): String {
+    val totalSeconds = (elapsedMs / 1_000L).coerceAtLeast(0L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return if (minutes > 0) "%d:%02d".format(minutes, seconds) else "${seconds}s"
 }

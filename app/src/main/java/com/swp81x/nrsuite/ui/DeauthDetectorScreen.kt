@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -62,6 +63,7 @@ import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.ui.util.rssiToProximity
 import com.swp81x.nrsuite.ui.util.threatProximityColor
+import com.swp81x.nrsuite.ui.components.ScanButtonContent
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.ChannelModeToggle
 import com.swp81x.nrsuite.ui.components.ModuleStatusCard
@@ -259,7 +261,7 @@ private fun DetectorStatusCard(
             alert != null -> "Deauth attack detected"
             !connected -> "Disconnected"
             running -> "No attack detected"
-            else -> "Ready"
+            else -> "Idle"
         },
         subtitle = when {
             alert != null -> "${alert.ssid} · ch ${alert.channel}"
@@ -501,13 +503,21 @@ private fun ConfigZone(
                             onClick = onScanClick,
                             enabled = controlsEnabled && !isScanning,
                         ) {
-                            Text(if (isScanning) "Scanning..." else "Scan WiFi for targets")
+                            ScanButtonContent(
+                                scanning = isScanning,
+                                idleLabel = "Scan WiFi for targets",
+                            )
                         }
 
                         if (scanResults.isNotEmpty()) {
                             Spacer(Modifier.height(6.dp))
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                scanResults.forEach { target ->
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 280.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                items(scanResults, key = { it.bssid }) { target ->
                                     NetworkTargetRow(
                                         ssid = target.ssid,
                                         bssid = target.bssid,

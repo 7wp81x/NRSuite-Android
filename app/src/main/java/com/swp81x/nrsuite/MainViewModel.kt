@@ -99,6 +99,9 @@ import com.swp81x.nrsuite.core.wpa.WpaCracker
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeVerifier
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeParser
 import com.swp81x.nrsuite.core.wpa.WpaHandshake
+import com.swp81x.nrsuite.core.wps.WpsPinRecord
+import com.swp81x.nrsuite.core.wps.WpsPinSource
+import com.swp81x.nrsuite.core.wps.WpsPinStore
 import com.swp81x.nrsuite.core.wpa.EvilTwinResult
 import com.swp81x.nrsuite.core.sniff.SniffRequest
 import com.swp81x.nrsuite.core.storage.StorageFile
@@ -152,6 +155,8 @@ internal data class DeviceSession(
  * stream, PCAP collectors, and operation state survive Activity destruction
  * while the foreground service keeps the process alive.
  */
+internal enum class WifiScanDestination { WIFI, TARGETS, CHANNEL_ANALYZER, WPS }
+
 class MainViewModel(internal val app: Application) {
     internal val scope = CoroutineScope(
         SupervisorJob() +
@@ -341,6 +346,14 @@ class MainViewModel(internal val app: Application) {
     internal val _networks = MutableStateFlow<List<JSONObject>>(emptyList())
     val networks: StateFlow<List<JSONObject>> = _networks.asStateFlow()
 
+    internal val _targetNetworks = MutableStateFlow<List<JSONObject>>(emptyList())
+    val targetNetworks: StateFlow<List<JSONObject>> = _targetNetworks.asStateFlow()
+
+    internal val _channelAnalyzerNetworks = MutableStateFlow<List<JSONObject>>(emptyList())
+    val channelAnalyzerNetworks: StateFlow<List<JSONObject>> = _channelAnalyzerNetworks.asStateFlow()
+
+    internal var wifiScanDestination: WifiScanDestination? = null
+
     internal val _wifiBand = MutableStateFlow(WifiBand.AUTO)
     val wifiBand: StateFlow<WifiBand> = _wifiBand.asStateFlow()
 
@@ -456,6 +469,17 @@ class MainViewModel(internal val app: Application) {
     internal val _clientPresenceRunning = MutableStateFlow(false)
     val clientPresenceRunning: StateFlow<Boolean> = _clientPresenceRunning.asStateFlow()
 
+    internal val _probeMonitorRunning = MutableStateFlow(false)
+    val probeMonitorRunning: StateFlow<Boolean> = _probeMonitorRunning.asStateFlow()
+    internal val _probeMonitorFixed = MutableStateFlow(false)
+    val probeMonitorFixed: StateFlow<Boolean> = _probeMonitorFixed.asStateFlow()
+    internal val _probeMonitorChannel = MutableStateFlow(6)
+    val probeMonitorChannel: StateFlow<Int> = _probeMonitorChannel.asStateFlow()
+    internal val _probeMonitorEntries = MutableStateFlow<List<ProbeObservation>>(emptyList())
+    val probeMonitorEntries: StateFlow<List<ProbeObservation>> = _probeMonitorEntries.asStateFlow()
+    internal val _probeMonitorFrameCount = MutableStateFlow(0L)
+    val probeMonitorFrameCount: StateFlow<Long> = _probeMonitorFrameCount.asStateFlow()
+
     internal val _clientPresenceMode = MutableStateFlow(ClientPresenceMode.PASSIVE)
     val clientPresenceMode: StateFlow<ClientPresenceMode> = _clientPresenceMode.asStateFlow()
 
@@ -551,12 +575,23 @@ class MainViewModel(internal val app: Application) {
     val beaconListMap: StateFlow<Map<String, List<String>>> = _beaconListMap.asStateFlow()
 
     internal var beaconStatusJob: Job? = null
+    internal var wpsTargetScanJob: Job? = null
+    internal var deauthMultiJob: Job? = null
 
     internal val _deauthRunning = MutableStateFlow(false)
     val deauthRunning: StateFlow<Boolean> = _deauthRunning.asStateFlow()
 
     internal val _deauthSent = MutableStateFlow(0)
     val deauthSent: StateFlow<Int> = _deauthSent.asStateFlow()
+
+    internal val _deauthFailed = MutableStateFlow(0)
+    val deauthFailed: StateFlow<Int> = _deauthFailed.asStateFlow()
+
+    internal val _deauthElapsedMs = MutableStateFlow(0L)
+    val deauthElapsedMs: StateFlow<Long> = _deauthElapsedMs.asStateFlow()
+
+    internal val _deauthPps = MutableStateFlow(0.0)
+    val deauthPps: StateFlow<Double> = _deauthPps.asStateFlow()
 
     internal val _deauthTarget = MutableStateFlow("")
     val deauthTarget: StateFlow<String> = _deauthTarget.asStateFlow()
@@ -656,11 +691,20 @@ class MainViewModel(internal val app: Application) {
     internal val _portalCredentials = MutableStateFlow<List<CapturedCredential>>(emptyList())
     val portalCredentials: StateFlow<List<CapturedCredential>> = _portalCredentials.asStateFlow()
 
+    internal val _htmlTemplates = MutableStateFlow<List<com.swp81x.nrsuite.core.portal.HtmlTemplate>>(emptyList())
+    val htmlTemplates: StateFlow<List<com.swp81x.nrsuite.core.portal.HtmlTemplate>> = _htmlTemplates.asStateFlow()
+    internal val _htmlTemplateMessage = MutableStateFlow<String?>(null)
+    val htmlTemplateMessage: StateFlow<String?> = _htmlTemplateMessage.asStateFlow()
+    internal val _htmlTemplateMessageIsError = MutableStateFlow(false)
+    val htmlTemplateMessageIsError: StateFlow<Boolean> = _htmlTemplateMessageIsError.asStateFlow()
+
     internal val _portalHtmlUri = MutableStateFlow<Uri?>(null)
     val portalHtmlUri: StateFlow<Uri?> = _portalHtmlUri.asStateFlow()
 
     internal val _portalHtmlName = MutableStateFlow<String?>(null)
     val portalHtmlName: StateFlow<String?> = _portalHtmlName.asStateFlow()
+    internal val _portalHtmlSelectedSize = MutableStateFlow<Long?>(null)
+    val portalHtmlSelectedSize: StateFlow<Long?> = _portalHtmlSelectedSize.asStateFlow()
 
     internal val _portalMode = MutableStateFlow<String?>(null)
     val portalMode: StateFlow<String?> = _portalMode.asStateFlow()
@@ -674,6 +718,8 @@ class MainViewModel(internal val app: Application) {
     internal val _evilTwinHtmlUri = MutableStateFlow<Uri?>(null)
     internal val _evilTwinHtmlName = MutableStateFlow<String?>(null)
     val evilTwinHtmlName: StateFlow<String?> = _evilTwinHtmlName.asStateFlow()
+    internal val _evilTwinHtmlSelectedSize = MutableStateFlow<Long?>(null)
+    val evilTwinHtmlSelectedSize: StateFlow<Long?> = _evilTwinHtmlSelectedSize.asStateFlow()
 
     internal val _portalHandshake = MutableStateFlow(EapolHandshake())
     val portalHandshake: StateFlow<EapolHandshake> = _portalHandshake.asStateFlow()
@@ -688,6 +734,11 @@ class MainViewModel(internal val app: Application) {
     val evilTwinResults: StateFlow<List<EvilTwinResult>> = _evilTwinResults.asStateFlow()
 
     internal val credentialStore = CredentialStore(File(app.filesDir, "Credentials"))
+    internal val wpsPinStore = WpsPinStore(File(app.filesDir, "Credentials"))
+    internal val htmlTemplateStore = com.swp81x.nrsuite.core.portal.HtmlTemplateStore(
+        app,
+        File(app.filesDir, "PortalTemplates"),
+    )
     internal val _credentialSessions = MutableStateFlow<List<CredentialSession>>(emptyList())
     val credentialSessions: StateFlow<List<CredentialSession>> = _credentialSessions.asStateFlow()
     internal val credentialLock = Any()
@@ -747,6 +798,20 @@ class MainViewModel(internal val app: Application) {
     val crackerCustomSsidManual: StateFlow<Boolean> = _crackerCustomSsidManual.asStateFlow()
 
     internal var crackerJob: Job? = null
+
+    internal val _wpsPixie = MutableStateFlow(WpsPixieUiState())
+    val wpsPixie: StateFlow<WpsPixieUiState> = _wpsPixie.asStateFlow()
+    internal var wpsPixieJob: Job? = null
+
+    internal val _wpsPins = MutableStateFlow<List<WpsPinRecord>>(emptyList())
+    val wpsPins: StateFlow<List<WpsPinRecord>> = _wpsPins.asStateFlow()
+
+    internal val _wpsPixieLive = MutableStateFlow(WpsPixieLiveUiState())
+    val wpsPixieLive: StateFlow<WpsPixieLiveUiState> = _wpsPixieLive.asStateFlow()
+    internal var wpsPixieLiveJob: Job? = null
+    internal var wpsPixiePrepareWatchdogJob: Job? = null
+    internal var wpsPixieM1WatchdogJob: Job? = null
+    internal val wpsPixieLiveAuthKeyCache = mutableMapOf<String, ByteArray>()
 
     internal val _evilTwinCapturePath = MutableStateFlow<String?>(null)
     val evilTwinCapturePath: StateFlow<String?> = _evilTwinCapturePath.asStateFlow()
@@ -993,6 +1058,8 @@ class MainViewModel(internal val app: Application) {
         initSafely("irCapabilities") { this.refreshIrCapabilitiesImpl() }
         initSafely("irSearchNotifications") { this.observeIrSearchNotificationsImpl() }
         initSafely("credentialSessions") { this.loadCredentialSessionsImpl() }
+        initSafely("wpsPins") { this.loadWpsPinsImpl() }
+        initSafely("htmlTemplates") { this.loadHtmlTemplatesImpl() }
         initSafely("autoHandshakeSessions") { this.loadAutoHandshakeSessionsImpl() }
         initSafely("meshCredentials") { this.refreshMeshGlobalCredentialsImpl() }
         initSafely("meshHealthSweep") { this.startMeshHealthSweepImpl() }
@@ -1012,21 +1079,31 @@ class MainViewModel(internal val app: Application) {
 
     private fun clearScanResultsForModule(moduleId: String) {
         when (moduleId) {
-            "wifi", "sniff", "deauth", "evil_twin", "client_presence" -> {
+            "wifi" -> {
                 _networks.value = emptyList()
                 _deauthDetectorTargets.value = emptyList()
+            }
+
+            "sniff", "deauth", "evil_twin", "client_presence", "deauth_detector", "hidden_ap" -> {
+                _networks.value = emptyList()
+                _deauthDetectorTargets.value = emptyList()
+                if (moduleId == "deauth_detector" && !_deauthDetectorRunning.value) {
+                    _deauthDetectorSelectedTarget.value = null
+                }
+            }
+
+            "channel_analyzer" -> {
+                _channelAnalyzerNetworks.value = emptyList()
+            }
+
+            "probe_monitor" -> {
+                _probeMonitorEntries.value = emptyList()
+                _probeMonitorFrameCount.value = 0L
             }
 
             "nrugochi" -> {
                 if (!autoHandshake.uiState.value.running) {
                     autoHandshake.currentTarget = null
-                }
-            }
-
-            "deauth_detector" -> {
-                if (!_deauthDetectorRunning.value) {
-                    _deauthDetectorTargets.value = emptyList()
-                    _deauthDetectorSelectedTarget.value = null
                 }
             }
 
@@ -1060,6 +1137,9 @@ class MainViewModel(internal val app: Application) {
     fun saveBeaconList(name: String, ssids: List<String>) = this.saveBeaconListImpl(name, ssids)
 
     fun deleteBeaconList(name: String) = this.deleteBeaconListImpl(name)
+
+    fun renameBeaconList(oldName: String, newName: String) =
+        this.renameBeaconListImpl(oldName, newName)
 
     fun addOuiRule(ouiPrefix: String, label: String, action: OuiRuleAction) =
         this.addOuiRuleImpl(ouiPrefix, label, action)
@@ -1149,6 +1229,17 @@ class MainViewModel(internal val app: Application) {
 
     fun clearRogueApAlerts() {
         _rogueApAlerts.value = emptyList()
+    }
+
+    fun startProbeMonitor(fixed: Boolean, channel: Int) =
+        this.startProbeMonitorImpl(fixed, channel)
+
+    fun stopProbeMonitor() = this.stopProbeMonitorImpl()
+
+    fun resetProbeMonitor() = this.resetProbeMonitorImpl()
+
+    fun resetChannelAnalyzer() {
+        _channelAnalyzerNetworks.value = emptyList()
     }
 
     fun startClientPresence(
@@ -1354,6 +1445,8 @@ class MainViewModel(internal val app: Application) {
 
     fun scanWifi() = this.scanWifiImpl()
     fun scanWifiForTargets() = this.scanWifiForTargetsImpl()
+
+    fun scanChannelAnalyzer() = this.scanChannelAnalyzerImpl()
     fun setWifiBand(band: WifiBand) = this.setWifiBandImpl(band)
     fun setWifiCountry(country: String) = this.setWifiCountryImpl(country)
 
@@ -1520,6 +1613,7 @@ class MainViewModel(internal val app: Application) {
         _rogueApRunning.value = false
         _rogueApScanning.value = false
         _clientPresenceRunning.value = false
+        _probeMonitorRunning.value = false
         _hiddenApRunning.value = false
         _hiddenApStarting.value = false
         _hiddenApCurrentHopChannel.value = null
@@ -1575,6 +1669,22 @@ class MainViewModel(internal val app: Application) {
         _evilTwinCapturePath.value = null
         resetMeshRuntimeStateImpl()
         updateForegroundService()
+    }
+
+    fun importHtmlTemplate(uri: Uri, name: String?) = this.importHtmlTemplateImpl(uri, name)
+
+    fun loadHtmlTemplates() = this.loadHtmlTemplatesImpl()
+
+    fun renameHtmlTemplate(id: String, name: String) = this.renameHtmlTemplateImpl(id, name)
+
+    fun deleteHtmlTemplate(id: String) = this.deleteHtmlTemplateImpl(id)
+
+    fun useHtmlTemplateForPortal(id: String) = this.useHtmlTemplateForPortalImpl(id)
+
+    fun useHtmlTemplateForEvilTwin(id: String) = this.useHtmlTemplateForEvilTwinImpl(id)
+
+    fun clearHtmlTemplateMessage() {
+        _htmlTemplateMessage.value = null
     }
 
     fun setPortalHtmlFile(uri: Uri, name: String?) = this.setPortalHtmlFileImpl(uri, name)
@@ -1659,6 +1769,35 @@ class MainViewModel(internal val app: Application) {
     fun startCracker() = this.startCrackerImpl()
 
     fun stopCracker() = this.stopCrackerImpl()
+
+    fun importWpsPixiePcap(uri: Uri, name: String?) = this.importWpsPixiePcapImpl(uri, name)
+
+    fun importWpsPixieSerialLog(uri: Uri, name: String?) = this.importWpsPixieSerialLogImpl(uri, name)
+
+    fun setWpsPixieAuthKey(value: String) = this.setWpsPixieAuthKeyImpl(value)
+
+    fun startWpsPixieCrack() = this.startWpsPixieCrackImpl()
+
+    fun stopWpsPixieCrack() = this.stopWpsPixieCrackImpl()
+
+    fun clearWpsPixieMaterial() = this.clearWpsPixieMaterialImpl()
+
+    fun scanWpsTargets() = this.scanWpsTargetsImpl()
+
+    fun selectWpsTarget(target: NetworkTarget) = this.selectWpsTargetImpl(target)
+
+    fun setWpsOnlyFilter(enabled: Boolean) = this.setWpsOnlyFilterImpl(enabled)
+
+    fun startWpsPixieLiveAttempt(pin: String? = null, source: WpsPinSource? = null) =
+        this.startWpsPixieLiveAttemptImpl(pin, source)
+
+    fun stopWpsPixieLiveAttempt() = this.stopWpsPixieLiveAttemptImpl()
+
+    fun clearWpsPixieLiveLog() = this.clearWpsPixieLiveLogImpl()
+
+    fun resetWpsPixieLiveScreen() = this.resetWpsPixieLiveScreenImpl()
+
+    fun deleteWpsPin(bssid: String) = this.deleteWpsPinImpl(bssid)
 
     fun clearEvilTwinEventLog() = this.clearEvilTwinEventLogImpl()
 
@@ -1797,19 +1936,15 @@ class MainViewModel(internal val app: Application) {
 
 
     fun startDeauth(
-        bssid: String,
-        channel: Int,
+        targets: List<NetworkTarget>,
         client: String,
         count: Int,
-        duration: Int,
         intervalMs: Int,
         loopMode: Boolean = false,
     ) = this.startDeauthImpl(
-        bssid,
-        channel,
+        targets,
         client,
         count,
-        duration,
         intervalMs,
         loopMode,
     )
@@ -1897,6 +2032,7 @@ class MainViewModel(internal val app: Application) {
             _rogueApRunning.value -> "Rogue AP Detector"
             _rogueApScanning.value -> "Rogue AP baseline scan"
             _clientPresenceRunning.value -> "Client Detector"
+            _probeMonitorRunning.value -> "Probe Request Monitor"
             _hiddenApStarting.value -> "Hidden AP Revealer starting"
             _hiddenApRunning.value -> "Hidden AP Revealer"
             _scanning.value -> "WiFi Scan"
@@ -1940,6 +2076,7 @@ class MainViewModel(internal val app: Application) {
             _deauthDetectorRunning.value -> "Deauth detector active"
             _rogueApRunning.value -> "Rogue AP detector active"
             _clientPresenceRunning.value -> "Client detector active"
+            _probeMonitorRunning.value -> "Probe Request Monitor active"
             _hiddenApStarting.value -> "Hidden AP Revealer scanning"
             _hiddenApRunning.value -> "Hidden AP revealer active"
             _bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value -> "BLE scanner active"
@@ -2043,6 +2180,13 @@ class MainViewModel(internal val app: Application) {
                             this@MainViewModel.handleMeshEventImpl(event)
                         }
 
+                        "wps_pixie_progress",
+                        "wps_pixie_wrong_pin",
+                        "wps_pixie_psk",
+                        "wps_pixie_error" -> {
+                            this@MainViewModel.handleWpsPixieLiveEventImpl(event)
+                        }
+
                         "scan_ap" -> {
                             val bssid = event.optString("bssid")
                             val resolvedSsid = resolvedHiddenSsidByBssid[bssid.uppercase()]
@@ -2058,9 +2202,17 @@ class MainViewModel(internal val app: Application) {
                             event.put("oui_whitelisted", ouiWhitelisted)
                             event.put("oui_blacklisted", ouiBlacklisted)
 
-                            _networks.update { current ->
+                            val destination = wifiScanDestination
+                            val updatedList: (List<JSONObject>) -> List<JSONObject> = { current ->
                                 (current.filterNot { it.optString("bssid") == bssid } + event)
                                     .sortedByDescending { it.optInt("rssi", -999) }
+                            }
+                            when (destination) {
+                                WifiScanDestination.WIFI,
+                                WifiScanDestination.TARGETS -> _networks.update(updatedList)
+                                WifiScanDestination.CHANNEL_ANALYZER -> _channelAnalyzerNetworks.update(updatedList)
+                                WifiScanDestination.WPS,
+                                null -> Unit
                             }
                             val ssid = event.optString("ssid").ifBlank { "(hidden)" }
                             val target = NetworkTarget(
@@ -2074,12 +2226,16 @@ class MainViewModel(internal val app: Application) {
                                 ouiWhitelisted = ouiWhitelisted,
                                 ouiBlacklisted = ouiBlacklisted,
                             )
-                            _deauthDetectorTargets.update { current ->
-                                (current.filterNot { it.bssid.equals(bssid, ignoreCase = true) } + target)
-                                    .sortedByDescending { it.rssi }
-                            }
-                            _deauthDetectorSelectedTarget.update { selected ->
-                                selected?.takeIf { it.bssid.equals(bssid, ignoreCase = true) } ?: selected
+                            if (destination == WifiScanDestination.WPS) {
+                                this@MainViewModel.observeWpsScanTargetImpl(target)
+                            } else {
+                                _deauthDetectorTargets.update { current ->
+                                    (current.filterNot { it.bssid.equals(bssid, ignoreCase = true) } + target)
+                                        .sortedByDescending { it.rssi }
+                                }
+                                _deauthDetectorSelectedTarget.update { selected ->
+                                    selected?.takeIf { it.bssid.equals(bssid, ignoreCase = true) } ?: selected
+                                }
                             }
                             appendLog(
                                 "AP: $ssid  ${event.optString("bssid")}  " +
@@ -2163,13 +2319,18 @@ class MainViewModel(internal val app: Application) {
                         }
                         "deauth_stats" -> {
                             val sent = event.optInt("sent_frames", _deauthSent.value)
-                            val failed = event.optInt("failed_frames", 0)
+                            val failed = event.optInt("failed_frames", _deauthFailed.value)
+                            val elapsedMs = event.optLong("elapsed_ms", _deauthElapsedMs.value)
+                            val pps = event.optDouble("pps", _deauthPps.value)
                             val status = event.optString("status", "finished")
                             _deauthSent.value = sent
+                            _deauthFailed.value = failed
+                            _deauthElapsedMs.value = elapsedMs
+                            _deauthPps.value = pps
                             if (failed > 0) {
-                                appendLog("Deauth stats: $sent sent, $failed failed.")
+                                appendLog("Deauth stats: $sent sent, $failed failed, ${"%.1f".format(pps)} pps.")
                             } else {
-                                appendLog("Deauth stats: $sent frame(s) sent.")
+                                appendLog("Deauth stats: $sent frame(s) sent, ${"%.1f".format(pps)} pps.")
                             }
                             this@MainViewModel.portalLogImpl(
                                 "Deauth stats: $sent sent, $failed failed"
@@ -2188,7 +2349,12 @@ class MainViewModel(internal val app: Application) {
                                 )
                             }
                         }
-                        "client_detected" -> this@MainViewModel.recordClientPresenceEvent(event)
+                        "client_detected" -> {
+                            if (_clientPresenceRunning.value) {
+                                this@MainViewModel.recordClientPresenceEvent(event)
+                            }
+                            this@MainViewModel.recordProbeMonitorEvent(event)
+                        }
                         "ble_device" -> this@MainViewModel.recordBleDeviceEvent(event)
                         "ble_profile" -> this@MainViewModel.recordBleProfileEvent(event)
                         "ble_service" -> this@MainViewModel.recordBleServiceEvent(event)

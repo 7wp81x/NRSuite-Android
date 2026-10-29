@@ -10,6 +10,7 @@ import com.swp81x.nrsuite.core.session.NrSession
 import com.swp81x.nrsuite.core.sniff.SniffRequest
 import com.swp81x.nrsuite.core.wifi.WIFI_2G_CHANNELS
 import com.swp81x.nrsuite.core.wifi.WIFI_5G_CHANNELS
+import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
@@ -39,6 +40,23 @@ internal fun MainViewModel.deleteBeaconListImpl(name: String) {
     _beaconListMap.update { it - name }
     persistBeaconListsImpl()
     appendLog("Deleted beacon SSID list '$name'.")
+}
+
+internal fun MainViewModel.renameBeaconListImpl(oldName: String, newName: String) {
+    val cleanNewName = newName.trim()
+    val ssids = _beaconListMap.value[oldName] ?: return
+    if (cleanNewName.isBlank() || cleanNewName == oldName) return
+    if (cleanNewName in _beaconListMap.value) {
+        appendLog("A beacon SSID list named '$cleanNewName' already exists.", level = LogLevel.ERROR)
+        return
+    }
+    val renamed = linkedMapOf<String, List<String>>()
+    _beaconListMap.value.forEach { (name, values) ->
+        renamed[if (name == oldName) cleanNewName else name] = values
+    }
+    _beaconListMap.value = renamed
+    persistBeaconListsImpl()
+    appendLog("Renamed beacon SSID list '$oldName' to '$cleanNewName' (${ssids.size} SSIDs).")
 }
 
 internal fun MainViewModel.loadBeaconListsImpl() {
@@ -75,7 +93,7 @@ internal fun MainViewModel.setWifiBandImpl(band: WifiBand) {
 }
 
 internal fun MainViewModel.scanWifiImpl() {
-    scanWifiInternalImpl(_wifiBand.value)
+    scanWifiInternalImpl(_wifiBand.value, WifiScanDestination.WIFI)
 }
 
 /**
@@ -84,10 +102,17 @@ internal fun MainViewModel.scanWifiImpl() {
  * user-selected band filter.
  */
 internal fun MainViewModel.scanWifiForTargetsImpl() {
-    scanWifiInternalImpl(WifiBand.AUTO)
+    scanWifiInternalImpl(WifiBand.AUTO, WifiScanDestination.TARGETS)
 }
 
-private fun MainViewModel.scanWifiInternalImpl(band: WifiBand) {
+internal fun MainViewModel.scanChannelAnalyzerImpl() {
+    scanWifiInternalImpl(WifiBand.AUTO, WifiScanDestination.CHANNEL_ANALYZER)
+}
+
+private fun MainViewModel.scanWifiInternalImpl(
+    band: WifiBand,
+    destination: WifiScanDestination,
+) {
     val activeSession = session
     if (activeSession == null) {
         appendLog("Connect to a device before scanning.")
@@ -96,14 +121,21 @@ private fun MainViewModel.scanWifiInternalImpl(band: WifiBand) {
     if (_scanning.value) return
     if (!ensureRadioIdle("WiFi Scan")) return
 
-    _networks.value = emptyList()
+    when (destination) {
+        WifiScanDestination.WIFI,
+        WifiScanDestination.TARGETS -> _networks.value = emptyList()
+        WifiScanDestination.CHANNEL_ANALYZER -> _channelAnalyzerNetworks.value = emptyList()
+        WifiScanDestination.WPS -> Unit
+    }
     _deauthDetectorTargets.value = emptyList()
+    wifiScanDestination = destination
     _scanning.value = true
     val wireBand = band.takeIf { it != WifiBand.AUTO }?.wireName
     scope.launch {
         appendLog("Starting WiFi scan (${band.label})...")
         val count = activeSession.scanWifi(band = wireBand)
         _scanning.value = false
+        wifiScanDestination = null
         when {
             count == null -> appendLog("WiFi scan timed out.")
             count < 0 -> appendLog("WiFi scan failed.")
@@ -176,11 +208,9 @@ internal fun MainViewModel.ensureWifiChannelAllowed(channel: Int, module: String
 }
 
 internal fun MainViewModel.startDeauthImpl(
-    bssid: String,
-    channel: Int,
+    targets: List<NetworkTarget>,
     client: String,
     count: Int,
-    duration: Int,
     intervalMs: Int,
     loopMode: Boolean = false,
 ) {
@@ -193,15 +223,32 @@ internal fun MainViewModel.startDeauthImpl(
     if (!ensureRadioIdle("Deauthentication")) return
     this.stopLocalPortalImpl()
 
-    val cleanBssid = bssid.trim().uppercase()
     val cleanClient = client.trim().ifBlank { "FF:FF:FF:FF:FF:FF" }.uppercase()
-    if (!MainViewModel.MAC_PATTERN.matches(cleanBssid)) {
-        appendLog("Invalid target BSSID: $cleanBssid")
-        return
-    }
     if (!MainViewModel.MAC_PATTERN.matches(cleanClient)) {
         appendLog("Invalid client MAC: $cleanClient")
         return
+    }
+    val cleanTargets = targets
+        .mapNotNull { target ->
+            val bssid = target.bssid.trim().uppercase()
+            if (!MainViewModel.MAC_PATTERN.matches(bssid)) {
+                appendLog("Skipping invalid target BSSID: ${target.bssid}")
+                null
+            } else {
+                target.copy(
+                    bssid = bssid,
+                    channel = normalizeWifiChannel(target.channel),
+                )
+            }
+        }
+        .distinctBy { it.bssid }
+    if (cleanTargets.isEmpty()) {
+        appendLog("Select at least one valid target before starting deauth.", level = LogLevel.ERROR)
+        _toastMessage.value = "Select at least one target."
+        return
+    }
+    for (target in cleanTargets) {
+        if (!ensureWifiChannelAllowed(target.channel, "Deauthentication")) return
     }
 
     beaconStatusJob?.cancel()
@@ -219,72 +266,146 @@ internal fun MainViewModel.startDeauthImpl(
         }
     }
 
-    val safeChannel = normalizeWifiChannel(channel)
-    if (!ensureWifiChannelAllowed(safeChannel, "Deauthentication")) return
     val safeInterval = intervalMs.coerceIn(10, 10_000)
-    val safeCount = count.coerceIn(0, 2_000)
-    val safeDuration = duration.coerceIn(0, 3_600)
+    val safeCount = count.coerceIn(1, 2_000)
+    val multiTarget = cleanTargets.size > 1
 
     _deauthSent.value = 0
-    _deauthTarget.value = cleanBssid
-    _deauthChannel.value = safeChannel
+    _deauthFailed.value = 0
+    _deauthElapsedMs.value = 0L
+    _deauthPps.value = 0.0
+    _deauthTarget.value = if (cleanTargets.size == 1) {
+        cleanTargets.first().bssid
+    } else {
+        "${cleanTargets.size} targets"
+    }
+    _deauthChannel.value = if (cleanTargets.size == 1) cleanTargets.first().channel else 0
     _deauthRunning.value = true
     updateForegroundService()
 
-    scope.launch {
-        val modeLabel = if (loopMode) "loop" else "burst"
-        val modeDetail = if (loopMode) {
-            if (safeDuration == 0) "until stopped" else "${safeDuration}s"
-        } else {
-            "count=${if (safeCount <= 0) "firmware default" else safeCount}"
-        }
-        appendLog(
-            "Starting deauth $modeLabel: $cleanBssid on channel $safeChannel " +
-                "(client=$cleanClient, $modeDetail, interval=${safeInterval}ms)."
-        )
-        val args = JSONObject().apply {
-            put("bssid", cleanBssid)
-            put("client", cleanClient)
-            put("band", bandForWifiChannel(safeChannel).wireName)
-            put("channel", safeChannel)
-            put("mode", if (loopMode) "loop" else "burst")
-            if (loopMode) {
-                put("duration", safeDuration)
-            } else {
-                put("count", safeCount)
+    if (!multiTarget) {
+        val target = cleanTargets.first()
+        scope.launch {
+            val modeDetail = if (loopMode) "until stopped" else "count=$safeCount"
+            appendLog(
+                "Starting deauth ${if (loopMode) "loop" else "burst"}: ${target.bssid} " +
+                    "on channel ${target.channel} (client=$cleanClient, $modeDetail, " +
+                    "interval=${safeInterval}ms)."
+            )
+            val args = JSONObject().apply {
+                put("bssid", target.bssid)
+                put("client", cleanClient)
+                put("band", bandForWifiChannel(target.channel).wireName)
+                put("channel", target.channel)
+                put("mode", if (loopMode) "loop" else "burst")
+                if (loopMode) {
+                    put("duration", 0)
+                } else {
+                    put("count", safeCount)
+                }
+                put("deauth_interval_ms", safeInterval)
+                put("reason", 7)
             }
-            put("deauth_interval_ms", safeInterval)
-            put("reason", 7)
-        }
-        val response = activeSession.sendCommand("DEAUTH", args, timeoutMs = 60_000)
-        if (response?.optBoolean("ok") == true) {
-            val sent = response.optInt("sent_frames", 0)
-            val failed = response.optInt("failed_frames", 0)
-            _deauthSent.value = sent
-            if (loopMode && response.optBoolean("active", true)) {
-                appendLog(
-                    "Deauth loop started. " +
-                        (if (failed > 0) "$failed initial frame(s) failed." else "Initial frames sent: $sent.")
-                )
-                addHistory(
-                    "deauth",
-                    "Deauth loop started on $cleanBssid ($modeDetail)",
-                    HistoryLevel.SUCCESS,
-                )
+            val response = activeSession.sendCommand("DEAUTH", args, timeoutMs = 60_000)
+            if (response?.optBoolean("ok") == true) {
+                val sent = response.optInt("sent_frames", 0)
+                val failed = response.optInt("failed_frames", 0)
+                _deauthSent.value = sent
+                _deauthFailed.value = failed
+                if (loopMode && response.optBoolean("active", true)) {
+                    appendLog(
+                        "Deauth loop started. " +
+                            (if (failed > 0) "$failed initial frame(s) failed." else "Initial frames sent: $sent.")
+                    )
+                    addHistory(
+                        "deauth",
+                        "Deauth loop started on ${target.bssid} (until stopped)",
+                        HistoryLevel.SUCCESS,
+                    )
+                } else {
+                    _deauthRunning.value = false
+                    updateForegroundService()
+                    appendLog("Deauth burst completed: $sent sent, $failed failed.")
+                    addHistory(
+                        "deauth",
+                        "Deauth burst completed on ${target.bssid}",
+                        HistoryLevel.SUCCESS,
+                    )
+                }
             } else {
                 _deauthRunning.value = false
                 updateForegroundService()
-                appendLog("Deauth burst completed: $sent sent, $failed failed.")
+                val message = "Deauth request failed: ${response?.optString("msg") ?: "timeout"}"
+                appendLog(message, level = LogLevel.ERROR)
+                _toastMessage.value = message
+            }
+        }
+        return
+    }
+
+    deauthMultiJob?.cancel()
+    deauthMultiJob = scope.launch {
+        val startedAt = System.currentTimeMillis()
+        var totalSent = 0
+        var totalFailed = 0
+        appendLog(
+            "Starting channel-hopping deauth ${if (loopMode) "loop" else "burst"} across " +
+                "${cleanTargets.size} targets " +
+                "(burst=$safeCount/target, interval=${safeInterval}ms)."
+        )
+        try {
+            do {
+                for (target in cleanTargets) {
+                    if (!_deauthRunning.value || !isActive) break
+                    val args = JSONObject().apply {
+                        put("bssid", target.bssid)
+                        put("client", cleanClient)
+                        put("band", bandForWifiChannel(target.channel).wireName)
+                        put("channel", target.channel)
+                        put("count", safeCount)
+                        put("deauth_interval_ms", safeInterval)
+                        put("reason", 7)
+                    }
+                    val response = activeSession.sendCommand("DEAUTH_BURST", args, timeoutMs = 30_000)
+                    if (response?.optBoolean("ok") == true) {
+                        totalSent += response.optInt("sent_frames", 0)
+                        totalFailed += response.optInt("failed_frames", 0)
+                        _deauthChannel.value = target.channel
+                    } else {
+                        totalFailed += safeCount
+                        appendLog(
+                            "Deauth burst failed for ${target.bssid}: " +
+                                (response?.optString("msg") ?: "timeout"),
+                            level = LogLevel.ERROR,
+                        )
+                    }
+                    val elapsed = (System.currentTimeMillis() - startedAt).coerceAtLeast(1L)
+                    _deauthSent.value = totalSent
+                    _deauthFailed.value = totalFailed
+                    _deauthElapsedMs.value = elapsed
+                    _deauthPps.value = totalSent * 1000.0 / elapsed
+                }
+            } while (loopMode && _deauthRunning.value && isActive)
+
+            if (_deauthRunning.value) {
+                _deauthRunning.value = false
+                updateForegroundService()
+                appendLog(
+                    "Deauth ${if (loopMode) "multi-target loop" else "multi-target burst"} " +
+                        "completed: $totalSent sent, $totalFailed failed."
+                )
                 addHistory(
                     "deauth",
-                    "Deauth burst completed on $cleanBssid",
+                    if (loopMode) {
+                        "Multi-target deauth loop stopped"
+                    } else {
+                        "Multi-target deauth burst completed"
+                    },
                     HistoryLevel.SUCCESS,
                 )
             }
-        } else {
-            _deauthRunning.value = false
-            updateForegroundService()
-            appendLog("Deauth request failed: ${response?.optString("msg") ?: "timeout"}")
+        } finally {
+            deauthMultiJob = null
         }
     }
 }
@@ -294,12 +415,24 @@ internal fun MainViewModel.stopDeauthImpl() {
     val activeSession = session
     _deauthRunning.value = false
     updateForegroundService()
+    val multiJob = deauthMultiJob
+    if (multiJob != null) {
+        deauthMultiJob = null
+        multiJob.cancel()
+        appendLog(
+            "Channel-hopping deauth stopped: ${_deauthSent.value} sent, " +
+                "${_deauthFailed.value} failed."
+        )
+        addHistory("deauth", "Multi-target deauth stopped", HistoryLevel.INFO)
+        return
+    }
     scope.launch {
         val response = activeSession?.sendCommand("DEAUTH_STOP", timeoutMs = 6_000)
         if (response?.optBoolean("ok") == true) {
             val sent = response.optInt("sent_frames", _deauthSent.value)
             val failed = response.optInt("failed_frames", 0)
             _deauthSent.value = sent
+            _deauthFailed.value = failed
             appendLog("Deauth loop stopped: $sent sent, $failed failed.")
             addHistory("deauth", "Deauth loop stopped", HistoryLevel.INFO)
         } else {
@@ -325,6 +458,13 @@ internal fun MainViewModel.startBeaconImpl(ssids: List<String>, channel: Int, in
     }
     if (cleanSsids.size > 32) {
         appendLog("Firmware supports at most 32 SSIDs.")
+        return
+    }
+    val tooLong = cleanSsids.firstOrNull { it.toByteArray(Charsets.UTF_8).size > 32 }
+    if (tooLong != null) {
+        val message = "SSID '${tooLong.take(40)}' exceeds the firmware 32-byte limit."
+        appendLog(message, level = LogLevel.ERROR)
+        _toastMessage.value = message
         return
     }
 

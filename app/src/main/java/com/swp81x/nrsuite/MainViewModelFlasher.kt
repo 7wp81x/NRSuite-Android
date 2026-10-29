@@ -23,12 +23,21 @@ internal fun MainViewModel.markFirmwarePermissionRequestedImpl(device: UsbDevice
 }
 
 internal fun MainViewModel.setFirmwareFlashFileImpl(uri: Uri, name: String?) {
-    _firmwareFlashUri.value = uri
     val resolvedName = queryDocumentDisplayNameImpl(uri)
         ?.takeIf { it.isNotBlank() }
         ?: name?.takeIf { it.isNotBlank() && !it.startsWith("msf:") && !it.startsWith("primary:") }
         ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
         ?: "firmware.bin"
+    if (!resolvedName.endsWith(".bin", ignoreCase = true)) {
+        _firmwareFlashUri.value = null
+        _firmwareFlashName.value = null
+        _firmwareFlashSize.value = 0
+        val message = "Select a .bin firmware image (got '$resolvedName')."
+        appendLog(message, level = LogLevel.ERROR)
+        _toastMessage.value = message
+        return
+    }
+    _firmwareFlashUri.value = uri
     _firmwareFlashName.value = resolvedName
     _firmwareFlashSize.value = queryDocumentSizeImpl(uri)
     appendLog("Firmware image selected: ${_firmwareFlashName.value}")

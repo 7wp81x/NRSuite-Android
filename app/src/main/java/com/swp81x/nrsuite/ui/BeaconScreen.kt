@@ -1,16 +1,10 @@
 package com.swp81x.nrsuite.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.ui.platform.LocalContext
-import com.swp81x.nrsuite.ui.components.SavedItemDropdown
-import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,17 +15,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Campaign
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -45,24 +37,42 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
+import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
-import com.swp81x.nrsuite.ui.theme.NrOutline
+import com.swp81x.nrsuite.ui.components.WifiChannelSummaryPill
+import com.swp81x.nrsuite.ui.theme.NrAccent
+import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
+import com.swp81x.nrsuite.ui.theme.NrOutline
+import com.swp81x.nrsuite.ui.theme.NrSurface
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
+import com.swp81x.nrsuite.ui.theme.StatusInfo
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
+
+private val RICKROLL_PRESET = listOf(
+    "Never Gonna Give You Up",
+    "Never Gonna Let You Down",
+    "Never Gonna Run Around",
+    "And Desert You",
+)
 
 @Composable
 fun BeaconScreen(
@@ -73,27 +83,28 @@ fun BeaconScreen(
     activeChannel: Int,
     savedLists: Map<String, List<String>>,
     onSaveListAction: (String, List<String>) -> Unit,
+    onRenameListAction: (String, String) -> Unit,
     onDeleteList: (String) -> Unit,
     onStart: (List<String>, Int, Int, Boolean, Boolean) -> Unit,
     onStop: () -> Unit,
     allowedChannels: List<Int> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
-    var configExpanded by remember { mutableStateOf(true) }
-    var ssidsText by remember { mutableStateOf("") }
-    var channel by remember { mutableStateOf(6) }
-    var intervalMs by remember { mutableStateOf(20) }
-    var hidden by remember { mutableStateOf(false) }
-    var randomBssid by remember { mutableStateOf(true) }
-    var confirmStart by remember { mutableStateOf(false) }
-    var showSaveDialog by remember { mutableStateOf(false) }
-    var newListName by remember { mutableStateOf("") }
-    var selectedListName by remember { mutableStateOf<String?>(null) }
-    var pendingDeleteList by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(running) {
-        if (running) configExpanded = false
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var ssidsText by rememberSaveable {
+        mutableStateOf(RICKROLL_PRESET.joinToString("\n"))
     }
+    var channel by rememberSaveable { mutableIntStateOf(6) }
+    var intervalMs by rememberSaveable { mutableIntStateOf(20) }
+    var hidden by rememberSaveable { mutableStateOf(false) }
+    var randomBssid by rememberSaveable { mutableStateOf(true) }
+    var confirmStart by rememberSaveable { mutableStateOf(false) }
+    var selectedListName by rememberSaveable { mutableStateOf<String?>("Rickroll") }
+    var saveDialogVisible by rememberSaveable { mutableStateOf(false) }
+    var saveName by rememberSaveable { mutableStateOf("") }
+    var renameTarget by remember { mutableStateOf<String?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var deleteTarget by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
     val importPicker = rememberLauncherForActivityResult(
@@ -104,8 +115,6 @@ fun BeaconScreen(
                 context.contentResolver.openInputStream(uri)?.use { stream ->
                     ssidsText = stream.readBytes().toString(Charsets.UTF_8)
                 }
-            }.onFailure {
-                // Reading failure is reported through the global log in the app shell.
             }
         }
     }
@@ -113,6 +122,16 @@ fun BeaconScreen(
     val parsedSsids = remember(ssidsText) {
         ssidsText.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
     }
+    val oversizedSsids = remember(parsedSsids) {
+        parsedSsids.filter { it.toByteArray(Charsets.UTF_8).size > 32 }
+    }
+    val ssidValidationError = when {
+        parsedSsids.isEmpty() -> "Add at least one SSID to start."
+        parsedSsids.size > 32 -> "Firmware supports at most 32 SSIDs."
+        oversizedSsids.isNotEmpty() -> "${oversizedSsids.size} SSID(s) exceed 32 bytes."
+        else -> null
+    }
+    val sortedListNames = remember(savedLists) { savedLists.keys.sorted() }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -120,57 +139,220 @@ fun BeaconScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            ConfigZone(
-                connected = connected,
-                running = running,
-                expanded = configExpanded,
-                ssidsText = ssidsText,
-                channel = channel,
-                allowedChannels = allowedChannels,
-                intervalMs = intervalMs,
-                hidden = hidden,
-                randomBssid = randomBssid,
-                parsedCount = parsedSsids.size,
-                savedLists = savedLists,
-                selectedListName = selectedListName,
-                onToggle = { configExpanded = !configExpanded },
-                onLoadList = { ssidsText = it.joinToString("\n") },
-                onListSelected = { selectedListName = it },
-                onSaveList = { showSaveDialog = true },
-                onDeleteRequest = { pendingDeleteList = it },
-                onImportFile = { importPicker.launch(arrayOf("text/plain", "*/*")) },
-                onSsidsChange = { ssidsText = it },
-                onChannelChange = {
-                    channel = normalizeWifiChannel(
-                        it,
-                        allowedChannels.ifEmpty { com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS },
-                        fallback = channel,
+            RoundedTabRow(
+                selectedIndex = selectedTab,
+                tabs = listOf("Overview", "SSID Lists"),
+                onSelect = { selectedTab = it },
+            )
+
+            if (selectedTab == 0) {
+                if (running || sentFrames > 0) {
+                    BroadcastStatusCard(
+                        connected = connected,
+                        running = running,
+                        sentFrames = sentFrames,
+                        ssidCount = ssidCount,
+                        activeChannel = activeChannel,
                     )
-                },
-                onIntervalChange = { intervalMs = it.coerceIn(10, 2000) },
-                onHiddenChange = { hidden = it },
-                onRandomBssidChange = { randomBssid = it },
-            )
+                }
 
-            Spacer(Modifier.height(10.dp))
+                CurrentSsidsCard(
+                    ssidCount = parsedSsids.size,
+                    ssids = parsedSsids.take(4),
+                    selectedListName = selectedListName,
+                    validationError = ssidValidationError,
+                    onEdit = { selectedTab = 1 },
+                )
 
-            ResultZone(
-                connected = connected,
-                running = running,
-                sentFrames = sentFrames,
-                ssidCount = ssidCount,
-                activeChannel = activeChannel,
-            )
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = NrSurface),
+                    border = BorderStroke(0.5.dp, NrOutline),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Channel & timing",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "Channel",
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            WifiChannelSummaryPill(channel)
+                        }
+                        WifiChannelStepper(
+                            value = channel,
+                            enabled = !running,
+                            onChannelChange = {
+                                channel = normalizeWifiChannel(
+                                    it,
+                                    allowedChannels.ifEmpty {
+                                        com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
+                                    },
+                                    fallback = channel,
+                                )
+                            },
+                            allowedChannels = allowedChannels.ifEmpty {
+                                com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
+                            },
+                        )
+                        NumberStepper(
+                            label = "Interval",
+                            value = intervalMs,
+                            valueText = "$intervalMs ms",
+                            enabled = !running,
+                            onDecrease = { intervalMs = (intervalMs - 10).coerceIn(10, 2000) },
+                            onIncrease = { intervalMs = (intervalMs + 10).coerceIn(10, 2000) },
+                        )
+                        SwitchRow(
+                            label = "Hidden SSIDs",
+                            checked = hidden,
+                            enabled = !running,
+                            onCheckedChange = { hidden = it },
+                        )
+                        SwitchRow(
+                            label = "Stable BSSIDs",
+                            checked = !randomBssid,
+                            enabled = !running,
+                            onCheckedChange = { randomBssid = !it },
+                        )
+                    }
+                }
+            } else {
+                SsidCompositionCard(
+                    ssidsText = ssidsText,
+                    onSsidsChange = {
+                        ssidsText = it
+                        selectedListName = null
+                    },
+                    running = running,
+                    parsedCount = parsedSsids.size,
+                    validationError = ssidValidationError,
+                    onSave = { saveDialogVisible = true },
+                    onImport = { importPicker.launch(arrayOf("text/plain", "*/*")) },
+                )
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = NrSurface),
+                    border = BorderStroke(0.5.dp, NrOutline),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = "Saved SSID lists",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = "${sortedListNames.size} saved",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = NrOnSurfaceVariant,
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = { saveDialogVisible = true },
+                                enabled = !running && parsedSsids.isNotEmpty(),
+                            ) {
+                                Text("Save current")
+                            }
+                        }
+                        if (sortedListNames.isEmpty()) {
+                            Text(
+                                text = "No saved lists yet.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NrOnSurfaceVariant,
+                            )
+                        } else {
+                            sortedListNames.forEach { name ->
+                                val list = savedLists[name].orEmpty()
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                    shape = RoundedCornerShape(10.dp),
+                                ) {
+                                    Column(Modifier.padding(10.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Column(Modifier.weight(1f)) {
+                                                Text(
+                                                    text = name,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Medium,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                                Text(
+                                                    text = "${list.size} SSIDs",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                                                    color = NrOnSurfaceVariant,
+                                                )
+                                            }
+                                            TextButton(
+                                                onClick = {
+                                                    ssidsText = list.joinToString("\n")
+                                                    selectedListName = name
+                                                    selectedTab = 0
+                                                },
+                                                enabled = !running,
+                                            ) {
+                                                Text("Load")
+                                            }
+                                        }
+                                        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                                            TextButton(
+                                                onClick = {
+                                                    renameTarget = name
+                                                    renameText = name
+                                                },
+                                                enabled = !running,
+                                            ) {
+                                                Text("Rename")
+                                            }
+                                            TextButton(
+                                                onClick = { deleteTarget = name },
+                                                enabled = !running,
+                                            ) {
+                                                Text("Delete")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                PresetCard(
+                    running = running,
+                    onLoadRickroll = {
+                        ssidsText = RICKROLL_PRESET.joinToString("\n")
+                        selectedListName = "Rickroll"
+                        selectedTab = 0
+                    },
+                )
+            }
+
+            Spacer(Modifier.height(84.dp))
         }
 
         if (connected) {
             ModuleActionFab(
                 onClick = {
-                    if (running) {
-                        onStop()
-                    } else {
-                        confirmStart = true
+                    when {
+                        running -> onStop()
+                        ssidValidationError != null -> selectedTab = 1
+                        else -> confirmStart = true
                     }
                 },
                 modifier = Modifier
@@ -187,61 +369,93 @@ fun BeaconScreen(
         }
     }
 
-    pendingDeleteList?.let { name ->
+    if (saveDialogVisible) {
         AlertDialog(
-            onDismissRequest = { pendingDeleteList = null },
-            title = { Text("Delete saved SSID list?") },
+            onDismissRequest = { saveDialogVisible = false },
+            title = { Text("Save SSID list") },
             text = {
-                Text("Delete \"$name\"? This cannot be undone.")
+                OutlinedTextField(
+                    value = saveName,
+                    onValueChange = { saveName = it },
+                    label = { Text("List name") },
+                    singleLine = true,
+                    isError = saveName.isBlank(),
+                )
             },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val clean = saveName.trim()
+                        if (clean.isNotBlank()) {
+                            onSaveListAction(clean, parsedSsids)
+                            selectedListName = clean
+                            saveName = ""
+                            saveDialogVisible = false
+                        }
+                    },
+                    enabled = saveName.isNotBlank(),
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { saveDialogVisible = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    renameTarget?.let { name ->
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            title = { Text("Rename SSID list") },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    label = { Text("List name") },
+                    singleLine = true,
+                    isError = renameText.isBlank(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val clean = renameText.trim()
+                        if (clean.isNotBlank()) {
+                            onRenameListAction(name, clean)
+                            if (selectedListName == name) selectedListName = clean
+                            renameTarget = null
+                        }
+                    },
+                    enabled = renameText.isNotBlank(),
+                ) {
+                    Text("Rename")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameTarget = null }) { Text("Cancel") }
+            },
+        )
+    }
+
+    deleteTarget?.let { name ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("Delete SSID list?") },
+            text = { Text("Delete \"$name\"? This cannot be undone.") },
             confirmButton = {
                 TextButton(
                     onClick = {
                         onDeleteList(name)
                         if (selectedListName == name) selectedListName = null
-                        pendingDeleteList = null
+                        deleteTarget = null
                     },
                 ) {
                     Text("Delete")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDeleteList = null }) {
-                    Text("Cancel")
-                }
-            },
-        )
-    }
-
-    if (showSaveDialog) {
-        AlertDialog(
-            onDismissRequest = { showSaveDialog = false },
-            title = { Text("Save SSID list") },
-            text = {
-                OutlinedTextField(
-                    value = newListName,
-                    onValueChange = { newListName = it },
-                    label = { Text("List name") },
-                    singleLine = true,
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val cleanName = newListName.trim()
-                        onSaveListAction(cleanName, parsedSsids)
-                        selectedListName = cleanName.takeIf { it.isNotBlank() }
-                        newListName = ""
-                        showSaveDialog = false
-                    },
-                ) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSaveDialog = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { deleteTarget = null }) { Text("Cancel") }
             },
         )
     }
@@ -252,8 +466,8 @@ fun BeaconScreen(
             title = { Text("Start beacon broadcast?") },
             text = {
                 Text(
-                    "This will broadcast ${parsedSsids.size} SSID(s) on channel $channel until stopped. " +
-                        "Only use this on spectrum you own or are authorized to test."
+                    "${parsedSsids.size} SSIDs on CH $channel (${bandForWifiChannel(channel).label}) " +
+                        "until stopped. Only use this on spectrum you own or are authorized to test."
                 )
             },
             confirmButton = {
@@ -262,170 +476,227 @@ fun BeaconScreen(
                         confirmStart = false
                         onStart(parsedSsids, channel, intervalMs, hidden, randomBssid)
                     },
-                    enabled = parsedSsids.isNotEmpty(),
+                    enabled = ssidValidationError == null,
                 ) {
                     Text("Start")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { confirmStart = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { confirmStart = false }) { Text("Cancel") }
             },
         )
     }
 }
 
 @Composable
-private fun ConfigZone(
+private fun BroadcastStatusCard(
     connected: Boolean,
     running: Boolean,
-    expanded: Boolean,
-    ssidsText: String,
-    channel: Int,
-    allowedChannels: List<Int>,
-    intervalMs: Int,
-    hidden: Boolean,
-    randomBssid: Boolean,
-    parsedCount: Int,
-    savedLists: Map<String, List<String>>,
-    selectedListName: String?,
-    onToggle: () -> Unit,
-    onLoadList: (List<String>) -> Unit,
-    onListSelected: (String) -> Unit,
-    onSaveList: () -> Unit,
-    onDeleteRequest: (String) -> Unit,
-    onImportFile: () -> Unit,
-    onSsidsChange: (String) -> Unit,
-    onChannelChange: (Int) -> Unit,
-    onIntervalChange: (Int) -> Unit,
-    onHiddenChange: (Boolean) -> Unit,
-    onRandomBssidChange: (Boolean) -> Unit,
+    sentFrames: Int,
+    ssidCount: Int,
+    activeChannel: Int,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = NrSurface),
         border = BorderStroke(0.5.dp, NrOutline),
         shape = RoundedCornerShape(12.dp),
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Campaign,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp),
-                )
-                Spacer(Modifier.width(10.dp))
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatusIndicator(
+                label = when {
+                    !connected -> "No device connected"
+                    running -> "Broadcasting"
+                    sentFrames > 0 -> "Stopped"
+                    else -> "Idle"
+                },
+                color = when {
+                    !connected -> StatusNeutral
+                    running -> StatusGreen
+                    sentFrames > 0 -> StatusInfo
+                    else -> StatusNeutral
+                },
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                StatusMetric("Frames", sentFrames.toString())
+                StatusMetric("SSIDs", ssidCount.toString())
+                StatusMetric("Channel", activeChannel.takeIf { it > 0 }?.toString() ?: "—")
+            }
+        }
+    }
+}
+
+@Composable
+private fun CurrentSsidsCard(
+    ssidCount: Int,
+    ssids: List<String>,
+    selectedListName: String?,
+    validationError: String?,
+    onEdit: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = NrSurface),
+        border = BorderStroke(0.5.dp, NrOutline),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "Beacon configuration",
-                        style = MaterialTheme.typography.titleMedium,
+                        text = selectedListName ?: "Current SSIDs",
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = if (running) "Broadcast running" else "Custom SSIDs, fixed channel",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "$ssidCount/32 SSIDs",
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        color = if (validationError != null) StatusAmber else NrOnSurfaceVariant,
+                    )
+                }
+                OutlinedButton(onClick = onEdit) { Text("Edit") }
+            }
+            if (ssids.isEmpty()) {
+                Text(
+                    text = "No SSIDs configured.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                )
+            } else {
+                Text(
+                    text = ssids.joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SsidCompositionCard(
+    ssidsText: String,
+    onSsidsChange: (String) -> Unit,
+    running: Boolean,
+    parsedCount: Int,
+    validationError: String?,
+    onSave: () -> Unit,
+    onImport: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = NrSurface),
+        border = BorderStroke(0.5.dp, NrOutline),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Campaign,
+                    contentDescription = null,
+                    tint = NrAccent,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "SSID composition",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "$parsedCount/32",
+                    style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace),
+                    color = if (validationError != null) StatusAmber else NrOnSurfaceVariant,
+                )
+            }
+            OutlinedTextField(
+                value = ssidsText,
+                onValueChange = onSsidsChange,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !running,
+                label = { Text("SSIDs, one per line") },
+                placeholder = { Text("Free WiFi\nCoffeeShop") },
+                minLines = 4,
+                maxLines = 8,
+                isError = validationError != null,
+                supportingText = {
+                    Text(
+                        text = validationError ?: "Every SSID must fit in 32 UTF-8 bytes.",
+                        color = if (validationError != null) StatusRed else NrOnSurfaceVariant,
+                    )
+                },
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onSave,
+                    enabled = !running && parsedCount > 0,
+                ) {
+                    Text("Save list")
+                }
+                OutlinedButton(onClick = onImport, enabled = !running) {
+                    Icon(
+                        Icons.Default.FileUpload,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Import")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusMetric(label: String, value: String) {
+    Column {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = NrOnSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+            fontWeight = FontWeight.SemiBold,
+            color = NrOnSurface,
+        )
+    }
+}
+
+@Composable
+private fun PresetCard(
+    running: Boolean,
+    onLoadRickroll: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = NrSurface),
+        border = BorderStroke(0.5.dp, NrOutline),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Presets",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Rickroll", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = "${RICKROLL_PRESET.size} SSIDs · each ≤ 32 bytes",
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
                         color = NrOnSurfaceVariant,
                     )
                 }
-                IconButton(onClick = onToggle) {
-                    Icon(
-                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (expanded) "Collapse" else "Expand",
-                    )
-                }
-            }
-
-            if (expanded) {
-                Column {
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedTextField(
-                        value = ssidsText,
-                        onValueChange = onSsidsChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !running,
-                        label = { Text("SSIDs (one per line)") },
-                        placeholder = { Text("Free WiFi\\nCoffeeShop") },
-                        minLines = 3,
-                        maxLines = 6,
-                        supportingText = {
-                            Text("$parsedCount/32 SSIDs will be broadcast.")
-                        },
-                    )
-
-                    Spacer(Modifier.height(8.dp))
-                    SavedItemDropdown(
-                        label = "Saved SSID lists",
-                        selectedName = selectedListName,
-                        names = savedLists.keys.toList(),
-                        enabled = !running,
-                        onSelect = { name ->
-                            onLoadList(savedLists[name].orEmpty())
-                            onListSelected(name)
-                        },
-                    )
-
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        OutlinedButton(onClick = onSaveList, enabled = !running && parsedCount > 0) {
-                            Text("Save")
-                        }
-                        OutlinedButton(onClick = onImportFile, enabled = !running) {
-                            Icon(
-                                imageVector = Icons.Default.FileUpload,
-                                contentDescription = "Import SSID file",
-                            )
-                        }
-                        if (selectedListName != null) {
-                            OutlinedButton(onClick = { onDeleteRequest(selectedListName) }, enabled = !running) {
-                                Text("Delete")
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(10.dp))
-                    Text("Channel", style = MaterialTheme.typography.labelLarge)
-                    Spacer(Modifier.height(6.dp))
-                    WifiChannelStepper(
-                        value = channel,
-                        enabled = !running,
-                        onChannelChange = onChannelChange,
-                        allowedChannels = allowedChannels.ifEmpty {
-                            com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
-                        },
-                    )
-
-                    Spacer(Modifier.height(6.dp))
-                    NumberStepper(
-                        label = "Interval",
-                        value = intervalMs,
-                        valueText = "$intervalMs ms",
-                        enabled = !running,
-                        onDecrease = { onIntervalChange(intervalMs - 10) },
-                        onIncrease = { onIntervalChange(intervalMs + 10) },
-                    )
-
-                    Spacer(Modifier.height(10.dp))
-                    SwitchRow(
-                        label = "Hidden SSIDs",
-                        checked = hidden,
-                        enabled = !running,
-                        onCheckedChange = onHiddenChange,
-                    )
-                    SwitchRow(
-                        label = "Stable BSSIDs",
-                        checked = !randomBssid,
-                        enabled = !running,
-                        onCheckedChange = { onRandomBssidChange(!it) },
-                    )
-
+                OutlinedButton(onClick = onLoadRickroll, enabled = !running) {
+                    Text("Load")
                 }
             }
         }
@@ -451,10 +722,7 @@ private fun NumberStepper(
             modifier = Modifier.weight(1f),
         )
         IconButton(onClick = onDecrease, enabled = enabled) {
-            Icon(
-                imageVector = Icons.Default.Remove,
-                contentDescription = "Decrease $label",
-            )
+            Icon(Icons.Default.Remove, contentDescription = "Decrease $label")
         }
         Text(
             text = valueText,
@@ -462,10 +730,7 @@ private fun NumberStepper(
             modifier = Modifier.padding(horizontal = 8.dp),
         )
         IconButton(onClick = onIncrease, enabled = enabled) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = "Increase $label",
-            )
+            Icon(Icons.Default.Add, contentDescription = "Increase $label")
         }
     }
 }
@@ -491,90 +756,5 @@ private fun SwitchRow(
             onCheckedChange = onCheckedChange,
             enabled = enabled,
         )
-    }
-}
-
-@Composable
-private fun ResultZone(
-    connected: Boolean,
-    running: Boolean,
-    sentFrames: Int,
-    ssidCount: Int,
-    activeChannel: Int,
-    modifier: Modifier = Modifier,
-) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(0.5.dp, NrOutline),
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-        ) {
-            Text(
-                text = "Broadcast status",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(8.dp))
-            StatusIndicator(
-                label = when {
-                    !connected -> "No device connected"
-                    running -> "Broadcasting"
-                    sentFrames > 0 -> "Stopped"
-                    else -> "Ready"
-                },
-                color = when {
-                    !connected -> StatusNeutral
-                    running -> StatusGreen
-                    sentFrames > 0 -> StatusAmber
-                    else -> StatusNeutral
-                },
-            )
-
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = "Frames sent",
-                style = MaterialTheme.typography.labelLarge,
-                color = NrOnSurfaceVariant,
-            )
-            Text(
-                text = sentFrames.toString(),
-                style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily.Monospace),
-                fontWeight = FontWeight.Bold,
-            )
-
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = "Active SSIDs",
-                style = MaterialTheme.typography.labelLarge,
-                color = NrOnSurfaceVariant,
-            )
-            Text(
-                text = ssidCount.toString(),
-                style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Monospace),
-            )
-
-            if (activeChannel > 0) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "Channel: $activeChannel",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
-                )
-            }
-
-            if (connected && !running && sentFrames == 0) {
-                Spacer(Modifier.height(24.dp))
-                Text(
-                    text = "Enter one or more SSIDs, then tap the play button.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
-            }
-        }
     }
 }

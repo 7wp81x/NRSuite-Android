@@ -616,7 +616,7 @@ internal fun CategoryModulesScreen(
             2 -> WIFI_DEFEND_MODULE_IDS
             else -> WIFI_RECON_MODULE_IDS
         }
-        modules.filter { it.id in ids }
+        ids.mapNotNull { id -> modules.firstOrNull { it.id == id } }
     } else {
         modules
     }
@@ -928,7 +928,13 @@ internal fun ModulesScreen(
     var selectedCategory by rememberSaveable { mutableStateOf<String?>(null) }
     var moduleSearchQuery by rememberSaveable { mutableStateOf("") }
     val categories = listOf(null to "All") + modules.map { it.category }.distinct().map { it to it }
-    val categoryFiltered = if (selectedCategory == null) modules else modules.filter { it.category == selectedCategory }
+    val categoryFiltered = when (selectedCategory) {
+        null -> modules
+        "WiFi Recon" -> WIFI_RECON_MODULE_IDS.mapNotNull { id -> modules.firstOrNull { it.id == id } }
+        "WiFi Attacks" -> WIFI_ATTACK_MODULE_IDS.mapNotNull { id -> modules.firstOrNull { it.id == id } }
+        "WiFi Defense" -> WIFI_DEFEND_MODULE_IDS.mapNotNull { id -> modules.firstOrNull { it.id == id } }
+        else -> modules.filter { it.category == selectedCategory }
+    }
     val filtered = categoryFiltered.filter { module ->
         val query = moduleSearchQuery.trim()
         query.isBlank() ||

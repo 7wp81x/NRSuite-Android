@@ -243,8 +243,19 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val beaconSsidCount by viewModel.beaconSsidCount.collectAsState()
     val beaconChannel by viewModel.beaconChannel.collectAsState()
     val beaconLists by viewModel.beaconListMap.collectAsState()
+    val probeMonitorRunning by viewModel.probeMonitorRunning.collectAsState()
+    val probeMonitorFixed by viewModel.probeMonitorFixed.collectAsState()
+    val probeMonitorChannel by viewModel.probeMonitorChannel.collectAsState()
+    val probeMonitorEntries by viewModel.probeMonitorEntries.collectAsState()
+    val probeMonitorFrameCount by viewModel.probeMonitorFrameCount.collectAsState()
+    val channelAnalyzerNetworks by viewModel.channelAnalyzerNetworks.collectAsState()
+    val htmlTemplates by viewModel.htmlTemplates.collectAsState()
+    val htmlTemplateMessage by viewModel.htmlTemplateMessage.collectAsState()
     val deauthRunning by viewModel.deauthRunning.collectAsState()
     val deauthSent by viewModel.deauthSent.collectAsState()
+    val deauthFailed by viewModel.deauthFailed.collectAsState()
+    val deauthElapsedMs by viewModel.deauthElapsedMs.collectAsState()
+    val deauthPps by viewModel.deauthPps.collectAsState()
     val deauthTarget by viewModel.deauthTarget.collectAsState()
     val deauthChannel by viewModel.deauthChannel.collectAsState()
     val deauthDetectorRunning by viewModel.deauthDetectorRunning.collectAsState()
@@ -611,6 +622,21 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         if (previousActiveModuleId == "ir_jammer" && activeModuleId != "ir_jammer") {
             viewModel.stopIrJammer()
         }
+        if (previousActiveModuleId == "probe_monitor" &&
+            activeModuleId != "probe_monitor"
+        ) {
+            viewModel.resetProbeMonitor()
+        }
+        if (previousActiveModuleId == "channel_analyzer" &&
+            activeModuleId != "channel_analyzer"
+        ) {
+            viewModel.resetChannelAnalyzer()
+        }
+        if (previousActiveModuleId == "wps_pixie_live" &&
+            activeModuleId != "wps_pixie_live"
+        ) {
+            viewModel.resetWpsPixieLiveScreen()
+        }
         if (previousActiveModuleId != activeModuleId &&
             (previousActiveModuleId?.startsWith("ir") == true ||
                 activeModuleId?.startsWith("ir") == true)
@@ -756,6 +782,14 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 )
             }
             viewModel.setEvilTwinHtmlFile(uri, null)
+        }
+    }
+
+    val htmlTemplatePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.importHtmlTemplate(uri, null)
         }
     }
 
@@ -1240,6 +1274,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     hasCustomCaptureOutput = wifiCaptureDirectoryName != null,
                     onChooseCaptureOutput = { wifiCaptureFolderPicker.launch(null) },
                     onResetCaptureOutput = { viewModel.setWifiCaptureDirectory(null) },
+                    ouiRules = ouiRules,
+                    onAddOuiRule = viewModel::addOuiRule,
+                    onDeleteOuiRule = viewModel::deleteOuiRule,
                     modifier = Modifier,
                 )
             }
@@ -1255,6 +1292,31 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     fiveGhzUnavailableMessage = wifi5UnavailableMessage,
                     onBandSelected = viewModel::setWifiBand,
                     onScan = viewModel::scanWifi,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "probe_monitor" -> {
+                ProbeMonitorRoute(
+                    connected = isDeviceConnected,
+                    running = probeMonitorRunning,
+                    fixed = probeMonitorFixed,
+                    channel = probeMonitorChannel,
+                    entries = probeMonitorEntries,
+                    frameCount = probeMonitorFrameCount,
+                    allowedChannels = allowedWifiChannels,
+                    onStart = viewModel::startProbeMonitor,
+                    onStop = viewModel::stopProbeMonitor,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "channel_analyzer" -> {
+                ChannelAnalyzerRoute(
+                    connected = isDeviceConnected,
+                    scanning = scanning,
+                    networks = channelAnalyzerNetworks,
+                    onScan = viewModel::scanChannelAnalyzer,
                     modifier = Modifier,
                 )
             }
@@ -1289,6 +1351,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     activeChannel = beaconChannel,
                     savedLists = beaconLists,
                     onSaveListAction = viewModel::saveBeaconList,
+                    onRenameListAction = viewModel::renameBeaconList,
                     onDeleteList = viewModel::deleteBeaconList,
                     onStart = viewModel::startBeacon,
                     onStop = viewModel::stopBeacon,
@@ -1302,6 +1365,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     connected = connectionState is ConnectionState.Connected,
                     running = deauthRunning,
                     sentFrames = deauthSent,
+                    failedFrames = deauthFailed,
+                    elapsedMs = deauthElapsedMs,
+                    pps = deauthPps,
                     targetBssid = deauthTarget,
                     activeChannel = deauthChannel,
                     scanning = scanning,
@@ -1615,26 +1681,16 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
 
             activeModuleId == "evil_twin" -> {
-                EvilTwinScreen(
+                EvilTwinModuleRoute(
+                    viewModel = viewModel,
                     connected = connectionState is ConnectionState.Connected,
-                    running = portalRunning && portalMode == "evil_twin",
                     scanning = scanning,
                     networks = networks,
-                    handshake = portalHandshake,
-                    results = evilTwinResults,
-                    eventLog = evilTwinEventLog,
-                    selectedHtmlName = evilTwinHtmlName,
-                    htmlUploading = evilTwinHtmlUploading,
-                    htmlProgress = evilTwinHtmlUploadProgress,
-                    htmlComplete = evilTwinHtmlComplete,
-                    onScanWifi = viewModel::scanWifiForTargets,
                     allowedChannels = allowedWifiChannels,
                     onChooseHtml = { evilTwinHtmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
-                    onClearHtml = viewModel::clearEvilTwinHtmlFile,
-                    onStart = viewModel::startEvilTwin,
-                    onStop = viewModel::stopPortal,
-                    onClearPasswords = viewModel::clearEvilTwinPasswords,
-                    onClearEventLog = viewModel::clearEvilTwinEventLog,
+                    onImportHtmlTemplate = {
+                        htmlTemplatePicker.launch(arrayOf("text/html", "text/plain", "*/*"))
+                    },
                     modifier = Modifier,
                 )
             }
@@ -1688,28 +1744,22 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 )
             }
 
+            activeModuleId == "wps_pixie_live" -> {
+                WpsPixieLiveRoute(
+                    viewModel = viewModel,
+                    modifier = Modifier,
+                )
+            }
+
             activeModuleId == "portal" -> {
-                PortalScreen(
+                PortalModuleRoute(
+                    viewModel = viewModel,
                     connected = connectionState is ConnectionState.Connected,
-                    running = portalRunning && portalMode == "portal",
-                    htmlSize = portalHtmlSize,
-                    htmlComplete = portalHtmlComplete,
-                    activeSsid = portalSsid,
-                    activeChannel = portalChannel,
-                    portalViews = portalViews,
-                    portalClients = portalClients,
-                    capturedData = portalCapturedData,
-                    credentials = portalCredentials,
-                    selectedHtmlName = portalHtmlName,
-                    htmlUploading = portalHtmlUploading,
-                    htmlProgress = portalHtmlUploadProgress,
-                    eventLog = portalEventLog,
-                    onChooseHtml = { htmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
-                    onClearHtml = viewModel::clearPortalHtmlFile,
-                    onClearEventLog = viewModel::clearPortalEventLog,
-                    onStart = viewModel::startPortal,
-                    onStop = viewModel::stopPortal,
                     allowedChannels = allowedWifiChannels,
+                    onChooseHtml = { htmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
+                    onImportHtmlTemplate = {
+                        htmlTemplatePicker.launch(arrayOf("text/html", "text/plain", "*/*"))
+                    },
                     modifier = Modifier,
                 )
             }
@@ -2072,7 +2122,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 permissionRevision = permissionRevision,
                 selectedFlashTarget = firmwareTargetDevice,
                 onChooseExportDirectory = { folderPicker.launch(null) },
-                onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "*/*")) },
+                onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "application/x-binary")) },
                 onClearFirmware = viewModel::clearFirmwareFlashFile,
                 onRefreshDevices = viewModel::refreshDevices,
                 onRequestPermission = { device -> requestFirmwarePermission(device) },
@@ -2108,7 +2158,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 permissionRevision = permissionRevision,
                 selectedFlashTarget = firmwareTargetDevice,
                 onChooseExportDirectory = { folderPicker.launch(null) },
-                onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "*/*")) },
+                onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "application/x-binary")) },
                 onClearFirmware = viewModel::clearFirmwareFlashFile,
                 onRefreshDevices = viewModel::refreshDevices,
                 onRequestPermission = { device -> requestFirmwarePermission(device) },
@@ -2119,9 +2169,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onFlashManualFirmwareNow = viewModel::flashManualFirmwareNow,
                 onFlashManualFirmwareWithReset = viewModel::flashManualFirmwareWithReset,
                 onDisarmManualFirmwareRecovery = viewModel::disarmManualFirmwareRecovery,
-                ouiRules = ouiRules,
-                onAddOuiRule = viewModel::addOuiRule,
-                onDeleteOuiRule = viewModel::deleteOuiRule,
                 ouiDatabaseStatus = ouiDatabaseStatus,
                 ouiDatabaseProgress = ouiDatabaseProgress,
                 onDownloadOuiDatabase = viewModel::downloadOuiDatabase,

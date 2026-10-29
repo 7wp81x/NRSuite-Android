@@ -46,6 +46,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -155,9 +156,9 @@ internal enum class AppTab(val label: String) {
     LOGS("Logs"),
 }
 
-internal val WIFI_RECON_MODULE_IDS = listOf("wifi", "sniff", "hidden_ap")
+internal val WIFI_RECON_MODULE_IDS = listOf("wifi", "sniff", "probe_monitor", "channel_analyzer", "hidden_ap")
 internal val WIFI_ATTACK_MODULE_IDS =
-    listOf("beacon", "deauth", "nrugochi", "evil_twin", "portal")
+    listOf("wps_pixie_live", "evil_twin", "portal", "nrugochi", "deauth", "beacon")
 internal val WIFI_DEFEND_MODULE_IDS =
     listOf("deauth_detector", "rogue_ap", "client_presence")
 internal val WIFI_ALL_MODULE_IDS =
@@ -203,6 +204,26 @@ internal val modules = listOf(
         icon = Icons.Default.VisibilityOff,
         category = "WiFi Recon",
         radio = "2.4GHz",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "probe_monitor",
+        title = "Probe Request Monitor",
+        description = "Aggregate nearby client probe requests by MAC, SSID, channel, and RSSI.",
+        icon = Icons.Default.Radar,
+        category = "WiFi Recon",
+        radio = "2.4GHz",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "channel_analyzer",
+        title = "Channel Analyzer",
+        description = "Compare AP density, signal, security, and WPS usage across channels.",
+        icon = Icons.Default.BarChart,
+        category = "WiFi Recon",
+        radio = "2.4 / 5 GHz",
         available = true,
     ),
 
@@ -361,6 +382,15 @@ internal val modules = listOf(
         description = "Offline handshake verification against a wordlist.",
         icon = Icons.Default.Key,
         category = "Credentials",
+        radio = "2.4GHz",
+        available = true,
+    ),
+    ModuleCardSpec(
+        id = "wps_pixie_live",
+        title = "WPS Pixie Dust",
+        description = "Try a likely PIN, crack if needed, and recover the WPS PSK.",
+        icon = Icons.Default.Wifi,
+        category = "WiFi Attacks",
         radio = "2.4GHz",
         available = true,
     ),

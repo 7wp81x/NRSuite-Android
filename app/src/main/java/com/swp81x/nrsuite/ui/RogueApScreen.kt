@@ -191,7 +191,7 @@ private fun RogueApStatusCard(
         title = when {
             !connected -> "Disconnected"
             running -> "Monitoring"
-            else -> "Ready"
+            else -> "Idle"
         },
         subtitle = when {
             !connected -> "Connect a device before starting the detector."

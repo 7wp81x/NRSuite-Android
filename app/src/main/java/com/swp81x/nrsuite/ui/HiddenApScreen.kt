@@ -58,6 +58,7 @@ import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.ui.components.ChannelModeToggle
 import com.swp81x.nrsuite.ui.components.WifiBandConfigSection
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
+import com.swp81x.nrsuite.ui.components.WifiChannelSummaryPill
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -237,7 +238,7 @@ private fun HiddenApStatusCard(
         !connected -> StatusNeutral
         starting -> StatusAmber
         running -> StatusGreen
-        else -> StatusAmber
+        else -> MaterialTheme.colorScheme.primary
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -260,7 +261,7 @@ private fun HiddenApStatusCard(
                             !connected -> "Disconnected"
                             starting -> "Scanning nearby..."
                             running -> "Monitoring"
-                            else -> "Ready"
+                            else -> "Idle"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
@@ -350,10 +351,17 @@ private fun HiddenApConfigCard(
 
                 if (fixed) {
                     Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = "Channel",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Channel",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        WifiChannelSummaryPill(channel)
+                    }
                     Spacer(Modifier.height(4.dp))
                     WifiChannelStepper(
                         value = channel,

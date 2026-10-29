@@ -9,6 +9,9 @@
     <files-path
         name="nrugochi_captures"
         path="AutoHandshake/" />
+    <files-path
+        name="portal_templates"
+        path="PortalTemplates/" />
     <external-files-path
         name="downloads"
         path="Download/" />

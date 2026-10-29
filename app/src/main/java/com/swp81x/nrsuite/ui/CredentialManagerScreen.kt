@@ -133,6 +133,11 @@ fun CredentialManagerScreen(
                     label = "WPA Cracker",
                 )
                 NrFilterChip(
+                    selected = sourceFilter == CredentialSource.WPS_PIXIE,
+                    onClick = { sourceFilter = CredentialSource.WPS_PIXIE },
+                    label = "WPS Pixie",
+                )
+                NrFilterChip(
                     selected = sourceFilter == CredentialSource.PORTAL,
                     onClick = { sourceFilter = CredentialSource.PORTAL },
                     label = "Portal",
@@ -447,6 +452,8 @@ private fun CredentialSessionCard(
                 )
             } else {
                 Spacer(Modifier.height(10.dp))
+                val compactCredential = session.source == CredentialSource.WPA_CRACKER ||
+                    session.source == CredentialSource.WPS_PIXIE
                 session.credentials
                     .filter { it.status == CredentialStatus.CORRECT }
                     .forEach { credential ->
@@ -455,8 +462,19 @@ private fun CredentialSessionCard(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                text = "[${credential.capturedAt}] ${credential.value}  :  ✓",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                                text = if (compactCredential) {
+                                    credential.value
+                                } else {
+                                    "[${credential.capturedAt}] ${credential.value}  :  ✓"
+                                },
+                                style = if (compactCredential) {
+                                    MaterialTheme.typography.titleMedium.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                } else {
+                                    MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
+                                },
                                 color = StatusGreen,
                                 modifier = Modifier.weight(1f),
                             )
@@ -469,6 +487,38 @@ private fun CredentialSessionCard(
                             }
                         }
                     }
+
+                if (session.source == CredentialSource.WPS_PIXIE) {
+                    val pin = session.credentials
+                        .firstOrNull()
+                        ?.details
+                        ?.get("wps_pin")
+                        .orEmpty()
+                    if (pin.isNotBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "PIN: $pin",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.SemiBold,
+                                ),
+                                color = StatusGreen,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(onClick = { onCopyPassword(pin) }) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy WPS PIN",
+                                    tint = NrOnSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             Spacer(Modifier.height(8.dp))
@@ -490,6 +540,7 @@ private fun CredentialSessionCard(
 private fun sourceLabel(source: CredentialSource): String = when (source) {
     CredentialSource.EVIL_TWIN -> "Evil Twin"
     CredentialSource.WPA_CRACKER -> "WPA Cracker"
+    CredentialSource.WPS_PIXIE -> "WPS Pixie"
     CredentialSource.PORTAL -> "Portal"
     CredentialSource.IMPORTED -> "Imported"
 }

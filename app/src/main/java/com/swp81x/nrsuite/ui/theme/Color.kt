@@ -16,6 +16,7 @@ val StatusGreen = NrAccent
 val StatusAmber = Color(0xFFF59E0B)
 val StatusRed = Color(0xFFEF4444)
 val StatusNeutral = Color(0xFF8B949E)
+val StatusInfo = Color(0xFF60A5FA)
 
 val CategoryDetectionBlue = Color(0xFF60A5FA)
 val CategoryAttackOrange = Color(0xFFFB923C)

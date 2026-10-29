@@ -71,12 +71,16 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 
 - [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; AUTO 2.4/5 GHz and regulatory-country channel filtering on C5-capable firmware
 - [x] **Beacon Spam** - broadcast custom or hidden SSIDs
-- [x] **Deauthentication** - finite burst or stoppable duration-based loop mode, with mutually exclusive count/duration controls
+- [x] **Deauthentication** - finite burst or unlimited duration-0 loop, with elapsed time, frames/sec, sent/failed telemetry, and mutually exclusive count/duration controls
 - [x] **Evil Twin** - rogue AP with captive portal
 - [x] **Captive Portal** - custom HTML credential capture
 - [x] **Portal authoring guide** - [Captive Portal / Evil Twin HTML authoring](docs/CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)
 - [x] **Packet Sniffer** - monitor-mode capture with PCAP export; per-module Auto/2.4/5 GHz hopping, target-channel-aware fixed capture, and retrying deauth assist that starts after the sniffer
 - [x] **Hidden AP Revealer** - passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution
+- [x] **Probe Request Monitor** - probe requests by MAC/SSID/channel/RSSI with vendor and randomized-MAC indication
+- [x] **Channel Analyzer** - FAB-driven scan with loading state, occupancy bar charts, AP density/security/WPS summary, and least-congested 2.4 GHz suggestion
+- [x] **HTML Template Manager** - shared Portal/Evil Twin template tab with dropdown selection, custom-file picker, import, list/size, use, and delete
+- [x] **WiFi Config OUI rules** - manage Rogue AP whitelist/blacklist rules from WiFi Config
 - [ ] **PMKID Capture**
 
 </details>
@@ -140,10 +144,22 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 <summary><strong>Credentials</strong></summary>
 
 - [x] **WPA Handshake Capture/Crack** - capture and offline dictionary cracking
+- [x] **Deauth telemetry** - unlimited loop plus elapsed time, frames/sec, sent, and failed counters
+- [x] **WPS Pixie Dust** - live registrar flow with AP-lock preflight, M3-only capture, on-phone Pixiewps recovery, same-session recovered-PIN continuation, and PIN/PSK persistence on ESP32-S3/C5
 - [x] **Nrugochi** - Pwnagotchi-style channel-density RECON/INTERACT loop, multi-AP authorized deauth with frame telemetry, all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` output, mood UI, and today/total stats
 - [x] **Credential Manager** - local storage and management of captured credentials
+- [ ] **Credential QR sharing** - standard Wi-Fi QR for saved PSKs, with WPS PIN shown separately
 
 </details>
+
+### Planned Wi-Fi automation
+
+See [`../WIFI-AUTOMATION-ROADMAP.md`](../WIFI-AUTOMATION-ROADMAP.md) for the full design and acceptance criteria.
+
+- Credential Manager QR sharing
+- resumable WPA cracker jobs, multiple/compressed wordlists, direct handshake linkage, and `.22000` export
+- single-target Wifite-style Auto Capture + Crack; Evil Twin remains explicitly confirmed
+- custom STA/AP MAC configuration and a separate experimental repeater prototype
 
 <details>
 <summary><strong>Storage, Firmware & Tools</strong></summary>
