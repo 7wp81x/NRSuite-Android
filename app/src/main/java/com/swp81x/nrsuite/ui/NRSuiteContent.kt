@@ -707,7 +707,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || rogueApRunning || clientPresenceRunning || hiddenApRunning || hiddenApStarting || portalRunning || bleAdvertising || bleScanRunning || bleProfileRunning || meshActive || crackerRunning
+    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning ||
+        rogueApRunning || clientPresenceRunning || hiddenApRunning || hiddenApStarting ||
+        portalRunning || bleAdvertising || bleScanRunning || bleProfileRunning || meshActive ||
+        crackerRunning || wpsAttemptDetectorState.running || wpsAttemptDetectorState.starting
     val view = LocalView.current
     DisposableEffect(anyModuleRunning) {
         val window = (view.context as? Activity)?.window

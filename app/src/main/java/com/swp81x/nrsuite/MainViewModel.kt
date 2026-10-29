@@ -1110,8 +1110,10 @@ class MainViewModel(internal val app: Application) {
             }
 
             "wps_attempt_detector" -> {
-                _networks.value = emptyList()
-                this.resetWpsAttemptDetectorImpl()
+                if (!_wpsAttemptDetector.value.running && !_wpsAttemptDetector.value.starting) {
+                    _networks.value = emptyList()
+                    this.resetWpsAttemptDetectorImpl()
+                }
             }
 
             "probe_monitor" -> {
