@@ -70,16 +70,16 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 <summary><strong>Wireless</strong></summary>
 
 - [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; AUTO 2.4/5 GHz and regulatory-country channel filtering on C5-capable firmware
-- [x] **Beacon Spam** - broadcast custom or hidden SSIDs
-- [x] **Deauthentication** - finite burst or unlimited duration-0 loop, with elapsed time, frames/sec, sent/failed telemetry, and mutually exclusive count/duration controls
+- [x] **Beacon Spam** - Overview / SSID Lists tabs, custom or hidden SSIDs, saved-list CRUD, and a built-in short-form Rickroll preset
+- [x] **Deauthentication** - finite burst or unlimited loop until stopped, with elapsed time, frames/sec, sent/failed telemetry, multi-target selection, and app-side per-target channel hopping
 - [x] **Evil Twin** - rogue AP with captive portal
 - [x] **Captive Portal** - custom HTML credential capture
 - [x] **Portal authoring guide** - [Captive Portal / Evil Twin HTML authoring](docs/CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)
 - [x] **Packet Sniffer** - monitor-mode capture with PCAP export; per-module Auto/2.4/5 GHz hopping, target-channel-aware fixed capture, and retrying deauth assist that starts after the sniffer
 - [x] **Hidden AP Revealer** - passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution
 - [x] **Probe Request Monitor** - probe requests by MAC/SSID/channel/RSSI with vendor and randomized-MAC indication
-- [x] **Channel Analyzer** - FAB-driven scan with loading state, occupancy bar charts, AP density/security/WPS summary, and least-congested 2.4 GHz suggestion
-- [x] **HTML Template Manager** - shared Portal/Evil Twin template tab with dropdown selection, custom-file picker, import, list/size, use, and delete
+- [x] **Channel Analyzer** - FAB-driven scan with loading state, compact 2.4/5 GHz occupancy bars, selected-channel detail, and a scrollable nearby-AP list sorted by RSSI with band filters and WPS/security metadata
+- [x] **HTML Template Manager** - shared Portal/Evil Twin template tab with template dropdown, custom-file picker, import, rename, delete, SHA-256 duplicate rejection, 16 KB warning, 24 KB hard limit, and start-time firmware heap preflight
 - [x] **WiFi Config OUI rules** - manage Rogue AP whitelist/blacklist rules from WiFi Config
 - [ ] **PMKID Capture**
 
@@ -145,7 +145,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 
 - [x] **WPA Handshake Capture/Crack** - capture and offline dictionary cracking
 - [x] **Deauth telemetry** - unlimited loop plus elapsed time, frames/sec, sent, and failed counters
-- [x] **WPS Pixie Dust** - live registrar flow with AP-lock preflight, M3-only capture, on-phone Pixiewps recovery, same-session recovered-PIN continuation, and PIN/PSK persistence on ESP32-S3/C5
+- [x] **WPS Pixie Dust** - live registrar flow with module-isolated target scans, AP-lock preflight, M3-only capture, on-phone Pixiewps recovery, same-session recovered-PIN continuation, and PIN/PSK persistence on ESP32-S3/C5
 - [x] **Nrugochi** - Pwnagotchi-style channel-density RECON/INTERACT loop, multi-AP authorized deauth with frame telemetry, all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` output, mood UI, and today/total stats
 - [x] **Credential Manager** - local storage and management of captured credentials
 - [ ] **Credential QR sharing** - standard Wi-Fi QR for saved PSKs, with WPS PIN shown separately
@@ -349,6 +349,8 @@ app/src/main/java/com/swp81x/nrsuite/
     history/           # Session history entries
     log/               # Log entry model (Logs screen, live module logs)
     oui/               # Offline OUI/vendor database (BSSID Geolocation, defense modules)
+    portal/            # Local Captive Portal / Evil Twin HTML template store
+    wps/               # WPS PIN generation, Pixie Dust material, parsers, and offline cracker
     geo/               # Independent BSSID/WLOC client and persistent lookup history
     pcap/              # Pcap file reader and writer
     protocol/          # Frame codec and NrJson wire protocol (shared with firmware)
@@ -362,7 +364,7 @@ app/src/main/java/com/swp81x/nrsuite/
   service/
     NrSuiteForegroundService.kt   # Foreground service keeping USB session alive
   ui/
-    components/       # Reusable Compose components
+    components/       # Reusable Compose components (including bounded scan-target lists and HTML template controls)
     theme/            # Color, typography, theme
     NRSuiteApp.kt     # App entry point and module catalog
     NRSuiteContent.kt # Shell navigation, permission flow, screen dispatch
@@ -376,13 +378,19 @@ app/src/main/java/com/swp81x/nrsuite/
     BleScannerScreen.kt / BleProfileScreen.kt / BleScreen.kt   # BLE recon + BLE HID
     BlePinBruteforceScreen.kt                                  # BLE HID PIN live controls
     MacLookupScreen.kt / SerialMonitorScreen.kt    # Tools / firmware utilities
+    ProbeMonitorScreen.kt / ChannelAnalyzerScreen.kt # Wi-Fi recon additions
+    WpsPixieLiveScreen.kt / WpsPixieScreen.kt      # WPS Pixie Dust live and offline workflows
     *Screen.kt        # Remaining feature module screens
   MainActivity.kt
   MainViewModel.kt               # Application-scoped controller
   MainViewModelUsb.kt            # USB discovery, permission, connection lifecycle
   MainViewModelFlasher.kt        # Firmware image selection and flashing
-  MainViewModelWifi.kt           # Scan, deauth, beacon, sniff
+  MainViewModelWifi.kt           # Scan, multi-target deauth, beacon, sniff
   MainViewModelPortal.kt         # Captive Portal and Evil Twin
+  MainViewModelHtmlTemplates.kt  # Shared HTML template import/rename/delete/use state
+  MainViewModelProbeMonitor.kt   # Probe request aggregation
+  MainViewModelWpsPixie.kt       # WPS PIN storage, material import, and offline crack state
+  MainViewModelWpsPixieLive.kt   # Live WPS Pixie Dust registrar workflow
   MainViewModelBle.kt            # BLE HID
   MainViewModelBleScanner.kt     # BLE device discovery
   MainViewModelBleProfile.kt     # BLE GATT enumeration

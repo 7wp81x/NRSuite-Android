@@ -44,6 +44,13 @@ Important consequences:
 - Maximum uploaded HTML size: **24 KiB**.
 - Upload as UTF-8.
 - The Android app uploads the file in chunks and verifies the final size.
+- Files above **16 KiB** show a size warning because the firmware allocates the
+  full page in RAM and may reject an upload when free heap is low.
+- Before starting a portal, the app queries `STATUS.heap`. It requires the page
+  size plus the firmware's 40 KB safety margin and an additional app-side heap
+  margin. If the preflight fails, the portal is not started.
+- `RESET_HTML` or chunk-upload rejection is surfaced in the app; the portal is
+  stopped rather than silently serving a placeholder.
 - Do not embed large base64 images, fonts, or libraries; they count toward the
   24 KiB limit.
 - Keep the page simple and mobile-first.
@@ -89,15 +96,23 @@ POST /login -> short response -> browser returns to /?attempt=N
 
 1. Configure the NRSuite root directory in **Settings**.
 2. Open **Captive Portal** or **Evil Twin**.
-3. Choose the authored `.html` file.
-4. Wait for the Android upload to report complete.
+3. In the **HTML Templates** tab, import the authored `.html` file.
+   - Templates can be renamed and deleted later.
+   - Duplicate content is rejected by SHA-256 hash.
+   - The 24 KiB firmware limit is enforced at import time.
+4. Select the saved template from the Overview dropdown, or use **Choose HTML**
+   for a one-off file. HTML is required for both portal modes.
 5. Select the SSID and channel.
    - Evil Twin prompts you to select a target AP from a scan.
    - The selected channel must be allowed by the active regulatory country.
-6. Start the portal.
+6. Start the portal and wait for the HTML upload to report complete.
 7. Connect an authorized test client to the NRSuite AP.
 8. Open the built-in notice page and choose **Continue** to reach the custom HTML.
 9. Submit test form values and verify them in the app’s portal/credential results.
+
+The app performs a firmware heap preflight before start. If the portal rejects
+`RESET_HTML`, a chunk, or the final upload, the portal is stopped and the error
+is shown.
 
 The app reports AP-start failures directly. If the channel is blocked, select a
 different allowed channel or change the Wi-Fi regulatory country in **Settings**.
@@ -115,8 +130,8 @@ different allowed channel or change the Wi-Fi regulatory country in **Settings**
 
 ### Captive Portal specifics
 
-- A custom HTML file is optional; the firmware placeholder page is used when no
-  file is uploaded.
+- A template or custom HTML file is required before Captive Portal can start;
+  the firmware placeholder is not used as a silent fallback.
 - Credential sessions are app-private but currently stored as plain JSON on the
   Android device. Treat captured test data as sensitive.
 
@@ -127,7 +142,10 @@ different allowed channel or change the Wi-Fi regulatory country in **Settings**
 | Symptom | Likely cause / fix |
 |---|---|
 | Custom page never appears | The built-in notice is served at `/`; custom HTML is at `/continue` |
-| Upload fails or completes partially | File exceeds 24 KiB, was not UTF-8, or upload was interrupted |
+| Upload fails or completes partially | File exceeds 24 KiB, was not UTF-8, the device heap preflight failed, or upload was interrupted |
+| Duplicate template rejected | Identical HTML content is already saved under another template name |
+| Start blocked because HTML is missing | Select a saved template or choose a custom `.html` file |
+| Device rejected RESET_HTML / HTML chunk | Free heap is too low for the full page; retry after a reboot or use a smaller page |
 | External CSS/JS/images missing | Use inline assets only; there is no static file route |
 | Form submission shows a blank/short page | Expected: `/login` returns a redirect script, not the custom page |
 | No captured fields | Ensure inputs have `name` attributes and the form posts to `/login` |

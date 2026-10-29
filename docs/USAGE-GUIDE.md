@@ -67,13 +67,16 @@ Some categories also expose filters. WiFi, for example, uses:
 
 ### Shared channel control
 
-WiFi tools use a common channel control:
+WiFi tools use a common channel control. The channel/band summary sits beside
+the section label and uses the module accent color:
 
 ```text
-[-]  ch 6  [2.4 GHz]  [+]
+Channel                              [CH 6 · 2.4 GHz]
+[-]  ch 6  [+]
 ```
 
-- The band pill follows the selected channel.
+- The summary pill shows the selected channel and band; it is not a second
+  control.
 - 5 GHz channels are selectable only when the connected board and regulatory
   channel mask allow them.
 - ESP32-C5 supports 2.4 GHz and 5 GHz. Other targets are normally 2.4 GHz-only.
@@ -147,6 +150,73 @@ The live card shows:
 
 Handshake-only capture records EAPOL frames plus one contextual beacon. The
 captured filename and PCAP remain in the configured output directory.
+
+### Wi-Fi target lists
+
+Attack and target-selection screens use a bounded, independently scrollable scan-result
+list. Re-scanning does not make the whole screen grow indefinitely.
+
+- Single-target modules use radio selection.
+- Deauth uses multi-select checkboxes.
+- Scan results include SSID, BSSID, channel/band, RSSI, security, and WPS state.
+
+### Deauth
+
+Deauth supports two modes:
+
+- **Burst** — sends a finite frame count.
+- **Loop** — runs until **Stop** is pressed.
+
+With multiple targets selected, the app sends one burst to each selected target,
+then moves to that target's channel. Multi-target loop mode repeats this
+channel-hopping pass until stopped. This orchestration currently uses repeated
+`DEAUTH_BURST` commands; a dedicated firmware multi-target command is future work.
+
+### Beacon
+
+Beacon has two tabs:
+
+- **Overview** — current SSID summary, channel/timing, options, and broadcast status.
+- **SSID Lists** — edit SSIDs, save/load/rename/delete lists, import text lists,
+  and load presets.
+
+The Rickroll preset is loaded by default on a fresh screen. Every preset SSID is
+within the firmware's 32-byte SSID limit.
+
+### Probe Request Monitor and Channel Analyzer
+
+- **Probe Request Monitor** groups probes by MAC/SSID/channel, with RSSI,
+  sightings, vendor, and randomized-MAC hints.
+- **Channel Analyzer** performs a scan and shows compact 2.4/5 GHz bars plus a
+  scrollable nearby-AP list. APs are sorted by RSSI and can be filtered by band.
+
+Both screens clear their module-local results when you leave the module.
+
+### Captive Portal, Evil Twin, and HTML templates
+
+Captive Portal and Evil Twin share one local HTML template library:
+
+- Import, rename, delete, or select saved templates.
+- Imported templates are content-hashed; duplicate HTML is rejected.
+- The 24 KB firmware limit is enforced. Files above 16 KB show a warning.
+- HTML is required for both Captive Portal and Evil Twin before start.
+- The app checks device free heap before starting the portal; a firmware
+  `RESET_HTML`/upload rejection is shown clearly and the portal is stopped.
+- The HTML Templates tab is available from both portal workflows.
+
+See [Captive Portal / Evil Twin HTML authoring](CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)
+for page structure and test guidance.
+
+### WPS Pixie Dust
+
+Use **WiFi → Attack → WPS Pixie Dust**.
+
+- WPS target scans are isolated to that module; other Wi-Fi scans do not populate
+  the WPS target list.
+- Select a WPS-enabled target after a scan, then start the live attempt.
+- The live status card appears only after an attempt has activity or a result.
+- Leaving the module clears transient WPS state and targets.
+- Recovered PINs/PSKs are persisted through Credential Manager and the WPS PIN store.
 
 ---
 
