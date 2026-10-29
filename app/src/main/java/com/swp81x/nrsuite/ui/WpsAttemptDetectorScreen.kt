@@ -242,11 +242,10 @@ fun WpsAttemptDetectorScreen(
                         if (wpsNetworks.isNotEmpty()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = "${selectedTargets.size} selected · " +
-                                        if (selectedChannels.isEmpty()) "no channels" else
-                                            "channels ${selectedChannels.joinToString(",")}",
+                                    text = "${selectedTargets.size} selected",
                                     style = MaterialTheme.typography.labelLarge,
                                     modifier = Modifier.weight(1f),
+                                    maxLines = 1,
                                 )
                                 TextButton(
                                     onClick = {
@@ -267,6 +266,16 @@ fun WpsAttemptDetectorScreen(
                                     Text("Clear")
                                 }
                             }
+                            Text(
+                                text = if (selectedChannels.isEmpty()) {
+                                    "Channels: none"
+                                } else {
+                                    "Channels: ${selectedChannels.joinToString(", ")}"
+                                },
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                color = NrOnSurfaceVariant,
+                                maxLines = 2,
+                            )
                             ScanTargetList(
                                 networks = wpsNetworks,
                                 selectedBssids = selectedBssids,
