@@ -5,14 +5,85 @@ import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wps.BssidLockSnapshot
 import com.swp81x.nrsuite.core.wps.WpsAttemptRisk
 import com.swp81x.nrsuite.core.wps.WpsAttemptSession
+import com.swp81x.nrsuite.core.wps.WpsLockConfidence
+import com.swp81x.nrsuite.core.wps.WpsLockObservationSource
+import com.swp81x.nrsuite.core.wps.WpsLockState
+import android.os.SystemClock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+
+internal fun MainViewModel.startWpsAttemptTargetScanImpl() {
+    val activeSession = session
+    if (activeSession == null) {
+        appendLog("WPS Attempt Detector: connect to a device before scanning.", level = LogLevel.ERROR)
+        _toastMessage.value = "Connect a device before scanning."
+        return
+    }
+    val current = _wpsAttemptDetector.value
+    if (current.running || current.starting) {
+        _toastMessage.value = "Stop WPS attempt monitoring before scanning targets."
+        return
+    }
+    if (current.scanningTargets) return
+    if (!ensureRadioIdle("WPS Attempt Detector scan")) return
+
+    wpsAttemptTargetScanJob?.cancel()
+    wifiScanDestination = WifiScanDestination.WPS_ATTEMPT_TARGETS
+    _wpsAttemptDetector.update {
+        it.copy(
+            scanningTargets = true,
+            scanCandidates = emptyList(),
+            lockSnapshots = emptyMap(),
+            lockTransitionBssids = emptySet(),
+            error = null,
+        )
+    }
+    updateForegroundService()
+    wpsAttemptTargetScanJob = scope.launch(Dispatchers.IO) {
+        try {
+            val response = activeSession.sendCommand(
+                "WPS_LOCK_SCAN",
+                JSONObject().apply {
+                    put("band", "auto")
+                    put("dwell_ms", 120)
+                },
+                timeoutMs = 45_000,
+            )
+            if (response?.optBoolean("ok") == true) {
+                val count = response.optInt("count", _wpsAttemptDetector.value.scanCandidates.size)
+                appendLog("WPS Attempt Detector: found $count WPS target(s).")
+            } else {
+                val message = response?.optString("msg")?.takeIf { it.isNotBlank() }
+                    ?: response?.optString("error")?.takeIf { it.isNotBlank() }
+                    ?: "scan timed out"
+                _wpsAttemptDetector.update { it.copy(error = message) }
+                appendLog("WPS Attempt Detector scan failed: $message", level = LogLevel.ERROR)
+                _toastMessage.value = "WPS target scan failed: $message"
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            val message = error.message ?: error.javaClass.simpleName
+            _wpsAttemptDetector.update { it.copy(error = message) }
+            appendLog("WPS Attempt Detector scan failed: $message", level = LogLevel.ERROR)
+            _toastMessage.value = "WPS target scan failed: $message"
+        } finally {
+            if (wifiScanDestination == WifiScanDestination.WPS_ATTEMPT_TARGETS) {
+                wifiScanDestination = null
+            }
+            _wpsAttemptDetector.update { it.copy(scanningTargets = false) }
+            wpsAttemptTargetScanJob = null
+            updateForegroundService()
+        }
+    }
+}
 
 internal fun MainViewModel.startWpsAttemptDetectorImpl(
     targets: List<NetworkTarget>,
@@ -174,18 +245,37 @@ internal fun MainViewModel.handleWpsAttemptSessionEventImpl(event: JSONObject) {
             .take(200)
         state.copy(
             running = true,
-            sessions = scoreWpsAttemptRisk(sessions),
+            sessions = scoreWpsAttemptRisk(
+                sessions = sessions,
+                lockSnapshots = state.lockSnapshots,
+                lockTransitionBssids = state.lockTransitionBssids,
+            ),
             lastStatusAtMs = System.currentTimeMillis(),
         )
     }
     updateForegroundService()
 }
 
-private fun scoreWpsAttemptRisk(sessions: List<WpsAttemptSession>): List<WpsAttemptSession> {
+private fun scoreWpsAttemptRisk(
+    sessions: List<WpsAttemptSession>,
+    lockSnapshots: Map<String, BssidLockSnapshot>,
+    lockTransitionBssids: Set<String>,
+): List<WpsAttemptSession> {
     val byTarget = sessions.groupBy { it.bssid }
+    val now = SystemClock.elapsedRealtime()
     return sessions.map { session ->
         val targetSessions = byTarget[session.bssid].orEmpty()
         val clients = targetSessions.map { it.client }.distinct()
+        val snapshot = lockSnapshots[session.bssid]
+        val ageMs = snapshot?.let { (now - it.receivedAtElapsedMs).coerceAtLeast(0L) }
+        val confidence = when {
+            snapshot == null -> WpsLockConfidence.NONE
+            snapshot.source == WpsLockObservationSource.LIVE_MONITOR && ageMs != null && ageMs <= 30_000L ->
+                WpsLockConfidence.LIVE
+            snapshot.source == WpsLockObservationSource.WPS_LOCK_SCAN && ageMs != null && ageMs <= 60_000L ->
+                WpsLockConfidence.RECENT
+            else -> WpsLockConfidence.STALE
+        }
         val reasons = mutableListOf<String>()
         var risk = WpsAttemptRisk.LOW
 
@@ -205,6 +295,28 @@ private fun scoreWpsAttemptRisk(sessions: List<WpsAttemptSession>): List<WpsAtte
             reasons += "WPS ${session.stage} response observed"
             if (risk == WpsAttemptRisk.LOW) risk = WpsAttemptRisk.MEDIUM
         }
+        if (snapshot?.state == WpsLockState.LOCKED) {
+            when (confidence) {
+                WpsLockConfidence.LIVE -> {
+                    risk = WpsAttemptRisk.HIGH
+                    reasons += "Attempt observed against a live WPS-locked AP"
+                }
+                WpsLockConfidence.RECENT -> {
+                    if (risk == WpsAttemptRisk.LOW) risk = WpsAttemptRisk.MEDIUM
+                    reasons += "Target reported WPS Locked in a recent scan"
+                }
+                WpsLockConfidence.STALE -> {
+                    reasons += "Saved WPS lock state is stale and was not used for risk"
+                }
+                WpsLockConfidence.NONE -> Unit
+            }
+        }
+        if (session.bssid in lockTransitionBssids &&
+            confidence == WpsLockConfidence.LIVE
+        ) {
+            risk = WpsAttemptRisk.HIGH
+            reasons += "AP transitioned to WPS Locked during live monitoring"
+        }
         if (session.frames <= 1) {
             reasons += "Incomplete WPS message sequence"
         }
@@ -212,8 +324,54 @@ private fun scoreWpsAttemptRisk(sessions: List<WpsAttemptSession>): List<WpsAtte
             reasons += "Single observed WPS attempt"
         }
         session.copy(
+            lockState = snapshot?.state ?: WpsLockState.UNKNOWN,
+            lockSource = snapshot?.source,
+            lockAgeMs = ageMs,
+            lockConfidence = confidence,
             risk = risk,
             riskReasons = reasons.distinct(),
+        )
+    }
+}
+
+internal fun MainViewModel.handleWpsAttemptLockStateEventImpl(event: JSONObject) {
+    val bssid = event.optString("bssid").trim().uppercase()
+    if (bssid.isBlank()) return
+    val wpsParsed = event.optBoolean("wps_parsed", true)
+    val lockReported = event.optBoolean("lock_reported", false)
+    val locked = event.optBoolean("ap_setup_locked", false)
+    val newState = when {
+        lockReported && locked -> WpsLockState.LOCKED
+        wpsParsed -> WpsLockState.LIKELY_UNLOCKED
+        else -> WpsLockState.UNKNOWN
+    }
+    val now = SystemClock.elapsedRealtime()
+    _wpsAttemptDetector.update { state ->
+        val previous = state.lockSnapshots[bssid]
+        val transitioned = previous?.state == WpsLockState.LIKELY_UNLOCKED &&
+            newState == WpsLockState.LOCKED
+        val snapshots = state.lockSnapshots + (
+            bssid to BssidLockSnapshot(
+                state = newState,
+                lockReported = lockReported,
+                wpsParsed = wpsParsed,
+                source = WpsLockObservationSource.LIVE_MONITOR,
+                receivedAtElapsedMs = now,
+            )
+        )
+        val transitions = if (transitioned) {
+            state.lockTransitionBssids + bssid
+        } else {
+            state.lockTransitionBssids
+        }
+        state.copy(
+            lockSnapshots = snapshots,
+            lockTransitionBssids = transitions,
+            sessions = scoreWpsAttemptRisk(
+                sessions = state.sessions,
+                lockSnapshots = snapshots,
+                lockTransitionBssids = transitions,
+            ),
         )
     }
 }
@@ -221,6 +379,11 @@ private fun scoreWpsAttemptRisk(sessions: List<WpsAttemptSession>): List<WpsAtte
 internal fun MainViewModel.resetWpsAttemptDetectorImpl() {
     wpsAttemptDetectJob?.cancel()
     wpsAttemptDetectJob = null
+    wpsAttemptTargetScanJob?.cancel()
+    wpsAttemptTargetScanJob = null
+    if (wifiScanDestination == WifiScanDestination.WPS_ATTEMPT_TARGETS) {
+        wifiScanDestination = null
+    }
     val wasActive = _wpsAttemptDetector.value.running || _wpsAttemptDetector.value.starting
     _wpsAttemptDetector.value = com.swp81x.nrsuite.core.wps.WpsAttemptDetectorUiState()
     updateForegroundService()

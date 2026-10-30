@@ -56,7 +56,8 @@ import com.swp81x.nrsuite.core.wps.WpsAttemptSession
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.ScanButtonContent
-import com.swp81x.nrsuite.ui.components.ScanTargetList
+import com.swp81x.nrsuite.ui.components.NetworkTargetRow
+import com.swp81x.nrsuite.ui.components.TargetSelectionControl
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -67,14 +68,11 @@ import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
 import com.swp81x.nrsuite.ui.util.signalQualityColor
-import org.json.JSONObject
 
 @Composable
 fun WpsAttemptDetectorScreen(
     connected: Boolean,
     state: WpsAttemptDetectorUiState,
-    scanning: Boolean,
-    networks: List<JSONObject>,
     onScanWpsTargets: () -> Unit,
     onStart: (targets: List<NetworkTarget>, allChannels: Boolean, intervalMs: Int) -> Unit,
     onStop: () -> Unit,
@@ -87,17 +85,13 @@ fun WpsAttemptDetectorScreen(
     var intervalMs by rememberSaveable { mutableIntStateOf(300) }
     var riskFilter by rememberSaveable { mutableIntStateOf(0) }
 
-    val wpsNetworks = remember(networks) {
-        networks.filter { network ->
-            val security = network.optString("security").uppercase()
-            network.optBoolean("wps") &&
-                !security.startsWith("OPEN") &&
-                !security.startsWith("NONE")
-        }.sortedByDescending { it.optInt("rssi", -999) }
-    }
-    val currentBssids = remember(wpsNetworks) {
-        wpsNetworks.mapNotNull { it.optString("bssid").takeIf { bssid -> bssid.isNotBlank() } }.toSet()
-    }
+    val wpsNetworks = state.scanCandidates
+        .filter { network ->
+            val security = network.security.uppercase()
+            network.wps && !security.startsWith("OPEN") && !security.startsWith("NONE")
+        }
+        .sortedByDescending { it.rssi }
+    val currentBssids = wpsNetworks.map { it.bssid }.toSet()
     LaunchedEffect(wpsNetworks, autoSelectPending) {
         if (autoSelectPending && wpsNetworks.isNotEmpty()) {
             selectedBssids = currentBssids
@@ -107,21 +101,7 @@ fun WpsAttemptDetectorScreen(
         selectedBssids = selectedBssids.intersect(currentBssids)
     }
 
-    val selectedTargets = remember(wpsNetworks, selectedBssids) {
-        wpsNetworks.filter { it.optString("bssid") in selectedBssids }.map { network ->
-            NetworkTarget(
-                ssid = network.optString("ssid").ifBlank { "(hidden)" },
-                bssid = network.optString("bssid"),
-                channel = network.optInt("channel", 1),
-                rssi = network.optInt("rssi", -100),
-                security = network.optString("security", "?"),
-                wps = true,
-                vendor = network.optString("vendor").takeIf { it.isNotBlank() },
-                ouiWhitelisted = network.optBoolean("oui_whitelisted"),
-                ouiBlacklisted = network.optBoolean("oui_blacklisted"),
-            )
-        }
-    }
+    val selectedTargets = wpsNetworks.filter { it.bssid in selectedBssids }
     val selectedChannels = selectedTargets.map { it.channel }.distinct().sorted()
     val filtered = state.sessions.filter { session ->
         when (riskFilter) {
@@ -231,10 +211,10 @@ fun WpsAttemptDetectorScreen(
                                 selectedBssids = emptySet()
                                 onScanWpsTargets()
                             },
-                            enabled = connected && !scanning && !state.running && !state.starting,
+                            enabled = connected && !state.scanningTargets && !state.running && !state.starting,
                         ) {
                             ScanButtonContent(
-                                scanning = scanning,
+                                scanning = state.scanningTargets,
                                 idleLabel = "Scan WPS targets",
                             )
                         }
@@ -276,25 +256,39 @@ fun WpsAttemptDetectorScreen(
                                 color = NrOnSurfaceVariant,
                                 maxLines = 2,
                             )
-                            ScanTargetList(
-                                networks = wpsNetworks,
-                                selectedBssids = selectedBssids,
-                                onToggle = { network ->
-                                    autoSelectPending = false
-                                    val bssid = network.optString("bssid")
-                                    selectedBssids = if (bssid in selectedBssids) {
-                                        selectedBssids - bssid
-                                    } else {
-                                        selectedBssids + bssid
-                                    }
-                                },
-                                enabled = !state.running && !state.starting,
-                                multiSelect = true,
-                                maxHeight = 300.dp,
-                            )
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                items(wpsNetworks, key = { it.bssid }) { network ->
+                                    NetworkTargetRow(
+                                        ssid = network.ssid,
+                                        bssid = network.bssid,
+                                        channel = network.channel,
+                                        rssi = network.rssi,
+                                        security = network.security,
+                                        wps = network.wps,
+                                        wpsLockState = network.wpsLockState,
+                                        vendor = network.vendor,
+                                        ouiWhitelisted = network.ouiWhitelisted,
+                                        ouiBlacklisted = network.ouiBlacklisted,
+                                        selected = network.bssid in selectedBssids,
+                                        selectionControl = TargetSelectionControl.CHECKBOX,
+                                        enabled = !state.running && !state.starting,
+                                        onClick = {
+                                            autoSelectPending = false
+                                            selectedBssids = if (network.bssid in selectedBssids) {
+                                                selectedBssids - network.bssid
+                                            } else {
+                                                selectedBssids + network.bssid
+                                            }
+                                        },
+                                    )
+                                }
+                            }
                         } else {
                             Text(
-                                text = if (scanning) {
+                                text = if (state.scanningTargets) {
                                     "Scanning for WPS-enabled access points..."
                                 } else {
                                     "No WPS targets selected. Scan nearby WPS APs first."
@@ -577,6 +571,29 @@ private fun WpsAttemptCard(session: WpsAttemptSession) {
                 style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
                 color = NrOnSurfaceVariant,
             )
+            if (session.lockState != com.swp81x.nrsuite.core.wps.WpsLockState.UNKNOWN) {
+                val lockLabel = when (session.lockState) {
+                    com.swp81x.nrsuite.core.wps.WpsLockState.LOCKED -> "LOCKED"
+                    com.swp81x.nrsuite.core.wps.WpsLockState.LIKELY_UNLOCKED -> "LIKELY UNLOCKED"
+                    com.swp81x.nrsuite.core.wps.WpsLockState.UNKNOWN -> "UNKNOWN"
+                }
+                val sourceLabel = when (session.lockConfidence) {
+                    com.swp81x.nrsuite.core.wps.WpsLockConfidence.LIVE -> "live"
+                    com.swp81x.nrsuite.core.wps.WpsLockConfidence.RECENT -> "recent scan"
+                    com.swp81x.nrsuite.core.wps.WpsLockConfidence.STALE -> "stale"
+                    com.swp81x.nrsuite.core.wps.WpsLockConfidence.NONE -> "unknown"
+                }
+                Text(
+                    text = "WPS lock: $lockLabel · $sourceLabel" +
+                        (session.lockAgeMs?.let { " · ${it / 1000L}s ago" } ?: ""),
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                    color = if (session.lockState == com.swp81x.nrsuite.core.wps.WpsLockState.LOCKED) {
+                        riskColor
+                    } else {
+                        NrOnSurfaceVariant
+                    },
+                )
+            }
             session.riskReasons.forEach { reason ->
                 Text(
                     text = "• $reason",

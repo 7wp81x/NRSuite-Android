@@ -158,7 +158,7 @@ internal data class DeviceSession(
  * stream, PCAP collectors, and operation state survive Activity destruction
  * while the foreground service keeps the process alive.
  */
-internal enum class WifiScanDestination { WIFI, TARGETS, CHANNEL_ANALYZER, WPS }
+internal enum class WifiScanDestination { WIFI, TARGETS, CHANNEL_ANALYZER, WPS, WPS_ATTEMPT_TARGETS }
 
 class MainViewModel(internal val app: Application) {
     internal val scope = CoroutineScope(
@@ -818,6 +818,7 @@ class MainViewModel(internal val app: Application) {
     internal val _wpsAttemptDetector = MutableStateFlow(WpsAttemptDetectorUiState())
     val wpsAttemptDetector: StateFlow<WpsAttemptDetectorUiState> = _wpsAttemptDetector.asStateFlow()
     internal var wpsAttemptDetectJob: Job? = null
+    internal var wpsAttemptTargetScanJob: Job? = null
     internal var wpsPixiePrepareWatchdogJob: Job? = null
     internal var wpsPixieM1WatchdogJob: Job? = null
     internal val wpsPixieLiveAuthKeyCache = mutableMapOf<String, ByteArray>()
@@ -1110,7 +1111,10 @@ class MainViewModel(internal val app: Application) {
             }
 
             "wps_attempt_detector" -> {
-                if (!_wpsAttemptDetector.value.running && !_wpsAttemptDetector.value.starting) {
+                if (!_wpsAttemptDetector.value.running &&
+                    !_wpsAttemptDetector.value.starting &&
+                    !_wpsAttemptDetector.value.scanningTargets
+                ) {
                     _networks.value = emptyList()
                     this.resetWpsAttemptDetectorImpl()
                 }
@@ -1624,7 +1628,11 @@ class MainViewModel(internal val app: Application) {
         _wpsLockDetector.update { it.copy(scanning = false) }
         wpsAttemptDetectJob?.cancel()
         wpsAttemptDetectJob = null
-        _wpsAttemptDetector.update { it.copy(running = false, starting = false) }
+        wpsAttemptTargetScanJob?.cancel()
+        wpsAttemptTargetScanJob = null
+        _wpsAttemptDetector.update {
+            it.copy(running = false, starting = false, scanningTargets = false)
+        }
 
         _scanning.value = false
         _beaconRunning.value = false
@@ -1813,6 +1821,8 @@ class MainViewModel(internal val app: Application) {
     fun startWpsLockScan() = this.startWpsLockScanImpl()
 
     fun resetWpsLockDetector() = this.resetWpsLockDetectorImpl()
+
+    fun scanWpsAttemptTargets() = this.startWpsAttemptTargetScanImpl()
 
     fun startWpsAttemptDetector(
         targets: List<NetworkTarget>,
@@ -2075,6 +2085,8 @@ class MainViewModel(internal val app: Application) {
             _probeMonitorRunning.value -> "Probe Request Monitor"
             _hiddenApStarting.value -> "Hidden AP Revealer starting"
             _hiddenApRunning.value -> "Hidden AP Revealer"
+            _wpsAttemptDetector.value.scanningTargets ->
+                "WPS Attempt Detector scan"
             _wpsAttemptDetector.value.starting || _wpsAttemptDetector.value.running ->
                 "WPS Attempt Detector"
             _wpsLockDetector.value.scanning -> "WPS Lock Detector"
@@ -2122,6 +2134,8 @@ class MainViewModel(internal val app: Application) {
             _probeMonitorRunning.value -> "Probe Request Monitor active"
             _hiddenApStarting.value -> "Hidden AP Revealer scanning"
             _hiddenApRunning.value -> "Hidden AP revealer active"
+            _wpsAttemptDetector.value.scanningTargets ->
+                "WPS Attempt Detector scanning targets"
             _wpsAttemptDetector.value.starting || _wpsAttemptDetector.value.running ->
                 "WPS Attempt Detector active · ${_wpsAttemptDetector.value.sessions.size} attempt(s)"
             _wpsLockDetector.value.scanning -> "WPS Lock Detector scanning"
@@ -2241,6 +2255,10 @@ class MainViewModel(internal val app: Application) {
                             this@MainViewModel.handleWpsAttemptSessionEventImpl(event)
                         }
 
+                        "wps_ap_lock_state" -> {
+                            this@MainViewModel.handleWpsAttemptLockStateEventImpl(event)
+                        }
+
                         "scan_ap" -> {
                             val bssid = event.optString("bssid")
                             val resolvedSsid = resolvedHiddenSsidByBssid[bssid.uppercase()]
@@ -2266,6 +2284,7 @@ class MainViewModel(internal val app: Application) {
                                 WifiScanDestination.TARGETS -> _networks.update(updatedList)
                                 WifiScanDestination.CHANNEL_ANALYZER -> _channelAnalyzerNetworks.update(updatedList)
                                 WifiScanDestination.WPS,
+                                WifiScanDestination.WPS_ATTEMPT_TARGETS,
                                 null -> Unit
                             }
                             val ssid = event.optString("ssid").ifBlank { "(hidden)" }

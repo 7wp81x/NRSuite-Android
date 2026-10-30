@@ -3,7 +3,10 @@ package com.swp81x.nrsuite
 import com.swp81x.nrsuite.core.defense.OuiRuleAction
 import com.swp81x.nrsuite.core.defense.matchOuiRule
 import com.swp81x.nrsuite.core.log.LogLevel
+import com.swp81x.nrsuite.core.wps.BssidLockSnapshot
 import com.swp81x.nrsuite.core.wps.WpsLockAccessPoint
+import com.swp81x.nrsuite.core.wps.WpsLockObservationSource
+import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.update
@@ -106,6 +109,36 @@ internal fun MainViewModel.handleWpsLockApEventImpl(event: JSONObject) {
     }
     if (wifiScanDestination == WifiScanDestination.WPS) {
         observeWpsLockScanTargetImpl(ap)
+    }
+    if (wifiScanDestination == WifiScanDestination.WPS_ATTEMPT_TARGETS) {
+        val target = NetworkTarget(
+            ssid = ap.ssid,
+            bssid = ap.bssid,
+            channel = ap.channel,
+            rssi = ap.rssi,
+            security = ap.security,
+            wps = true,
+            vendor = ap.vendor,
+            ouiWhitelisted = ap.ouiWhitelisted,
+            ouiBlacklisted = ap.ouiBlacklisted,
+            wpsLockState = ap.lockState,
+        )
+        _wpsAttemptDetector.update { state ->
+            state.copy(
+                scanCandidates = (state.scanCandidates.filterNot {
+                    it.bssid.equals(ap.bssid, ignoreCase = true)
+                } + target).sortedByDescending { it.rssi },
+                lockSnapshots = state.lockSnapshots + (
+                    ap.bssid to BssidLockSnapshot(
+                        state = ap.lockState,
+                        lockReported = ap.lockReported,
+                        wpsParsed = ap.wpsParsed,
+                        source = WpsLockObservationSource.WPS_LOCK_SCAN,
+                        receivedAtElapsedMs = android.os.SystemClock.elapsedRealtime(),
+                    )
+                ),
+            )
+        }
     }
 }
 

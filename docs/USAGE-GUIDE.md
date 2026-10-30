@@ -253,11 +253,14 @@ Observed attempt cards show:
 - Channel/band and RSSI
 - Current WPS stage and observed frame count
 - Session duration
+- Target WPS lock state and whether it came from a live observation or an earlier scan
 - Low / Medium / High risk and the reasons behind the score
 
 Risk is heuristic. A single WPS exchange is generally Low; repeated attempts,
-multiple source MACs, or NACK/M2D activity can raise it. The wording is
-intentionally **“WPS attempt detected”**, not “attack confirmed.”
+multiple source MACs, NACK/M2D activity, or attempts against an AP currently/live
+reporting WPS Locked can raise it. Saved scan lock state is only contextual and
+expires after 60 seconds. Stale lock data never raises risk by itself. The wording
+is intentionally **“WPS attempt detected”**, not “attack confirmed.”
 
 ### WPS Pixie Dust
 

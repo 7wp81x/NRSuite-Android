@@ -125,7 +125,8 @@ private fun MainViewModel.scanWifiInternalImpl(
         WifiScanDestination.WIFI,
         WifiScanDestination.TARGETS -> _networks.value = emptyList()
         WifiScanDestination.CHANNEL_ANALYZER -> _channelAnalyzerNetworks.value = emptyList()
-        WifiScanDestination.WPS -> Unit
+        WifiScanDestination.WPS,
+        WifiScanDestination.WPS_ATTEMPT_TARGETS -> Unit
     }
     _deauthDetectorTargets.value = emptyList()
     wifiScanDestination = destination

@@ -589,7 +589,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "tracker_detector" -> trackerScanRunning
                 "ble_profile" -> bleProfileRunning || profileScanRunning || profileScanStarting
                 "wps_lock_detector" -> wpsLockDetectorState.scanning
-                "wps_attempt_detector" -> wpsAttemptDetectorState.running || wpsAttemptDetectorState.starting
+                "wps_attempt_detector" -> wpsAttemptDetectorState.running ||
+                    wpsAttemptDetectorState.starting ||
+                    wpsAttemptDetectorState.scanningTargets
                 "mesh" -> meshActive
                 "ld2450" -> ld2450.running
                 "rfid" -> rfid.running
@@ -716,7 +718,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning ||
         rogueApRunning || clientPresenceRunning || hiddenApRunning || hiddenApStarting ||
         portalRunning || bleAdvertising || bleScanRunning || bleProfileRunning || meshActive ||
-        crackerRunning || wpsAttemptDetectorState.running || wpsAttemptDetectorState.starting
+        crackerRunning || wpsAttemptDetectorState.running || wpsAttemptDetectorState.starting ||
+        wpsAttemptDetectorState.scanningTargets
     val view = LocalView.current
     DisposableEffect(anyModuleRunning) {
         val window = (view.context as? Activity)?.window
@@ -1473,9 +1476,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 WpsAttemptDetectorScreen(
                     connected = connectionState is ConnectionState.Connected,
                     state = wpsAttemptDetectorState,
-                    scanning = scanning,
-                    networks = networks,
-                    onScanWpsTargets = viewModel::scanWifiForTargets,
+                    onScanWpsTargets = viewModel::scanWpsAttemptTargets,
                     onStart = viewModel::startWpsAttemptDetector,
                     onStop = viewModel::stopWpsAttemptDetector,
                     modifier = Modifier,
