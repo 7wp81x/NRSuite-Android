@@ -82,6 +82,8 @@ Channel                              [CH 6 · 2.4 GHz]
 - ESP32-C5 supports 2.4 GHz and 5 GHz. Other targets are normally 2.4 GHz-only.
 - If the regulatory country exposes no allowed 5 GHz channels, the 5 GHz scan
   option is disabled and WiFi Config should be used to update the country.
+- Explicit 2.4 GHz/5 GHz scan result lists are filtered on both firmware and
+  Android so cross-band APs cannot appear in the wrong filter view.
 - Selecting a target AP in a targeted workflow automatically selects its channel.
 
 ### WiFi Config
