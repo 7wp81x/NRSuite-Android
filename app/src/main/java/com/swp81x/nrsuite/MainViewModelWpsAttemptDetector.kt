@@ -6,8 +6,8 @@ import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
 import com.swp81x.nrsuite.core.wps.BssidLockSnapshot
-import com.swp81x.nrsuite.core.wps.WpsAttemptRisk
 import com.swp81x.nrsuite.core.wps.WpsAttemptSession
+import com.swp81x.nrsuite.core.wps.assessWpsAttemptRisk
 import com.swp81x.nrsuite.core.wps.WpsLockConfidence
 import com.swp81x.nrsuite.core.wps.WpsLockObservationSource
 import com.swp81x.nrsuite.core.wps.WpsLockState
@@ -222,6 +222,16 @@ internal fun MainViewModel.handleWpsAttemptSessionEventImpl(event: JSONObject) {
         rssi = event.optInt("rssi", -127),
         stage = event.optString("stage", "?"),
         messageType = event.optInt("message_type", 0),
+        m1Seen = event.optBoolean("m1_seen", false),
+        m2Seen = event.optBoolean("m2_seen", false),
+        m3Seen = event.optBoolean("m3_seen", false),
+        m4Seen = event.optBoolean("m4_seen", false),
+        m5Seen = event.optBoolean("m5_seen", false),
+        m6Seen = event.optBoolean("m6_seen", false),
+        m7Seen = event.optBoolean("m7_seen", false),
+        m8Seen = event.optBoolean("m8_seen", false),
+        m2dSeen = event.optBoolean("m2d_seen", false),
+        nackSeen = event.optBoolean("nack_seen", false),
         frames = event.optInt("frames", 0),
         firstSeenMs = event.optLong("first_seen_ms", 0L),
         lastSeenMs = event.optLong("last_seen_ms", 0L),
@@ -270,66 +280,27 @@ private fun scoreWpsAttemptRisk(
         val ageMs = snapshot?.let { (now - it.receivedAtElapsedMs).coerceAtLeast(0L) }
         val confidence = when {
             snapshot == null -> WpsLockConfidence.NONE
-            snapshot.source == WpsLockObservationSource.LIVE_MONITOR && ageMs != null && ageMs <= 30_000L ->
-                WpsLockConfidence.LIVE
-            snapshot.source == WpsLockObservationSource.WPS_LOCK_SCAN && ageMs != null && ageMs <= 60_000L ->
-                WpsLockConfidence.RECENT
+            snapshot.source == WpsLockObservationSource.LIVE_MONITOR &&
+                ageMs != null && ageMs <= 30_000L -> WpsLockConfidence.LIVE
+            snapshot.source == WpsLockObservationSource.WPS_LOCK_SCAN &&
+                ageMs != null && ageMs <= 60_000L -> WpsLockConfidence.RECENT
             else -> WpsLockConfidence.STALE
         }
-        val reasons = mutableListOf<String>()
-        var risk = WpsAttemptRisk.LOW
-
-        if (targetSessions.size >= 2) {
-            reasons += "${targetSessions.size} observed attempts against this AP"
-            risk = WpsAttemptRisk.MEDIUM
-        }
-        if (clients.size >= 2) {
-            reasons += "${clients.size} different source MACs"
-            risk = WpsAttemptRisk.MEDIUM
-        }
-        if (targetSessions.size >= 5 || clients.size >= 3) {
-            risk = WpsAttemptRisk.HIGH
-            reasons += "Sustained WPS attempt activity"
-        }
-        if (session.stage == "NACK" || session.stage == "M2D") {
-            reasons += "WPS ${session.stage} response observed"
-            if (risk == WpsAttemptRisk.LOW) risk = WpsAttemptRisk.MEDIUM
-        }
-        if (snapshot?.state == WpsLockState.LOCKED) {
-            when (confidence) {
-                WpsLockConfidence.LIVE -> {
-                    risk = WpsAttemptRisk.HIGH
-                    reasons += "Attempt observed against a live WPS-locked AP"
-                }
-                WpsLockConfidence.RECENT -> {
-                    if (risk == WpsAttemptRisk.LOW) risk = WpsAttemptRisk.MEDIUM
-                    reasons += "Target reported WPS Locked in a recent scan"
-                }
-                WpsLockConfidence.STALE -> {
-                    reasons += "Saved WPS lock state is stale and was not used for risk"
-                }
-                WpsLockConfidence.NONE -> Unit
-            }
-        }
-        if (session.bssid in lockTransitionBssids &&
-            confidence == WpsLockConfidence.LIVE
-        ) {
-            risk = WpsAttemptRisk.HIGH
-            reasons += "AP transitioned to WPS Locked during live monitoring"
-        }
-        if (session.frames <= 1) {
-            reasons += "Incomplete WPS message sequence"
-        }
-        if (reasons.isEmpty()) {
-            reasons += "Single observed WPS attempt"
-        }
+        val assessment = assessWpsAttemptRisk(
+            session = session,
+            targetSessionCount = targetSessions.size,
+            distinctClientCount = clients.size,
+            lockState = snapshot?.state ?: WpsLockState.UNKNOWN,
+            lockConfidence = confidence,
+            lockTransitioned = session.bssid in lockTransitionBssids,
+        )
         session.copy(
             lockState = snapshot?.state ?: WpsLockState.UNKNOWN,
             lockSource = snapshot?.source,
             lockAgeMs = ageMs,
             lockConfidence = confidence,
-            risk = risk,
-            riskReasons = reasons.distinct(),
+            risk = assessment.risk,
+            riskReasons = assessment.reasons,
         )
     }
 }

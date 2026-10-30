@@ -537,6 +537,14 @@ private fun WpsAttemptCard(session: WpsAttemptSession) {
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                 )
+                if (session.hasCrackableM1M3Material) {
+                    NetworkStatusBadge(text = "M1-M3", color = StatusRed)
+                    Spacer(Modifier.width(6.dp))
+                }
+                if (session.hasCredentialTransferEvidence) {
+                    NetworkStatusBadge(text = "M7-M8", color = StatusRed)
+                    Spacer(Modifier.width(6.dp))
+                }
                 NetworkStatusBadge(text = riskLabel, color = riskColor)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -571,6 +579,31 @@ private fun WpsAttemptCard(session: WpsAttemptSession) {
                 style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
                 color = NrOnSurfaceVariant,
             )
+            val observedEvidence = buildList {
+                if (session.m1Seen) add("M1")
+                if (session.m2Seen) add("M2")
+                if (session.m3Seen) add("M3")
+                if (session.m4Seen) add("M4")
+                if (session.m5Seen) add("M5")
+                if (session.m6Seen) add("M6")
+                if (session.m7Seen) add("M7")
+                if (session.m8Seen) add("M8")
+                if (session.m2dSeen) add("M2D")
+                if (session.nackSeen) add("NACK")
+            }
+            if (observedEvidence.isNotEmpty()) {
+                Text(
+                    text = "WPS evidence: ${observedEvidence.joinToString(" · ")}",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                    color = if (session.hasCrackableM1M3Material ||
+                        session.hasCredentialTransferEvidence
+                    ) {
+                        riskColor
+                    } else {
+                        NrOnSurfaceVariant
+                    },
+                )
+            }
             if (session.lockState != com.swp81x.nrsuite.core.wps.WpsLockState.UNKNOWN) {
                 val lockLabel = when (session.lockState) {
                     com.swp81x.nrsuite.core.wps.WpsLockState.LOCKED -> "LOCKED"
