@@ -291,6 +291,13 @@ private fun ConfigZone(
     onToggleTarget: (JSONObject) -> Unit,
     onClearTargets: () -> Unit,
 ) {
+    val selectedTargetChannels = networks
+        .filter { it.optString("bssid") in selectedBssids }
+        .map { normalizeWifiChannel(it.optInt("channel", 1)) }
+        .distinct()
+        .sorted()
+    val multiTargetSelected = selectedBssids.size > 1
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -389,21 +396,46 @@ private fun ConfigZone(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "Manual channel",
+                            text = if (multiTargetSelected) "Channel schedule" else "Manual channel",
                             style = MaterialTheme.typography.labelLarge,
                             modifier = Modifier.weight(1f),
                         )
-                        WifiChannelSummaryPill(channel)
+                        if (multiTargetSelected) {
+                            Text(
+                                text = if (selectedTargetChannels.isEmpty()) {
+                                    "AUTO"
+                                } else {
+                                    "AUTO · ${selectedTargetChannels.joinToString(", ")}"
+                                },
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                ),
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        } else {
+                            WifiChannelSummaryPill(channel)
+                        }
                     }
                     Spacer(Modifier.height(6.dp))
-                    WifiChannelStepper(
-                        value = channel,
-                        enabled = !running,
-                        onChannelChange = onChannelChange,
-                        allowedChannels = allowedChannels.ifEmpty {
-                            com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
-                        },
-                    )
+                    if (multiTargetSelected) {
+                        Text(
+                            text = "Manual channel is locked while multiple targets are selected. " +
+                                "Each target uses its scanned channel and the firmware or fallback " +
+                                "scheduler hops between them.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    } else {
+                        WifiChannelStepper(
+                            value = channel,
+                            enabled = !running,
+                            onChannelChange = onChannelChange,
+                            allowedChannels = allowedChannels.ifEmpty {
+                                com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
+                            },
+                        )
+                    }
                     Spacer(Modifier.height(10.dp))
                     Text("Mode", style = MaterialTheme.typography.labelLarge)
                     Spacer(Modifier.height(6.dp))
