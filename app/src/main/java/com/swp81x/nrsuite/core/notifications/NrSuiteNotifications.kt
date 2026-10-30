@@ -60,7 +60,11 @@ object NrSuiteNotifications {
         )
     }
 
-    fun buildOperationNotification(context: Context, text: String): Notification {
+    fun buildOperationNotification(
+        context: Context,
+        text: String,
+        progressPercent: Int? = null,
+    ): Notification {
         val pendingIntent = PendingIntent.getActivity(
             context,
             0,
@@ -70,7 +74,7 @@ object NrSuiteNotifications {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        return NotificationCompat.Builder(context, CHANNEL_OPERATIONS)
+        val builder = NotificationCompat.Builder(context, CHANNEL_OPERATIONS)
             .setSmallIcon(R.drawable.ic_stat_nrsuite)
             .setContentTitle("NRSuite")
             .setContentText(text)
@@ -79,7 +83,10 @@ object NrSuiteNotifications {
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+        if (progressPercent != null) {
+            builder.setProgress(100, progressPercent.coerceIn(0, 100), false)
+        }
+        return builder.build()
     }
 
     @SuppressLint("MissingPermission")

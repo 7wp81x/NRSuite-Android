@@ -658,6 +658,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         ) {
             viewModel.clearIrMessages()
         }
+        if (previousActiveModuleId in setOf("firmware", "settings") &&
+            activeModuleId !in setOf("firmware", "settings")
+        ) {
+            viewModel.onFirmwareFlasherScreenClosed()
+        }
         previousActiveModuleId = activeModuleId
     }
 
@@ -679,12 +684,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    BackHandler(enabled = firmwareFlashing) {
-        // Swallow back while a firmware flash is in progress.
-    }
-    BackHandler(
-        enabled = (activeModuleId != null || selectedCategory != null) && !firmwareFlashing,
-    ) {
+    BackHandler(enabled = activeModuleId != null || selectedCategory != null) {
+        // Firmware flashing is allowed to continue in the background.
         navigateBack()
     }
 
@@ -1160,7 +1161,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     AppTab.entries.forEach { tab ->
                         NavigationBarItem(
                             selected = selectedTab == tab,
-                            enabled = !firmwareFlashing,
                             onClick = {
                                 selectedTab = tab
                                 activeModuleId = null

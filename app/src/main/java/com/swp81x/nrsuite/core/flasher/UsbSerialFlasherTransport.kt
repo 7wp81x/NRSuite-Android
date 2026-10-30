@@ -13,16 +13,20 @@ class UsbSerialFlasherTransport(
     private val usbManager: UsbManager,
     private val driver: UsbSerialDriver,
     private val baudRate: Int = 115200,
+    private val onLog: (String) -> Unit = {},
 ) : FlasherTransport {
 
     private var connection: UsbDeviceConnection? = null
     private var port: UsbSerialPort? = null
+    private var dtrState = false
+    private var rtsState = false
 
     override val isOpen: Boolean
         get() = port?.isOpen == true
 
     override fun open() {
         if (isOpen) return
+        val startedMs = System.nanoTime() / 1_000_000L
         val usbDevice = driver.device
         if (!usbManager.hasPermission(usbDevice)) {
             throw IOException("USB permission has not been granted for ${usbDevice.deviceName}")
@@ -44,12 +48,16 @@ class UsbSerialFlasherTransport(
                 UsbSerialPort.STOPBITS_1,
                 UsbSerialPort.PARITY_NONE,
             )
-            // Make the idle control-line state explicit after configuration.
-            // CP210x opening/setParameters must not leave the auto-reset
-            // circuit holding EN or GPIO0 low.
+            // Put the auto-reset circuit into esptool's idle state before any
+            // reset sequence. Raise IO0 first, then EN, so opening the port
+            // cannot leave the chip held in reset or download mode.
             openedPort.setDTR(false)
             openedPort.setRTS(false)
-            runCatching { openedPort.purgeHwBuffers(true, false) }
+            dtrState = false
+            rtsState = false
+            // Purge both directions. A previous app/session may have left a
+            // partial SLIP response or stale bytes queued in either endpoint.
+            runCatching { openedPort.purgeHwBuffers(true, true) }
         } catch (t: Throwable) {
             runCatching { openedPort.close() }
             runCatching { openedConnection.close() }
@@ -58,6 +66,8 @@ class UsbSerialFlasherTransport(
 
         connection = openedConnection
         port = openedPort
+        val elapsedMs = (System.nanoTime() / 1_000_000L) - startedMs
+        onLog("USB serial port open/config completed in ${elapsedMs} ms at $baudRate baud; DTR=false RTS=false.")
     }
 
     override fun read(buffer: ByteArray, timeoutMs: Int): Int {
@@ -74,18 +84,33 @@ class UsbSerialFlasherTransport(
         runCatching { port?.purgeHwBuffers(true, false) }
     }
 
+    override fun flushOutput() {
+        runCatching { port?.purgeHwBuffers(false, true) }
+    }
+
     override fun setDtr(value: Boolean) {
         runCatching { port?.setDTR(value) }
+        dtrState = value
+        onLog("Reset line DTR=${value} (RTS=$rtsState).")
     }
 
     override fun setRts(value: Boolean) {
         runCatching { port?.setRTS(value) }
+        rtsState = value
+        onLog("Reset line RTS=${value} (DTR=$dtrState).")
     }
 
     override fun close() {
+        // Release both control lines before closing. This prevents a bridge
+        // driver's close-time line transition from accidentally resetting the
+        // chip or leaving BOOT asserted.
+        runCatching { port?.setDTR(false) }
+        runCatching { port?.setRTS(false) }
         runCatching { port?.close() }
         runCatching { connection?.close() }
         port = null
         connection = null
+        dtrState = false
+        rtsState = false
     }
 }

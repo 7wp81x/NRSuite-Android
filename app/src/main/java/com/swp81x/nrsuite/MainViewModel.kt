@@ -289,6 +289,9 @@ class MainViewModel(internal val app: Application) {
     internal val _firmwareFlashStatus = MutableStateFlow<String?>(null)
     val firmwareFlashStatus: StateFlow<String?> = _firmwareFlashStatus.asStateFlow()
 
+    internal var lastFirmwareNotificationUpdateMs = 0L
+    internal var lastFirmwareNotificationProgress = -1
+
     internal val _firmwareTargetDevice = MutableStateFlow<UsbSerialDevice?>(null)
     val firmwareTargetDevice: StateFlow<UsbSerialDevice?> = _firmwareTargetDevice.asStateFlow()
 
@@ -1568,6 +1571,7 @@ class MainViewModel(internal val app: Application) {
     fun flashManualFirmwareNow() = this.flashManualFirmwareNowImpl()
     fun flashManualFirmwareWithReset() = this.flashManualFirmwareWithResetImpl()
     fun disarmManualFirmwareRecovery() = this.disarmManualFirmwareRecoveryImpl()
+    fun onFirmwareFlasherScreenClosed() = this.onFirmwareFlasherScreenClosedImpl()
     fun clearUpdateDownloads() = this.clearUpdateDownloadsImpl()
 
     fun clearBadUsbPayload() = this.clearBadUsbPayloadImpl()
@@ -2115,6 +2119,8 @@ class MainViewModel(internal val app: Application) {
     internal fun updateForegroundService() {
         val context = app
         val activeText = when {
+            _firmwareFlashing.value ->
+                "Firmware flash active · ${_firmwareFlashProgress.value.coerceIn(0, 100)}%"
             autoHandshake.uiState.value.running &&
                 autoHandshake.uiState.value.phase != AutoHandshakePhase.STOPPING -> "NRuGochi active"
             _pinBruteforce.value.running -> "PIN bruteforce active"
@@ -2149,6 +2155,12 @@ class MainViewModel(internal val app: Application) {
         if (activeText != null) {
             intent.action = NrSuiteForegroundService.ACTION_START
             intent.putExtra(NrSuiteForegroundService.EXTRA_TEXT, activeText)
+            if (_firmwareFlashing.value) {
+                intent.putExtra(
+                    NrSuiteForegroundService.EXTRA_PROGRESS,
+                    _firmwareFlashProgress.value.coerceIn(0, 100),
+                )
+            }
             runCatching {
                 ContextCompat.startForegroundService(context, intent)
             }.onFailure { error ->

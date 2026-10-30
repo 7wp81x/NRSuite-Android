@@ -19,6 +19,9 @@ interface FlasherTransport {
 
     fun flushInput()
 
+    /** Discard any pending host-to-device bytes. */
+    fun flushOutput()
+
     fun setDtr(value: Boolean)
 
     fun setRts(value: Boolean)

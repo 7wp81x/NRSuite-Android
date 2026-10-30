@@ -138,6 +138,7 @@ import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
 import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
+import com.swp81x.nrsuite.core.update.SUPPORTED_FIRMWARE_CHIPS
 import com.swp81x.nrsuite.core.update.firmwareChipFromAssetName
 import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
@@ -323,6 +324,32 @@ internal fun SettingsScreen(
         border = BorderStroke(0.5.dp, NrOutline),
         ) {
             Column(Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Firmware flasher",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    val flashFailed = firmwareFlashStatus?.startsWith("Flash failed") == true
+                    StatusIndicator(
+                        label = when {
+                            firmwareFlashing -> "Running"
+                            flashFailed -> "Failed"
+                            firmwareFlashProgress >= 100 -> "Complete"
+                            else -> "Idle"
+                        },
+                        color = when {
+                            firmwareFlashing || firmwareFlashProgress >= 100 -> StatusGreen
+                            flashFailed -> StatusRed
+                            else -> StatusNeutral
+                        },
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
 
                 Text(
                     text = "Current version: ${currentFirmware ?: "not connected"}",
@@ -659,9 +686,10 @@ internal fun SettingsScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Spacer(Modifier.height(6.dp))
-                    if (localFirmwareChip != null) {
+                    val detectedChip = localFirmwareChip
+                    if (detectedChip != null) {
                         Text(
-                            text = "Detected target chip: $localFirmwareChip",
+                            text = "Detected target chip: $detectedChip",
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                             color = StatusGreen,
                         )
@@ -671,21 +699,27 @@ internal fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = StatusAmber,
                         )
-                        Spacer(Modifier.height(4.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            listOf("ESP32", "ESP32-C5", "ESP32-S2", "ESP32-S3", "ESP32-C3").forEach { option ->
-                                NrFilterChip(
-                                    selected = selectedTargetChip == option,
-                                    onClick = { selectedTargetChip = option },
-                                    enabled = !firmwareFlashing,
-                                    label = option,
-                                )
-                            }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Confirm firmware target",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SUPPORTED_FIRMWARE_CHIPS.forEach { option ->
+                            NrFilterChip(
+                                selected = selectedTargetChip == option,
+                                onClick = { selectedTargetChip = option },
+                                enabled = !firmwareFlashing,
+                                label = option,
+                            )
                         }
                     }
                     Spacer(Modifier.height(6.dp))
@@ -796,6 +830,15 @@ internal fun SettingsScreen(
                             NrOnSurfaceVariant
                         },
                     )
+                    if (firmwareFlashing) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Flashing continues in the background. " +
+                                "Follow progress in the NRSuite notification.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
                 }
 
                 if (firmwareManualRecovery) {

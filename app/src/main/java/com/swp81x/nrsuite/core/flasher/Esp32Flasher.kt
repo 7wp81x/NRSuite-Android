@@ -45,6 +45,7 @@ class Esp32Flasher(
         firmware: ByteArray,
         offset: Int = 0,
         resetMode: ResetMode = ResetMode.CLASSIC,
+        fallbackResetMode: ResetMode? = null,
         eraseBeforeFlash: Boolean = false,
         onStage: (String) -> Unit = {},
         onProgress: (Int) -> Unit = {},
@@ -62,7 +63,7 @@ class Esp32Flasher(
             resetInput()
             log("Serial input flushed; connecting to ROM bootloader (mode=$resetMode).")
 
-            connectToRomBootloader(resetMode)
+            connectToRomBootloader(resetMode, fallbackResetMode)
             Thread.sleep(POST_SYNC_SETTLE_MS)
 
             onStage("Configuring flash access...")
@@ -112,92 +113,125 @@ class Esp32Flasher(
         }
     }
 
-    private fun connectToRomBootloader(mode: ResetMode) {
+    private data class ResetAttempt(
+        val description: String,
+        val enterReset: () -> Unit,
+    )
+
+    private fun connectToRomBootloader(mode: ResetMode, fallbackResetMode: ResetMode?) {
+        var effectiveMode = mode
         if (mode == ResetMode.NONE) {
             log("Manual bootloader mode: skipping DTR/RTS reset and syncing as-is.")
-            sync()
-            return
+            try {
+                sync(attempts = MANUAL_SYNC_ATTEMPTS)
+                return
+            } catch (t: Throwable) {
+                if (fallbackResetMode == null || fallbackResetMode == ResetMode.NONE) throw t
+                log(
+                    "Manual sync failed (${t.message ?: t.javaClass.simpleName}); " +
+                        "trying automatic $fallbackResetMode reset fallback.",
+                )
+                effectiveMode = fallbackResetMode
+            }
+        }
+
+        // Match esptool's connect strategy: try seven reset/connect attempts,
+        // cycling through the short and long classic reset delays. The long
+        // release delay is esptool's extra-delay fallback for USB-UART bridges
+        // whose auto-reset circuit needs more time after EN is released.
+        val resetAttempts = when (effectiveMode) {
+            ResetMode.CLASSIC -> listOf(
+                ResetAttempt("classic reset, esptool 50 ms release delay") {
+                    classicReset(Esp32ResetSequences.ESPTOOL_CLASSIC_RELEASE_DELAY_MS)
+                },
+                ResetAttempt("classic reset, esptool extended 550 ms release delay") {
+                    classicReset(Esp32ResetSequences.ESPTOOL_CLASSIC_EXTRA_RELEASE_DELAY_MS)
+                },
+            )
+            ResetMode.USB_JTAG -> listOf(
+                ResetAttempt("USB-JTAG-Serial reset, esptool timing") {
+                    usbJtagSerialReset()
+                },
+            )
+            ResetMode.NONE -> emptyList()
+        }
+        if (resetAttempts.isEmpty()) {
+            throw IOException("No automatic reset strategy is available.")
         }
 
         var lastError: Throwable? = null
-        repeat(BOOTLOADER_RESET_ATTEMPTS) { attempt ->
+        repeat(BOOTLOADER_CONNECT_ATTEMPTS) { attempt ->
+            val strategy = resetAttempts[attempt % resetAttempts.size]
             resetInput()
-            log("Bootloader reset attempt ${attempt + 1}/$BOOTLOADER_RESET_ATTEMPTS (mode=$mode).")
-            enterBootloader(mode)
+            log(
+                "Bootloader connection attempt ${attempt + 1}/$BOOTLOADER_CONNECT_ATTEMPTS " +
+                    "(${strategy.description}).",
+            )
+            strategy.enterReset()
+            // Give the ROM time to emit its boot log and settle the USB
+            // endpoint before the first SYNC packet.
+            Thread.sleep(POST_RESET_DELAY_MS)
             resetInput()
 
             try {
-                sync()
+                sync(attempts = SYNC_ATTEMPTS_PER_RESET)
                 return
             } catch (t: Throwable) {
                 lastError = t
-                log("Sync after reset attempt ${attempt + 1} failed: ${t.message ?: t.javaClass.simpleName}")
+                log(
+                    "Connection attempt ${attempt + 1} failed after reset: " +
+                        (t.message ?: t.javaClass.simpleName),
+                )
                 Thread.sleep(RESET_RETRY_DELAY_MS)
             }
         }
 
         throw IOException(
-            "Could not enter the ROM bootloader after $BOOTLOADER_RESET_ATTEMPTS reset attempts. " +
+            "Could not enter the ROM bootloader after $BOOTLOADER_CONNECT_ATTEMPTS reset attempts. " +
+                "Hold BOOT, tap RESET, then retry or use manual bootloader recovery. " +
                 (lastError?.message ?: "No response from the device."),
         )
     }
 
-    private fun enterBootloader(mode: ResetMode) {
-        when (mode) {
-            ResetMode.CLASSIC -> classicReset()
-            ResetMode.USB_JTAG -> usbJtagSerialReset()
-            ResetMode.NONE -> Unit
-        }
-        // Give the ROM time to finish its reset/boot log before looking for
-        // the SYNC response. Keep line states idle while we wait.
-        Thread.sleep(POST_RESET_DELAY_MS)
-    }
-
-    private fun classicReset() {
-        // Matches esptool.py's ClassicReset sequence, with explicit idle
-        // line states at both ends so a failed attempt cannot leave the board
-        // held in reset or bootloader mode.
-        transport.setDtr(false) // IO0 = HIGH
-        transport.setRts(false)
-        Thread.sleep(20)
-
-        transport.setDtr(false) // IO0 = HIGH
-        transport.setRts(true)  // EN = LOW, chip in reset
-        Thread.sleep(100)
-
-        transport.setDtr(true)  // IO0 = LOW
-        transport.setRts(false) // EN = HIGH, chip out of reset
-        Thread.sleep(50)
-
-        transport.setDtr(false) // IO0 = HIGH, done
-        transport.setRts(false)
+    private fun classicReset(releaseDelayMs: Long) {
+        applyResetSequence(
+            name = "classic DTR/RTS",
+            steps = Esp32ResetSequences.classic(releaseDelayMs),
+        )
     }
 
     private fun usbJtagSerialReset() {
-        transport.setRts(false)
-        transport.setDtr(false)
-        Thread.sleep(100)
-        transport.setDtr(true)
-        transport.setRts(false)
-        Thread.sleep(100)
-        transport.setRts(true)
-        transport.setDtr(false)
-        transport.setRts(true)
-        Thread.sleep(100)
-        transport.setDtr(false)
-        transport.setRts(false)
+        applyResetSequence(
+            name = "USB-JTAG-Serial DTR/RTS",
+            steps = Esp32ResetSequences.usbJtagSerial(),
+        )
+    }
+
+    private fun applyResetSequence(name: String, steps: List<ResetControlStep>) {
+        log("Applying $name reset sequence (${steps.size} line operations)...")
+        for (step in steps) {
+            step.dtr?.let { transport.setDtr(it) }
+            step.rts?.let { transport.setRts(it) }
+            if (step.delayAfterMs > 0) {
+                Thread.sleep(step.delayAfterMs)
+            }
+        }
     }
 
     private fun resetInput() {
         runCatching { transport.flushInput() }
+        // esptool flushes both serial directions before each sync/command.
+        // A stale host-to-device byte would otherwise corrupt the next SLIP
+        // frame and make the ROM silently ignore it.
+        runCatching { transport.flushOutput() }
         decoder.reset()
         pendingResponses.clear()
     }
 
-    private fun sync() {
+    private fun sync(attempts: Int = SYNC_ATTEMPTS) {
         var lastError: Throwable? = null
-        repeat(SYNC_ATTEMPTS) { attempt ->
-            log("ROM SYNC attempt ${attempt + 1}/$SYNC_ATTEMPTS...")
+        repeat(attempts) { attempt ->
+            log("ROM SYNC attempt ${attempt + 1}/$attempts...")
             try {
                 val response = sendCommand(
                     op = OP_SYNC,
@@ -210,11 +244,13 @@ class Esp32Flasher(
                         .format(response.value, response.data.size),
                 )
 
-                // ESP ROM bootloaders can emit additional SYNC replies after
-                // the first ACK. Drain and discard them before issuing the
-                // first flash command so they cannot be mistaken for a later
-                // command response.
-                Thread.sleep(SYNC_DRAIN_MS)
+                // ESP ROM bootloaders can emit a burst of additional SYNC
+                // replies after the first ACK. esptool reads up to seven of
+                // them before issuing the next command. On ESP32-C5 a delayed
+                // extra reply can otherwise arrive while SPI_ATTACH is in
+                // flight, so drain the burst explicitly instead of relying on
+                // a fixed sleep followed by a flush.
+                drainExtraSyncResponses()
                 resetInput()
                 return
             } catch (t: Throwable) {
@@ -229,9 +265,40 @@ class Esp32Flasher(
         )
     }
 
+    /**
+     * Consume the extra ROM SYNC replies that follow a successful SYNC.
+     *
+     * esptool's sync path reads up to seven additional packets before issuing
+     * the next ROM command. The C5 ROM is especially sensitive here: a later
+     * SYNC reply can arrive after the first SPI_ATTACH write and leave the
+     * command unanswered. Use a bounded total drain window so normal boards
+     * do not pay a long delay when they only send one reply.
+     */
+    private fun drainExtraSyncResponses() {
+        val deadline = nowMs() + SYNC_DRAIN_TIMEOUT_MS
+        var drained = 0
+        while (drained < MAX_EXTRA_SYNC_RESPONSES && nowMs() < deadline) {
+            val remaining = (deadline - nowMs()).toInt().coerceAtLeast(1)
+            val response = readResponse(remaining) ?: break
+            if (response.op == OP_SYNC) {
+                drained++
+                log(
+                    "Drained extra ROM SYNC reply $drained/$MAX_EXTRA_SYNC_RESPONSES " +
+                        "(data=${response.data.size} bytes).",
+                )
+            } else {
+                log(
+                    "Discarding non-SYNC ROM response op=0x%02x during SYNC drain."
+                        .format(response.op),
+                )
+            }
+        }
+        log("ROM SYNC drain complete after $drained extra reply/replies.")
+    }
+
     private fun flashSpiAttach() {
         var lastError: Throwable? = null
-        repeat(SPI_ATTACH_ATTEMPTS) { attempt ->
+        for (attempt in 0 until SPI_ATTACH_ATTEMPTS) {
             log(
                 "SPI attach attempt ${attempt + 1}/$SPI_ATTACH_ATTEMPTS " +
                     "(timeout=${SPI_ATTACH_TIMEOUT_MS} ms)...",
@@ -249,7 +316,22 @@ class Esp32Flasher(
             } catch (t: Throwable) {
                 lastError = t
                 log("SPI attach attempt ${attempt + 1} failed: ${t.message ?: t.javaClass.simpleName}")
+                if (attempt + 1 >= SPI_ATTACH_ATTEMPTS) break
                 Thread.sleep(SPI_ATTACH_RETRY_DELAY_MS)
+
+                // A lost SPI_ATTACH reply can leave the ROM and host out of
+                // step. Re-run SYNC before retrying instead of blindly sending
+                // another 0x0D packet into a link that may already be stale.
+                log("Resynchronizing before SPI attach retry...")
+                try {
+                    sync(attempts = SYNC_ATTEMPTS_AFTER_COMMAND_TIMEOUT)
+                    Thread.sleep(POST_SYNC_SETTLE_MS)
+                } catch (syncError: Throwable) {
+                    log(
+                        "Re-sync before SPI attach retry failed: " +
+                            (syncError.message ?: syncError.javaClass.simpleName),
+                    )
+                }
             }
         }
         throw IOException(
@@ -531,18 +613,26 @@ class Esp32Flasher(
         private const val READ_BUFFER_SIZE = 4096
         private const val MAX_READ_TIMEOUT_MS = 250
 
-        private const val PORT_SETTLE_MS = 250L
-        private const val POST_RESET_DELAY_MS = 200L
-        private const val POST_SYNC_SETTLE_MS = 50L
-        private const val BOOTLOADER_RESET_ATTEMPTS = 3
-        private const val RESET_RETRY_DELAY_MS = 200L
+        // Android's USB stack and the CP210x/CH34x bridge need more settle
+        // time after enumeration than a desktop serial port. Keep the actual
+        // reset sequence timings aligned with esptool; this delay only covers
+        // opening/configuration of the already-enumerated USB endpoint.
+        private const val PORT_SETTLE_MS = 750L
+        private const val POST_RESET_DELAY_MS = 120L
+        private const val POST_SYNC_SETTLE_MS = 150L
+        private const val BOOTLOADER_CONNECT_ATTEMPTS = 7
+        private const val MANUAL_SYNC_ATTEMPTS = 6
         private const val SYNC_ATTEMPTS = 5
-        private const val SYNC_TIMEOUT_MS = 2_000
-        private const val SYNC_RETRY_DELAY_MS = 100L
-        private const val SYNC_DRAIN_MS = 100L
-        private const val SPI_ATTACH_ATTEMPTS = 2
-        private const val SPI_ATTACH_TIMEOUT_MS = 15_000
-        private const val SPI_ATTACH_RETRY_DELAY_MS = 150L
+        private const val SYNC_ATTEMPTS_PER_RESET = 2
+        private const val SYNC_ATTEMPTS_AFTER_COMMAND_TIMEOUT = 2
+        private const val RESET_RETRY_DELAY_MS = 300L
+        private const val SYNC_TIMEOUT_MS = 1_200
+        private const val SYNC_RETRY_DELAY_MS = 80L
+        private const val SYNC_DRAIN_TIMEOUT_MS = 1_000L
+        private const val MAX_EXTRA_SYNC_RESPONSES = 7
+        private const val SPI_ATTACH_ATTEMPTS = 3
+        private const val SPI_ATTACH_TIMEOUT_MS = 8_000
+        private const val SPI_ATTACH_RETRY_DELAY_MS = 250L
 
         private val SYNC_PAYLOAD = byteArrayOf(0x07, 0x07, 0x12, 0x20) + ByteArray(32) { 0x55 }
     }
