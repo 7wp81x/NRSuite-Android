@@ -583,6 +583,7 @@ class MainViewModel(internal val app: Application) {
     internal var beaconStatusJob: Job? = null
     internal var wpsTargetScanJob: Job? = null
     internal var deauthMultiJob: Job? = null
+    internal var deauthNativeMultiActive = false
 
     internal val _deauthRunning = MutableStateFlow(false)
     val deauthRunning: StateFlow<Boolean> = _deauthRunning.asStateFlow()
@@ -2408,10 +2409,15 @@ class MainViewModel(internal val app: Application) {
                             val elapsedMs = event.optLong("elapsed_ms", _deauthElapsedMs.value)
                             val pps = event.optDouble("pps", _deauthPps.value)
                             val status = event.optString("status", "finished")
+                            val mode = event.optString("mode", "")
+                            val eventChannel = event.optInt("channel", _deauthChannel.value)
                             _deauthSent.value = sent
                             _deauthFailed.value = failed
                             _deauthElapsedMs.value = elapsedMs
                             _deauthPps.value = pps
+                            if (eventChannel > 0) {
+                                _deauthChannel.value = eventChannel
+                            }
                             if (failed > 0) {
                                 appendLog("Deauth stats: $sent sent, $failed failed, ${"%.1f".format(pps)} pps.")
                             } else {
@@ -2421,6 +2427,9 @@ class MainViewModel(internal val app: Application) {
                                 "Deauth stats: $sent sent, $failed failed"
                             )
                             if (status != "running") {
+                                if (mode == "multi") {
+                                    deauthNativeMultiActive = false
+                                }
                                 _deauthRunning.value = false
                                 updateForegroundService()
                             }

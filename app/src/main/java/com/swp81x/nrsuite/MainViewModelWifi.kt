@@ -13,7 +13,9 @@ import com.swp81x.nrsuite.core.wifi.WIFI_5G_CHANNELS
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wifi.deauthMultiCommandTimeoutMs
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
+import com.swp81x.nrsuite.core.wifi.shouldUseNativeDeauthMulti
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -21,6 +23,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.update
+import org.json.JSONArray
 import org.json.JSONObject
 
 private const val PREF_BEACON_LISTS = "beacon_lists"
@@ -281,6 +284,7 @@ internal fun MainViewModel.startDeauthImpl(
         "${cleanTargets.size} targets"
     }
     _deauthChannel.value = if (cleanTargets.size == 1) cleanTargets.first().channel else 0
+    deauthNativeMultiActive = false
     _deauthRunning.value = true
     updateForegroundService()
 
@@ -343,6 +347,24 @@ internal fun MainViewModel.startDeauthImpl(
         }
         return
     }
+
+    val connected = connectionState.value as? ConnectionState.Connected
+    if (shouldUseNativeDeauthMulti(connected?.features.orEmpty(), cleanTargets.size)) {
+        startNativeDeauthMultiImpl(
+            activeSession = activeSession,
+            targets = cleanTargets,
+            client = cleanClient,
+            count = safeCount,
+            intervalMs = safeInterval,
+            loopMode = loopMode,
+        )
+        return
+    }
+
+    appendLog(
+        "DEAUTH_MULTI is unavailable on this firmware; using app-side " +
+            "repeated DEAUTH_BURST fallback."
+    )
 
     deauthMultiJob?.cancel()
     deauthMultiJob = scope.launch {
@@ -416,6 +438,27 @@ internal fun MainViewModel.stopDeauthImpl() {
     val activeSession = session
     _deauthRunning.value = false
     updateForegroundService()
+
+    if (deauthNativeMultiActive) {
+        deauthNativeMultiActive = false
+        deauthMultiJob?.cancel()
+        deauthMultiJob = null
+        scope.launch {
+            val response = activeSession?.sendCommand("DEAUTH_STOP", timeoutMs = 8_000)
+            if (response?.optBoolean("ok") == true) {
+                val sent = response.optInt("sent_frames", _deauthSent.value)
+                val failed = response.optInt("failed_frames", _deauthFailed.value)
+                _deauthSent.value = sent
+                _deauthFailed.value = failed
+                appendLog("Firmware-native multi-target deauth stopped: $sent sent, $failed failed.")
+                addHistory("deauth", "Firmware-native multi-target deauth stopped", HistoryLevel.INFO)
+            } else {
+                appendLog("Native multi-target deauth stop request sent without confirmation.")
+            }
+        }
+        return
+    }
+
     val multiJob = deauthMultiJob
     if (multiJob != null) {
         deauthMultiJob = null
@@ -438,6 +481,113 @@ internal fun MainViewModel.stopDeauthImpl() {
             addHistory("deauth", "Deauth loop stopped", HistoryLevel.INFO)
         } else {
             appendLog("Deauth stop request sent without confirmation.")
+        }
+    }
+}
+
+private fun MainViewModel.startNativeDeauthMultiImpl(
+    activeSession: NrSession,
+    targets: List<NetworkTarget>,
+    client: String,
+    count: Int,
+    intervalMs: Int,
+    loopMode: Boolean,
+) {
+    deauthMultiJob?.cancel()
+    deauthNativeMultiActive = true
+    deauthMultiJob = scope.launch {
+        val startedAt = System.currentTimeMillis()
+        val targetsJson = JSONArray().apply {
+            targets.forEach { target ->
+                put(
+                    JSONObject().apply {
+                        put("bssid", target.bssid)
+                        put("channel", target.channel)
+                    },
+                )
+            }
+        }
+        val args = JSONObject().apply {
+            put("targets", targetsJson)
+            put("client", client)
+            put("mode", if (loopMode) "loop" else "burst")
+            put("count", count)
+            put("interval_ms", intervalMs)
+            put("reason", 7)
+            if (loopMode) put("duration", 0)
+        }
+        appendLog(
+            "Starting firmware-native multi-target deauth " +
+                "${if (loopMode) "loop" else "burst"} across ${targets.size} targets " +
+                "(count=$count/target, interval=${intervalMs}ms)."
+        )
+        try {
+            val response = activeSession.sendCommand(
+                "DEAUTH_MULTI",
+                args,
+                timeoutMs = deauthMultiCommandTimeoutMs(
+                    targetCount = targets.size,
+                    countPerTarget = count,
+                    intervalMs = intervalMs,
+                    loopMode = loopMode,
+                ),
+            )
+            if (response?.optBoolean("ok") == true) {
+                val sent = response.optInt("sent_frames", 0)
+                val failed = response.optInt("failed_frames", 0)
+                val elapsed = response.optLong(
+                    "elapsed_ms",
+                    System.currentTimeMillis() - startedAt,
+                )
+                _deauthSent.value = sent
+                _deauthFailed.value = failed
+                _deauthElapsedMs.value = elapsed
+                _deauthPps.value = response.optDouble(
+                    "pps",
+                    if (elapsed > 0) sent * 1000.0 / elapsed else 0.0,
+                )
+                if (loopMode && response.optBoolean("active", true)) {
+                    appendLog(
+                        "Firmware-native multi-target loop started " +
+                            "(${targets.size} targets, $count frame(s)/target per cycle)."
+                    )
+                    addHistory(
+                        "deauth",
+                        "Firmware-native multi-target deauth loop started",
+                        HistoryLevel.SUCCESS,
+                    )
+                } else {
+                    deauthNativeMultiActive = false
+                    _deauthRunning.value = false
+                    updateForegroundService()
+                    appendLog(
+                        "Firmware-native multi-target burst completed: " +
+                            "$sent sent, $failed failed."
+                    )
+                    addHistory(
+                        "deauth",
+                        "Firmware-native multi-target deauth burst completed",
+                        HistoryLevel.SUCCESS,
+                    )
+                }
+            } else {
+                deauthNativeMultiActive = false
+                _deauthRunning.value = false
+                updateForegroundService()
+                val message = "DEAUTH_MULTI failed: " +
+                    (response?.optString("msg") ?: "timeout")
+                appendLog(message, level = LogLevel.ERROR)
+                _toastMessage.value = message
+            }
+        } catch (t: Throwable) {
+            deauthNativeMultiActive = false
+            _deauthRunning.value = false
+            updateForegroundService()
+            val message = "DEAUTH_MULTI failed: ${t.message ?: t.javaClass.simpleName}"
+            appendLog(message, level = LogLevel.ERROR)
+            _toastMessage.value = message
+        } finally {
+            deauthMultiJob = null
         }
     }
 }
