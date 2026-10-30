@@ -429,20 +429,23 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             (state.features.isEmpty() || "badusb" in state.features)
     }
     val showWifiBandSelector = connectedChip == "ESP32-C5"
-    val wifi5Available = showWifiBandSelector && "wifi_5ghz" in deviceFeatures
+    val wifi5Supported = showWifiBandSelector && "wifi_5ghz" in deviceFeatures
+    val reported5gChannels = connected?.allowed5gChannels.orEmpty()
+    val wifi5Available = wifi5Supported && reported5gChannels.isNotEmpty()
     val wifi5UnavailableMessage = when {
         connectedChip == null -> "Connect an ESP32-C5 to use 5 GHz."
         connectedChip != "ESP32-C5" -> "5 GHz requires ESP32-C5."
         "wifi_5ghz" !in deviceFeatures -> "5 GHz is not enabled in this firmware build."
+        reported5gChannels.isEmpty() ->
+            "No 5 GHz channels are allowed by the current Wi-Fi regulatory country. " +
+                "Update the country in WiFi Config."
         else -> ""
     }
     val allowed2gChannels = connected?.allowed2gChannels.orEmpty().ifEmpty {
         com.swp81x.nrsuite.core.wifi.WIFI_2G_CHANNELS
     }
     val allowed5gChannels = if (wifi5Available) {
-        connected?.allowed5gChannels.orEmpty().ifEmpty {
-            com.swp81x.nrsuite.core.wifi.WIFI_5G_CHANNELS
-        }
+        reported5gChannels
     } else {
         emptyList()
     }
