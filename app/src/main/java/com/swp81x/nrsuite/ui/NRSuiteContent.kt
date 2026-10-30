@@ -489,6 +489,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         meshActive,
         blePinBruteforce.running,
         rfid.running,
+        wpsLockDetectorState.scanning,
+        wpsAttemptDetectorState.starting,
+        wpsAttemptDetectorState.running,
+        wpsAttemptDetectorState.sessions.size,
     ) {
         modules.map { module ->
         val runsWithoutDevice = module.id == "ducky" ||
@@ -511,6 +515,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "nrugochi" -> "nrugochi"
             "client_presence" -> "client_detect"
             "hidden_ap" -> "hidden_ap"
+            "wps_lock_detector" -> "wps_lock_detect"
+            "wps_attempt_detector" -> "wps_attempt_detect"
             "ble_scanner" -> "ble_scan"
             "tracker_detector" -> "ble_scan"
             "ble_profile" -> "ble_profile"
