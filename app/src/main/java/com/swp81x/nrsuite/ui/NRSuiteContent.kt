@@ -317,21 +317,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val evilTwinPasswords by viewModel.evilTwinPasswords.collectAsState()
     val evilTwinResults by viewModel.evilTwinResults.collectAsState()
     val credentialSessions by viewModel.credentialSessions.collectAsState()
-    val crackerSelectedSession by viewModel.crackerSelectedSession.collectAsState()
-    val crackerWordlistName by viewModel.crackerWordlistName.collectAsState()
-    val crackerCustomPcapName by viewModel.crackerCustomPcapName.collectAsState()
-    val crackerCustomPcapValid by viewModel.crackerCustomPcapValid.collectAsState()
-    val crackerCustomPcapValidating by viewModel.crackerCustomPcapValidating.collectAsState()
-    val crackerCustomPcapMessage by viewModel.crackerCustomPcapMessage.collectAsState()
-    val crackerCustomSsidOptions by viewModel.crackerCustomSsidOptions.collectAsState()
-    val crackerCustomSsidSelected by viewModel.crackerCustomSsidSelected.collectAsState()
-    val crackerCustomSsidManual by viewModel.crackerCustomSsidManual.collectAsState()
-    val crackerCustomSsid by viewModel.crackerCustomSsid.collectAsState()
     val crackerRunning by viewModel.crackerRunning.collectAsState()
-    val crackerTested by viewModel.crackerTested.collectAsState()
-    val crackerSpeed by viewModel.crackerSpeed.collectAsState()
-    val crackerResult by viewModel.crackerResult.collectAsState()
-    val crackerStatus by viewModel.crackerStatus.collectAsState()
     val storageFiles by viewModel.storageFiles.collectAsState()
     val storageTotal by viewModel.storageTotal.collectAsState()
     val storageUsed by viewModel.storageUsed.collectAsState()
@@ -813,33 +799,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    val crackerWordlistPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-    ) { uri: Uri? ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
-            }
-            viewModel.setCrackerWordlist(uri, null)
-        }
-    }
-
-    val crackerPcapPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-    ) { uri: Uri? ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
-            }
-            viewModel.setCrackerCustomPcap(uri, null)
-        }
-    }
 
     val badUsbPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -1094,6 +1053,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         activeModuleId == "wifi_config" -> "WiFi config"
         activeModuleId == "firmware" -> "Flasher"
         activeModuleId == "wpa_cracker" -> "WPA Cracker"
+        activeModuleId == "pcap22000" -> "PCAP → .22000"
         activeModuleId == "rfid_config" -> "RFID config"
         activeModuleId == "sensor_config" -> "Sensor config"
         activeModuleId == "devices" -> "Devices"
@@ -1746,41 +1706,15 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
 
             activeModuleId == "wpa_cracker" -> {
-                WpaCrackerScreen(
-                    sessions = credentialSessions,
-                    selectedSession = crackerSelectedSession,
-                    customPcapName = crackerCustomPcapName,
-                    customPcapValid = crackerCustomPcapValid,
-                    customPcapValidating = crackerCustomPcapValidating,
-                    customPcapMessage = crackerCustomPcapMessage,
-                    customSsidOptions = crackerCustomSsidOptions,
-                    customSsidSelected = crackerCustomSsidSelected,
-                    customSsidManualEnabled = crackerCustomSsidManual,
-                    customSsid = crackerCustomSsid,
-                    wordlistName = crackerWordlistName,
-                    running = crackerRunning,
-                    tested = crackerTested,
-                    speed = crackerSpeed,
-                    result = crackerResult,
-                    status = crackerStatus,
-                    onSelectSession = viewModel::selectCrackerSession,
-                    onChooseCustomPcap = {
-                        crackerPcapPicker.launch(
-                            arrayOf(
-                                "application/vnd.tcpdump.pcap",
-                                "application/octet-stream",
-                                "*/*",
-                            ),
-                        )
-                    },
-                    onClearCustomPcap = viewModel::clearCrackerCustomPcap,
-                    onSelectCustomSsid = viewModel::selectCrackerCustomSsid,
-                    onUseManualCustomSsid = viewModel::useManualCrackerSsid,
-                    onCustomSsidChange = viewModel::setCrackerCustomSsid,
-                    onChooseWordlist = { crackerWordlistPicker.launch(arrayOf("text/plain", "*/*")) },
-                    onClearWordlist = viewModel::clearCrackerWordlist,
-                    onStart = viewModel::startCracker,
-                    onStop = viewModel::stopCracker,
+                WpaCrackerRoute(
+                    viewModel = viewModel,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "pcap22000" -> {
+                Pcap22000Route(
+                    viewModel = viewModel,
                     modifier = Modifier,
                 )
             }

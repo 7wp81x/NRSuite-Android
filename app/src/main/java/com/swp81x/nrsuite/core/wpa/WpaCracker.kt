@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedSendChannelException
@@ -28,13 +29,15 @@ object WpaCracker {
         handshake: WpaHandshake,
         ssid: String,
         wordlist: BufferedReader,
+        initialTested: Long = 0L,
         shouldStop: () -> Boolean,
+        shouldPause: () -> Boolean = { false },
         onProgress: (Progress) -> Unit,
     ): String? {
         if (!handshake.isComplete || ssid.isBlank()) return null
 
         val startNanos = System.nanoTime()
-        val tested = AtomicLong(0L)
+        val tested = AtomicLong(initialTested)
         val found = AtomicReference<String?>(null)
         val channel = Channel<String>(capacity = WORK_QUEUE_CAPACITY)
         val parallelism = defaultParallelism()
@@ -45,6 +48,8 @@ object WpaCracker {
                     try {
                         var firstLine = true
                         while (!shouldStop() && found.get() == null) {
+                            awaitWhilePaused(shouldStop, shouldPause)
+                            if (shouldStop()) break
                             var candidate = wordlist.readLine() ?: break
                             if (firstLine) {
                                 candidate = candidate.removePrefix("\uFEFF")
@@ -63,6 +68,7 @@ object WpaCracker {
                 repeat(parallelism) {
                     launch(Dispatchers.Default) {
                         for (candidate in channel) {
+                            awaitWhilePaused(shouldStop, shouldPause)
                             if (shouldStop()) {
                                 channel.close()
                                 break
@@ -81,7 +87,7 @@ object WpaCracker {
                                 }
                             }
 
-                            if (testedNow % PROGRESS_INTERVAL == 0L) {
+                            if ((testedNow - initialTested) % PROGRESS_INTERVAL == 0L) {
                                 emitProgress(startNanos, testedNow, onProgress)
                             }
                         }
@@ -96,6 +102,15 @@ object WpaCracker {
 
         emitProgress(startNanos, tested.get(), onProgress)
         return found.get()
+    }
+
+    private suspend fun awaitWhilePaused(
+        shouldStop: () -> Boolean,
+        shouldPause: () -> Boolean,
+    ) {
+        while (shouldPause() && !shouldStop()) {
+            delay(PAUSE_POLL_MS)
+        }
     }
 
     private fun emitProgress(
@@ -119,4 +134,5 @@ object WpaCracker {
     private const val WORK_QUEUE_CAPACITY = 64
     private const val PROGRESS_INTERVAL = 25L
     private const val MAX_WORKERS = 4
+    private const val PAUSE_POLL_MS = 25L
 }

@@ -33,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,8 +70,9 @@ fun WpaCrackerScreen(
     customSsidSelected: String?,
     customSsidManualEnabled: Boolean,
     customSsid: String,
-    wordlistName: String?,
+    wordlists: List<String>,
     running: Boolean,
+    paused: Boolean,
     tested: Long,
     speed: Double,
     result: String?,
@@ -82,9 +84,13 @@ fun WpaCrackerScreen(
     onUseManualCustomSsid: () -> Unit,
     onCustomSsidChange: (String) -> Unit,
     onChooseWordlist: () -> Unit,
-    onClearWordlist: () -> Unit,
+    onRemoveWordlist: (Int) -> Unit,
+    onClearWordlists: () -> Unit,
     onStart: () -> Unit,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
     onStop: () -> Unit,
+    onExport22000: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val clipboard = LocalClipboardManager.current
@@ -93,10 +99,9 @@ fun WpaCrackerScreen(
         !path.pcapPath.isNullOrBlank() && File(path.pcapPath!!).exists()
     }
     val customSelected = customPcapName != null
-    val canStart = !running && wordlistName != null && (
-        if (customSelected) customPcapValid && customSsid.isNotBlank()
-        else selectedSession != null
-    )
+    val hasTarget = if (customSelected) customPcapValid && customSsid.isNotBlank() else selectedSession != null
+    val canStart = !running && wordlists.isNotEmpty() && hasTarget
+    val canExport22000 = !running && hasTarget
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -289,28 +294,54 @@ fun WpaCrackerScreen(
             ) {
                 Column(Modifier.padding(14.dp)) {
                     Text(
-                        text = "Wordlist",
+                        text = "Wordlists",
                         fontWeight = FontWeight.SemiBold,
                         color = NrOnSurface,
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = wordlistName ?: "No wordlist selected",
+                        text = if (wordlists.isEmpty()) {
+                            "No wordlists selected"
+                        } else {
+                            "${wordlists.size} wordlist(s) selected"
+                        },
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = NrOnSurfaceVariant,
                     )
+                    wordlists.forEachIndexed { index, name ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "${index + 1}. $name",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                ),
+                                color = NrOnSurface,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                            )
+                            TextButton(
+                                onClick = { onRemoveWordlist(index) },
+                                enabled = !running,
+                            ) {
+                                Text("Remove")
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = onChooseWordlist, enabled = !running) {
                             Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(if (wordlistName == null) "Choose wordlist" else "Change wordlist")
+                            Text(if (wordlists.isEmpty()) "Add wordlist" else "Add another wordlist")
                         }
-                        if (wordlistName != null) {
-                            OutlinedButton(onClick = onClearWordlist, enabled = !running) {
+                        if (wordlists.isNotEmpty()) {
+                            OutlinedButton(onClick = onClearWordlists, enabled = !running) {
                                 Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("Clear")
+                                Text("Clear all")
                             }
                         }
                     }
@@ -347,6 +378,24 @@ fun WpaCrackerScreen(
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                             color = NrOnSurfaceVariant,
                         )
+                    }
+
+                    if (running) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = if (paused) onResume else onPause,
+                        ) {
+                            Text(if (paused) "Resume" else "Pause")
+                        }
+                    }
+
+                    if (!running && canExport22000) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(onClick = onExport22000) {
+                            Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Export Hashcat .22000")
+                        }
                     }
 
                     result?.let { password ->

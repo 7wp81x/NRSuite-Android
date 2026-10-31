@@ -439,7 +439,7 @@ internal fun HomeScreen(
                     name = "Credentials",
                     icon = Icons.Default.Key,
                     iconTint = categoryColor("Credentials"),
-                    moduleIds = listOf("credential_manager", "wpa_cracker"),
+                    moduleIds = listOf("credential_manager", "wpa_cracker", "pcap22000"),
                     available = true,
                 ),
                 CategorySpec(

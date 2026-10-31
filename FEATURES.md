@@ -19,9 +19,9 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **WPS Pixie Dust** - Live ESP32-S3/C5 registrar flow with AP-lock preflight, M3-only capture, same-session recovered-PIN continuation, Android-side Pixiewps search, and PIN/PSK persistence
 - [ ] **Wifite-style Auto Audit** - Single-target Auto Capture + Crack orchestrator with optional WPS and explicitly confirmed Evil Twin stages
 - [x] **Packet Sniffer** - Monitor-mode capture, pcap export, per-module Auto/2.4/5 GHz hopping, target-channel-aware fixed mode, and post-start deauth assist with periodic retries
-- [x] **WPA Handshake Capture/Crack** - Offline WPA2 M1/M2 dictionary cracking, custom PCAP import, SSID detection, and captured-session selection
-- [ ] **WPA Cracker improvements** - Direct `HS_<BSSID>.pcap` linkage, best M1/M2 selection, pause/resume/checkpointing, multiple plain/compressed wordlists, candidate budgets/rules, `.22000` import/export, PMKID verification, and clearer WPA3/PMF reporting
-- [ ] **PCAP → Hashcat `.22000`** - Multi-select classic PCAP merge, exact and best-per-BSSID+SSID deduplication, automatic/manual ESSID resolution, preview, and malformed-PCAP reporting
+- [x] **WPA Handshake Capture/Crack** - Offline WPA2 M1/M2 dictionary cracking, custom PCAP import, SSID detection, captured-session selection, multi-handshake collection, best M1/M2 pair selection, multiple plain wordlists, in-session pause/resume, and `.22000` export for the selected handshake
+- [ ] **WPA Cracker advanced improvements** - ZIP/GZIP streaming, candidate rules/transforms, `.22000` import, PMKID verification, persistent process-death resume, and explicit unsupported WPA3/PMF reporting
+- [x] **PCAP → Hashcat `.22000`** - Multi-select classic PCAP merge, exact/best-per-BSSID+SSID deduplication, automatic SSID extraction, advanced BSSID→ESSID override, preview/summary, and malformed/missing-SSID reporting
 - [x] **Nrugochi** - Pwnagotchi-style channel-density hunting: RECON -> INTERACT, multi-AP authorized deauth (8 frames/AP default with requested/sent/failed telemetry), all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` files, mood/status UI, and today/total stats (hardware validation pending)
 - [x] **BLE HID** - Bluetooth LE keyboard/mouse HID and DuckyScript payloads
 - [x] **BLE Scanner** - Device discovery with names, RSSI, manufacturer data, and service badges; module-owned scan lifecycle

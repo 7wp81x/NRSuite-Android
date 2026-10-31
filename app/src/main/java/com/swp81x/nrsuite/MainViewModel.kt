@@ -756,13 +756,12 @@ class MainViewModel(internal val app: Application) {
     internal val _crackerSelectedSession = MutableStateFlow<CredentialSession?>(null)
     val crackerSelectedSession: StateFlow<CredentialSession?> = _crackerSelectedSession.asStateFlow()
 
-    internal val _crackerWordlistUri = MutableStateFlow<Uri?>(null)
-    val crackerWordlistUri: StateFlow<Uri?> = _crackerWordlistUri.asStateFlow()
-
-    internal val _crackerWordlistName = MutableStateFlow<String?>(null)
-    val crackerWordlistName: StateFlow<String?> = _crackerWordlistName.asStateFlow()
+    internal val _crackerWordlists = MutableStateFlow<List<CrackerWordlistOption>>(emptyList())
+    val crackerWordlists: StateFlow<List<CrackerWordlistOption>> = _crackerWordlists.asStateFlow()
 
     internal val _crackerRunning = MutableStateFlow(false)
+    internal val _crackerPaused = MutableStateFlow(false)
+    val crackerPaused: StateFlow<Boolean> = _crackerPaused.asStateFlow()
     val crackerRunning: StateFlow<Boolean> = _crackerRunning.asStateFlow()
 
     internal val _crackerTested = MutableStateFlow(0L)
@@ -805,6 +804,11 @@ class MainViewModel(internal val app: Application) {
     val crackerCustomSsidManual: StateFlow<Boolean> = _crackerCustomSsidManual.asStateFlow()
 
     internal var crackerJob: Job? = null
+    @Volatile internal var crackerPauseRequested = false
+
+    internal val _pcap22000State = MutableStateFlow(Pcap22000UiState())
+    val pcap22000State: StateFlow<Pcap22000UiState> = _pcap22000State.asStateFlow()
+    internal var pcap22000Job: Job? = null
 
     internal val _wpsPixie = MutableStateFlow(WpsPixieUiState())
     val wpsPixie: StateFlow<WpsPixieUiState> = _wpsPixie.asStateFlow()
@@ -1803,11 +1807,36 @@ class MainViewModel(internal val app: Application) {
 
     fun setCrackerWordlist(uri: Uri, name: String?) = this.setCrackerWordlistImpl(uri, name)
 
+    fun removeCrackerWordlist(index: Int) = this.removeCrackerWordlistImpl(index)
+
     fun clearCrackerWordlist() = this.clearCrackerWordlistImpl()
 
     fun startCracker() = this.startCrackerImpl()
 
+    fun pauseCracker() = this.pauseCrackerImpl()
+
+    fun resumeCracker() = this.resumeCrackerImpl()
+
     fun stopCracker() = this.stopCrackerImpl()
+
+    fun exportCracker22000(uri: Uri) = this.exportCracker22000Impl(uri)
+
+    fun addPcap22000Inputs(uris: List<Uri>) = this.addPcap22000InputsImpl(uris)
+
+    fun removePcap22000Input(index: Int) = this.removePcap22000InputImpl(index)
+
+    fun clearPcap22000Inputs() = this.clearPcap22000InputsImpl()
+
+    fun setPcap22000DedupeMode(mode: com.swp81x.nrsuite.core.wpa.Pcap22000DedupeMode) =
+        this.setPcap22000DedupeModeImpl(mode)
+
+    fun setPcap22000SsidOverride(bssid: String, ssid: String) =
+        this.setPcap22000SsidOverrideImpl(bssid, ssid)
+
+    fun removePcap22000SsidOverride(bssid: String) =
+        this.removePcap22000SsidOverrideImpl(bssid)
+
+    fun exportPcap22000(uri: Uri) = this.exportPcap22000Impl(uri)
 
     fun importWpsPixiePcap(uri: Uri, name: String?) = this.importWpsPixiePcapImpl(uri, name)
 

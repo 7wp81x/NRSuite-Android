@@ -406,6 +406,14 @@ internal val modules = listOf(
         available = true,
     ),
     ModuleCardSpec(
+        id = "pcap22000",
+        title = "PCAP → .22000",
+        description = "Merge captures and export WPA handshakes for Hashcat mode 22000.",
+        icon = Icons.Default.Folder,
+        category = "Credentials",
+        available = true,
+    ),
+    ModuleCardSpec(
         id = "wps_pixie_live",
         title = "WPS Pixie Dust",
         description = "Try a likely PIN, crack if needed, and recover the WPS PSK.",
