@@ -4,6 +4,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 
 - [x] Implemented
 - [ ] Planned / in progress
+- [~] Experimental concept; not release-ready
 
 ---
 
@@ -12,11 +13,15 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; screen-local Auto/2.4/5 GHz filter
 - [x] **Wi-Fi regulatory country** - C5-only Settings control for the persisted country/channel mask
 - [x] **Beacon Spam** - Broadcast custom or hidden SSIDs
-- [x] **Deauthentication** - Finite burst or stoppable duration-based loop mode with mutually exclusive count/duration controls
+- [x] **Deauthentication** - Finite burst or stoppable duration-based loop mode with mutually exclusive count/duration controls; multi-target selection; firmware-native `DEAUTH_MULTI` when advertised; repeated `DEAUTH_BURST` channel-hopping fallback for older firmware; manual channel locked to a target-derived schedule when multiple targets are selected
 - [x] **Evil Twin** - Rogue AP with captive portal
 - [x] **Captive Portal** - Credential harvesting UI
+- [x] **WPS Pixie Dust** - Live ESP32-S3/C5 registrar flow with AP-lock preflight, M3-only capture, same-session recovered-PIN continuation, Android-side Pixiewps search, and PIN/PSK persistence
+- [ ] **Wifite-style Auto Audit** - Single-target Auto Capture + Crack orchestrator with optional WPS and explicitly confirmed Evil Twin stages
 - [x] **Packet Sniffer** - Monitor-mode capture, pcap export, per-module Auto/2.4/5 GHz hopping, target-channel-aware fixed mode, and post-start deauth assist with periodic retries
-- [x] **WPA Handshake Capture/Crack** - Offline dictionary cracking
+- [x] **WPA Handshake Capture/Crack** - Offline WPA2 M1/M2 dictionary cracking, custom PCAP import, SSID detection, and captured-session selection
+- [ ] **WPA Cracker improvements** - Direct `HS_<BSSID>.pcap` linkage, best M1/M2 selection, pause/resume/checkpointing, multiple plain/compressed wordlists, candidate budgets/rules, `.22000` import/export, PMKID verification, and clearer WPA3/PMF reporting
+- [ ] **PCAP → Hashcat `.22000`** - Multi-select classic PCAP merge, exact and best-per-BSSID+SSID deduplication, automatic/manual ESSID resolution, preview, and malformed-PCAP reporting
 - [x] **Nrugochi** - Pwnagotchi-style channel-density hunting: RECON -> INTERACT, multi-AP authorized deauth (8 frames/AP default with requested/sent/failed telemetry), all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` files, mood/status UI, and today/total stats (hardware validation pending)
 - [x] **BLE HID** - Bluetooth LE keyboard/mouse HID and DuckyScript payloads
 - [x] **BLE Scanner** - Device discovery with names, RSSI, manufacturer data, and service badges; module-owned scan lifecycle
@@ -31,6 +36,8 @@ This document lists all current and planned features across the NRSuite ecosyste
 
 - [x] **Rogue AP Detector** - Autonomous nearby AP comparison with OUI rules; flags duplicate SSIDs, security downgrades, and suspicious APs
 - [x] **Deauth Detector** - Passive deauth/disassoc monitoring with BSSID/client/RSSI/reason filters, async alerts, and live logs
+- [x] **WPS Lock Detector** - Passive WPS AP discovery and AP Setup Locked parsing with Locked / Likely unlocked / Unknown states and WPS metadata
+- [x] **WPS Attempt Detector** - Multi-select WPS targets; passive Identity/M1-M8/M2D/NACK monitoring; per-session evidence retention; live lock-state events; Low/Medium/High risk based on M1-M3 cracking material or M7-M8 PSK-transfer evidence
 - [ ] **Deauth Locator** - RSSI-based direction/distance estimate; multi-node triangulation
 - [x] **Tracker Detector** - Find My-style advert detection, repeated sightings, alerts, and export
 - [x] **Client Detector** - Passive probe/assoc/reassoc/auth monitoring plus active deauth-trigger mode
@@ -44,8 +51,10 @@ This document lists all current and planned features across the NRSuite ecosyste
 
 ## 4. Tools & Firmware Utilities
 
-- [x] **ESP32 Flasher** - Merged firmware flashing for ESP32, S2, S3, C3, and C5; release-asset matching and target-chip validation
+- [x] **ESP32 Flasher** - Merged firmware flashing for ESP32, S2, S3, C3, and C5; esptool-aligned reset timing, C5 SYNC/SPI-attach handling, TinyUSB-to-ROM bootloader restart, automatic manual-recovery fallback, C5 local chip review, background foreground-service progress notification, and target-chip validation
 - [x] **BSSID Geolocation** - Offline OUI/vendor lookup combined with approximate Wi-Fi AP location, persistent `Overview / Lookup History` tabs, retry/cache fallback, embedded Leaflet map, and external Google Maps link
+- [ ] **MAC Lookup** - Restore a separate offline-only OUI/vendor lookup with no geolocation or network requests
+- [ ] **Credential Manager Wi-Fi QR** - Explicit per-credential standard Wi-Fi QR generation; WPS PIN shown separately
 - [x] **Serial Monitor** - Raw USB serial monitor with reliable clipboard copy, bounded log retention, and visible save/export success or failure feedback
 
 ## 5. Mesh Network (ESP-NOW)
@@ -109,6 +118,10 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **Multi-device USB sessions** - Multiple simultaneous USB serial sessions with per-device permission, connect/disconnect, and reconnect state. User-initiated disconnect uses idle-session reuse for S2 CDC stability.
 - [x] **BadUSB device picker** - Select which connected device receives BadUSB independent of the primary Wireless/Flasher session.
 - [x] **Persistent firmware device ID** - Firmware generates/stores `NRxxxxxxx` in NVS and exposes it via `STATUS.device_id`; Android shows it on Home and Device manager.
+
+## Experimental Concepts
+
+- [~] **Half Handshake capture** - Active probe-response/SoftAP experiment intended to elicit WPA2 M1+M2 from an authorized auto-connecting client for offline `.22000` analysis. Requires explicit authorization, compatible RSN/WPA2 security, client auto-join, temporary-AP cleanup, and hardware validation. Not beta.3.1 release scope unless separately approved.
 
 ## Explicitly Out of Scope
 
