@@ -484,7 +484,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide: branching model, PR
 
 | App version | Firmware version | Protocol spec |
 |---|---|---|
-| v1.0.0-beta.3.1 | v1.0.0-beta.3.1 | v1.0 (non-mesh); mesh protocol 1.1 is experimental |
+| v1.0.0-beta.3.1.1 | v1.0.0-beta.3.1 | v1.0 (non-mesh); mesh protocol 1.1 is experimental |
 
 This table is updated with each release. Always check compatibility before mixing app and firmware versions.
 

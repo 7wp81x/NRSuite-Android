@@ -478,6 +478,8 @@ class MainViewModel(internal val app: Application) {
     internal val _irDatabaseMetadata = MutableStateFlow<IrDatabaseMetadata?>(null)
     val irDatabaseMetadata: StateFlow<IrDatabaseMetadata?> =
         _irDatabaseMetadata.asStateFlow()
+    internal val _irDatabasePresent = MutableStateFlow(false)
+    val irDatabasePresent: StateFlow<Boolean> = _irDatabasePresent.asStateFlow()
     internal var irTransmitJob: Job? = null
     internal var irSearchJob: Job? = null
     internal var irDatabaseJob: Job? = null
@@ -1435,6 +1437,7 @@ class MainViewModel(internal val app: Application) {
         _exportDirectoryName.value = displayNameForTreeUri(uri)
         appendLog("Capture export folder: ${_exportDirectoryName.value}")
         ensureRootStructure(uri)
+        refreshIrDatabasePresenceImpl()
     }
 
     private fun loadExportDirectory() {

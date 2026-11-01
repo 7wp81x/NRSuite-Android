@@ -26,8 +26,8 @@ android {
         applicationId = "com.swp81x.nrsuite"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.0.0-beta.3.1"
+        versionCode = 9
+        versionName = "1.0.0-beta.3.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

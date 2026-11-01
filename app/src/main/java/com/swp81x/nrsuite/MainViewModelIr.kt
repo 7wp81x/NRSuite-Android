@@ -74,6 +74,20 @@ internal fun MainViewModel.loadIrLibraryImpl() {
             .thenBy { it.name.lowercase() },
     )
     _irDatabaseMetadata.value = irDatabaseMetadataStore.load()
+    refreshIrDatabasePresenceImpl()
+}
+
+internal fun MainViewModel.refreshIrDatabasePresenceImpl() {
+    val rootUri = _exportDirectory.value
+    if (rootUri == null) {
+        _irDatabasePresent.value = false
+        return
+    }
+    scope.launch(Dispatchers.IO) {
+        val databaseDirectory = openIrDatabaseDirectory(rootUri)
+        val flipperDirectory = databaseDirectory?.findFile(IR_DATABASE_FLIPPER_DIRECTORY)
+        _irDatabasePresent.value = flipperDirectory?.isDirectory == true
+    }
 }
 
 internal fun MainViewModel.loadIrPreferencesImpl() {
@@ -1342,6 +1356,7 @@ private suspend fun MainViewModel.extractFlipperDatabaseAndIndex(
     )
     withContext(Dispatchers.IO) { irDatabaseMetadataStore.save(metadata) }
     _irDatabaseMetadata.value = metadata
+    _irDatabasePresent.value = true
     _irDatabaseState.value = IrDatabaseUiState(
         phase = IrDatabasePhase.COMPLETED,
         extractedFiles = extraction.extractedFiles,

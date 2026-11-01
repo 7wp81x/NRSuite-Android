@@ -607,6 +607,7 @@ internal fun CategoryModulesScreen(
     irRxLabel: String = "",
     irDatabaseState: IrDatabaseUiState = IrDatabaseUiState(),
     irDatabaseMetadata: IrDatabaseMetadata? = null,
+    irDatabasePresent: Boolean = false,
     irRemoteCount: Int = 0,
     irRootConfigured: Boolean = true,
     onChooseIrRootDirectory: () -> Unit = {},
@@ -641,12 +642,13 @@ internal fun CategoryModulesScreen(
         showIrInfo,
         irDatabaseMetadata?.indexedAtMs,
         irDatabaseMetadata?.indexedRemotes,
+        irDatabasePresent,
         irDatabaseState.running,
         irRemoteCount,
     ) {
+        val databaseExists = irDatabasePresent || irDatabaseMetadata != null
         if (showIrInfo && !irDatabaseRescanPrompted && !irDatabaseState.running &&
-            irDatabaseMetadata != null && irDatabaseMetadata.indexedRemotes == 0 &&
-            irRemoteCount == 0
+            databaseExists && irRemoteCount == 0
         ) {
             irDatabaseRescanPrompted = true
             showIrDatabaseRescanDialog = true
@@ -727,6 +729,8 @@ internal fun CategoryModulesScreen(
                 IrDatabaseCategoryCard(
                     state = irDatabaseState,
                     metadata = irDatabaseMetadata,
+                    databasePresent = irDatabasePresent,
+                    remoteCount = irRemoteCount,
                     rootConfigured = irRootConfigured,
                     onChooseRoot = onChooseIrRootDirectory,
                     onDownload = onDownloadIrDatabase,
@@ -837,6 +841,8 @@ internal fun CategoryModulesScreen(
 private fun IrDatabaseCategoryCard(
     state: IrDatabaseUiState,
     metadata: IrDatabaseMetadata?,
+    databasePresent: Boolean,
+    remoteCount: Int,
     rootConfigured: Boolean,
     onChooseRoot: () -> Unit,
     onDownload: () -> Unit,
@@ -845,9 +851,13 @@ private fun IrDatabaseCategoryCard(
 ) {
     val context = LocalContext.current
     val rootMissing = !rootConfigured
-    val notDownloaded = metadata == null
-    val emptyIndex = metadata != null && metadata.indexedRemotes == 0
-    if (!state.running && !rootMissing && !notDownloaded && !emptyIndex) return
+    val databaseExists = databasePresent || metadata != null
+    val notDownloaded = !databaseExists
+    val emptyIndex = databaseExists && remoteCount == 0
+    if (!state.running && !rootMissing && databaseExists && remoteCount > 0) return
+    if (!state.running && !rootMissing && notDownloaded && !emptyIndex) {
+        // Fall through to the download card only when no database is present.
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -868,6 +878,7 @@ private fun IrDatabaseCategoryCard(
                     rootMissing -> "NRSuite root is not configured"
                     state.running -> "Flipper-IRDB operation in progress"
                     emptyIndex -> "Flipper-IRDB found, but no remotes are indexed"
+                    metadata == null && databasePresent -> "Flipper-IRDB found on storage"
                     else -> "Flipper-IRDB not downloaded"
                 },
                 style = MaterialTheme.typography.titleSmall,
@@ -882,6 +893,8 @@ private fun IrDatabaseCategoryCard(
                         state.message.orEmpty().ifBlank { "Preparing Flipper-IRDB..." }
                     emptyIndex ->
                         "The database exists on storage, but the remote index contains zero entries."
+                    metadata == null && databasePresent ->
+                        "Choose Rescan library to index the existing Flipper database."
                     else ->
                         "Download the Flipper remote library to browse and transmit .ir remotes locally."
                 },
