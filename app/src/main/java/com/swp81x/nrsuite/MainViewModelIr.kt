@@ -1688,19 +1688,37 @@ private suspend fun MainViewModel.scanIrRoot(
     // database. More concurrent readers substantially improve throughput on
     // internal storage without keeping the entire database in memory.
     val semaphore = Semaphore(16)
+    val summaries = mutableListOf<IrRemoteSummary>()
+    var lastCheckpointSize = 0
+
+    fun sortedSummaries(values: List<IrRemoteSummary>) = values.sortedWith(
+        compareByDescending<IrRemoteSummary> { it.favorite }
+            .thenBy { it.name.lowercase() },
+    )
+
     return coroutineScope {
-        candidates.chunked(64).flatMap { chunk ->
-            chunk.map { candidate ->
+        for (chunk in candidates.chunked(64)) {
+            val chunkResults = chunk.map { candidate ->
                 async(Dispatchers.IO) {
                     semaphore.withPermit {
                         val id = "${candidate.source.name.lowercase()}:${candidate.relativePath}"
                         val old = previous[id]
-                        val canReuse = old != null &&
+                        val sameDocumentRevision = old != null &&
                             old.documentUri == candidate.documentUri &&
                             old.lastModifiedMs == candidate.lastModifiedMs &&
+                            old.sizeBytes == candidate.sizeBytes
+                        // A root reselection, app reinstall, or direct IRDB
+                        // re-extraction can change the SAF URI/timestamp while
+                        // the file itself is unchanged. Relative path + size is
+                        // a cheap stable fallback for reusing cached metadata.
+                        val sameRelativeFile = old != null &&
+                            old.relativePath == candidate.relativePath &&
                             old.sizeBytes == candidate.sizeBytes &&
+                            candidate.sizeBytes > 0
+                        val canReuse = old != null &&
                             old.buttonCount > 0 &&
-                            old.buttonNames.isNotEmpty()
+                            old.buttonNames.isNotEmpty() &&
+                            (sameDocumentRevision || sameRelativeFile)
                         val metadata = if (canReuse) null else readIrMetadata(candidate)
                         val index = completed.incrementAndGet()
                         if (index == candidates.size || index % 10 == 0) {
@@ -1711,8 +1729,8 @@ private suspend fun MainViewModel.scanIrRoot(
                             )
                         }
                         if (canReuse) reused.incrementAndGet()
-                        val summary = if (canReuse) {
-                            old.copy(
+                        if (canReuse) {
+                            old!!.copy(
                                 name = candidate.fileName.substringBeforeLast('.').ifBlank {
                                     candidate.fileName
                                 },
@@ -1746,14 +1764,26 @@ private suspend fun MainViewModel.scanIrRoot(
                                 )
                             }
                         }
-                        summary
                     }
                 }
-            }.awaitAll()
-        }.filterNotNull().also {
+            }.awaitAll().filterNotNull()
+
+            summaries.addAll(chunkResults)
+            // Checkpoint completed metadata periodically. If the app is closed
+            // or the scan is interrupted, the next scan can reuse this progress
+            // instead of re-reading every file from the SAF provider.
+            if (summaries.size - lastCheckpointSize >= 64 || summaries.size == candidates.size) {
+                val checkpoint = sortedSummaries(summaries)
+                _irRemotes.value = checkpoint
+                withContext(Dispatchers.IO) { irRemoteIndexStore.save(checkpoint) }
+                lastCheckpointSize = summaries.size
+            }
+        }
+
+        sortedSummaries(summaries).also {
             Log.d(
                 "IrRemote",
-                "IR incremental index reused ${reused.get()} unchanged file(s) of ${candidates.size}.",
+                "IR incremental index reused ${reused.get()} cached file(s) of ${candidates.size}.",
             )
         }
     }
