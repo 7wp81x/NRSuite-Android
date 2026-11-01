@@ -54,10 +54,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.HiddenApObservation
 import com.swp81x.nrsuite.core.defense.HiddenSsidCandidate
+import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
 import com.swp81x.nrsuite.core.wifi.WifiBand
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
 import com.swp81x.nrsuite.ui.components.ChannelModeToggle
 import com.swp81x.nrsuite.ui.components.WifiBandConfigSection
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
+import com.swp81x.nrsuite.ui.components.WifiChannelSummaryPill
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -100,6 +103,12 @@ fun HiddenApScreen(
     var configExpanded by remember { mutableStateOf(true) }
     var confirmStart by remember { mutableStateOf(false) }
     var band by rememberSaveable { mutableStateOf(WifiBand.AUTO) }
+    val effectiveAllowedChannels = allowedChannels.ifEmpty { WIFI_AUTO_CHANNELS }
+    LaunchedEffect(effectiveAllowedChannels, channel) {
+        if (channel !in effectiveAllowedChannels) {
+            onChannelChange(normalizeWifiChannelForAllowed(channel, effectiveAllowedChannels))
+        }
+    }
 
     LaunchedEffect(running) {
         if (running) configExpanded = false
@@ -237,7 +246,7 @@ private fun HiddenApStatusCard(
         !connected -> StatusNeutral
         starting -> StatusAmber
         running -> StatusGreen
-        else -> StatusAmber
+        else -> MaterialTheme.colorScheme.primary
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -260,7 +269,7 @@ private fun HiddenApStatusCard(
                             !connected -> "Disconnected"
                             starting -> "Scanning nearby..."
                             running -> "Monitoring"
-                            else -> "Ready"
+                            else -> "Idle"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
@@ -350,10 +359,17 @@ private fun HiddenApConfigCard(
 
                 if (fixed) {
                     Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = "Channel",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Channel",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        WifiChannelSummaryPill(channel)
+                    }
                     Spacer(Modifier.height(4.dp))
                     WifiChannelStepper(
                         value = channel,

@@ -145,6 +145,7 @@ internal fun MainViewModel.stopRogueApDetectorImpl() {
 private suspend fun MainViewModel.performRogueApScan(activeSession: com.swp81x.nrsuite.core.session.NrSession) {
     _rogueApScanning.value = true
     _networks.value = emptyList()
+    wifiScanDestination = null
     val count = runCatching { activeSession.scanWifi(timeoutMs = ROGUE_AP_SCAN_TIMEOUT_MS) }.getOrNull()
     delay(ROGUE_AP_BASELINE_SETTLE_MS)
     _rogueApScanning.value = false

@@ -148,10 +148,12 @@ class NrSession(
 
     suspend fun scanWifi(
         band: String? = null,
-        timeoutMs: Long = 30_000,
+        timeoutMs: Long = 45_000,
+        settleMs: Int? = null,
     ): Int? {
         val args = org.json.JSONObject()
         if (!band.isNullOrBlank()) args.put("band", band)
+        if (settleMs != null) args.put("settle_ms", settleMs.coerceIn(250, 5_000))
         val response = sendCommand("SCAN_WIFI", args, timeoutMs = timeoutMs) ?: return null
         if (!response.optBoolean("ok")) return -1
         return response.optInt("count", 0)

@@ -9,6 +9,7 @@ package com.swp81x.nrsuite.core.credentials
 enum class CredentialSource {
     EVIL_TWIN,
     WPA_CRACKER,
+    WPS_PIXIE,
     PORTAL,
     IMPORTED,
 }

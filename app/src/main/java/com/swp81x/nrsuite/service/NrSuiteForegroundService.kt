@@ -28,8 +28,17 @@ class NrSuiteForegroundService : Service() {
         acquireWakeLock()
         createNotificationChannel()
         val text = intent.getStringExtra(EXTRA_TEXT) ?: "NRSuite operation active"
+        val progress = intent.getIntExtra(EXTRA_PROGRESS, NO_PROGRESS)
+            .takeIf { it in 0..100 }
+        val iconRes = intent.getIntExtra(
+            EXTRA_SMALL_ICON,
+            com.swp81x.nrsuite.R.drawable.ic_stat_nrsuite,
+        )
         val started = runCatching {
-            startForeground(NrSuiteNotifications.operationNotificationId(), buildNotification(text))
+            startForeground(
+                NrSuiteNotifications.operationNotificationId(),
+                buildNotification(text, progress, iconRes),
+            )
         }.isSuccess
         if (!started) {
             releaseWakeLock()
@@ -67,8 +76,17 @@ class NrSuiteForegroundService : Service() {
         wakeLock = null
     }
 
-    private fun buildNotification(text: String): Notification =
-        NrSuiteNotifications.buildOperationNotification(this, text)
+    private fun buildNotification(
+        text: String,
+        progressPercent: Int?,
+        smallIconRes: Int,
+    ): Notification =
+        NrSuiteNotifications.buildOperationNotification(
+            this,
+            text,
+            progressPercent,
+            smallIconRes,
+        )
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -99,6 +117,9 @@ class NrSuiteForegroundService : Service() {
         const val ACTION_START = "com.swp81x.nrsuite.action.START_FOREGROUND"
         const val ACTION_STOP = "com.swp81x.nrsuite.action.STOP_FOREGROUND"
         const val EXTRA_TEXT = "extra_text"
+        const val EXTRA_PROGRESS = "extra_progress"
+        const val EXTRA_SMALL_ICON = "extra_small_icon"
+        private const val NO_PROGRESS = -1
         private const val CHANNEL_ID = "nrsuite_operations"
         private const val NOTIFICATION_ID = 1001
     }

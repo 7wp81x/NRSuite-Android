@@ -56,12 +56,16 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.ClientObservation
 import com.swp81x.nrsuite.core.defense.ClientPresenceMode
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
+import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
 import com.swp81x.nrsuite.core.wifi.WifiBand
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
+import com.swp81x.nrsuite.ui.components.ScanButtonContent
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
-import com.swp81x.nrsuite.ui.components.NetworkTargetRow
+import com.swp81x.nrsuite.ui.components.ScanTargetList
 import com.swp81x.nrsuite.ui.components.ChannelModeToggle
 import com.swp81x.nrsuite.ui.components.WifiBandConfigSection
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
+import com.swp81x.nrsuite.ui.components.WifiChannelSummaryPill
 import com.swp81x.nrsuite.ui.components.ModuleStatusCard
 import com.swp81x.nrsuite.ui.components.ModuleStatusState
 import com.swp81x.nrsuite.ui.components.NrFilterChip
@@ -109,6 +113,12 @@ fun ClientPresenceScreen(
     var configExpanded by remember { mutableStateOf(true) }
     var confirmStart by remember { mutableStateOf(false) }
     var band by rememberSaveable { mutableStateOf(WifiBand.AUTO) }
+    val effectiveAllowedChannels = allowedChannels.ifEmpty { WIFI_AUTO_CHANNELS }
+    LaunchedEffect(effectiveAllowedChannels, channel) {
+        if (channel !in effectiveAllowedChannels) {
+            onChannelChange(normalizeWifiChannelForAllowed(channel, effectiveAllowedChannels))
+        }
+    }
     val validTarget = targetBssid.isNotBlank()
     val canStart = connected && (mode == ClientPresenceMode.PASSIVE || validTarget)
 
@@ -246,7 +256,7 @@ private fun ClientPresenceStatusCard(
         title = when {
             !connected -> "Disconnected"
             running -> "Monitoring"
-            else -> "Ready"
+            else -> "Idle"
         },
         subtitle = when {
             !connected -> "Connect a device before starting client detection."
@@ -369,43 +379,34 @@ private fun ConfigZone(
                             onClick = onScanWifi,
                             enabled = controlsEnabled && !scanning,
                         ) {
-                            Text(if (scanning) "Scanning..." else "Scan WiFi for targets")
+                            ScanButtonContent(
+                                scanning = scanning,
+                                idleLabel = "Scan WiFi for targets",
+                            )
                         }
                         if (networks.isNotEmpty()) {
                             Spacer(Modifier.height(6.dp))
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                networks.forEach { network ->
+                            ScanTargetList(
+                                networks = networks,
+                                selectedBssids = setOf(targetBssid),
+                                onToggle = { network ->
                                     val bssid = network.optString("bssid")
-                                    NetworkTargetRow(
-                                        ssid = network.optString("ssid").ifBlank { "(hidden)" },
-                                        bssid = bssid,
-                                        channel = network.optInt("channel", 1),
-                                        rssi = network.optInt("rssi", -100),
-                                        security = network.optString("security", "?"),
-                                        wps = network.optBoolean("wps"),
-                                        vendor = network.optString("vendor").takeIf { it.isNotBlank() },
-                                        ouiWhitelisted = network.optBoolean("oui_whitelisted"),
-                                        ouiBlacklisted = network.optBoolean("oui_blacklisted"),
-                                        selected = targetBssid.equals(bssid, ignoreCase = true),
-                                        enabled = controlsEnabled,
-                                        onClick = {
-                                            onSelectTarget(
-                                                NetworkTarget(
-                                                    ssid = network.optString("ssid").ifBlank { "(hidden)" },
-                                                    bssid = bssid,
-                                                    channel = network.optInt("channel", 1),
-                                                    rssi = network.optInt("rssi", -100),
-                                                    security = network.optString("security", "?"),
-                                                    wps = network.optBoolean("wps"),
-                                                    vendor = network.optString("vendor").takeIf { it.isNotBlank() },
-                                                    ouiWhitelisted = network.optBoolean("oui_whitelisted"),
-                                                    ouiBlacklisted = network.optBoolean("oui_blacklisted"),
-                                                )
-                                            )
-                                        },
+                                    onSelectTarget(
+                                        NetworkTarget(
+                                            ssid = network.optString("ssid").ifBlank { "(hidden)" },
+                                            bssid = bssid,
+                                            channel = network.optInt("channel", 1),
+                                            rssi = network.optInt("rssi", -100),
+                                            security = network.optString("security", "?"),
+                                            wps = network.optBoolean("wps"),
+                                            vendor = network.optString("vendor").takeIf { it.isNotBlank() },
+                                            ouiWhitelisted = network.optBoolean("oui_whitelisted"),
+                                            ouiBlacklisted = network.optBoolean("oui_blacklisted"),
+                                        )
                                     )
-                                }
-                            }
+                                },
+                                enabled = controlsEnabled,
+                            )
                         }
                     } else {
                         Spacer(Modifier.height(10.dp))
@@ -418,7 +419,17 @@ private fun ConfigZone(
                         )
                         if (fixed) {
                             Spacer(Modifier.height(4.dp))
-                            Text("Channel", style = MaterialTheme.typography.labelLarge)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "Channel",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                WifiChannelSummaryPill(channel)
+                            }
                             Spacer(Modifier.height(4.dp))
                             WifiChannelStepper(
                                 value = channel,

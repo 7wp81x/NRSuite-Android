@@ -108,6 +108,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -171,6 +172,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
     val devices by viewModel.devices.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
+    val primaryFingerprint by viewModel.primaryFingerprint.collectAsState()
+    val wifiDeviceRevision by viewModel.wifiDeviceRevision.collectAsState()
     val deviceConnectionStates by viewModel.deviceConnectionStates.collectAsState()
     val pendingPermissionRequests by viewModel.pendingPermissionRequests.collectAsState()
     val unacknowledgedDevices by viewModel.unacknowledgedDevices.collectAsState()
@@ -213,6 +216,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val irNextButtonNumber by viewModel.irNextButtonNumber.collectAsState()
     val irJammerState by viewModel.irJammerState.collectAsState()
     val irSavingReceivedRemote by viewModel.irSavingReceivedRemote.collectAsState()
+    val irSavingEsp32Pins by viewModel.irSavingEsp32Pins.collectAsState()
     val irFinderCategory by viewModel.irFinderCategory.collectAsState()
     val irFinderBrand by viewModel.irFinderBrand.collectAsState()
     val suggestedReceivedRemoteName = remember(irRemotes) {
@@ -243,8 +247,21 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val beaconSsidCount by viewModel.beaconSsidCount.collectAsState()
     val beaconChannel by viewModel.beaconChannel.collectAsState()
     val beaconLists by viewModel.beaconListMap.collectAsState()
+    val probeMonitorRunning by viewModel.probeMonitorRunning.collectAsState()
+    val probeMonitorFixed by viewModel.probeMonitorFixed.collectAsState()
+    val probeMonitorChannel by viewModel.probeMonitorChannel.collectAsState()
+    val probeMonitorEntries by viewModel.probeMonitorEntries.collectAsState()
+    val probeMonitorFrameCount by viewModel.probeMonitorFrameCount.collectAsState()
+    val channelAnalyzerNetworks by viewModel.channelAnalyzerNetworks.collectAsState()
+    val wpsLockDetectorState by viewModel.wpsLockDetector.collectAsState()
+    val wpsAttemptDetectorState by viewModel.wpsAttemptDetector.collectAsState()
+    val htmlTemplates by viewModel.htmlTemplates.collectAsState()
+    val htmlTemplateMessage by viewModel.htmlTemplateMessage.collectAsState()
     val deauthRunning by viewModel.deauthRunning.collectAsState()
     val deauthSent by viewModel.deauthSent.collectAsState()
+    val deauthFailed by viewModel.deauthFailed.collectAsState()
+    val deauthElapsedMs by viewModel.deauthElapsedMs.collectAsState()
+    val deauthPps by viewModel.deauthPps.collectAsState()
     val deauthTarget by viewModel.deauthTarget.collectAsState()
     val deauthChannel by viewModel.deauthChannel.collectAsState()
     val deauthDetectorRunning by viewModel.deauthDetectorRunning.collectAsState()
@@ -290,11 +307,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val evilTwinHtmlUploading by viewModel.evilTwinHtmlUploading.collectAsState()
     val evilTwinHtmlUploadProgress by viewModel.evilTwinHtmlUploadProgress.collectAsState()
     val evilTwinHtmlComplete by viewModel.evilTwinHtmlComplete.collectAsState()
-    val portalSsid by viewModel.portalSsid.collectAsState()
-    val portalChannel by viewModel.portalChannel.collectAsState()
-    val portalViews by viewModel.portalViews.collectAsState()
-    val portalClients by viewModel.portalClients.collectAsState()
-    val portalCapturedData by viewModel.portalCapturedData.collectAsState()
     val portalCredentials by viewModel.portalCredentials.collectAsState()
     val portalHtmlName by viewModel.portalHtmlName.collectAsState()
     val portalEventLog by viewModel.portalEventLog.collectAsState()
@@ -304,21 +316,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val evilTwinPasswords by viewModel.evilTwinPasswords.collectAsState()
     val evilTwinResults by viewModel.evilTwinResults.collectAsState()
     val credentialSessions by viewModel.credentialSessions.collectAsState()
-    val crackerSelectedSession by viewModel.crackerSelectedSession.collectAsState()
-    val crackerWordlistName by viewModel.crackerWordlistName.collectAsState()
-    val crackerCustomPcapName by viewModel.crackerCustomPcapName.collectAsState()
-    val crackerCustomPcapValid by viewModel.crackerCustomPcapValid.collectAsState()
-    val crackerCustomPcapValidating by viewModel.crackerCustomPcapValidating.collectAsState()
-    val crackerCustomPcapMessage by viewModel.crackerCustomPcapMessage.collectAsState()
-    val crackerCustomSsidOptions by viewModel.crackerCustomSsidOptions.collectAsState()
-    val crackerCustomSsidSelected by viewModel.crackerCustomSsidSelected.collectAsState()
-    val crackerCustomSsidManual by viewModel.crackerCustomSsidManual.collectAsState()
-    val crackerCustomSsid by viewModel.crackerCustomSsid.collectAsState()
     val crackerRunning by viewModel.crackerRunning.collectAsState()
-    val crackerTested by viewModel.crackerTested.collectAsState()
-    val crackerSpeed by viewModel.crackerSpeed.collectAsState()
-    val crackerResult by viewModel.crackerResult.collectAsState()
-    val crackerStatus by viewModel.crackerStatus.collectAsState()
     val storageFiles by viewModel.storageFiles.collectAsState()
     val storageTotal by viewModel.storageTotal.collectAsState()
     val storageUsed by viewModel.storageUsed.collectAsState()
@@ -416,24 +414,46 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             (state.features.isEmpty() || "badusb" in state.features)
     }
     val showWifiBandSelector = connectedChip == "ESP32-C5"
-    val wifi5Available = showWifiBandSelector && "wifi_5ghz" in deviceFeatures
+    val wifi5Supported = showWifiBandSelector && "wifi_5ghz" in deviceFeatures
+    val reported5gChannels = connected?.allowed5gChannels.orEmpty()
+    val wifi5Available = wifi5Supported && reported5gChannels.isNotEmpty()
     val wifi5UnavailableMessage = when {
         connectedChip == null -> "Connect an ESP32-C5 to use 5 GHz."
         connectedChip != "ESP32-C5" -> "5 GHz requires ESP32-C5."
         "wifi_5ghz" !in deviceFeatures -> "5 GHz is not enabled in this firmware build."
+        reported5gChannels.isEmpty() ->
+            "No 5 GHz channels are allowed by the current Wi-Fi regulatory country. " +
+                "Update the country in WiFi Config."
         else -> ""
     }
     val allowed2gChannels = connected?.allowed2gChannels.orEmpty().ifEmpty {
         com.swp81x.nrsuite.core.wifi.WIFI_2G_CHANNELS
     }
     val allowed5gChannels = if (wifi5Available) {
-        connected?.allowed5gChannels.orEmpty().ifEmpty {
-            com.swp81x.nrsuite.core.wifi.WIFI_5G_CHANNELS
-        }
+        reported5gChannels
     } else {
         emptyList()
     }
     val allowedWifiChannels = (allowed2gChannels + allowed5gChannels).distinct()
+
+    // Device handoff safety: preserve valid per-module channel selections, but
+    // never leave a 5 GHz selection active after replacing a C5 with a 2.4 GHz
+    // only board (or after the regulatory channel mask changes).
+    val connectedWifiDeviceIdentity = connected?.deviceId?.takeIf { it.isNotBlank() }
+        ?: connectedChip
+    LaunchedEffect(
+        primaryFingerprint,
+        connectedWifiDeviceIdentity,
+        allowedWifiChannels,
+    ) {
+        if (connected != null && allowedWifiChannels.isNotEmpty()) {
+            viewModel.normalizeWifiStateForConnectedDevice(
+                deviceIdentity = connectedWifiDeviceIdentity,
+                allowedChannels = allowedWifiChannels,
+            )
+        }
+    }
+
     val bleScannerScanRunning = bleScanRunning && bleScanOwner == BleScanOwner.SCANNER
     val bleScannerScanStarting = bleScanStarting && bleScanOwner == BleScanOwner.SCANNER
     val bleScannerScanStopping = bleScanStopping && bleScanOwner == BleScanOwner.SCANNER
@@ -476,12 +496,18 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         meshActive,
         blePinBruteforce.running,
         rfid.running,
+        wpsLockDetectorState.scanning,
+        wpsAttemptDetectorState.starting,
+        wpsAttemptDetectorState.running,
+        wpsAttemptDetectorState.sessions.size,
     ) {
         modules.map { module ->
         val runsWithoutDevice = module.id == "ducky" ||
             module.id == "credential_manager" ||
             module.id == "wpa_cracker" ||
+            module.id == "pcap22000" ||
             module.id == "mac_lookup" ||
+            module.id == "bssid_geolocation" ||
             module.id == "serial_monitor" ||
             module.id == "firmware" ||
             module.id == "ir" ||
@@ -498,6 +524,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "nrugochi" -> "nrugochi"
             "client_presence" -> "client_detect"
             "hidden_ap" -> "hidden_ap"
+            "wps_lock_detector" -> "wps_lock_detect"
+            "wps_attempt_detector" -> "wps_attempt_detect"
             "ble_scanner" -> "ble_scan"
             "tracker_detector" -> "ble_scan"
             "ble_profile" -> "ble_profile"
@@ -569,6 +597,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "ble_scanner" -> bleScannerScanRunning || bleScannerScanStarting
                 "tracker_detector" -> trackerScanRunning
                 "ble_profile" -> bleProfileRunning || profileScanRunning || profileScanStarting
+                "wps_lock_detector" -> wpsLockDetectorState.scanning
+                "wps_attempt_detector" -> wpsAttemptDetectorState.running ||
+                    wpsAttemptDetectorState.starting ||
+                    wpsAttemptDetectorState.scanningTargets
                 "mesh" -> meshActive
                 "ld2450" -> ld2450.running
                 "rfid" -> rfid.running
@@ -593,6 +625,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     // the selected result and any nearby-AP discovery state. Saved history stays.
     LaunchedEffect(activeModuleId) {
         if (previousActiveModuleId == "mac_lookup" && activeModuleId != "mac_lookup") {
+            viewModel.clearMacLookup()
+        }
+        if (previousActiveModuleId == "bssid_geolocation" &&
+            activeModuleId != "bssid_geolocation"
+        ) {
             viewModel.clearBssidGeolocation()
         }
         if (previousActiveModuleId == "ir" && activeModuleId != "ir") {
@@ -611,11 +648,31 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         if (previousActiveModuleId == "ir_jammer" && activeModuleId != "ir_jammer") {
             viewModel.stopIrJammer()
         }
+        if (previousActiveModuleId == "probe_monitor" &&
+            activeModuleId != "probe_monitor"
+        ) {
+            viewModel.resetProbeMonitor()
+        }
+        if (previousActiveModuleId == "channel_analyzer" &&
+            activeModuleId != "channel_analyzer"
+        ) {
+            viewModel.resetChannelAnalyzer()
+        }
+        if (previousActiveModuleId == "wps_pixie_live" &&
+            activeModuleId != "wps_pixie_live"
+        ) {
+            viewModel.resetWpsPixieLiveScreen()
+        }
         if (previousActiveModuleId != activeModuleId &&
             (previousActiveModuleId?.startsWith("ir") == true ||
                 activeModuleId?.startsWith("ir") == true)
         ) {
             viewModel.clearIrMessages()
+        }
+        if (previousActiveModuleId in setOf("firmware", "settings") &&
+            activeModuleId !in setOf("firmware", "settings")
+        ) {
+            viewModel.onFirmwareFlasherScreenClosed()
         }
         previousActiveModuleId = activeModuleId
     }
@@ -638,12 +695,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    BackHandler(enabled = firmwareFlashing) {
-        // Swallow back while a firmware flash is in progress.
-    }
-    BackHandler(
-        enabled = (activeModuleId != null || selectedCategory != null) && !firmwareFlashing,
-    ) {
+    BackHandler(enabled = activeModuleId != null || selectedCategory != null) {
+        // Firmware flashing is allowed to continue in the background.
         navigateBack()
     }
 
@@ -677,7 +730,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning || rogueApRunning || clientPresenceRunning || hiddenApRunning || hiddenApStarting || portalRunning || bleAdvertising || bleScanRunning || bleProfileRunning || meshActive || crackerRunning
+    val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning ||
+        rogueApRunning || clientPresenceRunning || hiddenApRunning || hiddenApStarting ||
+        portalRunning || bleAdvertising || bleScanRunning || bleProfileRunning || meshActive ||
+        crackerRunning || wpsAttemptDetectorState.running || wpsAttemptDetectorState.starting ||
+        wpsAttemptDetectorState.scanningTargets
     val view = LocalView.current
     DisposableEffect(anyModuleRunning) {
         val window = (view.context as? Activity)?.window
@@ -759,33 +816,14 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
-    val crackerWordlistPicker = rememberLauncherForActivityResult(
+    val htmlTemplatePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
         if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
-            }
-            viewModel.setCrackerWordlist(uri, null)
+            viewModel.importHtmlTemplate(uri, null)
         }
     }
 
-    val crackerPcapPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-    ) { uri: Uri? ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
-            }
-            viewModel.setCrackerCustomPcap(uri, null)
-        }
-    }
 
     val badUsbPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -1040,6 +1078,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         activeModuleId == "wifi_config" -> "WiFi config"
         activeModuleId == "firmware" -> "Flasher"
         activeModuleId == "wpa_cracker" -> "WPA Cracker"
+        activeModuleId == "pcap22000" -> "PCAP to .hs22000"
         activeModuleId == "rfid_config" -> "RFID config"
         activeModuleId == "sensor_config" -> "Sensor config"
         activeModuleId == "devices" -> "Devices"
@@ -1107,7 +1146,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     AppTab.entries.forEach { tab ->
                         NavigationBarItem(
                             selected = selectedTab == tab,
-                            enabled = !firmwareFlashing,
                             onClick = {
                                 selectedTab = tab
                                 activeModuleId = null
@@ -1225,6 +1263,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 modifier = contentModifier,
                 unavailableMessage = moduleUnavailableMessage,
             ) {
+            key(wifiDeviceRevision) {
             when {
             activeModuleId == "wifi_config" -> {
                 WifiConfigScreen(
@@ -1240,6 +1279,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     hasCustomCaptureOutput = wifiCaptureDirectoryName != null,
                     onChooseCaptureOutput = { wifiCaptureFolderPicker.launch(null) },
                     onResetCaptureOutput = { viewModel.setWifiCaptureDirectory(null) },
+                    ouiRules = ouiRules,
+                    onAddOuiRule = viewModel::addOuiRule,
+                    onDeleteOuiRule = viewModel::deleteOuiRule,
                     modifier = Modifier,
                 )
             }
@@ -1255,6 +1297,31 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     fiveGhzUnavailableMessage = wifi5UnavailableMessage,
                     onBandSelected = viewModel::setWifiBand,
                     onScan = viewModel::scanWifi,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "probe_monitor" -> {
+                ProbeMonitorRoute(
+                    connected = isDeviceConnected,
+                    running = probeMonitorRunning,
+                    fixed = probeMonitorFixed,
+                    channel = probeMonitorChannel,
+                    entries = probeMonitorEntries,
+                    frameCount = probeMonitorFrameCount,
+                    allowedChannels = allowedWifiChannels,
+                    onStart = viewModel::startProbeMonitor,
+                    onStop = viewModel::stopProbeMonitor,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "channel_analyzer" -> {
+                ChannelAnalyzerRoute(
+                    connected = isDeviceConnected,
+                    scanning = scanning,
+                    networks = channelAnalyzerNetworks,
+                    onScan = viewModel::scanChannelAnalyzer,
                     modifier = Modifier,
                 )
             }
@@ -1289,6 +1356,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     activeChannel = beaconChannel,
                     savedLists = beaconLists,
                     onSaveListAction = viewModel::saveBeaconList,
+                    onRenameListAction = viewModel::renameBeaconList,
                     onDeleteList = viewModel::deleteBeaconList,
                     onStart = viewModel::startBeacon,
                     onStop = viewModel::stopBeacon,
@@ -1302,6 +1370,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     connected = connectionState is ConnectionState.Connected,
                     running = deauthRunning,
                     sentFrames = deauthSent,
+                    failedFrames = deauthFailed,
+                    elapsedMs = deauthElapsedMs,
+                    pps = deauthPps,
                     targetBssid = deauthTarget,
                     activeChannel = deauthChannel,
                     scanning = scanning,
@@ -1375,6 +1446,28 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     fiveGhzAvailable = wifi5Available,
                     fiveGhzUnavailableMessage = wifi5UnavailableMessage,
                     allowedChannels = allowedWifiChannels,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "wps_lock_detector" -> {
+                WpsLockDetectorScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    scanning = wpsLockDetectorState.scanning,
+                    accessPoints = wpsLockDetectorState.accessPoints,
+                    error = wpsLockDetectorState.error,
+                    onScan = viewModel::startWpsLockScan,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "wps_attempt_detector" -> {
+                WpsAttemptDetectorScreen(
+                    connected = connectionState is ConnectionState.Connected,
+                    state = wpsAttemptDetectorState,
+                    onScanWpsTargets = viewModel::scanWpsAttemptTargets,
+                    onStart = viewModel::startWpsAttemptDetector,
+                    onStop = viewModel::stopWpsAttemptDetector,
                     modifier = Modifier,
                 )
             }
@@ -1566,6 +1659,14 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     irDatabaseMetadata = irDatabaseMetadata,
                     esp32 = connected,
                     errorMessage = irErrorMessage,
+                    statusMessage = irStatusMessage,
+                    savingPins = irSavingEsp32Pins,
+                    rootConfigured = exportDirectoryName != "Not configured",
+                    onChooseRootDirectory = {
+                        showRootDirectoryDialog = false
+                        rootDirectoryPickerActive = true
+                        folderPicker.launch(null)
+                    },
                     onSetBackend = viewModel::setIrTransmitBackend,
                     onSetLoopInterval = viewModel::setIrLoopIntervalMs,
                     onRefreshCapabilities = viewModel::refreshIrCapabilities,
@@ -1582,6 +1683,17 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
 
             activeModuleId == "mac_lookup" -> {
+                OfflineMacLookupScreen(
+                    result = macLookupResult,
+                    ouiDatabaseStatus = ouiDatabaseStatus,
+                    onLookup = viewModel::lookupMac,
+                    onClear = viewModel::clearMacLookup,
+                    onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "bssid_geolocation" -> {
                 MacLookupScreen(
                     result = macLookupResult,
                     geolocationState = bssidGeolocationState,
@@ -1615,26 +1727,16 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
 
             activeModuleId == "evil_twin" -> {
-                EvilTwinScreen(
+                EvilTwinModuleRoute(
+                    viewModel = viewModel,
                     connected = connectionState is ConnectionState.Connected,
-                    running = portalRunning && portalMode == "evil_twin",
                     scanning = scanning,
                     networks = networks,
-                    handshake = portalHandshake,
-                    results = evilTwinResults,
-                    eventLog = evilTwinEventLog,
-                    selectedHtmlName = evilTwinHtmlName,
-                    htmlUploading = evilTwinHtmlUploading,
-                    htmlProgress = evilTwinHtmlUploadProgress,
-                    htmlComplete = evilTwinHtmlComplete,
-                    onScanWifi = viewModel::scanWifiForTargets,
                     allowedChannels = allowedWifiChannels,
                     onChooseHtml = { evilTwinHtmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
-                    onClearHtml = viewModel::clearEvilTwinHtmlFile,
-                    onStart = viewModel::startEvilTwin,
-                    onStop = viewModel::stopPortal,
-                    onClearPasswords = viewModel::clearEvilTwinPasswords,
-                    onClearEventLog = viewModel::clearEvilTwinEventLog,
+                    onImportHtmlTemplate = {
+                        htmlTemplatePicker.launch(arrayOf("text/html", "text/plain", "*/*"))
+                    },
                     modifier = Modifier,
                 )
             }
@@ -1649,67 +1751,35 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
 
             activeModuleId == "wpa_cracker" -> {
-                WpaCrackerScreen(
-                    sessions = credentialSessions,
-                    selectedSession = crackerSelectedSession,
-                    customPcapName = crackerCustomPcapName,
-                    customPcapValid = crackerCustomPcapValid,
-                    customPcapValidating = crackerCustomPcapValidating,
-                    customPcapMessage = crackerCustomPcapMessage,
-                    customSsidOptions = crackerCustomSsidOptions,
-                    customSsidSelected = crackerCustomSsidSelected,
-                    customSsidManualEnabled = crackerCustomSsidManual,
-                    customSsid = crackerCustomSsid,
-                    wordlistName = crackerWordlistName,
-                    running = crackerRunning,
-                    tested = crackerTested,
-                    speed = crackerSpeed,
-                    result = crackerResult,
-                    status = crackerStatus,
-                    onSelectSession = viewModel::selectCrackerSession,
-                    onChooseCustomPcap = {
-                        crackerPcapPicker.launch(
-                            arrayOf(
-                                "application/vnd.tcpdump.pcap",
-                                "application/octet-stream",
-                                "*/*",
-                            ),
-                        )
-                    },
-                    onClearCustomPcap = viewModel::clearCrackerCustomPcap,
-                    onSelectCustomSsid = viewModel::selectCrackerCustomSsid,
-                    onUseManualCustomSsid = viewModel::useManualCrackerSsid,
-                    onCustomSsidChange = viewModel::setCrackerCustomSsid,
-                    onChooseWordlist = { crackerWordlistPicker.launch(arrayOf("text/plain", "*/*")) },
-                    onClearWordlist = viewModel::clearCrackerWordlist,
-                    onStart = viewModel::startCracker,
-                    onStop = viewModel::stopCracker,
+                WpaCrackerRoute(
+                    viewModel = viewModel,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "pcap22000" -> {
+                Pcap22000Route(
+                    viewModel = viewModel,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "wps_pixie_live" -> {
+                WpsPixieLiveRoute(
+                    viewModel = viewModel,
                     modifier = Modifier,
                 )
             }
 
             activeModuleId == "portal" -> {
-                PortalScreen(
+                PortalModuleRoute(
+                    viewModel = viewModel,
                     connected = connectionState is ConnectionState.Connected,
-                    running = portalRunning && portalMode == "portal",
-                    htmlSize = portalHtmlSize,
-                    htmlComplete = portalHtmlComplete,
-                    activeSsid = portalSsid,
-                    activeChannel = portalChannel,
-                    portalViews = portalViews,
-                    portalClients = portalClients,
-                    capturedData = portalCapturedData,
-                    credentials = portalCredentials,
-                    selectedHtmlName = portalHtmlName,
-                    htmlUploading = portalHtmlUploading,
-                    htmlProgress = portalHtmlUploadProgress,
-                    eventLog = portalEventLog,
-                    onChooseHtml = { htmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
-                    onClearHtml = viewModel::clearPortalHtmlFile,
-                    onClearEventLog = viewModel::clearPortalEventLog,
-                    onStart = viewModel::startPortal,
-                    onStop = viewModel::stopPortal,
                     allowedChannels = allowedWifiChannels,
+                    onChooseHtml = { htmlPicker.launch(arrayOf("text/html", "text/plain", "*/*")) },
+                    onImportHtmlTemplate = {
+                        htmlTemplatePicker.launch(arrayOf("text/html", "text/plain", "*/*"))
+                    },
                     modifier = Modifier,
                 )
             }
@@ -2072,7 +2142,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 permissionRevision = permissionRevision,
                 selectedFlashTarget = firmwareTargetDevice,
                 onChooseExportDirectory = { folderPicker.launch(null) },
-                onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "*/*")) },
+                onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "application/x-binary")) },
                 onClearFirmware = viewModel::clearFirmwareFlashFile,
                 onRefreshDevices = viewModel::refreshDevices,
                 onRequestPermission = { device -> requestFirmwarePermission(device) },
@@ -2108,7 +2178,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 permissionRevision = permissionRevision,
                 selectedFlashTarget = firmwareTargetDevice,
                 onChooseExportDirectory = { folderPicker.launch(null) },
-                onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "*/*")) },
+                onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "application/x-binary")) },
                 onClearFirmware = viewModel::clearFirmwareFlashFile,
                 onRefreshDevices = viewModel::refreshDevices,
                 onRequestPermission = { device -> requestFirmwarePermission(device) },
@@ -2119,9 +2189,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onFlashManualFirmwareNow = viewModel::flashManualFirmwareNow,
                 onFlashManualFirmwareWithReset = viewModel::flashManualFirmwareWithReset,
                 onDisarmManualFirmwareRecovery = viewModel::disarmManualFirmwareRecovery,
-                ouiRules = ouiRules,
-                onAddOuiRule = viewModel::addOuiRule,
-                onDeleteOuiRule = viewModel::deleteOuiRule,
                 ouiDatabaseStatus = ouiDatabaseStatus,
                 ouiDatabaseProgress = ouiDatabaseProgress,
                 onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
@@ -2171,6 +2238,18 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     },
                     irTxLabel = irTxChipLabel,
                     irRxLabel = irRxChipLabel,
+                    irDatabaseState = irDatabaseState,
+                    irDatabaseMetadata = irDatabaseMetadata,
+                    irRemoteCount = irRemotes.size,
+                    irRootConfigured = exportDirectoryName != "Not configured",
+                    onChooseIrRootDirectory = {
+                        showRootDirectoryDialog = false
+                        rootDirectoryPickerActive = true
+                        folderPicker.launch(null)
+                    },
+                    onDownloadIrDatabase = viewModel::downloadIrDatabase,
+                    onCancelIrDatabaseOperation = viewModel::cancelIrDatabaseOperation,
+                    onRescanIrLibrary = viewModel::refreshIrLibrary,
                     onOpenIrConfig = { activeModuleId = "ir_config" },
                     showRfidInfo = selectedCategory == "RFID",
                     rfidInterfaceLabel = "I2C",
@@ -2244,6 +2323,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onClearHistory = viewModel::clearHistory,
                 modifier = Modifier,
             )
+            }
             }
             }
         }

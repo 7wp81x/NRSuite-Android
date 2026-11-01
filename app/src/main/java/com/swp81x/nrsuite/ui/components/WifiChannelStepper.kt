@@ -46,7 +46,6 @@ fun WifiChannelStepper(
             style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
             modifier = Modifier.padding(horizontal = 2.dp),
         )
-        WifiBandPill(label = bandForWifiChannel(value).label)
         IconButton(
             onClick = { onChannelChange(nextWifiChannel(value, true, allowedChannels)) },
             enabled = enabled && allowedChannels.size > 1,
@@ -54,6 +53,30 @@ fun WifiChannelStepper(
             Text("+", style = MaterialTheme.typography.titleLarge)
         }
     }
+}
+
+@Composable
+fun WifiChannelSummaryPill(
+    channel: Int,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = "CH $channel · ${bandForWifiChannel(channel).label}",
+        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = modifier
+            .background(
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                RoundedCornerShape(50),
+            )
+            .border(
+                0.5.dp,
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
+                RoundedCornerShape(50),
+            )
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    )
 }
 
 @Composable

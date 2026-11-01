@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,40 +60,64 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
+import com.swp81x.nrsuite.core.portal.PortalSessionMetrics
+import com.swp81x.nrsuite.core.portal.PortalVisitor
 import com.swp81x.nrsuite.core.wpa.EvilTwinResult
+import com.swp81x.nrsuite.ui.components.ScanButtonContent
+import com.swp81x.nrsuite.ui.components.HtmlTemplatesTab
 import com.swp81x.nrsuite.ui.components.HtmlUploadSection
+import com.swp81x.nrsuite.ui.components.PortalFirmwareNoticeToggle
+import com.swp81x.nrsuite.ui.components.PortalVisitorsTab
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
-import com.swp81x.nrsuite.ui.components.NetworkTargetRow
+import com.swp81x.nrsuite.ui.components.ScanTargetList
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
+import com.swp81x.nrsuite.ui.components.WifiChannelSummaryPill
 import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
+import com.swp81x.nrsuite.ui.theme.StatusInfo
 import com.swp81x.nrsuite.ui.theme.StatusRed
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
+import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
 import org.json.JSONObject
 
 @Composable
 fun EvilTwinScreen(
     connected: Boolean,
     running: Boolean,
+    starting: Boolean = false,
+    stopping: Boolean = false,
     scanning: Boolean,
     networks: List<JSONObject>,
     allowedChannels: List<Int> = emptyList(),
+    firmwareNoticeEnabled: Boolean = true,
+    onFirmwareNoticeEnabledChange: (Boolean) -> Unit = {},
     handshake: EapolHandshake,
     results: List<EvilTwinResult>,
+    metrics: PortalSessionMetrics = PortalSessionMetrics(),
+    visitors: List<PortalVisitor> = emptyList(),
     eventLog: List<String>,
     selectedHtmlName: String?,
+    selectedHtmlSize: Long?,
     htmlUploading: Boolean,
     htmlProgress: Int,
     htmlComplete: Boolean,
     onClearEventLog: () -> Unit,
+    onClearVisitors: () -> Unit = {},
     onScanWifi: () -> Unit,
     onChooseHtml: () -> Unit,
-    onClearHtml: () -> Unit,
+    htmlTemplates: List<com.swp81x.nrsuite.core.portal.HtmlTemplate> = emptyList(),
+    htmlTemplateMessage: String? = null,
+    htmlTemplateMessageIsError: Boolean = false,
+    onImportHtmlTemplate: () -> Unit = {},
+    onUseHtmlTemplate: (String) -> Unit = {},
+    onRenameHtmlTemplate: (String, String) -> Unit = { _, _ -> },
+    onDeleteHtmlTemplate: (String) -> Unit = {},
     onStart: (ssid: String, channel: Int, targetBssid: String) -> Unit,
     onStop: () -> Unit,
     onClearPasswords: () -> Unit,
@@ -108,6 +133,11 @@ fun EvilTwinScreen(
     val context = LocalContext.current
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
+    val effectiveAllowedChannels = allowedChannels.ifEmpty { WIFI_AUTO_CHANNELS }
+    LaunchedEffect(effectiveAllowedChannels) {
+        channel = normalizeWifiChannelForAllowed(channel, effectiveAllowedChannels)
+    }
+
     LaunchedEffect(running) {
         if (running) targetExpanded = false
     }
@@ -116,52 +146,73 @@ fun EvilTwinScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+        PortalFirmwareNoticeToggle(
+            enabled = firmwareNoticeEnabled,
+            onEnabledChange = onFirmwareNoticeEnabledChange,
+        )
+        Spacer(Modifier.height(6.dp))
         RoundedTabRow(
             selectedIndex = selectedTab,
-            tabs = listOf("Overview", "Logs (${eventLog.size})"),
+            tabs = listOf(
+                "Overview",
+                "Logs (${eventLog.size})",
+                "Visitors (${visitors.size})",
+                "HTML Templates",
+            ),
             onSelect = { selectedTab = it },
         )
 
         if (selectedTab == 0) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(12.dp),
+        Column(
+            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Column(Modifier.padding(14.dp)) {
-                Text(
-                    text = "Evil Twin",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = "Portal + deauth + EAPOL capture workflow",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-                StatusIndicator(
-                    label = when {
-                        !connected -> "No device connected"
-                        running -> "Evil Twin running"
-                        else -> "Ready"
-                    },
-                    color = when {
-                        !connected -> StatusNeutral
-                        running -> StatusGreen
-                        else -> StatusNeutral
-                    },
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    EapolBadge("M1", handshake.m1)
-                    EapolBadge("M2", handshake.m2)
-                    EapolBadge("M3", handshake.m3)
-                    EapolBadge("M4", handshake.m4)
+        if (running || handshake.m1 || handshake.m2 || handshake.m3 || handshake.m4 ||
+            results.isNotEmpty()
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(
+                        text = "Evil Twin status",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    StatusIndicator(
+                        label = when {
+                            !connected -> "No device connected"
+                            running -> "Evil Twin running"
+                            results.isNotEmpty() -> "Stopped"
+                            else -> "Capturing handshake"
+                        },
+                        color = when {
+                            !connected -> StatusNeutral
+                            running -> StatusGreen
+                            results.isNotEmpty() -> StatusInfo
+                            else -> StatusNeutral
+                        },
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        EapolBadge("M1", handshake.m1)
+                        EapolBadge("M2", handshake.m2)
+                        EapolBadge("M3", handshake.m3)
+                        EapolBadge("M4", handshake.m4)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Views ${metrics.pageViews} · clients ${metrics.clientsAssociated} · " +
+                            "posts ${metrics.capturedPosts}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = NrOnSurfaceVariant,
+                    )
                 }
             }
         }
@@ -203,7 +254,10 @@ fun EvilTwinScreen(
                         onClick = onScanWifi,
                         enabled = connected && !scanning,
                     ) {
-                        Text(if (scanning) "Scanning..." else "Scan WiFi for targets")
+                        ScanButtonContent(
+                            scanning = scanning,
+                            idleLabel = "Scan WiFi for targets",
+                        )
                     }
                     if (networks.isEmpty() && !scanning) {
                         Spacer(Modifier.height(6.dp))
@@ -215,44 +269,33 @@ fun EvilTwinScreen(
                     }
                     if (networks.isNotEmpty()) {
                         Spacer(Modifier.height(6.dp))
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    color = NrSurfaceVariant,
-                                    shape = RoundedCornerShape(10.dp),
-                                )
-                                .padding(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            networks.forEach { network ->
+                        ScanTargetList(
+                            networks = networks,
+                            selectedBssids = setOf(targetBssid),
+                            onToggle = { network ->
                                 val bssidValue = network.optString("bssid")
-                                NetworkTargetRow(
-                                    ssid = network.optString("ssid").ifBlank { "(hidden)" },
-                                    bssid = bssidValue,
-                                    channel = network.optInt("channel", 1),
-                                    rssi = network.optInt("rssi", -100),
-                                    security = network.optString("security", "?"),
-                                    wps = network.optBoolean("wps"),
-                                    vendor = network.optString("vendor").takeIf { it.isNotBlank() },
-                                    ouiWhitelisted = network.optBoolean("oui_whitelisted"),
-                                    ouiBlacklisted = network.optBoolean("oui_blacklisted"),
-                                    selected = targetBssid.equals(bssidValue, ignoreCase = true),
-                                    enabled = true,
-                                    onClick = {
-                                        targetBssid = bssidValue
-                                        channel = network.optInt("channel", channel)
-                                        val apSsid = network.optString("ssid")
-                                        if (apSsid.isNotBlank()) ssid = apSsid
-                                    },
-                                )
-                            }
-                        }
+                                targetBssid = bssidValue
+                                channel = network.optInt("channel", channel)
+                                val apSsid = network.optString("ssid")
+                                if (apSsid.isNotBlank()) ssid = apSsid
+                            },
+                            enabled = !running,
+                        )
                     }
                 }
                 if (targetExpanded) {
                     Spacer(Modifier.height(10.dp))
-                    Text("Channel", style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Channel",
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                        WifiChannelSummaryPill(channel)
+                    }
                     Spacer(Modifier.height(6.dp))
                     WifiChannelStepper(
                         value = channel,
@@ -265,18 +308,20 @@ fun EvilTwinScreen(
                     Spacer(Modifier.height(8.dp))
                     HtmlUploadSection(
                         selectedName = selectedHtmlName,
+                        selectedSizeBytes = selectedHtmlSize,
                         uploading = htmlUploading,
                         progress = htmlProgress,
                         completed = htmlComplete,
-                        required = true,
                         enabled = !running,
+                        templates = htmlTemplates,
+                        onSelectTemplate = onUseHtmlTemplate,
                         onChoose = onChooseHtml,
-                        onClear = onClearHtml,
                     )
                 }
             }
         }
 
+        if (running || results.isNotEmpty()) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -371,7 +416,13 @@ fun EvilTwinScreen(
                 )
             }
         }
-        } else {
+        }
+        Spacer(Modifier.height(80.dp))
+        }
+        } else if (selectedTab == 1) {
+        Column(
+            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+        ) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -414,6 +465,31 @@ fun EvilTwinScreen(
                 }
             }
         }
+        Spacer(Modifier.height(80.dp))
+        }
+        } else if (selectedTab == 2) {
+        PortalVisitorsTab(
+            visitors = visitors,
+            onClearVisitors = onClearVisitors,
+            modifier = Modifier.weight(1f),
+            emptyText = "No Evil Twin visitors yet. Page views, form posts, MAC, IP, and User-Agent will appear here.",
+        )
+        } else {
+            HtmlTemplatesTab(
+                templates = htmlTemplates,
+                message = htmlTemplateMessage,
+                messageIsError = htmlTemplateMessageIsError,
+                enabled = !running && !htmlUploading,
+                selectedName = selectedHtmlName,
+                onImport = onImportHtmlTemplate,
+                onUse = {
+                    onUseHtmlTemplate(it.id)
+                    selectedTab = 0
+                },
+                onRename = { template, name -> onRenameHtmlTemplate(template.id, name) },
+                onDelete = { onDeleteHtmlTemplate(it.id) },
+                modifier = Modifier.weight(1f),
+            )
         }
 
         if (confirmStart) {
@@ -463,7 +539,6 @@ fun EvilTwinScreen(
             )
         }
 
-        Spacer(Modifier.height(80.dp))
         }
 
         if (connected) {
@@ -476,32 +551,40 @@ fun EvilTwinScreen(
                             "Select a target network first.",
                             Toast.LENGTH_SHORT,
                         ).show()
-                        selectedHtmlName == null -> Toast.makeText(
-                            context,
-                            "Choose an HTML file first.",
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                        htmlUploading -> Toast.makeText(
-                            context,
-                            "Wait for the HTML upload to finish.",
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        selectedHtmlName == null || htmlUploading -> {
+                            targetExpanded = true
+                            Toast.makeText(
+                                context,
+                                "Choose an HTML template or file first.",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
                         else -> confirmStart = true
                     }
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
+                enabled = !starting && !stopping,
                 containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                Icon(
-                    imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = if (running) "Stop Evil Twin" else "Start Evil Twin",
-                )
+                if (starting || stopping) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.5.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        contentDescription = if (running) "Stop Evil Twin" else "Start Evil Twin",
+                    )
+                }
             }
         }
     }
+
 }
 
 

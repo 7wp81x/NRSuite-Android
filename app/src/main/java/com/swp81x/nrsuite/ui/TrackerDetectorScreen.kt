@@ -174,7 +174,7 @@ private fun TrackerStatusCard(
     val color = when {
         !connected -> StatusNeutral
         scanning -> StatusGreen
-        else -> StatusAmber
+        else -> MaterialTheme.colorScheme.primary
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -196,7 +196,7 @@ private fun TrackerStatusCard(
                         text = when {
                             !connected -> "Disconnected"
                             scanning -> "Monitoring"
-                            else -> "Ready"
+                            else -> "Idle"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,

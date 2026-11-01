@@ -138,6 +138,7 @@ import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
 import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
+import com.swp81x.nrsuite.core.update.SUPPORTED_FIRMWARE_CHIPS
 import com.swp81x.nrsuite.core.update.firmwareChipFromAssetName
 import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
@@ -241,6 +242,7 @@ internal fun SettingsScreen(
     var selectedFirmwareReleaseTag by remember { mutableStateOf<String?>(null) }
     var selectedFirmwareAssetName by remember { mutableStateOf<String?>(null) }
     var firmwareSourceRemote by remember { mutableStateOf(true) }
+    val localFirmwareChip = firmwareChipFromFirmwareName(firmwareFileName)
     LaunchedEffect(firmwareFileName, chip) {
         val inferred = firmwareChipFromFirmwareName(firmwareFileName)
         when {
@@ -322,6 +324,32 @@ internal fun SettingsScreen(
         border = BorderStroke(0.5.dp, NrOutline),
         ) {
             Column(Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Firmware flasher",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    val flashFailed = firmwareFlashStatus?.startsWith("Flash failed") == true
+                    StatusIndicator(
+                        label = when {
+                            firmwareFlashing -> "Running"
+                            flashFailed -> "Failed"
+                            firmwareFlashProgress >= 100 -> "Complete"
+                            else -> "Idle"
+                        },
+                        color = when {
+                            firmwareFlashing || firmwareFlashProgress >= 100 -> StatusGreen
+                            flashFailed -> StatusRed
+                            else -> StatusNeutral
+                        },
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
 
                 Text(
                     text = "Current version: ${currentFirmware ?: "not connected"}",
@@ -438,14 +466,24 @@ internal fun SettingsScreen(
 
                 if (!firmwareSourceRemote) {
                     Text(
-                        text = if (firmwareFileName != null && firmwareFlashSize > 0) {
-                            "$firmwareFileName  (${firmwareFlashSize / 1024} KB)"
+                        text = if (firmwareFileName != null) {
+                            "${localFirmwareChip ?: "Unknown target chip"} firmware" +
+                                if (firmwareFlashSize > 0) " · ${firmwareFlashSize / 1024} KB" else ""
                         } else {
-                            firmwareFileName ?: "No local firmware .bin selected"
+                            "No local firmware .bin selected"
                         },
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = NrOnSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        color = if (firmwareFileName == null) StatusAmber else NrOnSurface,
                     )
+                    if (firmwareFileName != null) {
+                        Text(
+                            text = firmwareFileName,
+                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                            color = NrOnSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
                     if (firmwareFileName == null) {
                         Button(
@@ -552,14 +590,19 @@ internal fun SettingsScreen(
 
                         Spacer(Modifier.height(8.dp))
                         SavedItemDropdown(
-                            label = "Firmware image",
+                            label = "Firmware target",
                             selectedName = selectedAsset?.name,
+                            selectedDisplayName = selectedAsset?.let { asset ->
+                                firmwareChipFromAssetName(asset.name) ?: asset.name
+                            },
                             names = allAssets.map { it.name },
                             enabled = !firmwareFlashing && allAssets.isNotEmpty(),
                             sortNames = false,
+                            itemLabel = { name ->
+                                firmwareChipFromAssetName(name) ?: name
+                            },
                             itemSupportingText = { name ->
-                                firmwareChipFromAssetName(name)?.let { "Target: $it" }
-                                    ?: "Unknown target chip"
+                                if (firmwareChipFromAssetName(name) == null) "Unknown target chip" else null
                             },
                             onSelect = { name ->
                                 selectedFirmwareAssetName = name
@@ -637,37 +680,55 @@ internal fun SettingsScreen(
 
                 Spacer(Modifier.height(12.dp))
 
-                Text(
-                    text = "3. Review",
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "Target chip",
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    listOf("ESP32", "ESP32-S2", "ESP32-S3", "ESP32-C3").forEach { option ->
-                        NrFilterChip(
-                            selected = selectedTargetChip == option,
-                            onClick = { selectedTargetChip = option },
-                            enabled = !firmwareFlashing,
-                            label = option,
+                if (!firmwareSourceRemote) {
+                    Text(
+                        text = "3. Verify target",
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    val detectedChip = localFirmwareChip
+                    if (detectedChip != null) {
+                        Text(
+                            text = "Detected target chip: $detectedChip",
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = StatusGreen,
+                        )
+                    } else {
+                        Text(
+                            text = "Target chip could not be inferred from the filename.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
                         )
                     }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Confirm firmware target",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SUPPORTED_FIRMWARE_CHIPS.forEach { option ->
+                            NrFilterChip(
+                                selected = selectedTargetChip == option,
+                                onClick = { selectedTargetChip = option },
+                                enabled = !firmwareFlashing,
+                                label = option,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Flash offset: 0x0",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = NrOnSurfaceVariant,
+                    )
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "Flash offset: 0x0",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
-                )
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(
                     onClick = { advancedExpanded = !advancedExpanded },
@@ -769,6 +830,15 @@ internal fun SettingsScreen(
                             NrOnSurfaceVariant
                         },
                     )
+                    if (firmwareFlashing) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Flashing continues in the background. " +
+                                "Follow progress in the NRSuite notification.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
                 }
 
                 if (firmwareManualRecovery) {
@@ -836,12 +906,6 @@ internal fun SettingsScreen(
             status = ouiDatabaseStatus,
             progress = ouiDatabaseProgress,
             onDownload = onDownloadOuiDatabase,
-        )
-
-        OuiRulesCard(
-            ouiRules = ouiRules,
-            onAddOuiRule = onAddOuiRule,
-            onDeleteOuiRule = onDeleteOuiRule,
         )
 
         UpdatesCard(

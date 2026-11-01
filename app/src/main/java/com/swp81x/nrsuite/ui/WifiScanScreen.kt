@@ -72,6 +72,13 @@ fun WifiScanScreen(
 ) {
     val context = LocalContext.current
     var configExpanded by remember { mutableStateOf(true) }
+    val visibleNetworks = remember(networks, band) {
+        when (band) {
+            WifiBand.AUTO -> networks
+            WifiBand.BAND_2_4 -> networks.filter { it.optInt("channel", 0) in 1..14 }
+            WifiBand.BAND_5 -> networks.filter { it.optInt("channel", 0) >= 36 }
+        }
+    }
 
     LaunchedEffect(scanning) {
         if (scanning) configExpanded = false
@@ -111,21 +118,21 @@ fun WifiScanScreen(
             Spacer(Modifier.height(10.dp))
 
             Text(
-                text = "Scan results (${networks.size})",
+                text = "Scan results (${visibleNetworks.size})",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
 
             Spacer(Modifier.height(8.dp))
 
-            if (networks.isEmpty()) {
+            if (visibleNetworks.isEmpty()) {
                 EmptyResults(scanning = scanning)
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(networks, key = { it.optString("bssid", it.toString()) }) { network ->
+                    items(visibleNetworks, key = { it.optString("bssid", it.toString()) }) { network ->
                         NetworkRow(network)
                     }
                     item { Spacer(Modifier.height(72.dp)) }

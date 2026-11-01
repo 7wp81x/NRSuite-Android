@@ -67,16 +67,23 @@ Some categories also expose filters. WiFi, for example, uses:
 
 ### Shared channel control
 
-WiFi tools use a common channel control:
+WiFi tools use a common channel control. The channel/band summary sits beside
+the section label and uses the module accent color:
 
 ```text
-[-]  ch 6  [2.4 GHz]  [+]
+Channel                              [CH 6 · 2.4 GHz]
+[-]  ch 6  [+]
 ```
 
-- The band pill follows the selected channel.
+- The summary pill shows the selected channel and band; it is not a second
+  control.
 - 5 GHz channels are selectable only when the connected board and regulatory
   channel mask allow them.
 - ESP32-C5 supports 2.4 GHz and 5 GHz. Other targets are normally 2.4 GHz-only.
+- If the regulatory country exposes no allowed 5 GHz channels, the 5 GHz scan
+  option is disabled and WiFi Config should be used to update the country.
+- Explicit 2.4 GHz/5 GHz scan result lists are filtered on both firmware and
+  Android so cross-band APs cannot appear in the wrong filter view.
 - Selecting a target AP in a targeted workflow automatically selects its channel.
 
 ### WiFi Config
@@ -147,6 +154,130 @@ The live card shows:
 
 Handshake-only capture records EAPOL frames plus one contextual beacon. The
 captured filename and PCAP remain in the configured output directory.
+
+### Wi-Fi target lists
+
+Attack and target-selection screens use a bounded, independently scrollable scan-result
+list. Re-scanning does not make the whole screen grow indefinitely.
+
+- Single-target modules use radio selection.
+- Deauth uses multi-select checkboxes.
+- Scan results include SSID, BSSID, channel/band, RSSI, security, and WPS state.
+
+### Deauth
+
+Deauth supports two modes:
+
+- **Burst** — sends a finite frame count.
+- **Loop** — runs until **Stop** is pressed.
+
+With multiple targets selected, the app sends one burst to each selected target,
+then moves to that target's channel. Multi-target loop mode repeats this
+channel-hopping pass until stopped. This orchestration currently uses repeated
+`DEAUTH_BURST` commands; a dedicated firmware multi-target command is future work.
+
+### Beacon
+
+Beacon has two tabs:
+
+- **Overview** — current SSID summary, channel/timing, options, and broadcast status.
+- **SSID Lists** — edit SSIDs, save/load/rename/delete lists, import text lists,
+  and load presets.
+
+The Rickroll preset is loaded by default on a fresh screen. Every preset SSID is
+within the firmware's 32-byte SSID limit.
+
+### Probe Request Monitor and Channel Analyzer
+
+- **Probe Request Monitor** groups probes by MAC/SSID/channel, with RSSI,
+  sightings, vendor, and randomized-MAC hints.
+- **Channel Analyzer** performs a scan and shows compact 2.4/5 GHz bars plus a
+  scrollable nearby-AP list. APs are sorted by RSSI and can be filtered by band.
+
+Both screens clear their module-local results when you leave the module.
+
+### Captive Portal, Evil Twin, and HTML templates
+
+Captive Portal and Evil Twin share one local HTML template library:
+
+- Import, rename, delete, or select saved templates.
+- Imported templates are content-hashed; duplicate HTML is rejected.
+- The 24 KB firmware limit is enforced. Files above 16 KB show a warning.
+- HTML is required for both Captive Portal and Evil Twin before start.
+- The app checks device free heap before starting the portal; a firmware
+  `RESET_HTML`/upload rejection is shown clearly and the portal is stopped.
+- The HTML Templates tab is available from both portal workflows.
+
+See [Captive Portal / Evil Twin HTML authoring](CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)
+for page structure and test guidance.
+
+### WPS Lock Detector
+
+Use **WiFi → Defend → WPS Lock Detector**.
+
+1. Connect the ESP32.
+2. Tap the scan FAB.
+3. Review nearby WPS-enabled APs.
+4. Filter by `Locked`, `Likely unlocked`, or `Unknown`.
+5. Tap an AP to inspect WPS version, configuration methods, selected registrar,
+   vendor, and the exact lock-attribute result.
+
+`Likely unlocked` means the WPS IE was parsed and the AP did not advertise the
+AP Setup Locked attribute. It is not a guarantee that a PIN attempt will succeed.
+The detector never performs an active WPS PIN attempt to test lock state.
+
+### WPS Attempt Detector
+
+Use **WiFi → Defend → WPS Attempt Detector**.
+
+1. Tap **Scan WPS targets**.
+2. Select one or more nearby WPS APs. New scan results are selected by default.
+3. Start monitoring.
+4. The detector monitors only the selected BSSIDs and their channels.
+   - One selected channel: fixed monitoring.
+   - Multiple selected channels: hopping only across those channels.
+5. For advanced cases, enable **Monitor all allowed channels**.
+
+The detector passively parses EAP Identity and EAP-WSC M1–M8 activity. It does
+not transmit WPS frames or attempt authentication.
+
+While monitoring, NRSuite keeps a foreground-service notification active so the
+USB session and detector can continue when the app is backgrounded. A task
+notification is also raised when a WPS attempt session is first detected.
+
+Configuration:
+- Selected WPS targets and derived channels
+- Advanced all-channel monitoring
+- Hop interval
+- Start/Stop FAB
+
+Observed attempt cards show:
+- Source MAC, vendor, and randomized-MAC indicator
+- Target SSID/BSSID
+- Channel/band and RSSI
+- Current WPS stage and observed frame count
+- Session duration
+- Target WPS lock state and whether it came from a live observation or an earlier scan
+- Low / Medium / High risk and the reasons behind the score
+
+Risk is heuristic. A single WPS exchange is generally Low; repeated attempts,
+multiple source MACs, NACK/M2D activity, or attempts against an AP currently/live
+reporting WPS Locked can raise it. Saved scan lock state is only contextual and
+expires after 60 seconds. Stale lock data never raises risk by itself. The wording
+is intentionally **“WPS attempt detected”**, not “attack confirmed.”
+
+### WPS Pixie Dust
+
+Use **WiFi → Attack → WPS Pixie Dust**.
+
+- WPS target scans are isolated to that module; other Wi-Fi scans do not populate
+  the WPS target list.
+- The WPS target scan reports `WPS LOCKED`, `LIKELY UNLOCKED`, or
+  `WPS LOCK UNKNOWN` when the AP advertises WPS lock metadata.
+- Select a WPS-enabled target after a scan, then start the live attempt.
+- The live status card appears only after an attempt has activity or a result.
+- Leaving the module clears transient WPS state and targets.
+- Recovered PINs/PSKs are persisted through Credential Manager and the WPS PIN store.
 
 ---
 

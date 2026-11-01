@@ -1,5 +1,20 @@
 package com.swp81x.nrsuite.core.update
 
+/**
+ * User-selectable firmware targets shown in the local flashing review step.
+ *
+ * Keep this list centralized so the flasher UI cannot silently drop a
+ * supported chip while the asset matcher and build targets continue to
+ * support it.
+ */
+val SUPPORTED_FIRMWARE_CHIPS: List<String> = listOf(
+    "ESP32",
+    "ESP32-C5",
+    "ESP32-S2",
+    "ESP32-S3",
+    "ESP32-C3",
+)
+
 private data class FirmwareChipAssetMatcher(
     val chip: String,
     val tokens: List<String>,

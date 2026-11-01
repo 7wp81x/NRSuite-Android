@@ -24,6 +24,7 @@ object NrSuiteNotifications {
     private const val BLE_NOTIFICATION_ID = 2003
     private const val IR_DATABASE_NOTIFICATION_ID = 3001
     private const val IR_SEARCH_NOTIFICATION_ID = 3002
+    private const val CRACKER_NOTIFICATION_ID = 1002
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -60,7 +61,12 @@ object NrSuiteNotifications {
         )
     }
 
-    fun buildOperationNotification(context: Context, text: String): Notification {
+    fun buildOperationNotification(
+        context: Context,
+        text: String,
+        progressPercent: Int? = null,
+        smallIconRes: Int = R.drawable.ic_stat_nrsuite,
+    ): Notification {
         val pendingIntent = PendingIntent.getActivity(
             context,
             0,
@@ -70,8 +76,8 @@ object NrSuiteNotifications {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        return NotificationCompat.Builder(context, CHANNEL_OPERATIONS)
-            .setSmallIcon(R.drawable.ic_stat_nrsuite)
+        val builder = NotificationCompat.Builder(context, CHANNEL_OPERATIONS)
+            .setSmallIcon(smallIconRes)
             .setContentTitle("NRSuite")
             .setContentText(text)
             .setContentIntent(pendingIntent)
@@ -79,7 +85,10 @@ object NrSuiteNotifications {
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+        if (progressPercent != null) {
+            builder.setProgress(100, progressPercent.coerceIn(0, 100), false)
+        }
+        return builder.build()
     }
 
     @SuppressLint("MissingPermission")
@@ -117,12 +126,17 @@ object NrSuiteNotifications {
     }
 
     @SuppressLint("MissingPermission")
-    fun notifyTaskAlert(context: Context, title: String, text: String) {
+    fun notifyTaskAlert(
+        context: Context,
+        title: String,
+        text: String,
+        smallIconRes: Int = R.drawable.ic_stat_nrsuite,
+    ) {
         if (!notificationsAllowed(context)) return
         NotificationManagerCompat.from(context).notify(
             ALERT_NOTIFICATION_ID,
             NotificationCompat.Builder(context, CHANNEL_ALERTS)
-                .setSmallIcon(R.drawable.ic_stat_nrsuite)
+                .setSmallIcon(smallIconRes)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setContentIntent(mainActivityIntent(context))
@@ -245,9 +259,35 @@ object NrSuiteNotifications {
         )
     }
 
+    fun buildCrackerNotification(
+        context: Context,
+        text: String,
+        progressPercent: Int?,
+        indeterminate: Boolean,
+    ): Notification {
+        val builder = NotificationCompat.Builder(context, CHANNEL_OPERATIONS)
+            .setSmallIcon(R.drawable.ic_stat_cracker)
+            .setContentTitle("WPA Cracker")
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(mainActivityIntent(context))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+        if (progressPercent != null) {
+            builder.setProgress(100, progressPercent.coerceIn(0, 100), false)
+        } else if (indeterminate) {
+            builder.setProgress(0, 0, true)
+        }
+        return builder.build()
+    }
+
     fun irDatabaseNotificationId(): Int = IR_DATABASE_NOTIFICATION_ID
 
     fun operationNotificationId(): Int = OPERATION_NOTIFICATION_ID
+
+    fun crackerNotificationId(): Int = CRACKER_NOTIFICATION_ID
 
     private fun notificationsAllowed(context: Context): Boolean =
         NotificationManagerCompat.from(context).areNotificationsEnabled()

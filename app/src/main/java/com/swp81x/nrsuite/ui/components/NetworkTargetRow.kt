@@ -1,6 +1,7 @@
 package com.swp81x.nrsuite.ui.components
 
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wps.WpsLockState
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -27,9 +29,17 @@ import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
+import com.swp81x.nrsuite.ui.theme.StatusGreen
+import com.swp81x.nrsuite.ui.theme.StatusRed
 import com.swp81x.nrsuite.ui.util.ouiStatusColor
 import com.swp81x.nrsuite.ui.util.securityColor
 import com.swp81x.nrsuite.ui.util.signalQualityColor
+
+enum class TargetSelectionControl {
+    RADIO,
+    CHECKBOX,
+    NONE,
+}
 
 @Composable
 fun NetworkTargetRow(
@@ -40,9 +50,13 @@ fun NetworkTargetRow(
     security: String,
     selected: Boolean,
     wps: Boolean = false,
+    wpsColor: androidx.compose.ui.graphics.Color = StatusAmber,
+    wpsLockState: WpsLockState? = null,
     vendor: String? = null,
     ouiWhitelisted: Boolean = false,
     ouiBlacklisted: Boolean = false,
+    showSelectionIndicator: Boolean = true,
+    selectionControl: TargetSelectionControl = TargetSelectionControl.RADIO,
     enabled: Boolean = true,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -112,15 +126,34 @@ fun NetworkTargetRow(
                     }
                     if (wps) {
                         Spacer(Modifier.width(6.dp))
-                        NetworkStatusBadge(text = "WPS", color = StatusAmber)
+                        NetworkStatusBadge(text = "WPS", color = wpsColor)
+                    }
+                    if (wpsLockState != null) {
+                        Spacer(Modifier.width(6.dp))
+                        val (label, color) = when (wpsLockState) {
+                            WpsLockState.LOCKED -> "WPS LOCKED" to StatusRed
+                            WpsLockState.LIKELY_UNLOCKED -> "LIKELY UNLOCKED" to StatusGreen
+                            WpsLockState.UNKNOWN -> "WPS LOCK UNKNOWN" to NrOnSurfaceVariant
+                        }
+                        NetworkStatusBadge(text = label, color = color)
                     }
                 }
             }
-            RadioButton(
-                selected = selected,
-                onClick = null,
-                enabled = enabled,
-            )
+            if (showSelectionIndicator) {
+                when (selectionControl) {
+                    TargetSelectionControl.RADIO -> RadioButton(
+                        selected = selected,
+                        onClick = null,
+                        enabled = enabled,
+                    )
+                    TargetSelectionControl.CHECKBOX -> Checkbox(
+                        checked = selected,
+                        onCheckedChange = null,
+                        enabled = enabled,
+                    )
+                    TargetSelectionControl.NONE -> Unit
+                }
+            }
         }
     }
 }

@@ -214,9 +214,9 @@ private fun BleProfileStatusCard(
 ) {
     val color = when {
         !connected -> StatusNeutral
-        running -> StatusAmber
+        running -> StatusGreen
         target != null && status.startsWith("Profile complete") -> StatusGreen
-        else -> StatusAmber
+        else -> MaterialTheme.colorScheme.primary
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -238,8 +238,8 @@ private fun BleProfileStatusCard(
                         text = when {
                             !connected -> "Disconnected"
                             running -> "Profiling"
-                            servicesStatus(status) -> "Ready"
-                            else -> "Ready"
+                            servicesStatus(status) -> "Complete"
+                            else -> "Idle"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,

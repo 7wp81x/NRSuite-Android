@@ -45,6 +45,7 @@ internal fun MainViewModel.startHiddenApImpl(
             // One-time baseline scan. This is best-effort: if it fails or the
             // user moves, passive detection still runs without filtering.
             appendLog("Running baseline WiFi scan for Hidden AP Revealer...")
+            wifiScanDestination = null
             val baselineCount = activeSession.scanWifi(timeoutMs = 15_000)
             if (baselineCount != null && baselineCount >= 0) {
                 delay(150)

@@ -249,7 +249,7 @@ private fun SerialMonitorConnectionCard(
             .fillMaxWidth()
             .animateContentSize(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
-        border = BorderStroke(0.5.dp, if (connected) StatusGreen else NrOutline),
+        border = BorderStroke(0.5.dp, if (connected) MaterialTheme.colorScheme.primary else NrOutline),
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -279,7 +279,7 @@ private fun SerialMonitorConnectionCard(
                     Icon(
                         imageVector = Icons.Default.Usb,
                         contentDescription = null,
-                        tint = if (connected) StatusGreen else StatusNeutral,
+                        tint = if (connected) MaterialTheme.colorScheme.primary else StatusNeutral,
                         modifier = Modifier.size(22.dp),
                     )
                     Spacer(Modifier.width(8.dp))

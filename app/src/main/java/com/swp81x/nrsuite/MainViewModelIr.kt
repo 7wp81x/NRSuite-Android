@@ -591,37 +591,45 @@ internal fun MainViewModel.refreshIrEsp32StatusImpl() {
 }
 
 internal fun MainViewModel.setIrEsp32PinsImpl(txGpio: Int, rxGpio: Int) {
+    if (_irSavingEsp32Pins.value) return
+    _irSavingEsp32Pins.value = true
+    _irErrorMessage.value = null
+    _irStatusMessage.value = null
     scope.launch(Dispatchers.IO) {
-        val activeSession = session
-        if (activeSession == null) {
-            _irErrorMessage.value = "No ESP32 is connected."
-            _toastMessage.value = "IR GPIO configuration failed: no ESP32 connected."
-            return@launch
+        try {
+            val activeSession = session
+            if (activeSession == null) {
+                _irErrorMessage.value = "No ESP32 is connected."
+                _toastMessage.value = "IR GPIO configuration failed: no ESP32 connected."
+                return@launch
+            }
+            val args = JSONObject().apply {
+                put("tx_gpio", txGpio)
+                put("rx_gpio", rxGpio)
+            }
+            val response = activeSession.sendCommand(
+                cmd = "IR_SET_PINS",
+                args = args,
+                timeoutMs = 8_000,
+            ) ?: run {
+                _irErrorMessage.value = "Saving ESP32 IR GPIOs timed out."
+                _toastMessage.value = "IR GPIO configuration failed: timeout."
+                return@launch
+            }
+            if (!response.optBoolean("ok")) {
+                val message = response.optString("msg").takeIf { it.isNotBlank() }
+                    ?: "Could not save ESP32 IR GPIOs."
+                _irErrorMessage.value = message
+                _toastMessage.value = "IR GPIO configuration failed: $message"
+                return@launch
+            }
+            activeSession.updateIrStatus(response)
+            _irErrorMessage.value = null
+            _irStatusMessage.value = "Saved successfully: TX GPIO $txGpio, RX GPIO $rxGpio."
+            _toastMessage.value = "IR GPIO configuration saved: TX GPIO $txGpio, RX GPIO $rxGpio."
+        } finally {
+            _irSavingEsp32Pins.value = false
         }
-        val args = JSONObject().apply {
-            put("tx_gpio", txGpio)
-            put("rx_gpio", rxGpio)
-        }
-        val response = activeSession.sendCommand(
-            cmd = "IR_SET_PINS",
-            args = args,
-            timeoutMs = 8_000,
-        ) ?: run {
-            _irErrorMessage.value = "Saving ESP32 IR GPIOs timed out."
-            _toastMessage.value = "IR GPIO configuration failed: timeout."
-            return@launch
-        }
-        if (!response.optBoolean("ok")) {
-            val message = response.optString("msg").takeIf { it.isNotBlank() }
-                ?: "Could not save ESP32 IR GPIOs."
-            _irErrorMessage.value = message
-            _toastMessage.value = "IR GPIO configuration failed: $message"
-            return@launch
-        }
-        activeSession.updateIrStatus(response)
-        _irErrorMessage.value = null
-        _irStatusMessage.value = "ESP32 IR pins saved: TX GPIO $txGpio, RX GPIO $rxGpio."
-        _toastMessage.value = "IR GPIO configuration saved: TX GPIO $txGpio, RX GPIO $rxGpio."
     }
 }
 
@@ -1087,7 +1095,6 @@ private fun MainViewModel.writeImportedIrFile(
 
 
 private const val IR_DATABASE_FLIPPER_DIRECTORY = "Flipper-IRDB"
-private const val IR_DATABASE_STAGING_DIRECTORY = "_IRDB_importing"
 private const val IR_DATABASE_CACHE_ARCHIVE = "Flipper-IRDB-main.zip"
 private const val MAX_IR_ZIP_ARCHIVE_BYTES = 1L * 1024L * 1024L * 1024L
 
@@ -1108,11 +1115,9 @@ private fun MainViewModel.startIrDatabasePipelineImpl(forceDownload: Boolean) {
     if (irDatabaseJob?.isActive == true) return
     val rootUri = _exportDirectory.value
     if (rootUri == null) {
-        _irDatabaseState.value = IrDatabaseUiState(
-            phase = IrDatabasePhase.FAILED,
-            errorMessage = "Set the NRSuite root directory before downloading Flipper-IRDB.",
-            canRetry = false,
-        )
+        _requiresRootDirectory.value = true
+        _toastMessage.value = "Choose the NRSuite root directory before downloading Flipper-IRDB."
+        _irDatabaseState.value = IrDatabaseUiState()
         return
     }
     val cacheDirectory = File(app.cacheDir, "ir_database").apply { mkdirs() }
@@ -1252,13 +1257,24 @@ private suspend fun MainViewModel.extractFlipperDatabaseAndIndex(
         text = "Preparing the database folders...",
         indeterminate = true,
     )
-    val staging = withContext(Dispatchers.IO) {
-        prepareStagingDirectory(databaseDirectory)
-    } ?: throw IOException("Could not create the Flipper-IRDB staging directory.")
+    _irDatabaseState.value = IrDatabaseUiState(
+        phase = IrDatabasePhase.EXTRACTING,
+        message = "Preparing Flipper-IRDB folder...",
+        currentItem = "Removing the previous database if present...",
+    )
+    val targetPrepStartedAt = System.currentTimeMillis()
+    Log.d("IrRemote", "IRDB target preparation started: $IR_DATABASE_FLIPPER_DIRECTORY")
+    val targetDirectory = withContext(Dispatchers.IO) {
+        prepareIrDatabaseTargetDirectory(databaseDirectory, IR_DATABASE_FLIPPER_DIRECTORY)
+    } ?: throw IOException("Could not prepare the Flipper-IRDB destination folder.")
+    Log.d(
+        "IrRemote",
+        "IRDB target preparation complete in ${System.currentTimeMillis() - targetPrepStartedAt} ms",
+    )
 
     var lastNotificationAt = 0L
     val extraction = try {
-        irZipExtractor.extract(archive, staging) { extracted, total, currentPath ->
+        irZipExtractor.extract(archive, targetDirectory) { extracted, total, currentPath ->
             _irDatabaseState.value = IrDatabaseUiState(
                 phase = IrDatabasePhase.EXTRACTING,
                 extractedFiles = extracted,
@@ -1283,31 +1299,10 @@ private suspend fun MainViewModel.extractFlipperDatabaseAndIndex(
             }
         }
     } catch (t: Throwable) {
-        withContext(Dispatchers.IO) { staging.delete() }
+        // Do not leave a partially extracted database behind; the downloaded
+        // archive remains cached for a retry.
+        withContext(Dispatchers.IO) { deleteIrDocumentTree(targetDirectory) }
         throw t
-    }
-
-    _irDatabaseState.value = IrDatabaseUiState(
-        phase = IrDatabasePhase.EXTRACTING,
-        extractedFiles = extraction.extractedFiles,
-        totalFiles = extraction.totalIrFiles,
-        currentItem = "Finalizing Flipper-IRDB folder...",
-        message = "Finalizing Flipper-IRDB...",
-    )
-    updateIrDatabaseNotification(
-        title = "Flipper-IRDB finalizing",
-        text = "Finalizing ${extraction.extractedFiles} extracted file(s)...",
-        indeterminate = true,
-    )
-    val commit = withContext(Dispatchers.IO) {
-        commitStagedDirectory(
-            parent = databaseDirectory,
-            staging = staging,
-            targetName = IR_DATABASE_FLIPPER_DIRECTORY,
-        )
-    }
-    if (!commit.committed) {
-        throw IOException("Could not replace the existing Flipper-IRDB folder.")
     }
 
     _irDatabaseState.value = IrDatabaseUiState(
@@ -1360,12 +1355,6 @@ private suspend fun MainViewModel.extractFlipperDatabaseAndIndex(
         text = "${extraction.extractedFiles} files extracted, $flipperRemotes remotes indexed.",
         indeterminate = false,
     )
-    commit.cleanup?.let { backup ->
-        scope.launch(Dispatchers.IO) {
-            deleteIrDocumentTree(backup)
-            Log.d("IrRemote", "Removed previous Flipper-IRDB backup tree.")
-        }
-    }
     archive.delete()
     Log.d(
         "IrRemote",
@@ -1378,10 +1367,9 @@ internal fun MainViewModel.importIrZipImpl(uri: Uri) {
     if (irDatabaseJob?.isActive == true) return
     val rootUri = _exportDirectory.value
     if (rootUri == null) {
-        _irDatabaseState.value = IrDatabaseUiState(
-            phase = IrDatabasePhase.FAILED,
-            errorMessage = "Set the NRSuite root directory before importing an IR ZIP.",
-        )
+        _requiresRootDirectory.value = true
+        _toastMessage.value = "Choose the NRSuite root directory before importing an IR ZIP."
+        _irDatabaseState.value = IrDatabaseUiState()
         return
     }
     irDatabaseJob = scope.launch(Dispatchers.IO) {
@@ -1440,13 +1428,20 @@ internal fun MainViewModel.importIrZipImpl(uri: Uri) {
             val databaseDirectory = withContext(Dispatchers.IO) {
                 openIrDatabaseDirectory(rootUri)
             } ?: throw IOException("Could not open NRSuite/IR/Database.")
-            val staging = withContext(Dispatchers.IO) {
-                prepareStagingDirectory(databaseDirectory)
-            } ?: throw IOException("Could not create the ZIP staging directory.")
+            val targetPrepStartedAt = System.currentTimeMillis()
+            Log.d("IrRemote", "IR ZIP target preparation started: $destinationName")
+            val targetDirectory = withContext(Dispatchers.IO) {
+                prepareIrDatabaseTargetDirectory(databaseDirectory, destinationName)
+            } ?: throw IOException("Could not prepare the ZIP destination folder.")
+            Log.d(
+                "IrRemote",
+                "IR ZIP target preparation complete in " +
+                    "${System.currentTimeMillis() - targetPrepStartedAt} ms",
+            )
 
             var lastNotificationAt = 0L
             val extraction = try {
-                irZipExtractor.extract(tempZip, staging) { extracted, total, currentPath ->
+                irZipExtractor.extract(tempZip, targetDirectory) { extracted, total, currentPath ->
                     _irDatabaseState.value = IrDatabaseUiState(
                         phase = IrDatabasePhase.EXTRACTING,
                         extractedFiles = extracted,
@@ -1471,31 +1466,8 @@ internal fun MainViewModel.importIrZipImpl(uri: Uri) {
                     }
                 }
             } catch (t: Throwable) {
-                withContext(Dispatchers.IO) { staging.delete() }
+                withContext(Dispatchers.IO) { deleteIrDocumentTree(targetDirectory) }
                 throw t
-            }
-
-            _irDatabaseState.value = IrDatabaseUiState(
-                phase = IrDatabasePhase.EXTRACTING,
-                extractedFiles = extraction.extractedFiles,
-                totalFiles = extraction.totalIrFiles,
-                currentItem = "Finalizing imported database folder...",
-                message = "Finalizing ZIP import...",
-            )
-            updateIrDatabaseNotification(
-                title = "IR ZIP finalizing",
-                text = "Finalizing ${extraction.extractedFiles} extracted file(s)...",
-                indeterminate = true,
-            )
-            val commit = withContext(Dispatchers.IO) {
-                commitStagedDirectory(
-                    parent = databaseDirectory,
-                    staging = staging,
-                    targetName = destinationName,
-                )
-            }
-            if (!commit.committed) {
-                throw IOException("Could not move the imported ZIP contents into the IR database.")
             }
 
             _irDatabaseState.value = IrDatabaseUiState(
@@ -1534,12 +1506,6 @@ internal fun MainViewModel.importIrZipImpl(uri: Uri) {
                 text = "${extraction.extractedFiles} files extracted, $importedRemotes remotes indexed.",
                 indeterminate = false,
             )
-            commit.cleanup?.let { backup ->
-                scope.launch(Dispatchers.IO) {
-                    deleteIrDocumentTree(backup)
-                    Log.d("IrRemote", "Removed previous IR ZIP backup tree.")
-                }
-            }
             Log.d(
                 "IrRemote",
                 "IR ZIP import complete: destination=$destinationName extracted=${extraction.extractedFiles} " +
@@ -1579,7 +1545,8 @@ internal fun MainViewModel.deleteIrDatabaseImpl() {
     if (irDatabaseJob?.isActive == true) return
     val rootUri = _exportDirectory.value
     if (rootUri == null) {
-        _irErrorMessage.value = "Set the NRSuite root directory before deleting Flipper-IRDB."
+        _requiresRootDirectory.value = true
+        _toastMessage.value = "Choose the NRSuite root directory before deleting Flipper-IRDB."
         return
     }
     irDatabaseJob = scope.launch(Dispatchers.IO) {
@@ -1650,37 +1617,21 @@ private fun MainViewModel.openIrDatabaseDirectory(rootUri: Uri): DocumentFile? {
     return ensureDocumentDirectory(irDirectory, IR_DATABASE_DIRECTORY)
 }
 
-private fun prepareStagingDirectory(databaseDirectory: DocumentFile): DocumentFile? {
-    databaseDirectory.findFile(IR_DATABASE_STAGING_DIRECTORY)?.delete()
-    return databaseDirectory.createDirectory(IR_DATABASE_STAGING_DIRECTORY)
-}
-
-private data class IrStagedDirectoryCommit(
-    val committed: Boolean,
-    val cleanup: DocumentFile? = null,
-)
-
-private fun commitStagedDirectory(
-    parent: DocumentFile,
-    staging: DocumentFile,
+private fun MainViewModel.prepareIrDatabaseTargetDirectory(
+    databaseDirectory: DocumentFile,
     targetName: String,
-): IrStagedDirectoryCommit {
-    val existing = parent.findFile(targetName)
-    if (existing == null) {
-        return IrStagedDirectoryCommit(committed = staging.renameTo(targetName))
+): DocumentFile? {
+    // Extract directly into the final directory. Renaming a large SAF directory
+    // can make the provider copy every file and appear stuck at "Finalizing".
+    val existing = databaseDirectory.findFile(targetName)
+    if (existing != null) {
+        deleteIrDocumentTree(existing)
+        if (databaseDirectory.findFile(targetName) != null) {
+            Log.w("IrRemote", "Could not remove existing IR database directory: $targetName")
+            return null
+        }
     }
-    val backupName = "_IRDB_backup_${System.currentTimeMillis()}"
-    if (!existing.renameTo(backupName)) {
-        return IrStagedDirectoryCommit(committed = false)
-    }
-    if (staging.renameTo(targetName)) {
-        return IrStagedDirectoryCommit(
-            committed = true,
-            cleanup = parent.findFile(backupName),
-        )
-    }
-    parent.findFile(backupName)?.renameTo(targetName)
-    return IrStagedDirectoryCommit(committed = false)
+    return databaseDirectory.createDirectory(targetName)
 }
 
 private fun MainViewModel.deleteIrDocumentTree(document: DocumentFile) {
@@ -1718,7 +1669,10 @@ private suspend fun MainViewModel.scanIrRoot(
     Log.d("IrRemote", "IR library scan candidates=${candidates.size}")
     val completed = AtomicInteger(0)
     val reused = AtomicInteger(0)
-    val semaphore = Semaphore(8)
+    // SAF document opens are the dominant cost when indexing a large Flipper
+    // database. More concurrent readers substantially improve throughput on
+    // internal storage without keeping the entire database in memory.
+    val semaphore = Semaphore(16)
     return coroutineScope {
         candidates.chunked(64).flatMap { chunk ->
             chunk.map { candidate ->
@@ -1861,7 +1815,7 @@ private suspend fun MainViewModel.collectIrCandidatesFast(rootUri: Uri): List<Ir
     roots.forEach(::enqueue)
 
     coroutineScope {
-        val workers = List(8) {
+        val workers = List(12) {
             launch(Dispatchers.IO) {
                 for (node in queue) {
                     try {

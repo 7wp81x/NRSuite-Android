@@ -53,12 +53,16 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.sniff.SniffRequest
 import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
+import com.swp81x.nrsuite.ui.components.ScanButtonContent
 import com.swp81x.nrsuite.ui.components.ChannelModeToggle
-import com.swp81x.nrsuite.ui.components.NetworkTargetRow
+import com.swp81x.nrsuite.ui.components.ScanTargetList
 import com.swp81x.nrsuite.ui.components.WifiBandConfigSection
 import com.swp81x.nrsuite.ui.components.WifiBandPill
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
+import com.swp81x.nrsuite.ui.components.WifiChannelSummaryPill
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -66,6 +70,7 @@ import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
+import com.swp81x.nrsuite.ui.theme.StatusInfo
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
 import java.util.Locale
@@ -105,6 +110,11 @@ fun SniffScreen(
     var deauthIntervalMs by remember { mutableStateOf(50) }
     var deauthRetryDuringCapture by remember { mutableStateOf(true) }
     var deauthRetryIntervalMs by remember { mutableStateOf(5_000) }
+
+    val effectiveAllowedChannels = allowedChannels.ifEmpty { WIFI_AUTO_CHANNELS }
+    LaunchedEffect(effectiveAllowedChannels) {
+        channel = normalizeWifiChannelForAllowed(channel, effectiveAllowedChannels)
+    }
 
     LaunchedEffect(sniffing) {
         if (sniffing) configExpanded = false
@@ -172,17 +182,18 @@ fun SniffScreen(
                 onDeauthRetryIntervalChange = { deauthRetryIntervalMs = it.coerceIn(1_000, 60_000) },
             )
 
-            Spacer(Modifier.height(10.dp))
-
-            ResultZone(
-                connected = connected,
-                sniffing = sniffing,
-                packetCount = packetCount,
-                captureBytes = captureBytes,
-                capturePath = capturePath,
-                handshake = handshake,
-                handshakeOnly = targetCaptureMode && eapolOnly,
-            )
+            if (sniffing || packetCount > 0 || capturePath != null) {
+                Spacer(Modifier.height(10.dp))
+                ResultZone(
+                    connected = connected,
+                    sniffing = sniffing,
+                    packetCount = packetCount,
+                    captureBytes = captureBytes,
+                    capturePath = capturePath,
+                    handshake = handshake,
+                    handshakeOnly = targetCaptureMode && eapolOnly,
+                )
+            }
         }
 
         if (connected) {
@@ -362,10 +373,17 @@ private fun ConfigZone(
 
                         if (fixedMode) {
                             Spacer(Modifier.height(10.dp))
-                            Text(
-                                text = "Channel",
-                                style = MaterialTheme.typography.labelLarge,
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = "Channel",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                WifiChannelSummaryPill(channel)
+                            }
                             Spacer(Modifier.height(6.dp))
                             WifiChannelStepper(
                                 value = channel,
@@ -428,34 +446,23 @@ private fun ConfigZone(
                             onClick = onScanWifi,
                             enabled = connected && !sniffing && !scanning,
                         ) {
-                            Text(if (scanning) "Scanning..." else "Scan WiFi for targets")
+                            ScanButtonContent(
+                                scanning = scanning,
+                                idleLabel = "Scan WiFi for targets",
+                            )
                         }
 
                         if (networks.isNotEmpty()) {
                             Spacer(Modifier.height(6.dp))
-                            networks.forEach { network ->
-                                val ssid = network.optString("ssid").ifBlank { "(hidden)" }
-                                val bssidValue = network.optString("bssid")
-                                val channelValue = network.optInt("channel", 1)
-                                NetworkTargetRow(
-                                    ssid = ssid,
-                                    bssid = bssidValue,
-                                    channel = channelValue,
-                                    rssi = network.optInt("rssi", -100),
-                                    security = network.optString("security", "?"),
-                                    wps = network.optBoolean("wps"),
-                                    vendor = network.optString("vendor").takeIf { it.isNotBlank() },
-                                    ouiWhitelisted = network.optBoolean("oui_whitelisted"),
-                                    ouiBlacklisted = network.optBoolean("oui_blacklisted"),
-                                    selected = targetBssid.trim().equals(bssidValue, ignoreCase = true),
-                                    enabled = !sniffing,
-                                    onClick = {
-                                        onTargetBssidChange(bssidValue)
-                                        onChannelChange(channelValue)
-                                    },
-                                    modifier = Modifier.padding(vertical = 3.dp),
-                                )
-                            }
+                            ScanTargetList(
+                                networks = networks,
+                                selectedBssids = setOf(targetBssid),
+                                onToggle = { network ->
+                                    onTargetBssidChange(network.optString("bssid"))
+                                    onChannelChange(network.optInt("channel", channel))
+                                },
+                                enabled = !sniffing,
+                            )
                         }
 
                         Spacer(Modifier.height(10.dp))
@@ -677,14 +684,14 @@ private fun ResultZone(
     val statusColor = when {
         !connected -> StatusNeutral
         sniffing -> StatusGreen
-        packetCount > 0 -> StatusAmber
+        packetCount > 0 -> StatusInfo
         else -> StatusNeutral
     }
     val statusLabel = when {
         !connected -> "No device connected"
         sniffing -> "Capturing"
         packetCount > 0 -> "Stopped"
-        else -> "Ready"
+        else -> "Idle"
     }
 
     Card(

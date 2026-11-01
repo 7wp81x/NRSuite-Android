@@ -5,7 +5,11 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import com.swp81x.nrsuite.core.flasher.Esp32Flasher
 import com.swp81x.nrsuite.core.flasher.UsbSerialFlasherTransport
+import com.swp81x.nrsuite.core.flasher.looksLikeTinyUsbFirmware
+import com.swp81x.nrsuite.core.flasher.recommendedEsp32ResetMode
+import com.swp81x.nrsuite.core.flasher.triggerTinyUsbBootloaderReboot
 import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
@@ -23,12 +27,21 @@ internal fun MainViewModel.markFirmwarePermissionRequestedImpl(device: UsbDevice
 }
 
 internal fun MainViewModel.setFirmwareFlashFileImpl(uri: Uri, name: String?) {
-    _firmwareFlashUri.value = uri
     val resolvedName = queryDocumentDisplayNameImpl(uri)
         ?.takeIf { it.isNotBlank() }
         ?: name?.takeIf { it.isNotBlank() && !it.startsWith("msf:") && !it.startsWith("primary:") }
         ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
         ?: "firmware.bin"
+    if (!resolvedName.endsWith(".bin", ignoreCase = true)) {
+        _firmwareFlashUri.value = null
+        _firmwareFlashName.value = null
+        _firmwareFlashSize.value = 0
+        val message = "Select a .bin firmware image (got '$resolvedName')."
+        appendLog(message, level = LogLevel.ERROR)
+        _toastMessage.value = message
+        return
+    }
+    _firmwareFlashUri.value = uri
     _firmwareFlashName.value = resolvedName
     _firmwareFlashSize.value = queryDocumentSizeImpl(uri)
     appendLog("Firmware image selected: ${_firmwareFlashName.value}")
@@ -141,6 +154,7 @@ internal fun MainViewModel.flashManualFirmwareNowImpl() {
         targetChip = chip,
         skipReset = true,
         eraseBeforeFlash = false,
+        manualResetFallback = true,
     )
 }
 
@@ -184,10 +198,39 @@ internal fun MainViewModel.tryManualFirmwareFlashOnAttachImpl() {
     }
 }
 
+/**
+ * Clear a completed flash result when the user leaves the firmware flasher or
+ * Settings screen. In-progress and failed states are intentionally preserved
+ * because the flash may still be running in the background or the user may
+ * need to read the failure details.
+ */
+internal fun MainViewModel.onFirmwareFlasherScreenClosedImpl() {
+    if (!_firmwareFlashing.value && _firmwareFlashProgress.value >= 100) {
+        _firmwareFlashProgress.value = 0
+        _firmwareFlashStatus.value = null
+    }
+}
+
+/**
+ * Keep the foreground-service notification progress current without starting
+ * the service thousands of times for a large firmware image.
+ */
+internal fun MainViewModel.updateFirmwareFlashNotificationImpl(force: Boolean = false) {
+    if (!_firmwareFlashing.value) return
+    val now = System.currentTimeMillis()
+    val progress = _firmwareFlashProgress.value.coerceIn(0, 100)
+    if (!force && progress == lastFirmwareNotificationProgress) return
+    if (!force && now - lastFirmwareNotificationUpdateMs < FIRMWARE_NOTIFICATION_MIN_INTERVAL_MS) return
+    lastFirmwareNotificationProgress = progress
+    lastFirmwareNotificationUpdateMs = now
+    updateForegroundService()
+}
+
 internal fun MainViewModel.startFirmwareFlashImpl(
     targetChip: String,
     skipReset: Boolean,
     eraseBeforeFlash: Boolean = false,
+    manualResetFallback: Boolean = false,
 ) {
     val uri = _firmwareFlashUri.value
     if (uri == null) {
@@ -217,6 +260,9 @@ internal fun MainViewModel.startFirmwareFlashImpl(
     _firmwareFlashing.value = true
     _firmwareFlashProgress.value = 0
     _firmwareFlashStatus.value = "Reading firmware image..."
+    lastFirmwareNotificationProgress = -1
+    lastFirmwareNotificationUpdateMs = 0L
+    updateForegroundService()
 
     scope.launch {
         try {
@@ -238,15 +284,78 @@ internal fun MainViewModel.startFirmwareFlashImpl(
             // including sessions used for Wireless/BLE/etc., stay connected.
             disconnectSessionAndAwait(targetFingerprint, stopOperations = false)
 
-            val resetMode = when {
-                skipReset -> Esp32Flasher.ResetMode.NONE
-                entry.device.vendorId == 0x303A && entry.device.productId == 0x1001 ->
-                    Esp32Flasher.ResetMode.USB_JTAG
-                else -> Esp32Flasher.ResetMode.CLASSIC
+            val automaticResetMode = recommendedEsp32ResetMode(
+                vendorId = entry.device.vendorId,
+                productId = entry.device.productId,
+            )
+            val resetMode = if (skipReset) Esp32Flasher.ResetMode.NONE else automaticResetMode
+            val fallbackResetMode = automaticResetMode.takeIf { skipReset && manualResetFallback }
+
+            val interfaceNames = runCatching {
+                (0 until entry.device.interfaceCount).map { index ->
+                    entry.device.getInterface(index)?.name
+                }
+            }.getOrDefault(emptyList())
+            val tinyUsbFirmware = !skipReset && looksLikeTinyUsbFirmware(
+                productName = entry.device.productName,
+                interfaceNames = interfaceNames,
+            )
+            if (tinyUsbFirmware) {
+                appendLog(
+                    "Running TinyUSB firmware detected; using the Arduino CDC " +
+                        "bootloader-restart sequence instead of esptool DTR/RTS reset.",
+                    tag = "flasher",
+                )
+                armManualFirmwareRecoveryImpl(targetChip)
+                _firmwareFlashStatus.value =
+                    "Rebooting device into ROM bootloader. Grant USB permission if prompted; " +
+                        "flashing will continue automatically."
+                withContext(Dispatchers.IO) {
+                    triggerTinyUsbBootloaderReboot(
+                        UsbSerialFlasherTransport(
+                            usbManager = usbManager,
+                            driver = entry.driver,
+                            onLog = { message -> appendLog(message, tag = "flasher") },
+                        ),
+                    )
+                }
+                appendLog(
+                    "TinyUSB device entered ROM-bootloader restart; waiting for re-enumeration.",
+                    tag = "flasher",
+                )
+                _firmwareFlashStatus.value =
+                    "Waiting for the ROM bootloader device. Grant USB permission if prompted."
+                // Release the UI busy state before the new ROM device can
+                // appear. The USB attach callback, or the delayed fallback
+                // below, will start the no-reset manual flash.
+                _firmwareFlashing.value = false
+                updateForegroundService()
+                scope.launch {
+                    delay(2_500)
+                    if (_firmwareManualRecovery.value && !_firmwareFlashing.value) {
+                        appendLog(
+                            "Checking for the ROM bootloader device after TinyUSB restart.",
+                            tag = "flasher",
+                        )
+                        tryManualFirmwareFlashOnAttachImpl()
+                    }
+                }
+                return@launch
             }
 
+            appendLog(
+                "Flasher reset mode: $resetMode" +
+                    (fallbackResetMode?.let { ", automatic fallback: $it" } ?: "") +
+                    " (${entry.displayName}).",
+                tag = "flasher",
+            )
+
             val flasher = Esp32Flasher(
-                transport = UsbSerialFlasherTransport(usbManager, entry.driver),
+                transport = UsbSerialFlasherTransport(
+                    usbManager = usbManager,
+                    driver = entry.driver,
+                    onLog = { message -> appendLog(message, tag = "flasher") },
+                ),
                 supportsEncryptedFlash = targetChip in setOf(
                     "ESP32-S2",
                     "ESP32-S3",
@@ -266,6 +375,7 @@ internal fun MainViewModel.startFirmwareFlashImpl(
                     firmware = bytes,
                     offset = 0,
                     resetMode = resetMode,
+                    fallbackResetMode = fallbackResetMode,
                     eraseBeforeFlash = eraseBeforeFlash,
                     onStage = { stage -> _firmwareFlashStatus.value = stage },
                     onProgress = { percent ->
@@ -276,6 +386,7 @@ internal fun MainViewModel.startFirmwareFlashImpl(
                         } else {
                             "Writing... $percent%  (${written / 1024} / ${bytes.size / 1024} KB)"
                         }
+                        updateFirmwareFlashNotificationImpl()
                     },
                     onLog = { message -> appendLog(message, tag = "flasher") },
                 )
@@ -285,6 +396,12 @@ internal fun MainViewModel.startFirmwareFlashImpl(
             _firmwareFlashStatus.value = "Flash complete. The device is rebooting; reconnect after it disappears."
             appendLog("Firmware flash complete (${bytes.size} bytes at 0x0).", level = LogLevel.SUCCESS)
             addHistory("firmware", "Flashed ${bytes.size} bytes at 0x0", HistoryLevel.SUCCESS)
+            NrSuiteNotifications.notifyTaskAlert(
+                app,
+                "Firmware flash complete",
+                "$targetChip flashed successfully. The device is rebooting.",
+                smallIconRes = com.swp81x.nrsuite.R.drawable.ic_stat_firmware,
+            )
             delay(2_000)
             refreshDevices()
         } catch (t: Throwable) {
@@ -293,9 +410,17 @@ internal fun MainViewModel.startFirmwareFlashImpl(
             _firmwareFlashStatus.value = "Flash failed: $reason"
             appendLog("Firmware flash failed: $reason", level = LogLevel.ERROR)
             addHistory("firmware", "Firmware flash failed", HistoryLevel.ERROR)
+            NrSuiteNotifications.notifyTaskAlert(
+                app,
+                "Firmware flash failed",
+                reason,
+                smallIconRes = com.swp81x.nrsuite.R.drawable.ic_stat_firmware,
+            )
         } finally {
             _firmwareFlashing.value = false
             updateForegroundService()
         }
     }
 }
+
+private const val FIRMWARE_NOTIFICATION_MIN_INTERVAL_MS = 750L

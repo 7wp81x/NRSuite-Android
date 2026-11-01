@@ -24,7 +24,7 @@ fun NrFilterChip(
         selected = selected,
         onClick = onClick,
         enabled = enabled,
-        label = { Text(label) },
+        label = { Text(label, maxLines = 1, softWrap = false) },
         modifier = modifier,
         colors = FilterChipDefaults.filterChipColors(
             containerColor = NrSurfaceVariant,

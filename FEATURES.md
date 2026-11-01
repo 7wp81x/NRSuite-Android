@@ -4,19 +4,25 @@ This document lists all current and planned features across the NRSuite ecosyste
 
 - [x] Implemented
 - [ ] Planned / in progress
+- [~] Experimental concept; not release-ready
 
 ---
 
 ## 1. Offense Modules (Wi-Fi / BLE)
 
-- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; screen-local Auto/2.4/5 GHz filter
+- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; screen-local Auto/2.4/5 GHz filter; regulatory settings display allowed 2.4 and 5 GHz channel lists; retry/result-preservation and response-vs-event transport diagnostics
 - [x] **Wi-Fi regulatory country** - C5-only Settings control for the persisted country/channel mask
 - [x] **Beacon Spam** - Broadcast custom or hidden SSIDs
-- [x] **Deauthentication** - Finite burst or stoppable duration-based loop mode with mutually exclusive count/duration controls
-- [x] **Evil Twin** - Rogue AP with captive portal
-- [x] **Captive Portal** - Credential harvesting UI
+- [x] **Deauthentication** - Finite burst or stoppable duration-based loop mode with mutually exclusive count/duration controls; multi-target selection; firmware-native `DEAUTH_MULTI` when advertised; repeated `DEAUTH_BURST` channel-hopping fallback for older firmware; manual channel locked to a target-derived schedule when multiple targets are selected
+- [x] **Evil Twin** - Rogue AP with file-backed captive-portal HTML, `#SSID#` template substitution, persistent captured-password results after auto-stop, FAB start/stop progress that clears on disconnect, and a process-local toggle for the firmware test-notice page
+- [x] **Captive Portal** - File-backed HTML serving with app-side `#SSID#` token substitution, chunked upload without a full-page RAM buffer, POST/GET form capture, FAB start/stop progress that clears on disconnect, separate bounded Portal/Evil Twin visitor and metric logs, and a process-local `Show firmware test notice` toggle guarded by a 5-second controlled-environment acknowledgement
+- [x] **WPS Pixie Dust** - Live ESP32-S3/C5 registrar flow with AP-lock preflight, M3-only capture, same-session recovered-PIN continuation, Android-side Pixiewps search, and PIN/PSK persistence
+- [ ] **Wifite-style Auto Audit** - Single-target Auto Capture + Crack orchestrator with optional WPS and explicitly confirmed Evil Twin stages
 - [x] **Packet Sniffer** - Monitor-mode capture, pcap export, per-module Auto/2.4/5 GHz hopping, target-channel-aware fixed mode, and post-start deauth assist with periodic retries
-- [x] **WPA Handshake Capture/Crack** - Offline dictionary cracking
+- [x] **Wi-Fi device-handoff channel safety** - Normalizes all module channel state against the connected device and clears stale scan/target selections when the primary radio or its channel capabilities change; preserves valid selections across same-device reconnects
+- [x] **WPA Handshake Capture/Crack** - Offline WPA2 M1/M2 dictionary cracking from saved credential/NRuGochi captures, custom PCAP, or imported `.22000`; single wordlist; multi-target selection with select-all; best M1/M2 pair selection; pause/resume with frozen progress; foreground progress notification; and checkpointed sessions that can be resumed after interruption
+- [ ] **WPA Cracker advanced improvements** - ZIP/GZIP streaming, candidate rules/transforms, PMKID verification, and explicit WPA3-SAE/PMF unsupported reporting. `.22000` WPA*02 import, multi-target cracking, background progress, and checkpoint/resume are implemented
+- [x] **PCAP to .hs22000** - Multi-select classic PCAP merge into a Hashcat `.22000` file; automatic best-handshake-per-BSSID+station dedupe; automatic SSID extraction; dropdown-based BSSID→ESSID overrides; preview, successful-export display, and malformed/missing-SSID reporting
 - [x] **Nrugochi** - Pwnagotchi-style channel-density hunting: RECON -> INTERACT, multi-AP authorized deauth (8 frames/AP default with requested/sent/failed telemetry), all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` files, mood/status UI, and today/total stats (hardware validation pending)
 - [x] **BLE HID** - Bluetooth LE keyboard/mouse HID and DuckyScript payloads
 - [x] **BLE Scanner** - Device discovery with names, RSSI, manufacturer data, and service badges; module-owned scan lifecycle
@@ -25,12 +31,14 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **BadUSB** - HID injection via USB
 - [x] **PIN Bruteforce** - Supervised native-HID range/wordlist tester; one-shot boot-arm like BadUSB; max-attempt cap, progress/ETA, configurable typing/start delays, saved sessions
 - [x] **BLE HID PIN Bruteforce** - Hidden/experimental BLE-HID range/wordlist tester retained for future use; lock-screen use is unsupported
-- [x] **Credential Manager** - Local storage of harvested creds
+- [x] **Credential Manager** - Local storage of harvested creds with explicit per-credential Wi-Fi QR display/share, compact Evil Twin/WPA Cracker/WPS Pixie rows, and a separate WPS PIN row
 
 ## 2. Defense Modules
 
 - [x] **Rogue AP Detector** - Autonomous nearby AP comparison with OUI rules; flags duplicate SSIDs, security downgrades, and suspicious APs
 - [x] **Deauth Detector** - Passive deauth/disassoc monitoring with BSSID/client/RSSI/reason filters, async alerts, and live logs
+- [x] **WPS Lock Detector** - Passive WPS AP discovery and AP Setup Locked parsing with Locked / Likely unlocked / Unknown states and WPS metadata
+- [x] **WPS Attempt Detector** - Multi-select WPS targets; passive Identity/M1-M8/M2D/NACK monitoring; per-session evidence retention; live lock-state events; Low/Medium/High risk based on M1-M3 cracking material or M7-M8 PSK-transfer evidence
 - [ ] **Deauth Locator** - RSSI-based direction/distance estimate; multi-node triangulation
 - [x] **Tracker Detector** - Find My-style advert detection, repeated sightings, alerts, and export
 - [x] **Client Detector** - Passive probe/assoc/reassoc/auth monitoring plus active deauth-trigger mode
@@ -44,8 +52,10 @@ This document lists all current and planned features across the NRSuite ecosyste
 
 ## 4. Tools & Firmware Utilities
 
-- [x] **ESP32 Flasher** - Merged firmware flashing for ESP32, S2, S3, C3, and C5; release-asset matching and target-chip validation
+- [x] **ESP32 Flasher** - Merged firmware flashing for ESP32, S2, S3, C3, and C5; esptool-aligned reset timing, C5 SYNC/SPI-attach handling, TinyUSB-to-ROM bootloader restart, automatic manual-recovery fallback, C5 local chip review, background foreground-service progress notification with firmware-specific icon, and target-chip validation
 - [x] **BSSID Geolocation** - Offline OUI/vendor lookup combined with approximate Wi-Fi AP location, persistent `Overview / Lookup History` tabs, retry/cache fallback, embedded Leaflet map, and external Google Maps link
+- [x] **MAC Lookup** - Separate offline-only OUI/vendor lookup with a bundled OUI snapshot, locally-administered/multicast indicators, and copy/share actions; no map, geolocation, or lookup network request
+- [x] **Credential Manager Wi-Fi QR** - `Share QR` beside `Share PCAP`; standard Wi-Fi QR generated locally with ZXing, image share, and payload copy; WPS PIN remains separate
 - [x] **Serial Monitor** - Raw USB serial monitor with reliable clipboard copy, bounded log retention, and visible save/export success or failure feedback
 
 ## 5. Mesh Network (ESP-NOW)
@@ -90,7 +100,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 
 ## 9. Peripheral Radios (planned expansion modules)
 
-- [ ] **IR** - Capture/Replay - IR LED + receiver, cheap GPIO add-on
+- [x] **IR** - Capture/Replay - Flipper `.ir` import/library, Flipper-IRDB download/rescan card on the Home > IR category screen with NRSuite-root guard/picker, direct extraction without large SAF directory renames, parallel SAF indexing, ESP32 GPIO defaults and save-state UI, raw TX/RX, and phone IR support
 - [ ] **IR** - Universal Remote DB - Common protocol library (NEC, SIRC, RC5)
 - [ ] **IR** - TV-off Brute-force - TV-B-Gone style
 - [ ] **Sub-GHz (CC1101)** - Scanner - 315/433/868/915MHz sweep
@@ -109,6 +119,10 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **Multi-device USB sessions** - Multiple simultaneous USB serial sessions with per-device permission, connect/disconnect, and reconnect state. User-initiated disconnect uses idle-session reuse for S2 CDC stability.
 - [x] **BadUSB device picker** - Select which connected device receives BadUSB independent of the primary Wireless/Flasher session.
 - [x] **Persistent firmware device ID** - Firmware generates/stores `NRxxxxxxx` in NVS and exposes it via `STATUS.device_id`; Android shows it on Home and Device manager.
+
+## Experimental Concepts
+
+- [~] **Half Handshake capture** - Active probe-response/SoftAP experiment intended to elicit WPA2 M1+M2 from an authorized auto-connecting client for offline `.22000` analysis. Requires explicit authorization, compatible RSN/WPA2 security, client auto-join, temporary-AP cleanup, and hardware validation. Not beta.3.1 release scope unless separately approved.
 
 ## Explicitly Out of Scope
 

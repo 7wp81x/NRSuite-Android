@@ -34,6 +34,9 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.wifi.WIFI_REGULATORY_COUNTRIES
 import com.swp81x.nrsuite.core.wifi.WifiBand
+import com.swp81x.nrsuite.core.defense.OuiRule
+import com.swp81x.nrsuite.core.defense.OuiRuleAction
+import com.swp81x.nrsuite.ui.components.RogueApOuiRulesCard
 import com.swp81x.nrsuite.ui.components.WifiBandSelector
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -53,6 +56,9 @@ fun WifiConfigScreen(
     hasCustomCaptureOutput: Boolean,
     onChooseCaptureOutput: () -> Unit,
     onResetCaptureOutput: () -> Unit,
+    ouiRules: List<OuiRule> = emptyList(),
+    onAddOuiRule: (ouiPrefix: String, label: String, action: OuiRuleAction) -> Unit = { _, _, _ -> },
+    onDeleteOuiRule: (id: String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -108,6 +114,15 @@ fun WifiConfigScreen(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
+                    text = if (connected?.allowed2gChannels.isNullOrEmpty()) {
+                        "Allowed 2.4 GHz channels: none reported"
+                    } else {
+                        "Allowed 2.4 GHz channels: ${connected.allowed2gChannels.joinToString(", ")}"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NrOnSurfaceVariant,
+                )
+                Text(
                     text = if (connected?.allowed5gChannels.isNullOrEmpty()) {
                         "Allowed 5 GHz channels: none reported"
                     } else {
@@ -161,6 +176,14 @@ fun WifiConfigScreen(
                 }
             }
         }
+
+        Spacer(Modifier.height(10.dp))
+
+        RogueApOuiRulesCard(
+            ouiRules = ouiRules,
+            onAddOuiRule = onAddOuiRule,
+            onDeleteOuiRule = onDeleteOuiRule,
+        )
 
         Spacer(Modifier.height(10.dp))
 

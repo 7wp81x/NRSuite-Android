@@ -204,7 +204,7 @@ private fun BleScannerStatusCard(
     val color = when {
         !connected -> StatusNeutral
         running -> StatusGreen
-        else -> StatusAmber
+        else -> MaterialTheme.colorScheme.primary
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -226,7 +226,7 @@ private fun BleScannerStatusCard(
                         text = when {
                             !connected -> "Disconnected"
                             running -> "Scanning"
-                            else -> "Ready"
+                            else -> "Idle"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,

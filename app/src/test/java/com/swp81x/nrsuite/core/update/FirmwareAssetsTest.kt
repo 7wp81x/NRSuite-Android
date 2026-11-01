@@ -7,6 +7,15 @@ import org.junit.Test
 
 class FirmwareAssetsTest {
     @Test
+    fun supportedChipListIncludesC5AndAllFirmwareTargets() {
+        assertEquals(
+            listOf("ESP32", "ESP32-C5", "ESP32-S2", "ESP32-S3", "ESP32-C3"),
+            SUPPORTED_FIRMWARE_CHIPS,
+        )
+        assertEquals(1, SUPPORTED_FIRMWARE_CHIPS.count { it == "ESP32-C5" })
+    }
+
+    @Test
     fun recognizesC5AssetNamesWithAndWithoutVersionSuffix() {
         assertEquals("ESP32-C5", firmwareChipFromAssetName("nrsuite-esp32-c5.bin"))
         assertEquals(

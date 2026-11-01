@@ -35,6 +35,8 @@ fun SavedItemDropdown(
     selectedName: String?,
     names: List<String>,
     enabled: Boolean = true,
+    selectedDisplayName: String? = selectedName,
+    itemLabel: (String) -> String = { it },
     itemSupportingText: (String) -> String? = { null },
     sortNames: Boolean = true,
     onSelect: (String) -> Unit,
@@ -63,7 +65,7 @@ fun SavedItemDropdown(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = selectedName ?: label,
+                        text = selectedDisplayName ?: label,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                     )
@@ -93,7 +95,7 @@ fun SavedItemDropdown(
                 DropdownMenuItem(
                     text = {
                         Column {
-                            Text(name)
+                            Text(itemLabel(name))
                             itemSupportingText(name)?.let { supporting ->
                                 Text(
                                     text = supporting,

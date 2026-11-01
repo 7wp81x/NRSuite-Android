@@ -69,14 +69,18 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 <details>
 <summary><strong>Wireless</strong></summary>
 
-- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; AUTO 2.4/5 GHz and regulatory-country channel filtering on C5-capable firmware
-- [x] **Beacon Spam** - broadcast custom or hidden SSIDs
-- [x] **Deauthentication** - finite burst or stoppable duration-based loop mode, with mutually exclusive count/duration controls
-- [x] **Evil Twin** - rogue AP with captive portal
-- [x] **Captive Portal** - custom HTML credential capture
+- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; AUTO 2.4/5 GHz and regulatory-country channel filtering on C5-capable firmware; serialized/reliable scans with retry, previous-result preservation, and response-vs-event transport diagnostics
+- [x] **Beacon Spam** - Overview / SSID Lists tabs, custom or hidden SSIDs, saved-list CRUD, and a built-in short-form Rickroll preset
+- [x] **Deauthentication** - finite burst or unlimited loop until stopped, with elapsed time, frames/sec, sent/failed telemetry, multi-target selection, and app-side per-target channel hopping
+- [x] **Evil Twin** - rogue AP with captive-portal HTML, captured-password verification, persistent results after auto-stop, FAB start/stop progress, and dedicated visitor/metric logs
+- [x] **Captive Portal** - file-backed custom HTML, GET and POST form capture, persistent HTTP/DNS listeners across restarts, hidden helper-AP restore, bounded visitor logging, and separate Portal/Evil Twin metrics
 - [x] **Portal authoring guide** - [Captive Portal / Evil Twin HTML authoring](docs/CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)
 - [x] **Packet Sniffer** - monitor-mode capture with PCAP export; per-module Auto/2.4/5 GHz hopping, target-channel-aware fixed capture, and retrying deauth assist that starts after the sniffer
 - [x] **Hidden AP Revealer** - passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution
+- [x] **Probe Request Monitor** - probe requests by MAC/SSID/channel/RSSI with vendor and randomized-MAC indication
+- [x] **Channel Analyzer** - FAB-driven scan with loading state, compact 2.4/5 GHz occupancy bars, selected-channel detail, and a scrollable nearby-AP list sorted by RSSI with band filters and WPS/security metadata
+- [x] **HTML Template Manager** - shared Portal/Evil Twin template tab with template dropdown, custom-file picker, import, rename, delete, SHA-256 duplicate rejection, 16 KB warning, 24 KB hard limit, and start-time firmware heap preflight
+- [x] **WiFi Config OUI rules** - manage Rogue AP whitelist/blacklist rules from WiFi Config
 - [ ] **PMKID Capture**
 
 </details>
@@ -139,11 +143,25 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 <details>
 <summary><strong>Credentials</strong></summary>
 
-- [x] **WPA Handshake Capture/Crack** - capture and offline dictionary cracking
+- [x] **WPA Handshake Capture/Crack** - offline dictionary cracking with WPA*02 `.22000` import, multi-target/select-all and manual single-target modes, best M1/M2 selection, pause/resume, foreground progress, and checkpointed sessions
+- [x] **Deauth telemetry** - unlimited loop plus elapsed time, frames/sec, sent, and failed counters
+- [x] **WPS Pixie Dust** - live registrar flow with module-isolated target scans, AP-lock preflight, M3-only capture, on-phone Pixiewps recovery, same-session recovered-PIN continuation, and PIN/PSK persistence on ESP32-S3/C5
+- [x] **WPS Lock Detector** - passive scan of nearby WPS APs with `Locked`, `Likely unlocked`, and `Unknown` lock-state reporting
+- [x] **WPS Attempt Detector** - scan and multi-select nearby WPS APs, then passively monitor only their BSSIDs/channels for Identity/M1–M8 activity with source MAC/vendor, progression, and low/medium/high risk scoring; keeps a foreground-service notification while monitoring and shows active state in the module catalog
 - [x] **Nrugochi** - Pwnagotchi-style channel-density RECON/INTERACT loop, multi-AP authorized deauth with frame telemetry, all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` output, mood UI, and today/total stats
-- [x] **Credential Manager** - local storage and management of captured credentials
+- [x] **Credential Manager** - local storage and management of captured credentials with compact Evil Twin/WPA Cracker/WPS Pixie rows and a separate WPS PIN row
+- [x] **Credential QR sharing** - per-credential standard Wi-Fi QR generated locally with ZXing, QR image sharing/payload copy, and WPS PIN kept separate
 
 </details>
+
+### Planned Wi-Fi automation
+
+See [`../WIFI-AUTOMATION-ROADMAP.md`](../WIFI-AUTOMATION-ROADMAP.md) for the full design and acceptance criteria.
+
+- Credential Manager QR sharing
+- resumable WPA cracker jobs, multiple/compressed wordlists, direct handshake linkage, and `.22000` export
+- single-target Wifite-style Auto Capture + Crack; Evil Twin remains explicitly confirmed
+- custom STA/AP MAC configuration and a separate experimental repeater prototype
 
 <details>
 <summary><strong>Storage, Firmware & Tools</strong></summary>
@@ -152,6 +170,8 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 - [x] **ESP32 Flasher** - flash merged NRSuite firmware directly from the app over USB; supports ESP32, S2, S3, C3, and C5 images with target-chip validation
 - [x] **Serial Monitor** - raw USB serial monitor with reliable clipboard copy, bounded log retention, and visible save/export feedback
 - [x] **BSSID Geolocation** - offline OUI/vendor lookup plus approximate Wi-Fi access-point location, persistent lookup history, and an embedded Leaflet map with external Google Maps fallback
+- [x] **Offline MAC Lookup** - separate OUI/vendor lookup using the bundled local OUI snapshot, with locally-administered/multicast indicators and copy/share actions; no map or network request
+- [x] **Rogue AP OUI rules** - whitelist/blacklist OUI rules from WiFi Config for the Rogue AP Detector
 - [x] **Persistent firmware device ID** - `NRxxxxxxx` NVS ID shown in the app so devices remain identifiable across reconnects
 
 </details>
@@ -333,6 +353,8 @@ app/src/main/java/com/swp81x/nrsuite/
     history/           # Session history entries
     log/               # Log entry model (Logs screen, live module logs)
     oui/               # Offline OUI/vendor database (BSSID Geolocation, defense modules)
+    portal/            # Local Captive Portal / Evil Twin HTML template store
+    wps/               # WPS PIN generation, Pixie Dust material, parsers, and offline cracker
     geo/               # Independent BSSID/WLOC client and persistent lookup history
     pcap/              # Pcap file reader and writer
     protocol/          # Frame codec and NrJson wire protocol (shared with firmware)
@@ -346,7 +368,7 @@ app/src/main/java/com/swp81x/nrsuite/
   service/
     NrSuiteForegroundService.kt   # Foreground service keeping USB session alive
   ui/
-    components/       # Reusable Compose components
+    components/       # Reusable Compose components (including bounded scan-target lists and HTML template controls)
     theme/            # Color, typography, theme
     NRSuiteApp.kt     # App entry point and module catalog
     NRSuiteContent.kt # Shell navigation, permission flow, screen dispatch
@@ -360,13 +382,23 @@ app/src/main/java/com/swp81x/nrsuite/
     BleScannerScreen.kt / BleProfileScreen.kt / BleScreen.kt   # BLE recon + BLE HID
     BlePinBruteforceScreen.kt                                  # BLE HID PIN live controls
     MacLookupScreen.kt / SerialMonitorScreen.kt    # Tools / firmware utilities
+    ProbeMonitorScreen.kt / ChannelAnalyzerScreen.kt # Wi-Fi recon additions
+    WpsPixieLiveScreen.kt / WpsPixieScreen.kt      # WPS Pixie Dust live and offline workflows
+    WpsLockDetectorScreen.kt                     # Passive WPS lock-state scan and AP details
+    WpsAttemptDetectorScreen.kt                  # Passive WPS Identity/M1–M8 attempt monitor
     *Screen.kt        # Remaining feature module screens
   MainActivity.kt
   MainViewModel.kt               # Application-scoped controller
   MainViewModelUsb.kt            # USB discovery, permission, connection lifecycle
   MainViewModelFlasher.kt        # Firmware image selection and flashing
-  MainViewModelWifi.kt           # Scan, deauth, beacon, sniff
+  MainViewModelWifi.kt           # Scan, multi-target deauth, beacon, sniff
   MainViewModelPortal.kt         # Captive Portal and Evil Twin
+  MainViewModelHtmlTemplates.kt  # Shared HTML template import/rename/delete/use state
+  MainViewModelProbeMonitor.kt   # Probe request aggregation
+  MainViewModelWpsPixie.kt       # WPS PIN storage, material import, and offline crack state
+  MainViewModelWpsPixieLive.kt   # Live WPS Pixie Dust registrar workflow
+  MainViewModelWpsLockDetector.kt # Passive WPS access-point lock-state scan
+  MainViewModelWpsAttemptDetector.kt # Passive WPS attempt/session monitor and risk scoring
   MainViewModelBle.kt            # BLE HID
   MainViewModelBleScanner.kt     # BLE device discovery
   MainViewModelBleProfile.kt     # BLE GATT enumeration
@@ -452,7 +484,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide: branching model, PR
 
 | App version | Firmware version | Protocol spec |
 |---|---|---|
-| v1.0.0-beta.3 | v1.0.0-beta.3 | v1.0 (non-mesh); mesh protocol 1.1 is experimental |
+| v1.0.0-beta.3.1 | v1.0.0-beta.3.1 | v1.0 (non-mesh); mesh protocol 1.1 is experimental |
 
 This table is updated with each release. Always check compatibility before mixing app and firmware versions.
 

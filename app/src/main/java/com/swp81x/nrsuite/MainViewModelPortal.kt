@@ -12,6 +12,9 @@ import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.pcap.PcapWriter
+import com.swp81x.nrsuite.core.portal.HtmlTemplateStore
+import com.swp81x.nrsuite.core.portal.PortalHtmlRenderer
+import com.swp81x.nrsuite.core.portal.PortalSessionMetrics
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
 import com.swp81x.nrsuite.core.wpa.EvilTwinResult
@@ -34,17 +37,32 @@ private const val HTML_TAIL_ALLOWANCE = 64
 // Captive Portal and Evil Twin lifecycle, HTML upload, capture, and event logs.
 
 internal fun MainViewModel.setEvilTwinHtmlFileImpl(uri: Uri, name: String?) {
+    val displayName = name?.let { safeSafBasename(it, "evil_twin.html") }
+        ?: resolveSafDisplayName(uri, "evil_twin.html")
+    val size = querySafSize(uri)
+    if (size != null && size > HtmlTemplateStore.MAX_TEMPLATE_BYTES) {
+        _evilTwinHtmlUri.value = null
+        _evilTwinHtmlName.value = null
+        _evilTwinHtmlSelectedSize.value = null
+        val message = "HTML file is ${size} bytes; firmware limit is " +
+            "${HtmlTemplateStore.MAX_TEMPLATE_BYTES} bytes."
+        appendLog("Evil Twin HTML rejected: $message", level = LogLevel.ERROR)
+        _toastMessage.value = message
+        return
+    }
     _evilTwinHtmlUri.value = uri
-    _evilTwinHtmlName.value = name ?: uri.lastPathSegment ?: "evil_twin.html"
+    _evilTwinHtmlName.value = displayName
+    _evilTwinHtmlSelectedSize.value = size
     _evilTwinHtmlUploading.value = false
     _evilTwinHtmlUploadProgress.value = 0
     _evilTwinHtmlComplete.value = false
-    appendLog("Evil Twin HTML selected: ${_evilTwinHtmlName.value}")
+    appendLog("Evil Twin HTML selected: $displayName${size?.let { " ($it bytes)" } ?: ""}.")
 }
 
 internal fun MainViewModel.clearEvilTwinHtmlFileImpl() {
     _evilTwinHtmlUri.value = null
     _evilTwinHtmlName.value = null
+    _evilTwinHtmlSelectedSize.value = null
     _evilTwinHtmlUploading.value = false
     _evilTwinHtmlUploadProgress.value = 0
     _evilTwinHtmlComplete.value = false
@@ -52,30 +70,51 @@ internal fun MainViewModel.clearEvilTwinHtmlFileImpl() {
 }
 
 internal fun MainViewModel.setPortalHtmlFileImpl(uri: Uri, name: String?) {
+    val displayName = name?.let { safeSafBasename(it, "portal.html") }
+        ?: resolveSafDisplayName(uri, "portal.html")
+    val size = querySafSize(uri)
+    if (size != null && size > HtmlTemplateStore.MAX_TEMPLATE_BYTES) {
+        _portalHtmlUri.value = null
+        _portalHtmlName.value = null
+        _portalHtmlSelectedSize.value = null
+        val message = "HTML file is ${size} bytes; firmware limit is " +
+            "${HtmlTemplateStore.MAX_TEMPLATE_BYTES} bytes."
+        appendLog("Portal HTML rejected: $message", level = LogLevel.ERROR)
+        _toastMessage.value = message
+        return
+    }
     _portalHtmlUri.value = uri
-    _portalHtmlName.value = name ?: uri.lastPathSegment ?: "HTML file"
+    _portalHtmlName.value = displayName
+    _portalHtmlSelectedSize.value = size
     _portalHtmlUploading.value = false
     _portalHtmlUploadProgress.value = 0
     _portalHtmlComplete.value = false
-    appendLog("Portal HTML selected: ${_portalHtmlName.value}")
+    appendLog("Portal HTML selected: $displayName${size?.let { " ($it bytes)" } ?: ""}.")
 }
 
 internal fun MainViewModel.clearPortalHtmlFileImpl() {
     _portalHtmlUri.value = null
     _portalHtmlName.value = null
+    _portalHtmlSelectedSize.value = null
     _portalHtmlUploading.value = false
     _portalHtmlUploadProgress.value = 0
     _portalHtmlComplete.value = false
-    appendLog("Portal HTML cleared; device will use its placeholder page.")
+    appendLog("Portal HTML cleared.")
 }
 
 internal fun MainViewModel.startPortalImpl(ssid: String, channel: Int, targetBssid: String) {
+    if (_portalHtmlUri.value == null) {
+        appendLog("Select an HTML template or file before starting Captive Portal.", level = LogLevel.ERROR)
+        _toastMessage.value = "HTML template or file is required."
+        return
+    }
     startPortalInternalImpl(ssid, channel, targetBssid, _portalHtmlUri.value, "portal")
 }
 
 internal fun MainViewModel.startEvilTwinImpl(ssid: String, channel: Int, targetBssid: String) {
     if (_evilTwinHtmlUri.value == null) {
-        appendLog("Select a custom HTML file before starting Evil Twin.", level = LogLevel.ERROR)
+        appendLog("Select an HTML template or file before starting Evil Twin.", level = LogLevel.ERROR)
+        _toastMessage.value = "HTML template or file is required."
         return
     }
     startPortalInternalImpl(ssid, channel, targetBssid, _evilTwinHtmlUri.value, "evil_twin")
@@ -87,14 +126,19 @@ internal fun MainViewModel.startPortalInternalImpl(ssid: String, channel: Int, t
         appendLog("Connect to a device before starting the portal.")
         return
     }
-    if (_portalRunning.value) return
-    if (!ensureRadioIdle(if (mode == "evil_twin") "Evil Twin" else "Captive Portal")) return
+    if (_portalRunning.value || _portalStarting.value) return
+    _portalStarting.value = true
+    if (!ensureRadioIdle(if (mode == "evil_twin") "Evil Twin" else "Captive Portal")) {
+        _portalStarting.value = false
+        return
+    }
     _portalMode.value = mode
 
     val cleanSsid = ssid.trim().ifBlank { "Free WiFi" }
     val cleanBssid = targetBssid.trim().uppercase()
     if (cleanBssid.isNotBlank() && !MainViewModel.MAC_PATTERN.matches(cleanBssid)) {
         appendLog("Invalid target BSSID: $cleanBssid")
+        _portalStarting.value = false
         return
     }
 
@@ -114,21 +158,77 @@ internal fun MainViewModel.startPortalInternalImpl(ssid: String, channel: Int, t
 
     val safeChannel = normalizeWifiChannel(channel)
     if (!ensureWifiChannelAllowed(safeChannel, if (mode == "evil_twin") "Evil Twin" else "Captive Portal")) {
+        _portalStarting.value = false
         return
     }
     _portalSsid.value = cleanSsid
     _portalChannel.value = safeChannel
-    _portalViews.value = 0
-    _portalClients.value = 0
-    _portalCapturedData.value = 0
-    _portalCredentials.value = emptyList()
+    if (mode == "evil_twin") {
+        _evilTwinMetrics.value = PortalSessionMetrics(ssid = cleanSsid, channel = safeChannel)
+        _evilTwinVisitors.value = emptyList()
+    } else {
+        _portalMetrics.value = PortalSessionMetrics(ssid = cleanSsid, channel = safeChannel)
+        _portalVisitors.value = emptyList()
+        _portalCredentials.value = emptyList()
+    }
 
-    scope.launch {
+    val startJob = scope.launch {
+        val renderedHtmlFile = withContext(Dispatchers.IO) {
+            htmlUri?.let { uri ->
+                runCatching {
+                    val directory = File(app.cacheDir, "portal").apply { mkdirs() }
+                    val file = File(directory, "portal_${System.currentTimeMillis()}.html")
+                    val input = app.contentResolver.openInputStream(uri)
+                        ?: error("Could not open the selected HTML file")
+                    input.use { source ->
+                        file.outputStream().use { output ->
+                            PortalHtmlRenderer.render(source, output, cleanSsid)
+                        }
+                    }
+                    check(file.length() > 0L) { "Selected HTML file is empty" }
+                    file
+                }.onFailure { error ->
+                    appendLog(
+                        "Portal HTML render failed: ${error.message ?: error.javaClass.simpleName}",
+                        level = LogLevel.ERROR,
+                    )
+                }.getOrNull()
+            }
+        }
+        if (renderedHtmlFile == null) {
+            val message = "Could not read/render the selected HTML file; portal was not started."
+            appendLog(message, level = LogLevel.ERROR)
+            _toastMessage.value = message
+            _portalMode.value = null
+            return@launch
+        }
+        val htmlSize = renderedHtmlFile.length()
+        if (htmlSize > HtmlTemplateStore.MAX_TEMPLATE_BYTES) {
+            renderedHtmlFile.delete()
+            val message = "HTML is $htmlSize bytes; firmware limit is " +
+                "${HtmlTemplateStore.MAX_TEMPLATE_BYTES} bytes."
+            appendLog("Portal HTML rejected: $message", level = LogLevel.ERROR)
+            _toastMessage.value = message
+            _portalMode.value = null
+            return@launch
+        }
+        if (htmlSize > HtmlTemplateStore.WARN_TEMPLATE_BYTES) {
+            appendLog(
+                "HTML warning: $htmlSize bytes is above " +
+                    "${HtmlTemplateStore.WARN_TEMPLATE_BYTES / 1024} KB."
+            )
+        }
+        appendLog(
+            "Rendered portal HTML to a temporary file ($htmlSize bytes); " +
+                "upload will stream from storage."
+        )
+
         val args = JSONObject().apply {
             put("ssid", cleanSsid)
             put("band", bandForWifiChannel(safeChannel).wireName)
             put("channel", safeChannel)
             put("bssid", cleanBssid.ifBlank { "" })
+            put("show_notice", _portalFirmwareNoticeEnabled.value)
         }
         appendLog("Starting captive portal '$cleanSsid' on channel $safeChannel...")
         val response = activeSession.sendCommand("START_PORTAL", args, timeoutMs = 15_000)
@@ -143,9 +243,11 @@ internal fun MainViewModel.startPortalInternalImpl(ssid: String, channel: Int, t
                         "Try another allowed channel."
                 else -> response?.optString("msg")?.takeIf { it.isNotBlank() } ?: "timeout"
             }
+            renderedHtmlFile.delete()
             appendLog("Failed to start portal: $errorMessage")
             portalLogImpl("Portal start failed: $errorMessage")
             _toastMessage.value = errorMessage
+            _portalMode.value = null
             return@launch
         }
 
@@ -242,26 +344,22 @@ internal fun MainViewModel.startPortalInternalImpl(ssid: String, channel: Int, t
         }
         htmlCompleteFlowImpl().value = false
 
-        if (htmlUri != null) {
-            val bytes = withContext(Dispatchers.IO) {
-                runCatching {
-                    app.contentResolver
-                        .openInputStream(htmlUri)
-                        ?.use { it.readBytes() }
-                }.getOrNull()
-            }
-            if (bytes == null) {
-                appendLog("Could not read the selected HTML file.")
-            } else if (bytes.isEmpty()) {
-                appendLog("Selected HTML file is empty; using device placeholder.")
-            } else if (!uploadPortalHtmlImpl(activeSession, bytes)) {
-                appendLog("Portal HTML upload failed; device may be serving its placeholder page.")
-            }
+        val uploadOk = uploadPortalHtmlImpl(activeSession, renderedHtmlFile)
+        renderedHtmlFile.delete()
+        if (!uploadOk) {
+            val message = "Firmware rejected the HTML upload; portal was stopped."
+            appendLog(message, level = LogLevel.ERROR)
+            _toastMessage.value = message
+            stopPortalImpl()
+            return@launch
         }
 
         startPortalStatusPollingImpl(activeSession)
         appendLog("Portal is running.")
         addHistory("portal", "Portal started: $cleanSsid", HistoryLevel.SUCCESS)
+    }
+    startJob.invokeOnCompletion {
+        _portalStarting.value = false
     }
 }
 
@@ -277,7 +375,7 @@ internal fun MainViewModel.htmlCompleteFlowImpl(): MutableStateFlow<Boolean> {
     return if (_portalMode.value == "evil_twin") _evilTwinHtmlComplete else _portalHtmlComplete
 }
 
-internal suspend fun MainViewModel.uploadPortalHtmlImpl(session: NrSession, bytes: ByteArray): Boolean {
+internal suspend fun MainViewModel.uploadPortalHtmlImpl(session: NrSession, file: File): Boolean {
     val complete = htmlCompleteFlowImpl()
     complete.value = false
     val uploading = htmlUploadingFlowImpl()
@@ -285,7 +383,7 @@ internal suspend fun MainViewModel.uploadPortalHtmlImpl(session: NrSession, byte
     uploading.value = true
     progress.value = 0
     return try {
-        uploadPortalHtmlInternalImpl(session, bytes)
+        uploadPortalHtmlInternalImpl(session, file)
     } finally {
         uploading.value = false
         if (complete.value) {
@@ -294,72 +392,90 @@ internal suspend fun MainViewModel.uploadPortalHtmlImpl(session: NrSession, byte
     }
 }
 
-internal suspend fun MainViewModel.uploadPortalHtmlInternalImpl(session: NrSession, bytes: ByteArray): Boolean {
-    val maxHtmlSize = 24 * 1024
-    if (bytes.size > maxHtmlSize) {
-        appendLog("HTML upload rejected: ${bytes.size} bytes exceeds firmware limit of $maxHtmlSize bytes.")
+internal suspend fun MainViewModel.uploadPortalHtmlInternalImpl(session: NrSession, file: File): Boolean {
+    val totalBytes = file.length()
+    if (totalBytes <= 0L || totalBytes > HtmlTemplateStore.MAX_TEMPLATE_BYTES) {
+        appendLog(
+            "HTML upload rejected: ${file.length()} bytes is outside the firmware limit of " +
+                "${HtmlTemplateStore.MAX_TEMPLATE_BYTES} bytes."
+        )
         return false
     }
+    val totalInt = totalBytes.toInt()
 
     val supportsOffset = (_connectionState.value as? ConnectionState.Connected)
         ?.features
         ?.contains("portal_html_offset") == true
     appendLog(
-        "Uploading HTML: ${bytes.size} bytes in " +
-            "${(bytes.size + HTML_RAW_CHUNK_SIZE - 1) / HTML_RAW_CHUNK_SIZE} chunk(s) " +
-            "(mode=${if (supportsOffset) "offset" else "legacy-append"})."
+        "Uploading HTML: $totalBytes bytes in " +
+            "${(totalBytes + HTML_RAW_CHUNK_SIZE - 1) / HTML_RAW_CHUNK_SIZE} chunk(s) " +
+            "(mode=${if (supportsOffset) "offset" else "legacy-append"}, file-backed)."
     )
 
     val reset = session.sendCommand(
         "RESET_HTML",
-        JSONObject().put("size", bytes.size),
+        JSONObject().put("size", totalInt),
         timeoutMs = 10_000,
     )
     if (reset?.optBoolean("ok") != true) {
-        appendLog("Device rejected RESET_HTML (size=${bytes.size}).")
+        val firmwareError = reset?.optString("msg")?.takeIf { it.isNotBlank() }
+            ?: reset?.optString("error")?.takeIf { it.isNotBlank() }
+        appendLog(
+            "Device rejected RESET_HTML (size=$totalInt)" +
+                (firmwareError?.let { ": $it" } ?: "; check portal filesystem/storage."),
+            level = LogLevel.ERROR,
+        )
         return false
     }
 
     delay(250)
     var offset = 0
     var chunkIndex = 0
-    while (offset < bytes.size) {
-        val end = minOf(offset + HTML_RAW_CHUNK_SIZE, bytes.size)
-        val chunk = bytes.copyOfRange(offset, end)
-        val encoded = android.util.Base64.encodeToString(chunk, android.util.Base64.NO_WRAP)
-        val isLast = end == bytes.size
+    val buffer = ByteArray(HTML_RAW_CHUNK_SIZE)
+    file.inputStream().buffered().use { input ->
+        while (offset < totalInt) {
+            val requested = minOf(buffer.size, totalInt - offset)
+            val read = input.read(buffer, 0, requested)
+            if (read <= 0) {
+                appendLog("HTML upload aborted: temporary file ended at $offset/$totalInt bytes.")
+                return false
+            }
+            val isLast = offset + read >= totalInt
+            val encoded = android.util.Base64.encodeToString(buffer, 0, read, android.util.Base64.NO_WRAP)
 
-        var success = false
-        for (attempt in 1..3) {
-            val args = JSONObject().apply {
-                put("data", encoded)
-                put("last", isLast)
-                if (supportsOffset) {
-                    put("offset", offset)
+            var success = false
+            for (attempt in 1..3) {
+                val args = JSONObject().apply {
+                    put("data", encoded)
+                    put("last", isLast)
+                    if (supportsOffset) {
+                        put("offset", offset)
+                    }
                 }
+                val response = session.sendCommand("SET_HTML_CHUNK", args, timeoutMs = 5_000)
+                if (response?.optBoolean("ok") == true) {
+                    success = true
+                    break
+                }
+                appendLog(
+                    "HTML chunk $chunkIndex offset $offset attempt $attempt failed: " +
+                        (response ?: "timeout")
+                )
+                delay(400)
             }
-            val response = session.sendCommand("SET_HTML_CHUNK", args, timeoutMs = 5_000)
-            if (response?.optBoolean("ok") == true) {
-                success = true
-                break
+            if (!success) {
+                appendLog("HTML upload aborted at chunk $chunkIndex (offset $offset).")
+                return false
             }
-            appendLog(
-                "HTML chunk $chunkIndex offset $offset attempt $attempt failed: " +
-                    (response ?: "timeout")
-            )
-            delay(400)
-        }
-        if (!success) {
-            appendLog("HTML upload aborted at chunk $chunkIndex (offset $offset).")
-            return false
-        }
 
-        offset = end
-        chunkIndex++
-        _portalHtmlSize.value = offset
-        htmlUploadProgressFlowImpl().value = ((offset * 100) / bytes.size).coerceIn(0, 100)
-        if (isLast) appendLog("HTML final chunk sent (${bytes.size} bytes at offset $end).")
-        delay(80)
+            offset += read
+            chunkIndex++
+            _portalHtmlSize.value = offset
+            htmlUploadProgressFlowImpl().value =
+                ((offset.toLong() * 100L) / totalBytes).toInt().coerceIn(0, 100)
+            if (isLast) appendLog("HTML final chunk sent ($totalInt bytes at offset $offset).")
+            delay(80)
+        }
     }
 
     delay(350)
@@ -372,7 +488,7 @@ internal suspend fun MainViewModel.uploadPortalHtmlInternalImpl(session: NrSessi
     }
 
     val deviceSize = status?.optInt("html_size", 0) ?: 0
-    val deviceExpected = status?.optInt("html_expected", bytes.size) ?: bytes.size
+    val deviceExpected = status?.optInt("html_expected", totalInt) ?: totalInt
     if (!complete) {
         appendLog(
             "HTML upload did not complete on device " +
@@ -380,12 +496,12 @@ internal suspend fun MainViewModel.uploadPortalHtmlInternalImpl(session: NrSessi
         )
         return false
     }
-    if (deviceSize < bytes.size) {
-        appendLog("HTML size mismatch: sent ${bytes.size} bytes, device reports $deviceSize.")
+    if (deviceSize < totalInt) {
+        appendLog("HTML size mismatch: sent $totalInt bytes, device reports $deviceSize.")
         return false
     }
-    if (deviceSize > bytes.size + HTML_TAIL_ALLOWANCE) {
-        appendLog("HTML buffer looks corrupted: sent ${bytes.size} bytes, device reports $deviceSize.")
+    if (deviceSize > totalInt + HTML_TAIL_ALLOWANCE) {
+        appendLog("Portal HTML file looks corrupted: sent $totalInt bytes, device reports $deviceSize.")
         return false
     }
 
@@ -401,7 +517,7 @@ internal fun MainViewModel.clearEvilTwinPasswordsImpl() {
 
 internal fun MainViewModel.verifyEvilTwinPasswordsImpl() {
     val handshake = _portalWpaHandshake.value
-    val ssid = _portalSsid.value
+    val ssid = _evilTwinMetrics.value.ssid.ifBlank { _portalSsid.value }
     val finalStatuses = setOf(
         EvilTwinResult.Status.CORRECT,
         EvilTwinResult.Status.INCORRECT,
@@ -447,7 +563,7 @@ internal fun MainViewModel.verifyEvilTwinPasswordsImpl() {
                 source = CredentialSource.EVIL_TWIN,
                 ssid = ssid.ifBlank { "(hidden)" },
                 bssid = activePortalTargetBssid,
-                channel = _portalChannel.value.takeIf { it > 0 },
+                channel = _evilTwinMetrics.value.channel.takeIf { it > 0 },
                 startedAt = timestampNow(),
                 endedAt = null,
                 pcapPath = portalPcapFile?.absolutePath,
@@ -481,6 +597,14 @@ internal fun MainViewModel.clearPortalEventLogImpl() {
     _portalEventLog.value = emptyList()
 }
 
+internal fun MainViewModel.clearPortalVisitorsImpl() {
+    _portalVisitors.value = emptyList()
+}
+
+internal fun MainViewModel.clearEvilTwinVisitorsImpl() {
+    _evilTwinVisitors.value = emptyList()
+}
+
 internal fun MainViewModel.portalLogImpl(message: String) {
     val timestamp = java.time.LocalTime.now()
         .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
@@ -493,8 +617,14 @@ internal fun MainViewModel.portalLogImpl(message: String) {
 }
 
 internal fun MainViewModel.stopPortalImpl() {
+    if (_portalStopping.value) return
     finishActiveCredentialSession()
-    if (!_portalRunning.value) return
+    if (!_portalRunning.value) {
+        _portalStarting.value = false
+        _portalStopping.value = false
+        return
+    }
+    _portalStopping.value = true
     portalStatusJob?.cancel()
     portalStatusJob = null
     portalPcapJob?.cancel()
@@ -504,21 +634,27 @@ internal fun MainViewModel.stopPortalImpl() {
     portalPcapWriter = null
     portalPcapFile = null
     exportPcapToRootIfConfigured(savedCapture)
-    _portalRunning.value = false
-    _portalMode.value = null
-    updateForegroundService()
 
     val activeSession = session
     scope.launch {
-        val response = runCatching {
-            activeSession?.sendCommand("STOP_PORTAL", timeoutMs = 8_000)
-        }.getOrNull()
-        if (response?.optBoolean("ok") == true) {
-            appendLog("Portal stopped.")
-            savedCapture?.let { appendLog("Evil Twin capture saved: ${it.absolutePath}") }
-            addHistory("portal", "Portal stopped", HistoryLevel.SUCCESS)
-        } else {
-            appendLog("Portal stop request sent, but the device did not confirm.")
+        try {
+            val response = runCatching {
+                activeSession?.sendCommand("STOP_PORTAL", timeoutMs = 8_000)
+            }.getOrNull()
+            if (response?.optBoolean("ok") == true) {
+                appendLog("Portal stopped.")
+                savedCapture?.let { appendLog("Evil Twin capture saved: ${it.absolutePath}") }
+                addHistory("portal", "Portal stopped", HistoryLevel.SUCCESS)
+            } else {
+                appendLog("Portal stop request sent, but the device did not confirm.")
+            }
+        } finally {
+            // This also runs if USB is unplugged or the stop command throws.
+            _portalRunning.value = false
+            _portalStopping.value = false
+            _portalStarting.value = false
+            _portalMode.value = null
+            updateForegroundService()
         }
     }
 }
@@ -544,8 +680,14 @@ internal fun MainViewModel.startPortalStatusPollingImpl(activeSession: NrSession
 internal fun MainViewModel.stopLocalPortalImpl(sendStop: Boolean = true) {
     portalStatusJob?.cancel()
     portalStatusJob = null
-    if (!_portalRunning.value) return
+    if (!_portalRunning.value) {
+        _portalStarting.value = false
+        _portalStopping.value = false
+        return
+    }
     _portalRunning.value = false
+    _portalStopping.value = false
+    _portalStarting.value = false
     if (sendStop) {
         val current = session
         if (current != null) {

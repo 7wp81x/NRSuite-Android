@@ -1,7 +1,9 @@
 package com.swp81x.nrsuite.ui
 
 import android.content.Intent
+import android.graphics.Bitmap
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Share
@@ -44,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -51,11 +55,15 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.credentials.CredentialSession
 import com.swp81x.nrsuite.core.credentials.CredentialSource
 import com.swp81x.nrsuite.core.credentials.CredentialStatus
+import com.swp81x.nrsuite.core.credentials.WifiQrPayload
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
 import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -65,7 +73,9 @@ import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
+import com.swp81x.nrsuite.ui.theme.StatusRed
 import java.io.File
+import java.io.FileOutputStream
 
 @Composable
 fun CredentialManagerScreen(
@@ -81,6 +91,7 @@ fun CredentialManagerScreen(
     var query by remember { mutableStateOf("") }
     var sourceFilter by remember { mutableStateOf<CredentialSource?>(null) }
     var detailSession by remember { mutableStateOf<CredentialSession?>(null) }
+    var qrTarget by remember { mutableStateOf<QrCredentialTarget?>(null) }
 
     val displayedSessions = sessions.filter { session ->
         val matchesSource = sourceFilter == null || session.source == sourceFilter
@@ -133,6 +144,11 @@ fun CredentialManagerScreen(
                     label = "WPA Cracker",
                 )
                 NrFilterChip(
+                    selected = sourceFilter == CredentialSource.WPS_PIXIE,
+                    onClick = { sourceFilter = CredentialSource.WPS_PIXIE },
+                    label = "WPS Pixie",
+                )
+                NrFilterChip(
                     selected = sourceFilter == CredentialSource.PORTAL,
                     onClick = { sourceFilter = CredentialSource.PORTAL },
                     label = "Portal",
@@ -154,6 +170,7 @@ fun CredentialManagerScreen(
                         session = session,
                         onCopyPassword = { value -> clipboard.copyWithToast(context, value) },
                         onSharePcap = { path -> sharePcap(context, path) },
+                        onShareQr = { credential -> qrTarget = QrCredentialTarget(session, credential) },
                         onDelete = { deleteTarget = session },
                         onViewSubmissions = { detailSession = it },
                     )
@@ -224,6 +241,79 @@ fun CredentialManagerScreen(
             dismissButton = {
                 TextButton(onClick = { confirmClearAll = false }) {
                     Text("Cancel")
+                }
+            },
+        )
+    }
+
+    qrTarget?.let { target ->
+        val payload = remember(target) {
+            WifiQrPayload.build(
+                ssid = target.session.ssid.ifBlank { "(hidden)" },
+                password = target.credential.value,
+            )
+        }
+        val qrBitmap = remember(payload) { generateWifiQrBitmap(payload, 720) }
+        AlertDialog(
+            onDismissRequest = { qrTarget = null },
+            title = { Text("Share Wi-Fi QR") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = target.session.ssid.ifBlank { "(hidden SSID)" },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = NrOnSurface,
+                    )
+                    if (qrBitmap != null) {
+                        Image(
+                            bitmap = qrBitmap.asImageBitmap(),
+                            contentDescription = "Wi-Fi QR code",
+                            modifier = Modifier.size(240.dp),
+                        )
+                    } else {
+                        Text(
+                            text = "Could not generate the QR code.",
+                            color = StatusRed,
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            clipboard.copyWithToast(context, payload)
+                        },
+                        enabled = qrBitmap != null,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Copy QR payload")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        qrBitmap?.let { bitmap ->
+                            shareWifiQrImage(context, target.session.ssid, bitmap)
+                        }
+                    },
+                    enabled = qrBitmap != null,
+                ) {
+                    Text("Share image")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { qrTarget = null }) {
+                    Text("Close")
                 }
             },
         )
@@ -334,11 +424,15 @@ private fun CredentialSessionCard(
     session: CredentialSession,
     onCopyPassword: (String) -> Unit,
     onSharePcap: (String) -> Unit,
+    onShareQr: (CapturedCredential) -> Unit,
     onDelete: () -> Unit,
     onViewSubmissions: (CredentialSession) -> Unit,
 ) {
     val pcapFile = session.pcapPath?.let { File(it) }
     val pcapAvailable = pcapFile?.exists() == true
+    val qrCredential = session.credentials
+        .firstOrNull { it.status == CredentialStatus.CORRECT }
+        ?.takeIf { session.source != CredentialSource.PORTAL }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -447,6 +541,9 @@ private fun CredentialSessionCard(
                 )
             } else {
                 Spacer(Modifier.height(10.dp))
+                val compactCredential = session.source == CredentialSource.EVIL_TWIN ||
+                    session.source == CredentialSource.WPA_CRACKER ||
+                    session.source == CredentialSource.WPS_PIXIE
                 session.credentials
                     .filter { it.status == CredentialStatus.CORRECT }
                     .forEach { credential ->
@@ -455,8 +552,19 @@ private fun CredentialSessionCard(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                text = "[${credential.capturedAt}] ${credential.value}  :  ✓",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                                text = if (compactCredential) {
+                                    credential.value
+                                } else {
+                                    "[${credential.capturedAt}] ${credential.value}  :  ✓"
+                                },
+                                style = if (compactCredential) {
+                                    MaterialTheme.typography.titleMedium.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                } else {
+                                    MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
+                                },
                                 color = StatusGreen,
                                 modifier = Modifier.weight(1f),
                             )
@@ -469,6 +577,38 @@ private fun CredentialSessionCard(
                             }
                         }
                     }
+
+                if (session.source == CredentialSource.WPS_PIXIE) {
+                    val pin = session.credentials
+                        .firstOrNull()
+                        ?.details
+                        ?.get("wps_pin")
+                        .orEmpty()
+                    if (pin.isNotBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "PIN: $pin",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.SemiBold,
+                                ),
+                                color = StatusGreen,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(onClick = { onCopyPassword(pin) }) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy WPS PIN",
+                                    tint = NrOnSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             Spacer(Modifier.height(8.dp))
@@ -482,6 +622,17 @@ private fun CredentialSessionCard(
                     Spacer(Modifier.width(6.dp))
                     Text("Share PCAP")
                 }
+                if (qrCredential != null) {
+                    OutlinedButton(onClick = { onShareQr(qrCredential) }) {
+                        Icon(
+                            Icons.Default.QrCode2,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Share QR")
+                    }
+                }
             }
         }
     }
@@ -490,8 +641,58 @@ private fun CredentialSessionCard(
 private fun sourceLabel(source: CredentialSource): String = when (source) {
     CredentialSource.EVIL_TWIN -> "Evil Twin"
     CredentialSource.WPA_CRACKER -> "WPA Cracker"
+    CredentialSource.WPS_PIXIE -> "WPS Pixie"
     CredentialSource.PORTAL -> "Portal"
     CredentialSource.IMPORTED -> "Imported"
+}
+
+private data class QrCredentialTarget(
+    val session: CredentialSession,
+    val credential: CapturedCredential,
+)
+
+private fun generateWifiQrBitmap(payload: String, size: Int): Bitmap? = runCatching {
+    val matrix = QRCodeWriter().encode(payload, BarcodeFormat.QR_CODE, size, size)
+    val pixels = IntArray(size * size)
+    for (y in 0 until size) {
+        for (x in 0 until size) {
+            pixels[y * size + x] = if (matrix.get(x, y)) {
+                android.graphics.Color.BLACK
+            } else {
+                android.graphics.Color.WHITE
+            }
+        }
+    }
+    Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)
+}.getOrNull()
+
+private fun shareWifiQrImage(
+    context: android.content.Context,
+    ssid: String,
+    bitmap: Bitmap,
+) {
+    runCatching {
+        val directory = File(context.cacheDir, "wifi-qr").apply { mkdirs() }
+        val safeName = ssid.ifBlank { "wifi" }
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            .take(40)
+        val file = File(directory, "nrsuite-wifi-$safeName.png")
+        FileOutputStream(file).use { output ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+        }
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file,
+        )
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "Wi-Fi QR: $ssid")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share Wi-Fi QR"))
+    }
 }
 
 private fun sharePcap(context: android.content.Context, path: String) {

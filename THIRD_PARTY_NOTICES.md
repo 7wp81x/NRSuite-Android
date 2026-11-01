@@ -13,6 +13,9 @@ Notable bundled/runtime components include:
 - Firmware PN532 support uses Adafruit PN532 — BSD 3-Clause —
   https://github.com/adafruit/Adafruit-PN532 — and Adafruit BusIO — MIT —
   https://github.com/adafruit/Adafruit_BusIO
+- The bundled offline MAC/OUI snapshot is derived from the IEEE OUI registry —
+  https://standards-oui.ieee.org/oui/oui.csv — and is included as a local
+  fallback for vendor lookup. The in-app update action can refresh it.
 
 When distributing an APK, retain this notice and all upstream license/notice
 files required by the corresponding dependencies.

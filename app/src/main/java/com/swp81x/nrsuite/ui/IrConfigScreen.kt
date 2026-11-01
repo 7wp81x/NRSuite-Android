@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import android.widget.Toast
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -44,6 +46,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.ir.IrDatabaseMetadata
@@ -77,6 +80,10 @@ fun IrConfigScreen(
     irDatabaseMetadata: IrDatabaseMetadata?,
     esp32: ConnectionState.Connected?,
     errorMessage: String?,
+    statusMessage: String? = null,
+    savingPins: Boolean = false,
+    rootConfigured: Boolean = true,
+    onChooseRootDirectory: () -> Unit = {},
     onSetBackend: (IrTransmitBackend) -> Unit,
     onSetLoopInterval: (Int) -> Unit,
     onRefreshCapabilities: () -> Unit,
@@ -95,6 +102,7 @@ fun IrConfigScreen(
     var deleteDatabaseDialog by remember { mutableStateOf(false) }
     var txPinMenu by remember { mutableStateOf(false) }
     var rxPinMenu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     var selectedTxGpio by rememberSaveable { mutableIntStateOf(-1) }
     var selectedRxGpio by rememberSaveable { mutableIntStateOf(-1) }
     LaunchedEffect(esp32?.deviceId, esp32?.irTxGpio, esp32?.irRxGpio) {
@@ -195,6 +203,22 @@ fun IrConfigScreen(
                     text = errorMessage,
                     style = MaterialTheme.typography.bodySmall,
                     color = StatusRed,
+                    modifier = Modifier.padding(12.dp),
+                )
+            }
+        }
+
+        if (statusMessage != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = NrSurfaceVariant),
+                border = BorderStroke(0.5.dp, StatusGreen),
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Text(
+                    text = statusMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusGreen,
                     modifier = Modifier.padding(12.dp),
                 )
             }
@@ -349,14 +373,35 @@ fun IrConfigScreen(
                         )
                     }
                     Spacer(Modifier.height(8.dp))
+                    val gpioChanged = esp32 != null &&
+                        (selectedTxGpio != esp32.irTxGpio || selectedRxGpio != esp32.irRxGpio)
                     Button(
                         onClick = { onSetIrEsp32Pins(selectedTxGpio, selectedRxGpio) },
-                        enabled = hasIrTx && hasIrRx &&
+                        enabled = hasIrTx && hasIrRx && !savingPins &&
                             selectedTxGpio >= 0 && selectedRxGpio >= 0 &&
-                            selectedTxGpio != selectedRxGpio,
+                            selectedTxGpio != selectedRxGpio && gpioChanged,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Save IR GPIO configuration")
+                        when {
+                            savingPins -> {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Saving...")
+                            }
+                            !gpioChanged && selectedTxGpio >= 0 && selectedRxGpio >= 0 -> {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text("Saved")
+                            }
+                            else -> Text("Save IR GPIO configuration")
+                        }
                     }
                     Text(
                         text = "RX state: ${if (esp32.irRxActive) "active" else "stopped"} · " +
@@ -387,9 +432,13 @@ fun IrConfigScreen(
                     color = NrOnSurfaceVariant,
                 )
                 Text(
-                    text = "NRSuite root: $exportDirectoryName",
+                    text = if (rootConfigured) {
+                        "NRSuite root: $exportDirectoryName"
+                    } else {
+                        "NRSuite root is not configured"
+                    },
                     style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
+                    color = if (rootConfigured) NrOnSurfaceVariant else StatusAmber,
                 )
                 Text(
                     text = "Storage: NRSuite/IR/Database/Flipper-IRDB",
@@ -538,7 +587,22 @@ fun IrConfigScreen(
                 }
 
                 Spacer(Modifier.height(10.dp))
-                if (databaseRunning) {
+                if (!rootConfigured) {
+                    Button(
+                        onClick = {
+                            Toast.makeText(
+                                context,
+                                "Choose the NRSuite root directory first.",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            onChooseRootDirectory()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Choose NRSuite root")
+                    }
+                    Spacer(Modifier.height(6.dp))
+                } else if (databaseRunning) {
                     Button(
                         onClick = onCancelIrDatabaseOperation,
                         modifier = Modifier.fillMaxWidth(),
@@ -577,7 +641,7 @@ fun IrConfigScreen(
                             arrayOf("application/zip", "application/octet-stream", "*/*"),
                         )
                     },
-                    enabled = !databaseRunning && !importing,
+                    enabled = rootConfigured && !databaseRunning && !importing,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Import IR ZIP")
@@ -585,7 +649,7 @@ fun IrConfigScreen(
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(
                     onClick = onRescanLibrary,
-                    enabled = !databaseRunning && !importing,
+                    enabled = rootConfigured && !databaseRunning && !importing,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(if (importing) "Scanning..." else "Rescan IR library")
@@ -593,7 +657,7 @@ fun IrConfigScreen(
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(
                     onClick = { deleteDatabaseDialog = true },
-                    enabled = !databaseRunning && !importing &&
+                    enabled = rootConfigured && !databaseRunning && !importing &&
                         (irDatabaseMetadata != null || irDatabaseState.phase == IrDatabasePhase.COMPLETED),
                     modifier = Modifier.fillMaxWidth(),
                 ) {

@@ -50,6 +50,11 @@
             android:process=":usb" />
 
         <service
+            android:name=".service.WpaCrackerForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
             android:name=".service.IrDatabaseForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
