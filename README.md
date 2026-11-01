@@ -145,7 +145,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 
 - [x] **WPA Handshake Capture/Crack** - offline dictionary cracking with WPA*02 `.22000` import, multi-target/select-all and manual single-target modes, best M1/M2 selection, pause/resume, foreground progress, and checkpointed sessions
 - [x] **Deauth telemetry** - unlimited loop plus elapsed time, frames/sec, sent, and failed counters
-- [x] **WPS Pixie Dust** - live registrar flow with module-isolated target scans, AP-lock preflight, M3-only capture, on-phone Pixiewps recovery, same-session recovered-PIN continuation, and PIN/PSK persistence on ESP32-S3/C5
+- [x] **WPS Pixie Dust** - live registrar flow with module-isolated target scans, AP-lock preflight, M3-only capture, on-phone Pixiewps recovery, same-session recovered-PIN continuation, and PIN/PSK persistence on all supported ESP32 targets
 - [x] **WPS Lock Detector** - passive scan of nearby WPS APs with `Locked`, `Likely unlocked`, and `Unknown` lock-state reporting
 - [x] **WPS Attempt Detector** - scan and multi-select nearby WPS APs, then passively monitor only their BSSIDs/channels for Identity/M1–M8 activity with source MAC/vendor, progression, and low/medium/high risk scoring; keeps a foreground-service notification while monitoring and shows active state in the module catalog
 - [x] **Nrugochi** - Pwnagotchi-style channel-density RECON/INTERACT loop, multi-AP authorized deauth with frame telemetry, all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` output, mood UI, and today/total stats
@@ -484,7 +484,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide: branching model, PR
 
 | App version | Firmware version | Protocol spec |
 |---|---|---|
-| v1.0.0-beta.3.1 | v1.0.0-beta.3.1 | v1.0 (non-mesh); mesh protocol 1.1 is experimental |
+| v1.0.0-beta.3.1.1 | v1.0.0-beta.3.1.1 | v1.0 (non-mesh); mesh protocol 1.1 is experimental |
 
 This table is updated with each release. Always check compatibility before mixing app and firmware versions.
 

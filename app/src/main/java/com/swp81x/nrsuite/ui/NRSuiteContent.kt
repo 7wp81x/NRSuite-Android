@@ -230,6 +230,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     }
     val irDatabaseState by viewModel.irDatabaseState.collectAsState()
     val irDatabaseMetadata by viewModel.irDatabaseMetadata.collectAsState()
+    val irDatabasePresent by viewModel.irDatabasePresent.collectAsState()
     val irTransmitting by viewModel.irTransmitting.collectAsState()
     val irCapabilities by viewModel.irCapabilities.collectAsState()
     val irTransmitBackend by viewModel.irTransmitBackend.collectAsState()
@@ -2240,6 +2241,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     irRxLabel = irRxChipLabel,
                     irDatabaseState = irDatabaseState,
                     irDatabaseMetadata = irDatabaseMetadata,
+                    irDatabasePresent = irDatabasePresent,
                     irRemoteCount = irRemotes.size,
                     irRootConfigured = exportDirectoryName != "Not configured",
                     onChooseIrRootDirectory = {
