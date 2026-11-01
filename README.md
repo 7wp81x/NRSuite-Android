@@ -69,7 +69,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 <details>
 <summary><strong>Wireless</strong></summary>
 
-- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; AUTO 2.4/5 GHz and regulatory-country channel filtering on C5-capable firmware
+- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; AUTO 2.4/5 GHz and regulatory-country channel filtering on C5-capable firmware; serialized/reliable scans with retry, previous-result preservation, and response-vs-event transport diagnostics
 - [x] **Beacon Spam** - Overview / SSID Lists tabs, custom or hidden SSIDs, saved-list CRUD, and a built-in short-form Rickroll preset
 - [x] **Deauthentication** - finite burst or unlimited loop until stopped, with elapsed time, frames/sec, sent/failed telemetry, multi-target selection, and app-side per-target channel hopping
 - [x] **Evil Twin** - rogue AP with captive-portal HTML, captured-password verification, persistent results after auto-stop, FAB start/stop progress, and dedicated visitor/metric logs
@@ -143,14 +143,14 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 <details>
 <summary><strong>Credentials</strong></summary>
 
-- [x] **WPA Handshake Capture/Crack** - capture and offline dictionary cracking
+- [x] **WPA Handshake Capture/Crack** - offline dictionary cracking with WPA*02 `.22000` import, multi-target/select-all and manual single-target modes, best M1/M2 selection, pause/resume, foreground progress, and checkpointed sessions
 - [x] **Deauth telemetry** - unlimited loop plus elapsed time, frames/sec, sent, and failed counters
 - [x] **WPS Pixie Dust** - live registrar flow with module-isolated target scans, AP-lock preflight, M3-only capture, on-phone Pixiewps recovery, same-session recovered-PIN continuation, and PIN/PSK persistence on ESP32-S3/C5
 - [x] **WPS Lock Detector** - passive scan of nearby WPS APs with `Locked`, `Likely unlocked`, and `Unknown` lock-state reporting
 - [x] **WPS Attempt Detector** - scan and multi-select nearby WPS APs, then passively monitor only their BSSIDs/channels for Identity/M1–M8 activity with source MAC/vendor, progression, and low/medium/high risk scoring; keeps a foreground-service notification while monitoring and shows active state in the module catalog
 - [x] **Nrugochi** - Pwnagotchi-style channel-density RECON/INTERACT loop, multi-AP authorized deauth with frame telemetry, all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` output, mood UI, and today/total stats
-- [x] **Credential Manager** - local storage and management of captured credentials
-- [ ] **Credential QR sharing** - standard Wi-Fi QR for saved PSKs, with WPS PIN shown separately
+- [x] **Credential Manager** - local storage and management of captured credentials with compact Evil Twin/WPA Cracker/WPS Pixie rows and a separate WPS PIN row
+- [x] **Credential QR sharing** - per-credential standard Wi-Fi QR generated locally with ZXing, QR image sharing/payload copy, and WPS PIN kept separate
 
 </details>
 
@@ -170,6 +170,8 @@ See [`../WIFI-AUTOMATION-ROADMAP.md`](../WIFI-AUTOMATION-ROADMAP.md) for the ful
 - [x] **ESP32 Flasher** - flash merged NRSuite firmware directly from the app over USB; supports ESP32, S2, S3, C3, and C5 images with target-chip validation
 - [x] **Serial Monitor** - raw USB serial monitor with reliable clipboard copy, bounded log retention, and visible save/export feedback
 - [x] **BSSID Geolocation** - offline OUI/vendor lookup plus approximate Wi-Fi access-point location, persistent lookup history, and an embedded Leaflet map with external Google Maps fallback
+- [x] **Offline MAC Lookup** - separate OUI/vendor lookup using the bundled local OUI snapshot, with locally-administered/multicast indicators and copy/share actions; no map or network request
+- [x] **Rogue AP OUI rules** - whitelist/blacklist OUI rules from WiFi Config for the Rogue AP Detector
 - [x] **Persistent firmware device ID** - `NRxxxxxxx` NVS ID shown in the app so devices remain identifiable across reconnects
 
 </details>
