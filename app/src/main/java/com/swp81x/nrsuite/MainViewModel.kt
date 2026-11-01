@@ -88,6 +88,9 @@ import com.swp81x.nrsuite.core.oui.MacLookupResult
 import com.swp81x.nrsuite.core.oui.OuiDatabaseRepository
 import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.pcap.PcapReader
+import com.swp81x.nrsuite.core.portal.PortalSessionMetrics
+import com.swp81x.nrsuite.core.portal.PortalVisitor
+import com.swp81x.nrsuite.core.portal.mergePortalVisitor
 import com.swp81x.nrsuite.core.pcap.PcapWriter
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
@@ -95,6 +98,12 @@ import com.swp81x.nrsuite.core.wifi.DetectedSsid
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.core.wifi.PcapSsidParser
+import com.swp81x.nrsuite.core.wpa.CrackerSessionSnapshot
+import com.swp81x.nrsuite.core.wpa.CrackerSessionStatus
+import com.swp81x.nrsuite.core.wpa.CrackerSessionStore
+import com.swp81x.nrsuite.core.wpa.CrackerSourceType
+import com.swp81x.nrsuite.core.wpa.CrackerTargetSnapshot
+import com.swp81x.nrsuite.core.wpa.CrackerTargetStatus
 import com.swp81x.nrsuite.core.wpa.WpaCracker
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeVerifier
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeParser
@@ -113,6 +122,7 @@ import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
 import com.swp81x.nrsuite.core.usb.UsbSerialTransport
 import com.swp81x.nrsuite.service.NrSuiteForegroundService
+import com.swp81x.nrsuite.service.WpaCrackerForegroundService
 import java.io.File
 import java.io.IOException
 import java.time.LocalDateTime
@@ -197,6 +207,11 @@ class MainViewModel(internal val app: Application) {
     internal val _requiresRootDirectory = MutableStateFlow(false)
     val requiresRootDirectory: StateFlow<Boolean> = _requiresRootDirectory.asStateFlow()
 
+    // Process-local by design: resets to ON when the app process restarts.
+    internal val _portalFirmwareNoticeEnabled = MutableStateFlow(true)
+    val portalFirmwareNoticeEnabled: StateFlow<Boolean> =
+        _portalFirmwareNoticeEnabled.asStateFlow()
+
     internal val _actionError = MutableStateFlow<String?>(null)
     val actionError: StateFlow<String?> = _actionError.asStateFlow()
     internal val _toastMessage = MutableStateFlow<String?>(null)
@@ -264,6 +279,16 @@ class MainViewModel(internal val app: Application) {
     /** Primary session fingerprint for legacy single-device feature screens. */
     internal val _primaryFingerprint = MutableStateFlow<String?>(null)
     val primaryFingerprint: StateFlow<String?> = _primaryFingerprint.asStateFlow()
+
+    /** Stable identity of the connected Wi-Fi device used for state handoff. */
+    internal var lastWifiDeviceIdentity: String? = null
+
+    /** Last channel capability set reported by that device. */
+    internal var lastWifiAllowedChannels: List<Int>? = null
+
+    /** Increments when the primary device or its Wi-Fi capabilities change. */
+    internal val _wifiDeviceRevision = MutableStateFlow(0)
+    val wifiDeviceRevision: StateFlow<Int> = _wifiDeviceRevision.asStateFlow()
 
     private val _logs = MutableStateFlow<List<LogEntry>>(emptyList())
     val logs: StateFlow<List<LogEntry>> = _logs.asStateFlow()
@@ -431,6 +456,8 @@ class MainViewModel(internal val app: Application) {
     val irJammerState: StateFlow<IrJammerUiState> = _irJammerState.asStateFlow()
     internal val _irSavingReceivedRemote = MutableStateFlow(false)
     val irSavingReceivedRemote: StateFlow<Boolean> = _irSavingReceivedRemote.asStateFlow()
+    internal val _irSavingEsp32Pins = MutableStateFlow(false)
+    val irSavingEsp32Pins: StateFlow<Boolean> = _irSavingEsp32Pins.asStateFlow()
     internal val _irFinderCategory = MutableStateFlow("")
     val irFinderCategory: StateFlow<String> = _irFinderCategory.asStateFlow()
     internal val _irFinderBrand = MutableStateFlow("All brands")
@@ -549,6 +576,7 @@ class MainViewModel(internal val app: Application) {
 
     internal val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
+    internal val wifiScanEventsReceived = java.util.concurrent.atomic.AtomicInteger(0)
 
     internal val _sniffing = MutableStateFlow(false)
     val sniffing: StateFlow<Boolean> = _sniffing.asStateFlow()
@@ -659,6 +687,12 @@ class MainViewModel(internal val app: Application) {
     internal val _portalRunning = MutableStateFlow(false)
     val portalRunning: StateFlow<Boolean> = _portalRunning.asStateFlow()
 
+    internal val _portalStarting = MutableStateFlow(false)
+    val portalStarting: StateFlow<Boolean> = _portalStarting.asStateFlow()
+
+    internal val _portalStopping = MutableStateFlow(false)
+    val portalStopping: StateFlow<Boolean> = _portalStopping.asStateFlow()
+
     internal val _portalHtmlSize = MutableStateFlow(0)
     val portalHtmlSize: StateFlow<Int> = _portalHtmlSize.asStateFlow()
 
@@ -686,14 +720,17 @@ class MainViewModel(internal val app: Application) {
     internal val _portalChannel = MutableStateFlow(0)
     val portalChannel: StateFlow<Int> = _portalChannel.asStateFlow()
 
-    internal val _portalViews = MutableStateFlow(0)
-    val portalViews: StateFlow<Int> = _portalViews.asStateFlow()
+    internal val _portalMetrics = MutableStateFlow(PortalSessionMetrics())
+    val portalMetrics: StateFlow<PortalSessionMetrics> = _portalMetrics.asStateFlow()
 
-    internal val _portalClients = MutableStateFlow(0)
-    val portalClients: StateFlow<Int> = _portalClients.asStateFlow()
+    internal val _evilTwinMetrics = MutableStateFlow(PortalSessionMetrics())
+    val evilTwinMetrics: StateFlow<PortalSessionMetrics> = _evilTwinMetrics.asStateFlow()
 
-    internal val _portalCapturedData = MutableStateFlow(0)
-    val portalCapturedData: StateFlow<Int> = _portalCapturedData.asStateFlow()
+    internal val _portalVisitors = MutableStateFlow<List<PortalVisitor>>(emptyList())
+    val portalVisitors: StateFlow<List<PortalVisitor>> = _portalVisitors.asStateFlow()
+
+    internal val _evilTwinVisitors = MutableStateFlow<List<PortalVisitor>>(emptyList())
+    val evilTwinVisitors: StateFlow<List<PortalVisitor>> = _evilTwinVisitors.asStateFlow()
 
     internal val _portalCredentials = MutableStateFlow<List<CapturedCredential>>(emptyList())
     val portalCredentials: StateFlow<List<CapturedCredential>> = _portalCredentials.asStateFlow()
@@ -753,11 +790,38 @@ class MainViewModel(internal val app: Application) {
     internal var evilTwinAutoStopIssued = false
     internal var activePortalTargetBssid: String = ""
 
+    internal val _crackerSourceType = MutableStateFlow(CrackerSourceType.SAVED_CAPTURE)
+    val crackerSourceType: StateFlow<CrackerSourceType> = _crackerSourceType.asStateFlow()
+
     internal val _crackerSelectedSession = MutableStateFlow<CredentialSession?>(null)
     val crackerSelectedSession: StateFlow<CredentialSession?> = _crackerSelectedSession.asStateFlow()
+    internal val _crackerSelectedCapturedPath = MutableStateFlow<String?>(null)
+    val crackerSelectedCapturedPath: StateFlow<String?> = _crackerSelectedCapturedPath.asStateFlow()
 
-    internal val _crackerWordlists = MutableStateFlow<List<CrackerWordlistOption>>(emptyList())
-    val crackerWordlists: StateFlow<List<CrackerWordlistOption>> = _crackerWordlists.asStateFlow()
+    internal val _crackerCustomPcapUri = MutableStateFlow<Uri?>(null)
+    val crackerCustomPcapUri: StateFlow<Uri?> = _crackerCustomPcapUri.asStateFlow()
+    internal val _crackerCustomPcapName = MutableStateFlow<String?>(null)
+    val crackerCustomPcapName: StateFlow<String?> = _crackerCustomPcapName.asStateFlow()
+
+    internal val _crackerImported22000Uri = MutableStateFlow<Uri?>(null)
+    val crackerImported22000Uri: StateFlow<Uri?> = _crackerImported22000Uri.asStateFlow()
+    internal val _crackerImported22000Name = MutableStateFlow<String?>(null)
+    val crackerImported22000Name: StateFlow<String?> = _crackerImported22000Name.asStateFlow()
+
+    internal val _crackerTargets = MutableStateFlow<List<CrackerTargetSnapshot>>(emptyList())
+    val crackerTargets: StateFlow<List<CrackerTargetSnapshot>> = _crackerTargets.asStateFlow()
+    internal val _crackerTargetsLoading = MutableStateFlow(false)
+    val crackerTargetsLoading: StateFlow<Boolean> = _crackerTargetsLoading.asStateFlow()
+    internal val _crackerTargetMessage = MutableStateFlow<String?>(null)
+    val crackerTargetMessage: StateFlow<String?> = _crackerTargetMessage.asStateFlow()
+
+    internal val _crackerManualMode = MutableStateFlow(false)
+    val crackerManualMode: StateFlow<Boolean> = _crackerManualMode.asStateFlow()
+    internal val _crackerManualSsid = MutableStateFlow("")
+    val crackerManualSsid: StateFlow<String> = _crackerManualSsid.asStateFlow()
+
+    internal val _crackerWordlist = MutableStateFlow<CrackerWordlistOption?>(null)
+    val crackerWordlist: StateFlow<CrackerWordlistOption?> = _crackerWordlist.asStateFlow()
 
     internal val _crackerRunning = MutableStateFlow(false)
     internal val _crackerPaused = MutableStateFlow(false)
@@ -773,38 +837,31 @@ class MainViewModel(internal val app: Application) {
     internal val _crackerResult = MutableStateFlow<String?>(null)
     val crackerResult: StateFlow<String?> = _crackerResult.asStateFlow()
 
-    internal val _crackerStatus = MutableStateFlow("Select a saved handshake and a wordlist.")
+    internal val _crackerStatus = MutableStateFlow("Select a source, targets, and one wordlist.")
     val crackerStatus: StateFlow<String> = _crackerStatus.asStateFlow()
 
-    internal val _crackerCustomPcapUri = MutableStateFlow<Uri?>(null)
-    val crackerCustomPcapUri: StateFlow<Uri?> = _crackerCustomPcapUri.asStateFlow()
+    internal val _crackerCurrentTargetIndex = MutableStateFlow(0)
+    val crackerCurrentTargetIndex: StateFlow<Int> = _crackerCurrentTargetIndex.asStateFlow()
+    internal val _crackerSelectedTargetCount = MutableStateFlow(0)
+    val crackerSelectedTargetCount: StateFlow<Int> = _crackerSelectedTargetCount.asStateFlow()
+    internal val _crackerCurrentTargetSsid = MutableStateFlow("")
+    val crackerCurrentTargetSsid: StateFlow<String> = _crackerCurrentTargetSsid.asStateFlow()
+    internal val _crackerProgressFraction = MutableStateFlow(0f)
+    val crackerProgressFraction: StateFlow<Float> = _crackerProgressFraction.asStateFlow()
+    internal val _crackerProgressKnown = MutableStateFlow(false)
+    val crackerProgressKnown: StateFlow<Boolean> = _crackerProgressKnown.asStateFlow()
 
-    internal val _crackerCustomPcapName = MutableStateFlow<String?>(null)
-    val crackerCustomPcapName: StateFlow<String?> = _crackerCustomPcapName.asStateFlow()
+    internal val _crackerSessions = MutableStateFlow<List<CrackerSessionSnapshot>>(emptyList())
+    val crackerSessions: StateFlow<List<CrackerSessionSnapshot>> = _crackerSessions.asStateFlow()
+    internal val _crackerActiveSessionId = MutableStateFlow<String?>(null)
+    val crackerActiveSessionId: StateFlow<String?> = _crackerActiveSessionId.asStateFlow()
 
-    internal val _crackerCustomSsid = MutableStateFlow("")
-    val crackerCustomSsid: StateFlow<String> = _crackerCustomSsid.asStateFlow()
-
-    internal val _crackerCustomPcapValid = MutableStateFlow(false)
-    val crackerCustomPcapValid: StateFlow<Boolean> = _crackerCustomPcapValid.asStateFlow()
-
-    internal val _crackerCustomPcapValidating = MutableStateFlow(false)
-    val crackerCustomPcapValidating: StateFlow<Boolean> = _crackerCustomPcapValidating.asStateFlow()
-
-    internal val _crackerCustomPcapMessage = MutableStateFlow("No custom PCAP selected.")
-    val crackerCustomPcapMessage: StateFlow<String> = _crackerCustomPcapMessage.asStateFlow()
-
-    internal val _crackerCustomSsidOptions = MutableStateFlow<List<DetectedSsid>>(emptyList())
-    val crackerCustomSsidOptions: StateFlow<List<DetectedSsid>> = _crackerCustomSsidOptions.asStateFlow()
-
-    internal val _crackerCustomSsidSelected = MutableStateFlow<String?>(null)
-    val crackerCustomSsidSelected: StateFlow<String?> = _crackerCustomSsidSelected.asStateFlow()
-
-    internal val _crackerCustomSsidManual = MutableStateFlow(true)
-    val crackerCustomSsidManual: StateFlow<Boolean> = _crackerCustomSsidManual.asStateFlow()
-
+    internal val crackerSessionStore = CrackerSessionStore(File(app.filesDir, "CrackerSessions"))
+    internal var crackerLastPcapAnalysis: com.swp81x.nrsuite.core.wpa.WpaPcapAnalysis? = null
     internal var crackerJob: Job? = null
     @Volatile internal var crackerPauseRequested = false
+    @Volatile internal var crackerStopRequested = false
+    internal var crackerForegroundStarted = false
 
     internal val _pcap22000State = MutableStateFlow(Pcap22000UiState())
     val pcap22000State: StateFlow<Pcap22000UiState> = _pcap22000State.asStateFlow()
@@ -1076,6 +1133,7 @@ class MainViewModel(internal val app: Application) {
         initSafely("irCapabilities") { this.refreshIrCapabilitiesImpl() }
         initSafely("irSearchNotifications") { this.observeIrSearchNotificationsImpl() }
         initSafely("credentialSessions") { this.loadCredentialSessionsImpl() }
+        initSafely("crackerSessions") { this.loadCrackerSessionsImpl() }
         initSafely("wpsPins") { this.loadWpsPinsImpl() }
         initSafely("htmlTemplates") { this.loadHtmlTemplatesImpl() }
         initSafely("autoHandshakeSessions") { this.loadAutoHandshakeSessionsImpl() }
@@ -1249,9 +1307,18 @@ class MainViewModel(internal val app: Application) {
     fun refreshIrCapabilities() = this.refreshIrCapabilitiesImpl()
     fun clearIrMessages() = this.clearIrMessagesImpl()
 
+    fun setPortalFirmwareNoticeEnabled(enabled: Boolean) {
+        _portalFirmwareNoticeEnabled.value = enabled
+    }
+
     fun clearMacLookup() {
         _macLookupResult.value = null
     }
+
+    fun normalizeWifiStateForConnectedDevice(
+        deviceIdentity: String?,
+        allowedChannels: List<Int>,
+    ) = this.normalizeWifiStateForConnectedDeviceImpl(deviceIdentity, allowedChannels)
 
     fun onOuiDatabasePromptShown() = this.onOuiDatabasePromptShownImpl()
 
@@ -1646,6 +1713,8 @@ class MainViewModel(internal val app: Application) {
         _scanning.value = false
         _beaconRunning.value = false
         _portalRunning.value = false
+        _portalStarting.value = false
+        _portalStopping.value = false
         _portalHtmlUploading.value = false
         _evilTwinHtmlUploading.value = false
         _sniffing.value = false
@@ -1792,22 +1861,31 @@ class MainViewModel(internal val app: Application) {
 
     fun clearCredentialSessions() = this.clearCredentialSessionsImpl()
 
+    fun selectCrackerSource(type: CrackerSourceType) = this.selectCrackerSourceImpl(type)
+
     fun selectCrackerSession(session: CredentialSession?) = this.selectCrackerSessionImpl(session)
+
+    fun selectCrackerCapturedHandshake(entry: CapturedHandshakeEntry) =
+        this.selectCrackerCapturedHandshakeImpl(entry)
 
     fun setCrackerCustomPcap(uri: Uri, name: String?) = this.setCrackerCustomPcapImpl(uri, name)
 
-    fun selectCrackerCustomSsid(ssid: String) = this.selectCrackerCustomSsidImpl(ssid)
-
-    fun useManualCrackerSsid() = this.useManualCrackerSsidImpl()
-
-    fun setCrackerCustomSsid(value: String) = this.setCrackerCustomSsidImpl(value)
-
     fun clearCrackerCustomPcap() = this.clearCrackerCustomPcapImpl()
 
+    fun setCrackerImported22000(uri: Uri, name: String?) =
+        this.setCrackerImported22000Impl(uri, name)
+
+    fun setCrackerManualMode(enabled: Boolean) = this.setCrackerManualModeImpl(enabled)
+
+    fun setCrackerManualSsid(value: String) = this.setCrackerManualSsidImpl(value)
+
+    fun toggleCrackerTarget(id: String, selected: Boolean) =
+        this.toggleCrackerTargetImpl(id, selected)
+
+    fun selectAllCrackerTargets(selected: Boolean) =
+        this.selectAllCrackerTargetsImpl(selected)
 
     fun setCrackerWordlist(uri: Uri, name: String?) = this.setCrackerWordlistImpl(uri, name)
-
-    fun removeCrackerWordlist(index: Int) = this.removeCrackerWordlistImpl(index)
 
     fun clearCrackerWordlist() = this.clearCrackerWordlistImpl()
 
@@ -1819,16 +1897,15 @@ class MainViewModel(internal val app: Application) {
 
     fun stopCracker() = this.stopCrackerImpl()
 
-    fun exportCracker22000(uri: Uri) = this.exportCracker22000Impl(uri)
+    fun resumeCrackerSession(id: String) = this.resumeCrackerSessionImpl(id)
+
+    fun deleteCrackerSession(id: String) = this.deleteCrackerSessionImpl(id)
 
     fun addPcap22000Inputs(uris: List<Uri>) = this.addPcap22000InputsImpl(uris)
 
     fun removePcap22000Input(index: Int) = this.removePcap22000InputImpl(index)
 
     fun clearPcap22000Inputs() = this.clearPcap22000InputsImpl()
-
-    fun setPcap22000DedupeMode(mode: com.swp81x.nrsuite.core.wpa.Pcap22000DedupeMode) =
-        this.setPcap22000DedupeModeImpl(mode)
 
     fun setPcap22000SsidOverride(bssid: String, ssid: String) =
         this.setPcap22000SsidOverrideImpl(bssid, ssid)
@@ -1886,6 +1963,10 @@ class MainViewModel(internal val app: Application) {
     fun clearEvilTwinEventLog() = this.clearEvilTwinEventLogImpl()
 
     fun clearPortalEventLog() = this.clearPortalEventLogImpl()
+
+    fun clearPortalVisitors() = this.clearPortalVisitorsImpl()
+
+    fun clearEvilTwinVisitors() = this.clearEvilTwinVisitorsImpl()
 
 
     fun stopPortal() = this.stopPortalImpl()
@@ -2160,8 +2241,8 @@ class MainViewModel(internal val app: Application) {
             _sniffing.value -> "Capture active"
             _beaconRunning.value -> "Beacon broadcast active"
             _portalRunning.value -> when (_portalMode.value) {
-                "evil_twin" -> "Evil Twin active · ${_portalClients.value} client(s)"
-                else -> "Captive Portal active · ${_portalClients.value} client(s)"
+                "evil_twin" -> "Evil Twin active · ${_evilTwinMetrics.value.clientsAssociated} client(s)"
+                else -> "Captive Portal active · ${_portalMetrics.value.clientsAssociated} client(s)"
             }
             _deauthRunning.value -> "Deauth burst active"
             _deauthDetectorRunning.value -> "Deauth detector active"
@@ -2181,6 +2262,45 @@ class MainViewModel(internal val app: Application) {
             _bleAdvertising.value -> "BLE HID advertising"
             else -> null
         }
+        val crackerIntent = Intent(context, WpaCrackerForegroundService::class.java)
+        if (_crackerRunning.value) {
+            val total = _crackerSelectedTargetCount.value.coerceAtLeast(1)
+            val current = (_crackerCurrentTargetIndex.value + 1).coerceAtMost(total)
+            val testLabel = "target $current/$total"
+            val detail = if (_crackerPaused.value) {
+                "paused · $testLabel · ${_crackerTested.value} tested"
+            } else {
+                "$testLabel · ${_crackerTested.value} tested · ${"%.0f".format(_crackerSpeed.value)}/s"
+            }
+            crackerIntent.action = WpaCrackerForegroundService.ACTION_START
+            crackerIntent.putExtra(
+                WpaCrackerForegroundService.EXTRA_TEXT,
+                "${_crackerCurrentTargetSsid.value.ifBlank { "WPA cracker" }} · $detail",
+            )
+            if (_crackerProgressKnown.value) {
+                crackerIntent.putExtra(
+                    WpaCrackerForegroundService.EXTRA_PROGRESS,
+                    (_crackerProgressFraction.value * 100f).toInt().coerceIn(0, 100),
+                )
+            } else if (!_crackerPaused.value) {
+                crackerIntent.putExtra(WpaCrackerForegroundService.EXTRA_INDETERMINATE, true)
+            }
+            runCatching {
+                if (crackerForegroundStarted) {
+                    context.startService(crackerIntent)
+                } else {
+                    ContextCompat.startForegroundService(context, crackerIntent)
+                    crackerForegroundStarted = true
+                }
+            }.onFailure { error ->
+                crackerForegroundStarted = false
+                appendLog("Cracker foreground service start blocked: ${error.message}", level = LogLevel.ERROR)
+            }
+        } else {
+            runCatching { context.stopService(crackerIntent) }
+            crackerForegroundStarted = false
+        }
+
         val intent = Intent(context, NrSuiteForegroundService::class.java)
         if (activeText != null) {
             intent.action = NrSuiteForegroundService.ACTION_START
@@ -2189,6 +2309,10 @@ class MainViewModel(internal val app: Application) {
                 intent.putExtra(
                     NrSuiteForegroundService.EXTRA_PROGRESS,
                     _firmwareFlashProgress.value.coerceIn(0, 100),
+                )
+                intent.putExtra(
+                    NrSuiteForegroundService.EXTRA_SMALL_ICON,
+                    com.swp81x.nrsuite.R.drawable.ic_stat_firmware,
                 )
             }
             runCatching {
@@ -2302,6 +2426,7 @@ class MainViewModel(internal val app: Application) {
                         }
 
                         "scan_ap" -> {
+                            wifiScanEventsReceived.incrementAndGet()
                             val bssid = event.optString("bssid")
                             val resolvedSsid = resolvedHiddenSsidByBssid[bssid.uppercase()]
                             if (event.optString("ssid").isBlank() && !resolvedSsid.isNullOrBlank()) {
@@ -2359,13 +2484,50 @@ class MainViewModel(internal val app: Application) {
                             )
                         }
                         "portal_viewed" -> {
-                            _portalViews.update { it + 1 }
+                            if (_portalMode.value == "evil_twin") {
+                                _evilTwinMetrics.update { it.copy(pageViews = it.pageViews + 1) }
+                            } else {
+                                _portalMetrics.update { it.copy(pageViews = it.pageViews + 1) }
+                            }
                             val ip = event.optString("client_ip", "unknown")
                             appendLog("Portal viewed from $ip.")
                             this@MainViewModel.portalLogImpl("GET / from $ip")
                         }
+                        "portal_client_seen" -> {
+                            val mac = event.optString("mac", "unknown").ifBlank { "unknown" }
+                            val ip = event.optString("ip", "unknown").ifBlank { "unknown" }
+                            val userAgent = event.optString("user_agent", "").take(512)
+                            val requestType = event.optString("request_type", "request").ifBlank { "request" }
+                            val seenAt = java.time.LocalTime.now()
+                                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
+                            val visitor = PortalVisitor(
+                                mac = mac,
+                                ip = ip,
+                                userAgent = userAgent,
+                                requestType = requestType,
+                                lastSeen = seenAt,
+                            )
+                            if (_portalMode.value == "evil_twin") {
+                                _evilTwinVisitors.update { mergePortalVisitor(it, visitor) }
+                            } else {
+                                _portalVisitors.update { mergePortalVisitor(it, visitor) }
+                            }
+                            appendLog("Portal visitor $ip ($mac): $requestType")
+                            this@MainViewModel.portalLogImpl(
+                                "$requestType from $ip | MAC: $mac | UA: " +
+                                    userAgent.ifBlank { "unknown" }
+                            )
+                        }
                         "captive_data" -> {
-                            _portalCapturedData.update { it + 1 }
+                            if (_portalMode.value == "evil_twin") {
+                                _evilTwinMetrics.update {
+                                    it.copy(capturedPosts = it.capturedPosts + 1)
+                                }
+                            } else {
+                                _portalMetrics.update {
+                                    it.copy(capturedPosts = it.capturedPosts + 1)
+                                }
+                            }
                             val ip = event.optString("ip", "unknown")
                             val userAgent = event.optString("user_agent", "")
                             val data = event.optJSONObject("data")
@@ -2425,7 +2587,15 @@ class MainViewModel(internal val app: Application) {
                             }
                         }
                         "client_associated" -> {
-                            _portalClients.update { it + 1 }
+                            if (_portalMode.value == "evil_twin") {
+                                _evilTwinMetrics.update {
+                                    it.copy(clientsAssociated = it.clientsAssociated + 1)
+                                }
+                            } else {
+                                _portalMetrics.update {
+                                    it.copy(clientsAssociated = it.clientsAssociated + 1)
+                                }
+                            }
                             val client = event.optString("client")
                             val rssi = event.optInt("rssi")
                             appendLog("Client associated: $client ($rssi dBm).")

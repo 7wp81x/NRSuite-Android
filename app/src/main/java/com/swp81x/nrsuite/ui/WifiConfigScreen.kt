@@ -114,6 +114,15 @@ fun WifiConfigScreen(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
+                    text = if (connected?.allowed2gChannels.isNullOrEmpty()) {
+                        "Allowed 2.4 GHz channels: none reported"
+                    } else {
+                        "Allowed 2.4 GHz channels: ${connected.allowed2gChannels.joinToString(", ")}"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NrOnSurfaceVariant,
+                )
+                Text(
                     text = if (connected?.allowed5gChannels.isNullOrEmpty()) {
                         "Allowed 5 GHz channels: none reported"
                     } else {

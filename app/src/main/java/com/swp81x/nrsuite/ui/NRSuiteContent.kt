@@ -108,6 +108,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -171,6 +172,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
     val devices by viewModel.devices.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
+    val primaryFingerprint by viewModel.primaryFingerprint.collectAsState()
+    val wifiDeviceRevision by viewModel.wifiDeviceRevision.collectAsState()
     val deviceConnectionStates by viewModel.deviceConnectionStates.collectAsState()
     val pendingPermissionRequests by viewModel.pendingPermissionRequests.collectAsState()
     val unacknowledgedDevices by viewModel.unacknowledgedDevices.collectAsState()
@@ -213,6 +216,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val irNextButtonNumber by viewModel.irNextButtonNumber.collectAsState()
     val irJammerState by viewModel.irJammerState.collectAsState()
     val irSavingReceivedRemote by viewModel.irSavingReceivedRemote.collectAsState()
+    val irSavingEsp32Pins by viewModel.irSavingEsp32Pins.collectAsState()
     val irFinderCategory by viewModel.irFinderCategory.collectAsState()
     val irFinderBrand by viewModel.irFinderBrand.collectAsState()
     val suggestedReceivedRemoteName = remember(irRemotes) {
@@ -303,11 +307,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val evilTwinHtmlUploading by viewModel.evilTwinHtmlUploading.collectAsState()
     val evilTwinHtmlUploadProgress by viewModel.evilTwinHtmlUploadProgress.collectAsState()
     val evilTwinHtmlComplete by viewModel.evilTwinHtmlComplete.collectAsState()
-    val portalSsid by viewModel.portalSsid.collectAsState()
-    val portalChannel by viewModel.portalChannel.collectAsState()
-    val portalViews by viewModel.portalViews.collectAsState()
-    val portalClients by viewModel.portalClients.collectAsState()
-    val portalCapturedData by viewModel.portalCapturedData.collectAsState()
     val portalCredentials by viewModel.portalCredentials.collectAsState()
     val portalHtmlName by viewModel.portalHtmlName.collectAsState()
     val portalEventLog by viewModel.portalEventLog.collectAsState()
@@ -436,6 +435,25 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         emptyList()
     }
     val allowedWifiChannels = (allowed2gChannels + allowed5gChannels).distinct()
+
+    // Device handoff safety: preserve valid per-module channel selections, but
+    // never leave a 5 GHz selection active after replacing a C5 with a 2.4 GHz
+    // only board (or after the regulatory channel mask changes).
+    val connectedWifiDeviceIdentity = connected?.deviceId?.takeIf { it.isNotBlank() }
+        ?: connectedChip
+    LaunchedEffect(
+        primaryFingerprint,
+        connectedWifiDeviceIdentity,
+        allowedWifiChannels,
+    ) {
+        if (connected != null && allowedWifiChannels.isNotEmpty()) {
+            viewModel.normalizeWifiStateForConnectedDevice(
+                deviceIdentity = connectedWifiDeviceIdentity,
+                allowedChannels = allowedWifiChannels,
+            )
+        }
+    }
+
     val bleScannerScanRunning = bleScanRunning && bleScanOwner == BleScanOwner.SCANNER
     val bleScannerScanStarting = bleScanStarting && bleScanOwner == BleScanOwner.SCANNER
     val bleScannerScanStopping = bleScanStopping && bleScanOwner == BleScanOwner.SCANNER
@@ -487,7 +505,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         val runsWithoutDevice = module.id == "ducky" ||
             module.id == "credential_manager" ||
             module.id == "wpa_cracker" ||
+            module.id == "pcap22000" ||
             module.id == "mac_lookup" ||
+            module.id == "bssid_geolocation" ||
             module.id == "serial_monitor" ||
             module.id == "firmware" ||
             module.id == "ir" ||
@@ -605,6 +625,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     // the selected result and any nearby-AP discovery state. Saved history stays.
     LaunchedEffect(activeModuleId) {
         if (previousActiveModuleId == "mac_lookup" && activeModuleId != "mac_lookup") {
+            viewModel.clearMacLookup()
+        }
+        if (previousActiveModuleId == "bssid_geolocation" &&
+            activeModuleId != "bssid_geolocation"
+        ) {
             viewModel.clearBssidGeolocation()
         }
         if (previousActiveModuleId == "ir" && activeModuleId != "ir") {
@@ -1053,7 +1078,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         activeModuleId == "wifi_config" -> "WiFi config"
         activeModuleId == "firmware" -> "Flasher"
         activeModuleId == "wpa_cracker" -> "WPA Cracker"
-        activeModuleId == "pcap22000" -> "PCAP → .22000"
+        activeModuleId == "pcap22000" -> "PCAP to .hs22000"
         activeModuleId == "rfid_config" -> "RFID config"
         activeModuleId == "sensor_config" -> "Sensor config"
         activeModuleId == "devices" -> "Devices"
@@ -1238,6 +1263,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 modifier = contentModifier,
                 unavailableMessage = moduleUnavailableMessage,
             ) {
+            key(wifiDeviceRevision) {
             when {
             activeModuleId == "wifi_config" -> {
                 WifiConfigScreen(
@@ -1633,6 +1659,14 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     irDatabaseMetadata = irDatabaseMetadata,
                     esp32 = connected,
                     errorMessage = irErrorMessage,
+                    statusMessage = irStatusMessage,
+                    savingPins = irSavingEsp32Pins,
+                    rootConfigured = exportDirectoryName != "Not configured",
+                    onChooseRootDirectory = {
+                        showRootDirectoryDialog = false
+                        rootDirectoryPickerActive = true
+                        folderPicker.launch(null)
+                    },
                     onSetBackend = viewModel::setIrTransmitBackend,
                     onSetLoopInterval = viewModel::setIrLoopIntervalMs,
                     onRefreshCapabilities = viewModel::refreshIrCapabilities,
@@ -1649,6 +1683,17 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
 
             activeModuleId == "mac_lookup" -> {
+                OfflineMacLookupScreen(
+                    result = macLookupResult,
+                    ouiDatabaseStatus = ouiDatabaseStatus,
+                    onLookup = viewModel::lookupMac,
+                    onClear = viewModel::clearMacLookup,
+                    onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "bssid_geolocation" -> {
                 MacLookupScreen(
                     result = macLookupResult,
                     geolocationState = bssidGeolocationState,
@@ -2193,6 +2238,18 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     },
                     irTxLabel = irTxChipLabel,
                     irRxLabel = irRxChipLabel,
+                    irDatabaseState = irDatabaseState,
+                    irDatabaseMetadata = irDatabaseMetadata,
+                    irRemoteCount = irRemotes.size,
+                    irRootConfigured = exportDirectoryName != "Not configured",
+                    onChooseIrRootDirectory = {
+                        showRootDirectoryDialog = false
+                        rootDirectoryPickerActive = true
+                        folderPicker.launch(null)
+                    },
+                    onDownloadIrDatabase = viewModel::downloadIrDatabase,
+                    onCancelIrDatabaseOperation = viewModel::cancelIrDatabaseOperation,
+                    onRescanIrLibrary = viewModel::refreshIrLibrary,
                     onOpenIrConfig = { activeModuleId = "ir_config" },
                     showRfidInfo = selectedCategory == "RFID",
                     rfidInterfaceLabel = "I2C",
@@ -2266,6 +2323,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onClearHistory = viewModel::clearHistory,
                 modifier = Modifier,
             )
+            }
             }
             }
         }

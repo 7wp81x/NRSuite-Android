@@ -508,7 +508,10 @@ private fun ResultCard(
                     color = StatusAmber,
                 )
             }
-            if (state.error != null && !state.locked) {
+            if (state.error != null &&
+                state.error != state.message &&
+                !state.locked
+            ) {
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = state.error,

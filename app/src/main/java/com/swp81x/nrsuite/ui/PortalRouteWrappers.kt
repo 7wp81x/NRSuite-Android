@@ -17,14 +17,13 @@ internal fun PortalModuleRoute(
     modifier: Modifier = Modifier,
 ) {
     val running by viewModel.portalRunning.collectAsState()
+    val starting by viewModel.portalStarting.collectAsState()
+    val stopping by viewModel.portalStopping.collectAsState()
     val mode by viewModel.portalMode.collectAsState()
     val htmlSize by viewModel.portalHtmlSize.collectAsState()
     val htmlComplete by viewModel.portalHtmlComplete.collectAsState()
-    val activeSsid by viewModel.portalSsid.collectAsState()
-    val activeChannel by viewModel.portalChannel.collectAsState()
-    val views by viewModel.portalViews.collectAsState()
-    val clients by viewModel.portalClients.collectAsState()
-    val capturedData by viewModel.portalCapturedData.collectAsState()
+    val metrics by viewModel.portalMetrics.collectAsState()
+    val visitors by viewModel.portalVisitors.collectAsState()
     val credentials by viewModel.portalCredentials.collectAsState()
     val selectedHtmlName by viewModel.portalHtmlName.collectAsState()
     val selectedHtmlSize by viewModel.portalHtmlSelectedSize.collectAsState()
@@ -34,18 +33,22 @@ internal fun PortalModuleRoute(
     val templates by viewModel.htmlTemplates.collectAsState()
     val templateMessage by viewModel.htmlTemplateMessage.collectAsState()
     val templateMessageIsError by viewModel.htmlTemplateMessageIsError.collectAsState()
+    val firmwareNoticeEnabled by viewModel.portalFirmwareNoticeEnabled.collectAsState()
 
     PortalScreen(
         connected = connected,
         running = running && mode == "portal",
+        starting = starting && mode == "portal",
+        stopping = stopping && mode == "portal",
         htmlSize = htmlSize,
         htmlComplete = htmlComplete,
-        activeSsid = activeSsid,
-        activeChannel = activeChannel,
-        portalViews = views,
-        portalClients = clients,
-        capturedData = capturedData,
+        activeSsid = metrics.ssid,
+        activeChannel = metrics.channel,
+        portalViews = metrics.pageViews,
+        portalClients = metrics.clientsAssociated,
+        capturedData = metrics.capturedPosts,
         credentials = credentials,
+        visitors = visitors,
         selectedHtmlName = selectedHtmlName,
         selectedHtmlSize = selectedHtmlSize,
         htmlUploading = htmlUploading,
@@ -60,9 +63,12 @@ internal fun PortalModuleRoute(
         onRenameHtmlTemplate = viewModel::renameHtmlTemplate,
         onDeleteHtmlTemplate = viewModel::deleteHtmlTemplate,
         onClearEventLog = viewModel::clearPortalEventLog,
+        onClearVisitors = viewModel::clearPortalVisitors,
         onStart = viewModel::startPortal,
         onStop = viewModel::stopPortal,
         allowedChannels = allowedChannels,
+        firmwareNoticeEnabled = firmwareNoticeEnabled,
+        onFirmwareNoticeEnabledChange = viewModel::setPortalFirmwareNoticeEnabled,
         modifier = modifier,
     )
 }
@@ -79,9 +85,13 @@ internal fun EvilTwinModuleRoute(
     modifier: Modifier = Modifier,
 ) {
     val running by viewModel.portalRunning.collectAsState()
+    val starting by viewModel.portalStarting.collectAsState()
+    val stopping by viewModel.portalStopping.collectAsState()
     val mode by viewModel.portalMode.collectAsState()
     val handshake by viewModel.portalHandshake.collectAsState()
     val results by viewModel.evilTwinResults.collectAsState()
+    val metrics by viewModel.evilTwinMetrics.collectAsState()
+    val visitors by viewModel.evilTwinVisitors.collectAsState()
     val eventLog by viewModel.evilTwinEventLog.collectAsState()
     val selectedHtmlName by viewModel.evilTwinHtmlName.collectAsState()
     val selectedHtmlSize by viewModel.evilTwinHtmlSelectedSize.collectAsState()
@@ -91,15 +101,20 @@ internal fun EvilTwinModuleRoute(
     val templates by viewModel.htmlTemplates.collectAsState()
     val templateMessage by viewModel.htmlTemplateMessage.collectAsState()
     val templateMessageIsError by viewModel.htmlTemplateMessageIsError.collectAsState()
+    val firmwareNoticeEnabled by viewModel.portalFirmwareNoticeEnabled.collectAsState()
 
     EvilTwinScreen(
         connected = connected,
         running = running && mode == "evil_twin",
+        starting = starting && mode == "evil_twin",
+        stopping = stopping && mode == "evil_twin",
         scanning = scanning,
         networks = networks,
         allowedChannels = allowedChannels,
         handshake = handshake,
         results = results,
+        metrics = metrics,
+        visitors = visitors,
         eventLog = eventLog,
         selectedHtmlName = selectedHtmlName,
         selectedHtmlSize = selectedHtmlSize,
@@ -107,6 +122,7 @@ internal fun EvilTwinModuleRoute(
         htmlProgress = htmlProgress,
         htmlComplete = htmlComplete,
         onClearEventLog = viewModel::clearEvilTwinEventLog,
+        onClearVisitors = viewModel::clearEvilTwinVisitors,
         onScanWifi = viewModel::scanWifiForTargets,
         onChooseHtml = onChooseHtml,
         htmlTemplates = templates,
@@ -119,6 +135,8 @@ internal fun EvilTwinModuleRoute(
         onStart = viewModel::startEvilTwin,
         onStop = viewModel::stopPortal,
         onClearPasswords = viewModel::clearEvilTwinPasswords,
+        firmwareNoticeEnabled = firmwareNoticeEnabled,
+        onFirmwareNoticeEnabledChange = viewModel::setPortalFirmwareNoticeEnabled,
         modifier = modifier,
     )
 }

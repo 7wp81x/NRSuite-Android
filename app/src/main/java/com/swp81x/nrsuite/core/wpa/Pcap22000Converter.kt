@@ -1,11 +1,5 @@
 package com.swp81x.nrsuite.core.wpa
 
-enum class Pcap22000DedupeMode {
-    NONE,
-    EXACT,
-    BEST_PER_AP,
-}
-
 data class Pcap22000Candidate(
     val sourceName: String,
     val handshake: WpaHandshake,
@@ -32,12 +26,44 @@ data class Pcap22000Export(
 )
 
 /**
+ * Keep one highest-quality handshake for each BSSID + station pair. Repeated
+ * captures of the same exchange are never exported twice, while different
+ * clients of the same AP remain independent targets.
+ */
+fun dedupeBestWpaCandidates(
+    candidates: List<Pcap22000Candidate>,
+): Pair<List<Pcap22000Candidate>, Int> {
+    val selected = mutableListOf<Pcap22000Candidate>()
+    val indexByKey = mutableMapOf<String, Int>()
+    var duplicatesRemoved = 0
+
+    candidates.forEach { candidate ->
+        val key = candidate.handshakeKey()
+        if (key == null) {
+            selected += candidate
+            return@forEach
+        }
+        val existingIndex = indexByKey[key]
+        if (existingIndex == null) {
+            indexByKey[key] = selected.size
+            selected += candidate
+        } else {
+            duplicatesRemoved++
+            val existing = selected[existingIndex]
+            if (candidate.qualityScore() >= existing.qualityScore()) {
+                selected[existingIndex] = candidate
+            }
+        }
+    }
+    return selected to duplicatesRemoved
+}
+
+/**
  * Merge and deduplicate M1/M2 candidates, apply BSSID→ESSID overrides, and
  * produce one Hashcat mode 22000 line per retained handshake.
  */
 fun buildPcap22000Export(
     candidates: List<Pcap22000Candidate>,
-    dedupeMode: Pcap22000DedupeMode,
     ssidOverrides: Map<String, String> = emptyMap(),
 ): Pcap22000Export {
     val normalizedOverrides = ssidOverrides.entries.associate { entry ->
@@ -49,40 +75,7 @@ fun buildPcap22000Export(
         if (override.isNullOrBlank()) candidate else candidate.copy(ssidOverride = override)
     }
 
-    val exactSeen = linkedSetOf<String>()
-    val bestByAp = linkedMapOf<String, Pcap22000Candidate>()
-    var duplicatesRemoved = 0
-
-    overridden.forEach { candidate ->
-        when (dedupeMode) {
-            Pcap22000DedupeMode.NONE -> Unit
-            Pcap22000DedupeMode.EXACT -> {
-                val key = candidate.exactKey()
-                if (key != null && !exactSeen.add(key)) duplicatesRemoved++
-            }
-            Pcap22000DedupeMode.BEST_PER_AP -> {
-                val apKey = candidate.apKey()
-                if (apKey == null) return@forEach
-                val previous = bestByAp[apKey]
-                if (previous == null || candidate.qualityScore() > previous.qualityScore()) {
-                    if (previous != null) duplicatesRemoved++
-                    bestByAp[apKey] = candidate
-                } else {
-                    duplicatesRemoved++
-                }
-            }
-        }
-    }
-
-    val selected = when (dedupeMode) {
-        Pcap22000DedupeMode.NONE -> overridden
-        Pcap22000DedupeMode.EXACT -> overridden.filter { candidate ->
-            val key = candidate.exactKey()
-            key == null || key in exactSeen
-        }.distinctBy { candidate -> candidate.exactKey() }
-        Pcap22000DedupeMode.BEST_PER_AP -> bestByAp.values.toList()
-    }
-
+    val (selected, duplicatesRemoved) = dedupeBestWpaCandidates(overridden)
     val lines = mutableListOf<String>()
     val exported = mutableListOf<Pcap22000Candidate>()
     var missingSsid = 0
@@ -111,23 +104,16 @@ fun buildPcap22000Export(
     )
 }
 
-private fun Pcap22000Candidate.exactKey(): String? {
+private fun Pcap22000Candidate.handshakeKey(): String? {
     val bssid = bssidHex ?: return null
     val station = stationHex ?: return null
-    val mic = handshake.mic?.toHex() ?: return null
-    val replay = handshake.m1ReplayCounter ?: handshake.m2ReplayCounter ?: -1L
-    return "$bssid|$station|$replay|$mic"
+    return "$bssid|$station"
 }
 
-private fun Pcap22000Candidate.apKey(): String? {
-    val bssid = bssidHex ?: return null
-    val ssid = effectiveSsid ?: return null
-    return "$bssid|$ssid"
-}
-
-private fun Pcap22000Candidate.qualityScore(): Int {
+fun Pcap22000Candidate.qualityScore(): Int {
     var score = 10
     if (handshake.isComplete) score += 100
+    if (!effectiveSsid.isNullOrBlank()) score += 50
     if (handshake.aNonce?.any { it.toInt() != 0 } == true) score += 20
     if (handshake.sNonce?.any { it.toInt() != 0 } == true) score += 20
     if (handshake.mic?.any { it.toInt() != 0 } == true) score += 20
@@ -135,9 +121,6 @@ private fun Pcap22000Candidate.qualityScore(): Int {
     if (handshake.eapolM2?.size in 100..256) score += 10
     return score
 }
-
-private fun ByteArray.toHex(): String =
-    joinToString("") { byte -> "%02x".format(byte.toInt() and 0xFF) }
 
 private fun ByteArray.toMacString(): String =
     joinToString(":") { byte -> "%02X".format(byte.toInt() and 0xFF) }

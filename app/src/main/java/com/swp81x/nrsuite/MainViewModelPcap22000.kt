@@ -5,7 +5,6 @@ import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.pcap.PcapReader
 import com.swp81x.nrsuite.core.wpa.Pcap22000Candidate
-import com.swp81x.nrsuite.core.wpa.Pcap22000DedupeMode
 import com.swp81x.nrsuite.core.wpa.Pcap22000Export
 import com.swp81x.nrsuite.core.wpa.analyzeWpaPcap
 import com.swp81x.nrsuite.core.wpa.buildPcap22000Export
@@ -27,12 +26,13 @@ data class Pcap22000Input(
 data class Pcap22000UiState(
     val inputs: List<Pcap22000Input> = emptyList(),
     val candidates: List<Pcap22000Candidate> = emptyList(),
-    val dedupeMode: Pcap22000DedupeMode = Pcap22000DedupeMode.EXACT,
     val ssidOverrides: Map<String, String> = emptyMap(),
     val exportPreview: Pcap22000Export? = null,
     val analyzing: Boolean = false,
     val summary: String? = null,
     val error: String? = null,
+    val lastExportCount: Int? = null,
+    val lastExportName: String? = null,
 )
 
 internal fun MainViewModel.addPcap22000InputsImpl(uris: List<Uri>) {
@@ -48,7 +48,14 @@ internal fun MainViewModel.addPcap22000InputsImpl(uris: List<Uri>) {
             )
         }
     if (additions.isEmpty()) return
-    _pcap22000State.update { it.copy(inputs = it.inputs + additions, error = null) }
+    _pcap22000State.update {
+        it.copy(
+            inputs = it.inputs + additions,
+            error = null,
+            lastExportCount = null,
+            lastExportName = null,
+        )
+    }
     refreshPcap22000AnalysisImpl()
 }
 
@@ -57,7 +64,12 @@ internal fun MainViewModel.removePcap22000InputImpl(index: Int) {
     val current = _pcap22000State.value.inputs
     if (index !in current.indices) return
     _pcap22000State.update {
-        it.copy(inputs = current.filterIndexed { itemIndex, _ -> itemIndex != index }, error = null)
+        it.copy(
+            inputs = current.filterIndexed { itemIndex, _ -> itemIndex != index },
+            error = null,
+            lastExportCount = null,
+            lastExportName = null,
+        )
     }
     refreshPcap22000AnalysisImpl()
 }
@@ -67,17 +79,16 @@ internal fun MainViewModel.clearPcap22000InputsImpl() {
     _pcap22000State.value = Pcap22000UiState()
 }
 
-internal fun MainViewModel.setPcap22000DedupeModeImpl(mode: Pcap22000DedupeMode) {
-    _pcap22000State.update { it.copy(dedupeMode = mode) }
-    recomputePcap22000PreviewImpl()
-}
-
 internal fun MainViewModel.setPcap22000SsidOverrideImpl(bssid: String, ssid: String) {
     val cleanBssid = bssid.trim().uppercase()
     val cleanSsid = ssid.trim().take(32)
     if (cleanBssid.isBlank() || cleanSsid.isBlank()) return
     _pcap22000State.update {
-        it.copy(ssidOverrides = it.ssidOverrides + (cleanBssid to cleanSsid))
+        it.copy(
+            ssidOverrides = it.ssidOverrides + (cleanBssid to cleanSsid),
+            lastExportCount = null,
+            lastExportName = null,
+        )
     }
     recomputePcap22000PreviewImpl()
 }
@@ -85,7 +96,11 @@ internal fun MainViewModel.setPcap22000SsidOverrideImpl(bssid: String, ssid: Str
 internal fun MainViewModel.removePcap22000SsidOverrideImpl(bssid: String) {
     val cleanBssid = bssid.trim().uppercase()
     _pcap22000State.update {
-        it.copy(ssidOverrides = it.ssidOverrides - cleanBssid)
+        it.copy(
+            ssidOverrides = it.ssidOverrides - cleanBssid,
+            lastExportCount = null,
+            lastExportName = null,
+        )
     }
     recomputePcap22000PreviewImpl()
 }
@@ -152,7 +167,6 @@ private fun MainViewModel.recomputePcap22000PreviewImpl() {
     if (state.inputs.isEmpty()) return
     val result = buildPcap22000Export(
         candidates = state.candidates,
-        dedupeMode = state.dedupeMode,
         ssidOverrides = state.ssidOverrides,
     )
     val summary = buildString {
@@ -184,8 +198,14 @@ internal fun MainViewModel.exportPcap22000Impl(uri: Uri) {
                     writer.newLine()
                 }
             } ?: throw IOException("Could not open the export destination.")
-            val message = "Exported ${preview.lines.size} handshake(s) to .22000."
-            _pcap22000State.update { it.copy(summary = message, error = null) }
+            val message = "Exported ${preview.lines.size} handshake(s) successfully."
+            _pcap22000State.update {
+                it.copy(
+                    error = null,
+                    lastExportCount = preview.lines.size,
+                    lastExportName = uri.lastPathSegment?.substringAfterLast('/'),
+                )
+            }
             appendLog(message, level = LogLevel.SUCCESS)
             addHistory("pcap22000", message, HistoryLevel.SUCCESS)
             _toastMessage.value = message

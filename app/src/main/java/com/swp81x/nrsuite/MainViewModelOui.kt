@@ -25,6 +25,23 @@ internal fun MainViewModel.loadOuiDatabaseImpl() {
                 }
             }
         }
+        if (!target.exists() || target.length() == 0L) {
+            if (target.exists()) target.delete()
+            runCatching {
+                target.parentFile?.mkdirs()
+                app.assets.open("oui/oui.csv").use { input ->
+                    target.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }.onFailure { error ->
+                appendLog(
+                    "Embedded OUI database could not be installed: " +
+                        (error.message ?: error.javaClass.simpleName),
+                    level = LogLevel.ERROR,
+                )
+            }
+        }
         ouiDatabaseRepository.load()
         if (ouiDatabaseRepository.status.value is OuiDatabaseStatus.NotDownloaded &&
             !preferences.getBoolean(PREF_OUI_DB_PROMPTED, false)

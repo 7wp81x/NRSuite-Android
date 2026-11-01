@@ -54,7 +54,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.HiddenApObservation
 import com.swp81x.nrsuite.core.defense.HiddenSsidCandidate
+import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
 import com.swp81x.nrsuite.core.wifi.WifiBand
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
 import com.swp81x.nrsuite.ui.components.ChannelModeToggle
 import com.swp81x.nrsuite.ui.components.WifiBandConfigSection
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
@@ -101,6 +103,12 @@ fun HiddenApScreen(
     var configExpanded by remember { mutableStateOf(true) }
     var confirmStart by remember { mutableStateOf(false) }
     var band by rememberSaveable { mutableStateOf(WifiBand.AUTO) }
+    val effectiveAllowedChannels = allowedChannels.ifEmpty { WIFI_AUTO_CHANNELS }
+    LaunchedEffect(effectiveAllowedChannels, channel) {
+        if (channel !in effectiveAllowedChannels) {
+            onChannelChange(normalizeWifiChannelForAllowed(channel, effectiveAllowedChannels))
+        }
+    }
 
     LaunchedEffect(running) {
         if (running) configExpanded = false

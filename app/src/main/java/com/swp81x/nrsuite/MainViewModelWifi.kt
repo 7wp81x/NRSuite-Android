@@ -124,6 +124,10 @@ private fun MainViewModel.scanWifiInternalImpl(
     if (_scanning.value) return
     if (!ensureRadioIdle("WiFi Scan")) return
 
+    val previousNetworks = _networks.value
+    val previousChannelAnalyzerNetworks = _channelAnalyzerNetworks.value
+    val previousDetectorTargets = _deauthDetectorTargets.value
+
     when (destination) {
         WifiScanDestination.WIFI,
         WifiScanDestination.TARGETS -> _networks.value = emptyList()
@@ -135,18 +139,110 @@ private fun MainViewModel.scanWifiInternalImpl(
     wifiScanDestination = destination
     _scanning.value = true
     val wireBand = band.takeIf { it != WifiBand.AUTO }?.wireName
+
+    fun restorePreviousResults() {
+        when (destination) {
+            WifiScanDestination.WIFI,
+            WifiScanDestination.TARGETS -> _networks.value = previousNetworks
+            WifiScanDestination.CHANNEL_ANALYZER ->
+                _channelAnalyzerNetworks.value = previousChannelAnalyzerNetworks
+            WifiScanDestination.WPS,
+            WifiScanDestination.WPS_ATTEMPT_TARGETS -> Unit
+        }
+        _deauthDetectorTargets.value = previousDetectorTargets
+    }
+
+    val previousResultCount = when (destination) {
+        WifiScanDestination.WIFI,
+        WifiScanDestination.TARGETS -> previousNetworks.size
+        WifiScanDestination.CHANNEL_ANALYZER -> previousChannelAnalyzerNetworks.size
+        WifiScanDestination.WPS,
+        WifiScanDestination.WPS_ATTEMPT_TARGETS -> 0
+    }
+
     scope.launch {
-        appendLog("Starting WiFi scan (${band.label})...")
-        val count = activeSession.scanWifi(band = wireBand)
-        _scanning.value = false
-        wifiScanDestination = null
-        when {
-            count == null -> appendLog("WiFi scan timed out.")
-            count < 0 -> appendLog("WiFi scan failed.")
-            else -> {
-                appendLog("WiFi scan complete: $count network(s).")
-                addHistory("scan", "WiFi scan complete: $count network(s)", HistoryLevel.SUCCESS)
+        try {
+            appendLog("Starting WiFi scan (${band.label})...")
+            val startedAt = System.currentTimeMillis()
+            var count: Int? = null
+            var eventsReceived = 0
+            var attempts = 0
+            val maxAttempts = 2
+
+            while (attempts < maxAttempts) {
+                attempts++
+                wifiScanEventsReceived.set(0)
+                count = activeSession.scanWifi(
+                    band = wireBand,
+                    timeoutMs = 45_000,
+                    settleMs = if (attempts == 1) 1_000 else 1_200,
+                )
+                eventsReceived = wifiScanEventsReceived.get()
+                val lowComparedWithPrevious = count != null && count > 0 &&
+                    previousResultCount >= 3 && count < maxOf(2, previousResultCount / 2)
+                val transportMismatch = count != null && count > eventsReceived
+                val shouldRetry = count == null || count <= 0 ||
+                    lowComparedWithPrevious || transportMismatch
+                if (!shouldRetry || attempts >= maxAttempts) break
+
+                appendLog(
+                    "WiFi scan attempt $attempts returned " +
+                        "${count?.toString() ?: "timeout"} result(s), received " +
+                        "$eventsReceived event(s); retrying once after settle.",
+                    level = if (transportMismatch) LogLevel.ERROR else LogLevel.INFO,
+                )
+                delay(1_200)
             }
+
+            val elapsedMs = System.currentTimeMillis() - startedAt
+            when {
+                count == null -> {
+                    restorePreviousResults()
+                    appendLog(
+                        "WiFi scan timed out after ${elapsedMs} ms; " +
+                            "kept ${previousNetworks.size} previous result(s).",
+                        level = LogLevel.ERROR,
+                    )
+                }
+                count < 0 -> {
+                    restorePreviousResults()
+                    appendLog(
+                        "WiFi scan failed after ${elapsedMs} ms; " +
+                            "kept ${previousNetworks.size} previous result(s).",
+                        level = LogLevel.ERROR,
+                    )
+                }
+                count == 0 -> {
+                    restorePreviousResults()
+                    appendLog(
+                        "WiFi scan completed with no results after ${elapsedMs} ms; " +
+                            "kept ${previousNetworks.size} previous result(s).",
+                    )
+                }
+                count > eventsReceived -> {
+                    restorePreviousResults()
+                    appendLog(
+                        "WiFi scan returned $count result(s), but only $eventsReceived " +
+                            "scan event(s) arrived over USB; kept the previous list. " +
+                            "This points to a transport/framing issue, not RF.",
+                        level = LogLevel.ERROR,
+                    )
+                }
+                else -> {
+                    appendLog(
+                        "WiFi scan complete: $count network(s) in ${elapsedMs} ms " +
+                            "(${band.label}); received $eventsReceived scan event(s)."
+                    )
+                    addHistory(
+                        "scan",
+                        "WiFi scan complete: $count network(s)",
+                        HistoryLevel.SUCCESS,
+                    )
+                }
+            }
+        } finally {
+            _scanning.value = false
+            wifiScanDestination = null
         }
     }
 }
@@ -170,9 +266,15 @@ internal fun MainViewModel.setWifiCountryImpl(country: String) {
                     (0 until array.length()).map { array.optInt(it) }.filter { it > 0 }
                 }
                 .orEmpty()
+            val two = response.optJSONArray("allowed_2ghz_channels")
+                ?.let { array ->
+                    (0 until array.length()).map { array.optInt(it) }.filter { it > 0 }
+                }
+                .orEmpty()
             appendLog(
-                "Regulatory country set to $cleanCountry" +
-                    (if (five.isNotEmpty()) " (5 GHz: ${five.joinToString(",")})" else "")
+                "Regulatory country set to $cleanCountry " +
+                    "(2.4 GHz: ${two.joinToString(",").ifBlank { "none" }}; " +
+                    "5 GHz: ${five.joinToString(",").ifBlank { "none" }})"
             )
             addHistory("wifi", "Regulatory country set to $cleanCountry", HistoryLevel.SUCCESS)
             _toastMessage.value = "Wi-Fi regulatory country set to $cleanCountry"

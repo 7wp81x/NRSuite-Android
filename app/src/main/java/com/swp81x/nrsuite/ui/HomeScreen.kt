@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import android.widget.Toast
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -71,6 +72,7 @@ import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -135,6 +137,9 @@ import androidx.core.content.ContextCompat
 import com.swp81x.nrsuite.MainViewModel
 import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
+import com.swp81x.nrsuite.core.ir.IrDatabaseMetadata
+import com.swp81x.nrsuite.core.ir.IrDatabasePhase
+import com.swp81x.nrsuite.core.ir.IrDatabaseUiState
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.update.AppUpdateInfo
 import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
@@ -432,7 +437,7 @@ internal fun HomeScreen(
                     name = "Tools",
                     icon = Icons.Default.Search,
                     iconTint = categoryColor("Tools"),
-                    moduleIds = listOf("mac_lookup"),
+                    moduleIds = listOf("mac_lookup", "bssid_geolocation"),
                     available = true,
                 ),
                 CategorySpec(
@@ -600,6 +605,14 @@ internal fun CategoryModulesScreen(
     showIrInfo: Boolean = false,
     irTxLabel: String = "",
     irRxLabel: String = "",
+    irDatabaseState: IrDatabaseUiState = IrDatabaseUiState(),
+    irDatabaseMetadata: IrDatabaseMetadata? = null,
+    irRemoteCount: Int = 0,
+    irRootConfigured: Boolean = true,
+    onChooseIrRootDirectory: () -> Unit = {},
+    onDownloadIrDatabase: () -> Unit = {},
+    onCancelIrDatabaseOperation: () -> Unit = {},
+    onRescanIrLibrary: () -> Unit = {},
     onOpenIrConfig: () -> Unit = {},
     showRfidInfo: Boolean = false,
     rfidInterfaceLabel: String = "I2C",
@@ -621,6 +634,24 @@ internal fun CategoryModulesScreen(
         modules
     }
     val effectiveAccent = configAccent ?: MaterialTheme.colorScheme.primary
+    var showIrDatabaseRescanDialog by rememberSaveable { mutableStateOf(false) }
+    var irDatabaseRescanPrompted by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(
+        showIrInfo,
+        irDatabaseMetadata?.indexedAtMs,
+        irDatabaseMetadata?.indexedRemotes,
+        irDatabaseState.running,
+        irRemoteCount,
+    ) {
+        if (showIrInfo && !irDatabaseRescanPrompted && !irDatabaseState.running &&
+            irDatabaseMetadata != null && irDatabaseMetadata.indexedRemotes == 0 &&
+            irRemoteCount == 0
+        ) {
+            irDatabaseRescanPrompted = true
+            showIrDatabaseRescanDialog = true
+        }
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -693,6 +724,17 @@ internal fun CategoryModulesScreen(
         }
         if (showIrInfo) {
             item {
+                IrDatabaseCategoryCard(
+                    state = irDatabaseState,
+                    metadata = irDatabaseMetadata,
+                    rootConfigured = irRootConfigured,
+                    onChooseRoot = onChooseIrRootDirectory,
+                    onDownload = onDownloadIrDatabase,
+                    onCancel = onCancelIrDatabaseOperation,
+                    onRescan = onRescanIrLibrary,
+                )
+            }
+            item {
                 IrModuleConfigRow(
                     txLabel = irTxLabel,
                     rxLabel = irRxLabel,
@@ -761,6 +803,162 @@ internal fun CategoryModulesScreen(
                 module = module,
                 onClick = { if (module.available) onOpenModule(module.id) },
             )
+        }
+    }
+
+    if (showIrDatabaseRescanDialog) {
+        AlertDialog(
+            onDismissRequest = { showIrDatabaseRescanDialog = false },
+            title = { Text("Rescan Flipper-IRDB?") },
+            text = {
+                Text(
+                    "Flipper-IRDB is present on storage, but zero remotes are currently " +
+                        "indexed. Rescan the IR library now?",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showIrDatabaseRescanDialog = false
+                        onRescanIrLibrary()
+                    },
+                ) { Text("Rescan") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showIrDatabaseRescanDialog = false }) {
+                    Text("Not now")
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun IrDatabaseCategoryCard(
+    state: IrDatabaseUiState,
+    metadata: IrDatabaseMetadata?,
+    rootConfigured: Boolean,
+    onChooseRoot: () -> Unit,
+    onDownload: () -> Unit,
+    onCancel: () -> Unit,
+    onRescan: () -> Unit,
+) {
+    val context = LocalContext.current
+    val rootMissing = !rootConfigured
+    val notDownloaded = metadata == null
+    val emptyIndex = metadata != null && metadata.indexedRemotes == 0
+    if (!state.running && !rootMissing && !notDownloaded && !emptyIndex) return
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = NrSurfaceVariant),
+        border = BorderStroke(
+            0.5.dp,
+            when {
+                state.phase == IrDatabasePhase.FAILED -> StatusRed
+                emptyIndex -> StatusAmber
+                else -> NrOutline
+            },
+        ),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Text(
+                text = when {
+                    rootMissing -> "NRSuite root is not configured"
+                    state.running -> "Flipper-IRDB operation in progress"
+                    emptyIndex -> "Flipper-IRDB found, but no remotes are indexed"
+                    else -> "Flipper-IRDB not downloaded"
+                },
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = when {
+                    rootMissing ->
+                        "Choose an NRSuite root directory before downloading Flipper-IRDB."
+                    state.running ->
+                        state.message.orEmpty().ifBlank { "Preparing Flipper-IRDB..." }
+                    emptyIndex ->
+                        "The database exists on storage, but the remote index contains zero entries."
+                    else ->
+                        "Download the Flipper remote library to browse and transmit .ir remotes locally."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = NrOnSurfaceVariant,
+            )
+            if (rootMissing) {
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        Toast.makeText(
+                            context,
+                            "Choose the NRSuite root directory first.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        onChooseRoot()
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Choose NRSuite root")
+                }
+            } else if (state.running) {
+                Spacer(Modifier.height(8.dp))
+                if (state.totalBytes > 0L) {
+                    LinearProgressIndicator(
+                        progress = {
+                            (state.downloadedBytes.toDouble() / state.totalBytes.toDouble())
+                                .toFloat()
+                                .coerceIn(0f, 1f)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onCancel) { Text("Cancel") }
+                }
+            } else {
+                Spacer(Modifier.height(8.dp))
+                if (emptyIndex) {
+                    Button(onClick = onRescan) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Rescan library")
+                    }
+                } else {
+                    Button(onClick = onDownload) {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            if (state.phase == IrDatabasePhase.FAILED) {
+                                "Retry download"
+                            } else {
+                                "Download Flipper-IRDB"
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 }

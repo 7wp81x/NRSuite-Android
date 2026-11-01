@@ -24,8 +24,10 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -35,19 +37,26 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.credentials.CredentialSession
-import com.swp81x.nrsuite.core.wifi.DetectedSsid
+import com.swp81x.nrsuite.core.handshake.CapturedHandshakeEntry
+import com.swp81x.nrsuite.core.handshake.HandshakeCrackStatus
+import com.swp81x.nrsuite.core.wpa.CrackerSessionSnapshot
+import com.swp81x.nrsuite.core.wpa.CrackerSessionStatus
+import com.swp81x.nrsuite.core.wpa.CrackerSourceType
+import com.swp81x.nrsuite.core.wpa.CrackerTargetSnapshot
+import com.swp81x.nrsuite.core.wpa.CrackerTargetStatus
 import com.swp81x.nrsuite.ui.components.NrFilterChip
-import com.swp81x.nrsuite.ui.components.StatusIndicator
-import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -56,52 +65,68 @@ import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusRed
+import com.swp81x.nrsuite.ui.util.copyWithToast
 import java.io.File
 
 @Composable
 fun WpaCrackerScreen(
     sessions: List<CredentialSession>,
+    capturedHandshakes: List<CapturedHandshakeEntry>,
     selectedSession: CredentialSession?,
+    selectedCapturedPath: String?,
+    sourceType: CrackerSourceType,
     customPcapName: String?,
-    customPcapValid: Boolean,
-    customPcapValidating: Boolean,
-    customPcapMessage: String,
-    customSsidOptions: List<DetectedSsid>,
-    customSsidSelected: String?,
-    customSsidManualEnabled: Boolean,
-    customSsid: String,
-    wordlists: List<String>,
+    imported22000Name: String?,
+    targets: List<CrackerTargetSnapshot>,
+    targetsLoading: Boolean,
+    targetMessage: String?,
+    manualMode: Boolean,
+    manualSsid: String,
+    wordlistName: String?,
     running: Boolean,
     paused: Boolean,
     tested: Long,
     speed: Double,
     result: String?,
     status: String,
+    currentTargetIndex: Int,
+    selectedTargetCount: Int,
+    currentTargetSsid: String,
+    progressFraction: Float,
+    progressKnown: Boolean,
+    savedSessions: List<CrackerSessionSnapshot>,
+    onSourceSelected: (CrackerSourceType) -> Unit,
     onSelectSession: (CredentialSession?) -> Unit,
+    onSelectCapturedHandshake: (CapturedHandshakeEntry) -> Unit,
     onChooseCustomPcap: () -> Unit,
-    onClearCustomPcap: () -> Unit,
-    onSelectCustomSsid: (String) -> Unit,
-    onUseManualCustomSsid: () -> Unit,
-    onCustomSsidChange: (String) -> Unit,
+    onChoose22000: () -> Unit,
+    onClearSource: () -> Unit,
+    onManualModeChange: (Boolean) -> Unit,
+    onManualSsidChange: (String) -> Unit,
+    onToggleTarget: (String, Boolean) -> Unit,
+    onSelectAllTargets: (Boolean) -> Unit,
     onChooseWordlist: () -> Unit,
-    onRemoveWordlist: (Int) -> Unit,
-    onClearWordlists: () -> Unit,
+    onClearWordlist: () -> Unit,
     onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
-    onExport22000: () -> Unit,
+    onResumeSession: (String) -> Unit,
+    onDeleteSession: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val clipboard = LocalClipboardManager.current
-    val context = LocalContext.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     val candidates = sessions.filter { path ->
         !path.pcapPath.isNullOrBlank() && File(path.pcapPath!!).exists()
     }
-    val customSelected = customPcapName != null
-    val hasTarget = if (customSelected) customPcapValid && customSsid.isNotBlank() else selectedSession != null
-    val canStart = !running && wordlists.isNotEmpty() && hasTarget
-    val canExport22000 = !running && hasTarget
+    val savedHandshakes = capturedHandshakes.filter { entry ->
+        File(entry.pcapPath).exists()
+    }
+    val selectedTargets = targets.filter { it.selected }
+    val allSelected = targets.isNotEmpty() && selectedTargets.size == targets.size
+    val canStart = !running && selectedTargets.isNotEmpty() && !wordlistName.isNullOrBlank()
+    var confirmDeleteSession by remember { mutableStateOf<CrackerSessionSnapshot?>(null) }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -117,170 +142,197 @@ fun WpaCrackerScreen(
                 border = BorderStroke(0.5.dp, NrOutline),
                 shape = RoundedCornerShape(12.dp),
             ) {
-                Column(Modifier.padding(14.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Key,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp),
                         )
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = "Target handshake",
-                                fontWeight = FontWeight.SemiBold,
-                                color = NrOnSurface,
-                            )
-                            Text(
-                                text = when {
-                                    selectedSession != null -> {
-                                        "${selectedSession.ssid.ifBlank { "(hidden)" }} · " +
-                                            "${selectedSession.bssid.ifBlank { "unknown" }}"
-                                    }
-                                    customSelected -> "Custom PCAP: ${customPcapName ?: "file"}"
-                                    else -> "Select a saved session or choose a custom PCAP"
-                                },
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                color = NrOnSurfaceVariant,
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(10.dp))
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onChooseCustomPcap, enabled = !running) {
-                            Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (customSelected) "Change custom PCAP" else "Choose custom PCAP")
-                        }
-                        if (customSelected) {
-                            OutlinedButton(onClick = onClearCustomPcap, enabled = !running) {
-                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Clear")
-                            }
-                        }
-                    }
-
-                    if (customSelected) {
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.width(8.dp))
                         Text(
-                            text = customPcapName.orEmpty(),
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            text = "WPA Cracker",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
                             color = NrOnSurface,
                         )
-                        Spacer(Modifier.height(4.dp))
-                        if (customPcapValidating) {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                text = "Validating EAPOL...",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = NrOnSurfaceVariant,
-                            )
-                        } else {
-                            Text(
-                                text = customPcapMessage,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (customPcapValid) StatusGreen else StatusAmber,
-                            )
-                        }
-                        Spacer(Modifier.height(8.dp))
+                    }
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        NrFilterChip(
+                            selected = sourceType == CrackerSourceType.SAVED_CAPTURE,
+                            onClick = { onSourceSelected(CrackerSourceType.SAVED_CAPTURE) },
+                            label = "Saved capture",
+                            enabled = !running,
+                        )
+                        NrFilterChip(
+                            selected = sourceType == CrackerSourceType.CUSTOM_PCAP,
+                            onClick = { onSourceSelected(CrackerSourceType.CUSTOM_PCAP) },
+                            label = "Custom PCAP",
+                            enabled = !running,
+                        )
+                        NrFilterChip(
+                            selected = sourceType == CrackerSourceType.IMPORTED_22000,
+                            onClick = { onSourceSelected(CrackerSourceType.IMPORTED_22000) },
+                            label = ".22000",
+                            enabled = !running,
+                        )
+                    }
 
-                        if (customSsidOptions.isNotEmpty()) {
-                            Text(
-                                text = "Detected SSIDs",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = NrOnSurfaceVariant,
+                    when (sourceType) {
+                        CrackerSourceType.SAVED_CAPTURE -> {
+                            if (candidates.isEmpty() && savedHandshakes.isEmpty()) {
+                                Text(
+                                    text = "No saved captures or handshakes found.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = NrOnSurfaceVariant,
+                                )
+                            } else {
+                                if (candidates.isNotEmpty()) {
+                                    Text(
+                                        text = "Credential sessions",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = NrOnSurfaceVariant,
+                                    )
+                                    candidates.forEach { session ->
+                                        SourceSessionRow(
+                                            session = session,
+                                            selected = session.id == selectedSession?.id,
+                                            enabled = !running,
+                                            onClick = { onSelectSession(session) },
+                                        )
+                                    }
+                                }
+                                if (savedHandshakes.isNotEmpty()) {
+                                    Text(
+                                        text = "Captured handshakes",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = NrOnSurfaceVariant,
+                                    )
+                                    savedHandshakes.forEach { entry ->
+                                        CapturedHandshakeRow(
+                                            entry = entry,
+                                            selected = entry.pcapPath == selectedCapturedPath,
+                                            enabled = !running,
+                                            onClick = { onSelectCapturedHandshake(entry) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        CrackerSourceType.CUSTOM_PCAP -> {
+                            CaptureSourceControls(
+                                name = customPcapName,
+                                loading = targetsLoading,
+                                chooseLabel = if (customPcapName == null) "Choose PCAP" else "Change PCAP",
+                                enabled = !running,
+                                onChoose = onChooseCustomPcap,
+                                onClear = onClearSource,
                             )
-                            Spacer(Modifier.height(4.dp))
-                            Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                customSsidOptions.forEach { option ->
+                            if (customPcapName != null) {
+                                Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
                                     NrFilterChip(
-                                        selected = !customSsidManualEnabled &&
-                                            customSsidSelected == option.ssid,
-                                        onClick = { onSelectCustomSsid(option.ssid) },
-                                        label = option.ssid,
+                                        selected = !manualMode,
+                                        onClick = { onManualModeChange(false) },
+                                        label = "Detected targets",
+                                        enabled = !running,
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    NrFilterChip(
+                                        selected = manualMode,
+                                        onClick = { onManualModeChange(true) },
+                                        label = "Manual SSID",
                                         enabled = !running,
                                     )
                                 }
-                                NrFilterChip(
-                                    selected = customSsidManualEnabled,
-                                    onClick = onUseManualCustomSsid,
-                                    label = "Manual",
-                                    enabled = !running,
-                                )
+                                if (manualMode) {
+                                    OutlinedTextField(
+                                        value = manualSsid,
+                                        onValueChange = onManualSsidChange,
+                                        label = { Text("Target SSID") },
+                                        singleLine = true,
+                                        enabled = !running,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(10.dp),
+                                    )
+                                }
                             }
-                            Spacer(Modifier.height(8.dp))
                         }
 
-                        OutlinedTextField(
-                            value = customSsid,
-                            onValueChange = onCustomSsidChange,
-                            label = { Text(if (customSsidOptions.isEmpty()) "Target SSID" else "Selected SSID") },
-                            placeholder = { Text("Network name") },
-                            singleLine = true,
-                            enabled = !running && customSsidManualEnabled,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                        )
-                        Spacer(Modifier.height(6.dp))
+                        CrackerSourceType.IMPORTED_22000 -> {
+                            CaptureSourceControls(
+                                name = imported22000Name,
+                                loading = targetsLoading,
+                                chooseLabel = if (imported22000Name == null) {
+                                    "Choose .22000"
+                                } else {
+                                    "Change .22000"
+                                },
+                                enabled = !running,
+                                onChoose = onChoose22000,
+                                onClear = onClearSource,
+                            )
+                        }
                     }
+                }
+            }
 
-                    Text(
-                        text = "Saved sessions",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = NrOnSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(4.dp))
+            if (targetsLoading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            targetMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                )
+            }
 
-                    if (candidates.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = NrSurface),
+                border = BorderStroke(0.5.dp, NrOutline),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "No saved sessions with a PCAP file. Run Evil Twin and capture a handshake first.",
+                            text = "Targets",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (targets.size > 1) {
+                            TextButton(
+                                onClick = { onSelectAllTargets(!allSelected) },
+                                enabled = !running,
+                            ) {
+                                Text(if (allSelected) "Clear all" else "Select all")
+                            }
+                        }
+                    }
+                    if (targets.isEmpty()) {
+                        Text(
+                            text = "No targets loaded.",
                             style = MaterialTheme.typography.bodySmall,
                             color = NrOnSurfaceVariant,
                         )
                     } else {
-                        candidates.forEach { session ->
-                            val selected = session.id == selectedSession?.id
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 3.dp)
-                                    .clickable(enabled = !running) { onSelectSession(session) },
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (selected) NrSurfaceVariant else NrSurface,
-                                ),
-                                border = BorderStroke(
-                                    width = if (selected) 1.dp else 0.5.dp,
-                                    color = if (selected) MaterialTheme.colorScheme.primary else NrOutline,
-                                ),
-                                shape = RoundedCornerShape(10.dp),
-                            ) {
-                                Column(Modifier.padding(10.dp)) {
-                                    Text(
-                                        text = session.ssid.ifBlank { "(hidden)" },
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = NrOnSurface,
-                                    )
-                                    Text(
-                                        text = session.bssid,
-                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                        color = NrOnSurfaceVariant,
-                                    )
-                                    Text(
-                                        text = session.pcapPath?.substringAfterLast('/') ?: "no pcap",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                        color = NrOnSurfaceVariant,
-                                    )
-                                }
-                            }
+                        targets.forEach { target ->
+                            TargetRow(
+                                target = target,
+                                enabled = !running,
+                                showCheckbox = !manualMode,
+                                onToggle = { selected ->
+                                    onToggleTarget(target.id, selected)
+                                },
+                            )
                         }
                     }
                 }
@@ -292,56 +344,28 @@ fun WpaCrackerScreen(
                 border = BorderStroke(0.5.dp, NrOutline),
                 shape = RoundedCornerShape(12.dp),
             ) {
-                Column(Modifier.padding(14.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = "Wordlists",
+                        text = "Wordlist",
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
-                        color = NrOnSurface,
                     )
-                    Spacer(Modifier.height(6.dp))
                     Text(
-                        text = if (wordlists.isEmpty()) {
-                            "No wordlists selected"
-                        } else {
-                            "${wordlists.size} wordlist(s) selected"
-                        },
+                        text = wordlistName ?: "No wordlist selected",
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = NrOnSurfaceVariant,
+                        color = if (wordlistName != null) NrOnSurface else NrOnSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    wordlists.forEachIndexed { index, name ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "${index + 1}. $name",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                ),
-                                color = NrOnSurface,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                            )
-                            TextButton(
-                                onClick = { onRemoveWordlist(index) },
-                                enabled = !running,
-                            ) {
-                                Text("Remove")
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = onChooseWordlist, enabled = !running) {
                             Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(if (wordlists.isEmpty()) "Add wordlist" else "Add another wordlist")
+                            Text(if (wordlistName == null) "Choose wordlist" else "Change")
                         }
-                        if (wordlists.isNotEmpty()) {
-                            OutlinedButton(onClick = onClearWordlists, enabled = !running) {
-                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Clear all")
+                        if (wordlistName != null) {
+                            TextButton(onClick = onClearWordlist, enabled = !running) {
+                                Text("Remove")
                             }
                         }
                     }
@@ -354,59 +378,72 @@ fun WpaCrackerScreen(
                 border = BorderStroke(0.5.dp, NrOutline),
                 shape = RoundedCornerShape(12.dp),
             ) {
-                Column(Modifier.padding(14.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = "Result",
+                        text = "Progress",
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
-                        color = NrOnSurface,
                     )
-                    Spacer(Modifier.height(6.dp))
                     Text(
                         text = status,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (result != null) StatusGreen else NrOnSurfaceVariant,
+                        color = when {
+                            result != null -> StatusGreen
+                            running && paused -> StatusAmber
+                            else -> NrOnSurfaceVariant
+                        },
                     )
-
-                    if (running || tested > 0L) {
-                        Spacer(Modifier.height(10.dp))
-                        if (running) {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                            Spacer(Modifier.height(6.dp))
-                        }
+                    if (running && selectedTargetCount > 0) {
                         Text(
-                            text = "Tested $tested candidate(s)  ·  ${"%.1f".format(speed)}/s",
+                            text = "${currentTargetSsid.ifBlank { "Preparing" }} · " +
+                                "target ${(currentTargetIndex + 1).coerceAtMost(selectedTargetCount)}" +
+                                "/$selectedTargetCount",
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                             color = NrOnSurfaceVariant,
                         )
                     }
-
                     if (running) {
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = if (paused) onResume else onPause,
-                        ) {
-                            Text(if (paused) "Resume" else "Pause")
+                        when {
+                            progressKnown -> {
+                                LinearProgressIndicator(
+                                    progress = { progressFraction.coerceIn(0f, 1f) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                            !paused -> {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            }
+                            else -> {
+                                Text(
+                                    text = "Paused",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = StatusAmber,
+                                )
+                            }
                         }
                     }
-
-                    if (!running && canExport22000) {
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedButton(onClick = onExport22000) {
-                            Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Export Hashcat .22000")
+                    if (running || tested > 0L) {
+                        Text(
+                            text = "$tested tested · ${"%.1f".format(speed)}/s",
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                    if (running) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = if (paused) onResume else onPause) {
+                                Text(if (paused) "Resume" else "Pause")
+                            }
                         }
                     }
-
                     result?.let { password ->
-                        Spacer(Modifier.height(10.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = password,
-                                style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.SemiBold,
+                                ),
                                 color = StatusGreen,
                                 modifier = Modifier.weight(1f),
                             )
@@ -415,10 +452,35 @@ fun WpaCrackerScreen(
                             }) {
                                 Icon(
                                     imageVector = Icons.Default.ContentCopy,
-                                    contentDescription = "Copy recovered password",
+                                    contentDescription = "Copy password",
                                     tint = NrOnSurfaceVariant,
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            if (savedSessions.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = NrSurface),
+                    border = BorderStroke(0.5.dp, NrOutline),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "Saved sessions",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        savedSessions.forEach { session ->
+                            SavedSessionRow(
+                                session = session,
+                                enabled = !running,
+                                onResume = { onResumeSession(session.id) },
+                                onDelete = { confirmDeleteSession = session },
+                            )
                         }
                     }
                 }
@@ -428,13 +490,13 @@ fun WpaCrackerScreen(
         }
 
         ModuleActionFab(
-            onClick = { if (running) onStop() else onStart() },
+            onClick = if (running) onStop else onStart,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(16.dp)
-                .alpha(if (running || canStart) 1f else 0.4f),
+                .padding(16.dp),
+            enabled = running || canStart,
             containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
-            contentColor = if (running) NrOnSurface else NrSurface,
+            contentColor = NrOnSurface,
         ) {
             Icon(
                 imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
@@ -442,4 +504,263 @@ fun WpaCrackerScreen(
             )
         }
     }
+
+    confirmDeleteSession?.let { session ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDeleteSession = null },
+            title = { Text("Delete saved session?") },
+            text = { Text("Remove the saved cracker checkpoint for ${session.sourceLabel}?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteSession(session.id)
+                    confirmDeleteSession = null
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteSession = null }) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun SourceSessionRow(
+    session: CredentialSession,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) NrSurfaceVariant else NrSurface,
+        ),
+        border = BorderStroke(
+            width = if (selected) 1.dp else 0.5.dp,
+            color = if (selected) MaterialTheme.colorScheme.primary else NrOutline,
+        ),
+        shape = RoundedCornerShape(10.dp),
+    ) {
+        Column(Modifier.padding(10.dp)) {
+            Text(
+                text = session.ssid.ifBlank { "(hidden)" },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = NrOnSurface,
+            )
+            Text(
+                text = session.pcapPath?.substringAfterLast('/') ?: "no pcap",
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                color = NrOnSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CapturedHandshakeRow(
+    entry: CapturedHandshakeEntry,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) NrSurfaceVariant else NrSurface,
+        ),
+        border = BorderStroke(
+            width = if (selected) 1.dp else 0.5.dp,
+            color = if (selected) MaterialTheme.colorScheme.primary else NrOutline,
+        ),
+        shape = RoundedCornerShape(10.dp),
+    ) {
+        Column(Modifier.padding(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = entry.ssid.ifBlank { "(hidden)" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = NrOnSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (entry.status == HandshakeCrackStatus.CRACKED) {
+                    Text(
+                        text = "Cracked",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = StatusGreen,
+                    )
+                }
+            }
+            Text(
+                text = "${entry.bssid} · ch ${entry.channel} · ${File(entry.pcapPath).name}",
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                color = NrOnSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CaptureSourceControls(
+    name: String?,
+    loading: Boolean,
+    chooseLabel: String,
+    enabled: Boolean,
+    onChoose: () -> Unit,
+    onClear: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OutlinedButton(onClick = onChoose, enabled = enabled && !loading) {
+            Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(chooseLabel)
+        }
+        if (name != null) {
+            TextButton(onClick = onClear, enabled = enabled && !loading) {
+                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Clear")
+            }
+        }
+    }
+    name?.let {
+        Text(
+            text = it,
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            color = NrOnSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun TargetRow(
+    target: CrackerTargetSnapshot,
+    enabled: Boolean,
+    showCheckbox: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (showCheckbox) {
+            Checkbox(
+                checked = target.selected,
+                onCheckedChange = onToggle,
+                enabled = enabled,
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = target.ssid.ifBlank { "(hidden)" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = NrOnSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = targetStatusLabel(target.status),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = when (target.status) {
+                        CrackerTargetStatus.CRACKED -> StatusGreen
+                        CrackerTargetStatus.ERROR -> StatusRed
+                        CrackerTargetStatus.RUNNING -> StatusAmber
+                        else -> NrOnSurfaceVariant
+                    },
+                )
+            }
+            Text(
+                text = "${target.bssid ?: "?"} → ${target.station ?: "?"}",
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                color = NrOnSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            target.result?.let { password ->
+                Text(
+                    text = password,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    color = StatusGreen,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SavedSessionRow(
+    session: CrackerSessionSnapshot,
+    enabled: Boolean,
+    onResume: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = session.sourceLabel,
+                style = MaterialTheme.typography.bodyMedium,
+                color = NrOnSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "${session.wordlistName} · ${sessionSessionLabel(session.status)} · " +
+                    "${session.targets.size} target(s)",
+                style = MaterialTheme.typography.labelSmall,
+                color = NrOnSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        TextButton(
+            onClick = onResume,
+            enabled = enabled && session.status != CrackerSessionStatus.COMPLETED,
+        ) {
+            Text("Resume")
+        }
+        IconButton(onClick = onDelete, enabled = enabled) {
+            Icon(Icons.Default.Delete, contentDescription = "Delete saved session")
+        }
+    }
+}
+
+private fun targetStatusLabel(status: CrackerTargetStatus): String = when (status) {
+    CrackerTargetStatus.PENDING -> "Pending"
+    CrackerTargetStatus.RUNNING -> "Cracking"
+    CrackerTargetStatus.CRACKED -> "Found"
+    CrackerTargetStatus.EXHAUSTED -> "Not found"
+    CrackerTargetStatus.STOPPED -> "Stopped"
+    CrackerTargetStatus.ERROR -> "Error"
+}
+
+private fun sessionSessionLabel(status: CrackerSessionStatus): String = when (status) {
+    CrackerSessionStatus.PAUSED -> "Paused"
+    CrackerSessionStatus.STOPPED -> "Stopped"
+    CrackerSessionStatus.COMPLETED -> "Completed"
+    CrackerSessionStatus.INTERRUPTED -> "Interrupted"
 }

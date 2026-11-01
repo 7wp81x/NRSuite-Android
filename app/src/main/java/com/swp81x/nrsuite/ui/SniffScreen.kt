@@ -53,7 +53,9 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.sniff.SniffRequest
 import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
+import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
 import com.swp81x.nrsuite.ui.components.ScanButtonContent
 import com.swp81x.nrsuite.ui.components.ChannelModeToggle
 import com.swp81x.nrsuite.ui.components.ScanTargetList
@@ -108,6 +110,11 @@ fun SniffScreen(
     var deauthIntervalMs by remember { mutableStateOf(50) }
     var deauthRetryDuringCapture by remember { mutableStateOf(true) }
     var deauthRetryIntervalMs by remember { mutableStateOf(5_000) }
+
+    val effectiveAllowedChannels = allowedChannels.ifEmpty { WIFI_AUTO_CHANNELS }
+    LaunchedEffect(effectiveAllowedChannels) {
+        channel = normalizeWifiChannelForAllowed(channel, effectiveAllowedChannels)
+    }
 
     LaunchedEffect(sniffing) {
         if (sniffing) configExpanded = false

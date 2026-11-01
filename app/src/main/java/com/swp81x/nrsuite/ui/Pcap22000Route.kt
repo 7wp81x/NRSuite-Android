@@ -49,7 +49,6 @@ internal fun Pcap22000Route(
         },
         onRemoveInput = viewModel::removePcap22000Input,
         onClearInputs = viewModel::clearPcap22000Inputs,
-        onDedupeMode = viewModel::setPcap22000DedupeMode,
         onSetSsidOverride = viewModel::setPcap22000SsidOverride,
         onRemoveSsidOverride = viewModel::removePcap22000SsidOverride,
         onExport = {

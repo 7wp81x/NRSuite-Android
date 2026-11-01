@@ -31,6 +31,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,9 +44,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.Pcap22000UiState
-import com.swp81x.nrsuite.core.wpa.Pcap22000DedupeMode
 import com.swp81x.nrsuite.core.wpa.Pcap22000Candidate
-import com.swp81x.nrsuite.ui.components.NrFilterChip
+import com.swp81x.nrsuite.ui.components.SavedItemDropdown
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -61,13 +61,11 @@ internal fun Pcap22000Screen(
     onAddPcaps: () -> Unit,
     onRemoveInput: (Int) -> Unit,
     onClearInputs: () -> Unit,
-    onDedupeMode: (Pcap22000DedupeMode) -> Unit,
     onSetSsidOverride: (String, String) -> Unit,
     onRemoveSsidOverride: (String) -> Unit,
     onExport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var advancedExpanded by rememberSaveable { mutableStateOf(false) }
     var overrideBssid by rememberSaveable { mutableStateOf("") }
     var overrideSsid by rememberSaveable { mutableStateOf("") }
     val uniqueBssids = remember(state.candidates) {
@@ -79,6 +77,11 @@ internal fun Pcap22000Screen(
             .mapNotNull { it.bssidHex }
             .distinct()
             .sorted()
+    }
+    LaunchedEffect(missingSsidBssids) {
+        if (overrideBssid !in missingSsidBssids) {
+            overrideBssid = missingSsidBssids.firstOrNull().orEmpty()
+        }
     }
 
     Column(
@@ -96,14 +99,14 @@ internal fun Pcap22000Screen(
         ) {
             Column(Modifier.padding(14.dp)) {
                 Text(
-                    text = "PCAP → Hashcat .22000",
+                    text = "PCAP to .hs22000",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Select one or more classic PCAP files. Valid M1/M2 " +
-                        "handshakes are merged into a single Hashcat mode 22000 file.",
+                    text = "Merge classic PCAP captures into one Hashcat .22000 file. " +
+                        "Duplicate exchanges are removed automatically and the best handshake is kept.",
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
@@ -156,146 +159,67 @@ internal fun Pcap22000Screen(
             }
         }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = NrSurface),
-            border = BorderStroke(0.5.dp, NrOutline),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Column(Modifier.padding(14.dp)) {
-                Text(
-                    text = "Duplicate handling",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    NrFilterChip(
-                        selected = state.dedupeMode == Pcap22000DedupeMode.NONE,
-                        onClick = { onDedupeMode(Pcap22000DedupeMode.NONE) },
-                        label = "Off",
-                        enabled = !state.analyzing,
-                    )
-                    NrFilterChip(
-                        selected = state.dedupeMode == Pcap22000DedupeMode.EXACT,
-                        onClick = { onDedupeMode(Pcap22000DedupeMode.EXACT) },
-                        label = "Exact duplicates",
-                        enabled = !state.analyzing,
-                    )
-                    NrFilterChip(
-                        selected = state.dedupeMode == Pcap22000DedupeMode.BEST_PER_AP,
-                        onClick = { onDedupeMode(Pcap22000DedupeMode.BEST_PER_AP) },
-                        label = "Best per BSSID + SSID",
-                        enabled = !state.analyzing,
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Off keeps every valid handshake. Exact duplicates removes " +
-                        "the same BSSID/station/replay/MIC exchange. Best per AP keeps " +
-                        "one highest-quality handshake for each BSSID + SSID.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
-            }
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = NrSurface),
-            border = BorderStroke(0.5.dp, NrOutline),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Column(Modifier.padding(14.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+        if (missingSsidBssids.isNotEmpty() || state.ssidOverrides.isNotEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = NrSurface),
+                border = BorderStroke(0.5.dp, NrOutline),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Advanced SSID overrides",
+                        text = "SSID overrides",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = { advancedExpanded = !advancedExpanded }) {
-                        Text(if (advancedExpanded) "Hide" else "Show")
-                    }
-                }
-                if (advancedExpanded) {
-                    Text(
-                        text = "Use this for hidden or malformed captures where the " +
-                            "handshake is present but no beacon/probe-response SSID was found.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = overrideBssid,
-                        onValueChange = { overrideBssid = it.uppercase() },
-                        label = { Text("BSSID") },
-                        placeholder = { Text("AA:BB:CC:DD:EE:FF") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value = overrideSsid,
-                        onValueChange = { overrideSsid = it.take(32) },
-                        label = { Text("ESSID") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Button(
-                        onClick = {
-                            onSetSsidOverride(overrideBssid, overrideSsid)
-                            overrideSsid = ""
-                        },
-                        enabled = overrideBssid.isNotBlank() && overrideSsid.isNotBlank(),
-                    ) {
-                        Text("Add override")
-                    }
                     if (missingSsidBssids.isNotEmpty()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = "BSSIDs needing an ESSID",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = StatusAmber,
+                        SavedItemDropdown(
+                            label = "Missing SSID BSSID",
+                            selectedName = overrideBssid.takeIf { it.isNotBlank() },
+                            names = missingSsidBssids,
+                            selectedDisplayName = overrideBssid.takeIf { it.isNotBlank() },
+                            itemSupportingText = { "Missing detected ESSID" },
+                            onSelect = { overrideBssid = it },
                         )
-                        missingSsidBssids.forEach { bssid ->
+                        OutlinedTextField(
+                            value = overrideSsid,
+                            onValueChange = { overrideSsid = it.take(32) },
+                            label = { Text("ESSID") },
+                            placeholder = { Text("Network name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                        )
+                        Button(
+                            onClick = {
+                                onSetSsidOverride(overrideBssid, overrideSsid)
+                                overrideSsid = ""
+                            },
+                            enabled = overrideBssid.isNotBlank() && overrideSsid.isNotBlank(),
+                        ) {
+                            Text("Save override")
+                        }
+                    } else {
+                        Text(
+                            text = "All captured handshakes have an SSID.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                    state.ssidOverrides.entries.sortedBy { it.key }.forEach { (bssid, ssid) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Text(
-                                text = bssid,
+                                text = "$ssid · $bssid",
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontFamily = FontFamily.Monospace,
                                 ),
-                                color = NrOnSurfaceVariant,
+                                modifier = Modifier.weight(1f),
                             )
-                        }
-                    }
-                    if (state.ssidOverrides.isNotEmpty()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = "Saved overrides",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = NrOnSurfaceVariant,
-                        )
-                        state.ssidOverrides.entries.sortedBy { it.key }.forEach { (bssid, ssid) ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = "$bssid → $ssid",
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontFamily = FontFamily.Monospace,
-                                    ),
-                                    modifier = Modifier.weight(1f),
-                                )
-                                TextButton(onClick = { onRemoveSsidOverride(bssid) }) {
-                                    Text("Remove")
-                                }
+                            TextButton(onClick = { onRemoveSsidOverride(bssid) }) {
+                                Text("Remove")
                             }
                         }
                     }
@@ -333,17 +257,37 @@ internal fun Pcap22000Screen(
                         color = StatusRed,
                     )
                 }
-                state.exportPreview?.exportedCandidates
-                    ?.take(10)
-                    ?.forEach { candidate ->
-                        CandidateRow(candidate)
-                    }
-                if ((state.exportPreview?.exportedCandidates?.size ?: 0) > 10) {
+                if (state.lastExportCount != null) {
+                    Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "+${state.exportPreview!!.exportedCandidates.size - 10} more",
-                        style = MaterialTheme.typography.labelSmall,
+                        text = "Exported ${state.lastExportCount} handshake(s) successfully.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusGreen,
+                    )
+                    state.lastExportName?.let { name ->
+                        Text(
+                            text = name,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                            ),
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                }
+                if (state.exportPreview?.exportedCandidates?.isNotEmpty() == true) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = if (state.lastExportCount != null) {
+                            "Exported handshakes"
+                        } else {
+                            "Ready to export"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
                         color = NrOnSurfaceVariant,
                     )
+                    state.exportPreview.exportedCandidates.forEach { candidate ->
+                        CandidateRow(candidate)
+                    }
                 }
                 Spacer(Modifier.height(10.dp))
                 Button(
@@ -366,8 +310,9 @@ internal fun Pcap22000Screen(
 private fun CandidateRow(candidate: Pcap22000Candidate) {
     val ssid = candidate.effectiveSsid ?: "(missing SSID)"
     Text(
-        text = "${candidate.sourceName} · ${ssid}",
-        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        text = ssid,
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.SemiBold,
         color = NrOnSurface,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,

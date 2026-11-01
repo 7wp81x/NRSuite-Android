@@ -400,6 +400,7 @@ internal fun MainViewModel.startFirmwareFlashImpl(
                 app,
                 "Firmware flash complete",
                 "$targetChip flashed successfully. The device is rebooting.",
+                smallIconRes = com.swp81x.nrsuite.R.drawable.ic_stat_firmware,
             )
             delay(2_000)
             refreshDevices()
@@ -413,6 +414,7 @@ internal fun MainViewModel.startFirmwareFlashImpl(
                 app,
                 "Firmware flash failed",
                 reason,
+                smallIconRes = com.swp81x.nrsuite.R.drawable.ic_stat_firmware,
             )
         } finally {
             _firmwareFlashing.value = false

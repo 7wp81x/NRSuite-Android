@@ -32,3 +32,41 @@ class WifiChannelsTest {
         assertEquals(44, normalizeWifiChannel(44, listOf(36, 40, 44, 48), fallback = 36))
     }
 }
+
+class WifiDeviceHandoffChannelsTest {
+    @Test
+    fun staleFiveGhzChannelFallsBackToFirstAllowedTwoGhzChannel() {
+        val s3Channels = listOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
+
+        assertEquals(
+            1,
+            normalizeWifiChannelForAllowed(channel = 149, allowedChannels = s3Channels),
+        )
+    }
+
+    @Test
+    fun validChannelIsPreservedOnReconnectOrCapabilityRefresh() {
+        val c5Channels = listOf(1, 6, 11, 36, 40, 44, 48, 149, 153, 157, 161)
+
+        assertEquals(
+            149,
+            normalizeWifiChannelForAllowed(channel = 149, allowedChannels = c5Channels),
+        )
+    }
+
+    @Test
+    fun fiveOnlyDeviceFallsBackToItsFirstAllowedChannel() {
+        assertEquals(
+            36,
+            normalizeWifiChannelForAllowed(
+                channel = 6,
+                allowedChannels = listOf(36, 40, 44, 48),
+            ),
+        )
+    }
+
+    @Test
+    fun emptyAllowedListUsesSafeTwoGhzFallback() {
+        assertEquals(1, normalizeWifiChannelForAllowed(channel = 149, allowedChannels = emptyList()))
+    }
+}

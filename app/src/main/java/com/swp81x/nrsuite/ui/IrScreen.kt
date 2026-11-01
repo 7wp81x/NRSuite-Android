@@ -25,9 +25,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -116,7 +116,6 @@ fun IrScreen(
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onImport(uri)
     }
-
     if (selectedRemote != null) {
         IrRemoteDetail(
             remote = selectedRemote,
@@ -205,14 +204,26 @@ fun IrScreen(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            IconButton(
+            TextButton(
                 onClick = { picker.launch(arrayOf("*/*")) },
                 enabled = !importing,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    horizontal = 10.dp,
+                    vertical = 6.dp,
+                ),
             ) {
                 if (importing && scanProgress == null) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Importing...")
                 } else {
-                    Icon(Icons.Default.Add, contentDescription = "Import .ir file")
+                    Icon(
+                        imageVector = Icons.Default.FileOpen,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Import .ir")
                 }
             }
             IconButton(onClick = onRefreshLibrary, enabled = !importing) {

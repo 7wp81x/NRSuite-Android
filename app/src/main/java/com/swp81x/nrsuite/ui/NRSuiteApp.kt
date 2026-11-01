@@ -379,6 +379,16 @@ internal val modules = listOf(
 
     ModuleCardSpec(
         id = "mac_lookup",
+        title = "MAC Lookup",
+        description = "Offline OUI/vendor lookup for a MAC or BSSID. No map or network request.",
+        icon = Icons.Default.Search,
+        category = "Tools",
+        radio = "Offline",
+        available = true,
+    ),
+
+    ModuleCardSpec(
+        id = "bssid_geolocation",
         title = "BSSID Geolocation",
         description = "Offline vendor lookup plus approximate Wi-Fi access-point location.",
         icon = Icons.Default.LocationOn,
@@ -407,8 +417,8 @@ internal val modules = listOf(
     ),
     ModuleCardSpec(
         id = "pcap22000",
-        title = "PCAP → .22000",
-        description = "Merge captures and export WPA handshakes for Hashcat mode 22000.",
+        title = "PCAP to .hs22000",
+        description = "Merge captures and export Hashcat mode 22000 handshakes.",
         icon = Icons.Default.Folder,
         category = "Credentials",
         available = true,

@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,7 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.ProbeObservation
 import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
-import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
@@ -68,7 +69,10 @@ fun ProbeMonitorScreen(
     var fixedMode by rememberSaveable { mutableStateOf(fixed) }
     var selectedChannel by rememberSaveable { mutableIntStateOf(channel) }
     val channels = allowedChannels.ifEmpty { WIFI_AUTO_CHANNELS }
-    val effectiveChannel = normalizeWifiChannel(selectedChannel, fallback = channels.firstOrNull() ?: 1)
+    LaunchedEffect(channels) {
+        selectedChannel = normalizeWifiChannelForAllowed(selectedChannel, channels)
+    }
+    val effectiveChannel = normalizeWifiChannelForAllowed(selectedChannel, channels)
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(

@@ -6,44 +6,41 @@ import org.junit.Test
 class Pcap22000ConverterTest {
 
     @Test
-    fun `merges candidates and applies exact deduplication`() {
+    fun `deduplicates repeated BSSID and station pairs and keeps the best handshake`() {
         val bssid = byteArrayOf(0x10, 1, 2, 3, 4, 5)
         val station = byteArrayOf(0x20, 1, 2, 3, 4, 5)
-        val first = handshake(bssid, station, micByte = 1)
-        val duplicate = handshake(bssid, station, micByte = 1)
-        val second = handshake(bssid, station, micByte = 2)
+        val weak = handshake(bssid, station, micByte = 1, keyDescriptorVersion = 1)
+        val duplicate = handshake(bssid, station, micByte = 2, keyDescriptorVersion = 2)
+        val better = handshake(bssid, station, micByte = 3, keyDescriptorVersion = 2)
 
         val result = buildPcap22000Export(
             candidates = listOf(
-                Pcap22000Candidate("one.pcap", first, "Target"),
+                Pcap22000Candidate("one.pcap", weak, "Target"),
                 Pcap22000Candidate("two.pcap", duplicate, "Target"),
-                Pcap22000Candidate("three.pcap", second, "Target"),
+                Pcap22000Candidate("three.pcap", better, "Target"),
             ),
-            dedupeMode = Pcap22000DedupeMode.EXACT,
-        )
-
-        assertEquals(2, result.lines.size)
-        assertEquals(1, result.duplicatesRemoved)
-    }
-
-    @Test
-    fun `best per AP keeps one handshake per BSSID and SSID`() {
-        val bssid = byteArrayOf(0x10, 1, 2, 3, 4, 5)
-        val station = byteArrayOf(0x20, 1, 2, 3, 4, 5)
-        val first = handshake(bssid, station, micByte = 1, keyDescriptorVersion = 1)
-        val better = handshake(bssid, station, micByte = 2, keyDescriptorVersion = 2)
-
-        val result = buildPcap22000Export(
-            candidates = listOf(
-                Pcap22000Candidate("one.pcap", first, "Target"),
-                Pcap22000Candidate("two.pcap", better, "Target"),
-            ),
-            dedupeMode = Pcap22000DedupeMode.BEST_PER_AP,
         )
 
         assertEquals(1, result.lines.size)
-        assertEquals("two.pcap", result.exportedCandidates.single().sourceName)
-        assertEquals(1, result.duplicatesRemoved)
+        assertEquals("three.pcap", result.exportedCandidates.single().sourceName)
+        assertEquals(2, result.duplicatesRemoved)
+    }
+
+    @Test
+    fun `keeps different client stations under the same BSSID`() {
+        val bssid = byteArrayOf(0x10, 1, 2, 3, 4, 5)
+        val stationA = byteArrayOf(0x20, 1, 2, 3, 4, 5)
+        val stationB = byteArrayOf(0x30, 1, 2, 3, 4, 5)
+
+        val result = buildPcap22000Export(
+            candidates = listOf(
+                Pcap22000Candidate("a.pcap", handshake(bssid, stationA, micByte = 1), "Target"),
+                Pcap22000Candidate("b.pcap", handshake(bssid, stationB, micByte = 2), "Target"),
+            ),
+        )
+
+        assertEquals(2, result.lines.size)
+        assertEquals(0, result.duplicatesRemoved)
     }
 
     @Test
@@ -54,7 +51,6 @@ class Pcap22000ConverterTest {
 
         val withOverride = buildPcap22000Export(
             candidates = listOf(Pcap22000Candidate("hidden.pcap", handshake, null)),
-            dedupeMode = Pcap22000DedupeMode.NONE,
             ssidOverrides = mapOf("AA:01:02:03:04:05" to "HiddenNetwork"),
         )
         assertEquals(1, withOverride.lines.size)
@@ -62,7 +58,6 @@ class Pcap22000ConverterTest {
 
         val withoutOverride = buildPcap22000Export(
             candidates = listOf(Pcap22000Candidate("hidden.pcap", handshake, null)),
-            dedupeMode = Pcap22000DedupeMode.NONE,
         )
         assertEquals(0, withoutOverride.lines.size)
         assertEquals(1, withoutOverride.missingSsid)

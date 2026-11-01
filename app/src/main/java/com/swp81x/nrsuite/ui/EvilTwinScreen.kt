@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,10 +60,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
+import com.swp81x.nrsuite.core.portal.PortalSessionMetrics
+import com.swp81x.nrsuite.core.portal.PortalVisitor
 import com.swp81x.nrsuite.core.wpa.EvilTwinResult
 import com.swp81x.nrsuite.ui.components.ScanButtonContent
 import com.swp81x.nrsuite.ui.components.HtmlTemplatesTab
 import com.swp81x.nrsuite.ui.components.HtmlUploadSection
+import com.swp81x.nrsuite.ui.components.PortalFirmwareNoticeToggle
+import com.swp81x.nrsuite.ui.components.PortalVisitorsTab
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.ScanTargetList
 import com.swp81x.nrsuite.ui.components.StatusIndicator
@@ -77,17 +82,25 @@ import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusInfo
 import com.swp81x.nrsuite.ui.theme.StatusRed
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
+import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
 import org.json.JSONObject
 
 @Composable
 fun EvilTwinScreen(
     connected: Boolean,
     running: Boolean,
+    starting: Boolean = false,
+    stopping: Boolean = false,
     scanning: Boolean,
     networks: List<JSONObject>,
     allowedChannels: List<Int> = emptyList(),
+    firmwareNoticeEnabled: Boolean = true,
+    onFirmwareNoticeEnabledChange: (Boolean) -> Unit = {},
     handshake: EapolHandshake,
     results: List<EvilTwinResult>,
+    metrics: PortalSessionMetrics = PortalSessionMetrics(),
+    visitors: List<PortalVisitor> = emptyList(),
     eventLog: List<String>,
     selectedHtmlName: String?,
     selectedHtmlSize: Long?,
@@ -95,6 +108,7 @@ fun EvilTwinScreen(
     htmlProgress: Int,
     htmlComplete: Boolean,
     onClearEventLog: () -> Unit,
+    onClearVisitors: () -> Unit = {},
     onScanWifi: () -> Unit,
     onChooseHtml: () -> Unit,
     htmlTemplates: List<com.swp81x.nrsuite.core.portal.HtmlTemplate> = emptyList(),
@@ -119,6 +133,11 @@ fun EvilTwinScreen(
     val context = LocalContext.current
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
+    val effectiveAllowedChannels = allowedChannels.ifEmpty { WIFI_AUTO_CHANNELS }
+    LaunchedEffect(effectiveAllowedChannels) {
+        channel = normalizeWifiChannelForAllowed(channel, effectiveAllowedChannels)
+    }
+
     LaunchedEffect(running) {
         if (running) targetExpanded = false
     }
@@ -130,9 +149,19 @@ fun EvilTwinScreen(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+        PortalFirmwareNoticeToggle(
+            enabled = firmwareNoticeEnabled,
+            onEnabledChange = onFirmwareNoticeEnabledChange,
+        )
+        Spacer(Modifier.height(6.dp))
         RoundedTabRow(
             selectedIndex = selectedTab,
-            tabs = listOf("Overview", "Logs (${eventLog.size})", "HTML Templates"),
+            tabs = listOf(
+                "Overview",
+                "Logs (${eventLog.size})",
+                "Visitors (${visitors.size})",
+                "HTML Templates",
+            ),
             onSelect = { selectedTab = it },
         )
 
@@ -177,6 +206,13 @@ fun EvilTwinScreen(
                         EapolBadge("M3", handshake.m3)
                         EapolBadge("M4", handshake.m4)
                     }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Views ${metrics.pageViews} · clients ${metrics.clientsAssociated} · " +
+                            "posts ${metrics.capturedPosts}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = NrOnSurfaceVariant,
+                    )
                 }
             }
         }
@@ -285,7 +321,7 @@ fun EvilTwinScreen(
             }
         }
 
-        if (running) {
+        if (running || results.isNotEmpty()) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -431,6 +467,13 @@ fun EvilTwinScreen(
         }
         Spacer(Modifier.height(80.dp))
         }
+        } else if (selectedTab == 2) {
+        PortalVisitorsTab(
+            visitors = visitors,
+            onClearVisitors = onClearVisitors,
+            modifier = Modifier.weight(1f),
+            emptyText = "No Evil Twin visitors yet. Page views, form posts, MAC, IP, and User-Agent will appear here.",
+        )
         } else {
             HtmlTemplatesTab(
                 templates = htmlTemplates,
@@ -522,13 +565,22 @@ fun EvilTwinScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
+                enabled = !starting && !stopping,
                 containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                Icon(
-                    imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = if (running) "Stop Evil Twin" else "Start Evil Twin",
-                )
+                if (starting || stopping) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.5.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        contentDescription = if (running) "Stop Evil Twin" else "Start Evil Twin",
+                    )
+                }
             }
         }
     }

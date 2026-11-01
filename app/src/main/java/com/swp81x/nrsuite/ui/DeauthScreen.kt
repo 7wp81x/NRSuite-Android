@@ -4,7 +4,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import org.json.JSONObject
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
+import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -96,6 +98,11 @@ fun DeauthScreen(
     var confirmStart by remember { mutableStateOf(false) }
     var selectedTargets by remember { mutableStateOf<Map<String, NetworkTarget>>(emptyMap()) }
     val context = LocalContext.current
+    val effectiveAllowedChannels = allowedChannels.ifEmpty { WIFI_AUTO_CHANNELS }
+
+    LaunchedEffect(effectiveAllowedChannels) {
+        channel = normalizeWifiChannelForAllowed(channel, effectiveAllowedChannels)
+    }
 
     LaunchedEffect(running) {
         if (running) configExpanded = false

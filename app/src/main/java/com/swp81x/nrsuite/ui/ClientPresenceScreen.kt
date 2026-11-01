@@ -56,7 +56,9 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.defense.ClientObservation
 import com.swp81x.nrsuite.core.defense.ClientPresenceMode
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
+import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
 import com.swp81x.nrsuite.core.wifi.WifiBand
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
 import com.swp81x.nrsuite.ui.components.ScanButtonContent
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.components.ScanTargetList
@@ -111,6 +113,12 @@ fun ClientPresenceScreen(
     var configExpanded by remember { mutableStateOf(true) }
     var confirmStart by remember { mutableStateOf(false) }
     var band by rememberSaveable { mutableStateOf(WifiBand.AUTO) }
+    val effectiveAllowedChannels = allowedChannels.ifEmpty { WIFI_AUTO_CHANNELS }
+    LaunchedEffect(effectiveAllowedChannels, channel) {
+        if (channel !in effectiveAllowedChannels) {
+            onChannelChange(normalizeWifiChannelForAllowed(channel, effectiveAllowedChannels))
+        }
+    }
     val validTarget = targetBssid.isNotBlank()
     val canStart = connected && (mode == ClientPresenceMode.PASSIVE || validTarget)
 

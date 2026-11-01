@@ -104,3 +104,29 @@ fun nextWifiChannel(channel: Int, forward: Boolean, allowedChannels: List<Int>):
     else (index - 1 + allowedChannels.size) % allowedChannels.size
     return allowedChannels[next]
 }
+
+/**
+ * The safest fallback for a device handoff is a valid 2.4 GHz channel.
+ *
+ * Some firmware builds report only 5 GHz channels (or list 5 GHz entries
+ * first). Falling back to the first list entry in that case can leave a
+ * device that has no 5 GHz radio selected onto an unusable channel.
+ */
+fun defaultWifiChannelForAllowed(allowedChannels: List<Int>): Int =
+    allowedChannels.firstOrNull { it in WIFI_2G_CHANNELS }
+        ?: allowedChannels.firstOrNull()
+        ?: 1
+
+/**
+ * Normalize channel state against a connected device's reported channel
+ * capabilities. If the current channel is still valid it is preserved, so a
+ * reconnect of the same device does not disturb the user's selection.
+ */
+fun normalizeWifiChannelForAllowed(
+    channel: Int,
+    allowedChannels: List<Int>,
+): Int = normalizeWifiChannel(
+    channel = channel,
+    allowedChannels = allowedChannels,
+    fallback = defaultWifiChannelForAllowed(allowedChannels),
+)

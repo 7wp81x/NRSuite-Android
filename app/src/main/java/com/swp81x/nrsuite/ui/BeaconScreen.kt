@@ -37,6 +37,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -50,8 +51,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
@@ -107,6 +110,11 @@ fun BeaconScreen(
     var deleteTarget by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
+    val effectiveAllowedChannels = allowedChannels.ifEmpty { WIFI_AUTO_CHANNELS }
+
+    LaunchedEffect(effectiveAllowedChannels) {
+        channel = normalizeWifiChannelForAllowed(channel, effectiveAllowedChannels)
+    }
     val importPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->

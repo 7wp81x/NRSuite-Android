@@ -28,7 +28,6 @@ import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wpa.WpaHandshake
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeTracker
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeVerifier
-import androidx.core.content.FileProvider
 import java.io.File
 import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
@@ -397,15 +396,8 @@ internal fun MainViewModel.openCaptureInCrackerImpl(entry: CapturedHandshakeEntr
         addAutoHandshakeFeed("Capture file no longer exists: ${entry.pcapPath}", LogLevel.ERROR)
         return
     }
-    val uri = runCatching {
-        FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", file)
-    }.getOrNull()
-    if (uri == null) {
-        addAutoHandshakeFeed("Could not expose capture to WPA Cracker.", LogLevel.ERROR)
-        return
-    }
-    this.setCrackerCustomPcapImpl(uri, file.name)
-    autoHandshake.pendingCrackerCapture = entry
+    this.selectCrackerCapturedHandshakeImpl(entry)
+    addAutoHandshakeFeed("Opened ${file.name} in WPA Cracker.")
 }
 
 internal fun MainViewModel.persistNrugochiCrackResultImpl(password: String) {

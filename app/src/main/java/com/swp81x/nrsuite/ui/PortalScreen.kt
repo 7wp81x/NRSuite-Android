@@ -1,6 +1,8 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
+import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,9 +63,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
+import com.swp81x.nrsuite.core.portal.PortalVisitor
 import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.components.HtmlTemplatesTab
 import com.swp81x.nrsuite.ui.components.HtmlUploadSection
+import com.swp81x.nrsuite.ui.components.PortalFirmwareNoticeToggle
+import com.swp81x.nrsuite.ui.components.PortalVisitorsTab
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
@@ -81,6 +87,8 @@ private val MAC_REGEX = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 fun PortalScreen(
     connected: Boolean,
     running: Boolean,
+    starting: Boolean = false,
+    stopping: Boolean = false,
     htmlSize: Int,
     htmlComplete: Boolean,
     activeSsid: String,
@@ -94,6 +102,7 @@ fun PortalScreen(
     htmlUploading: Boolean,
     htmlProgress: Int,
     eventLog: List<String>,
+    visitors: List<PortalVisitor> = emptyList(),
     onChooseHtml: () -> Unit,
     htmlTemplates: List<com.swp81x.nrsuite.core.portal.HtmlTemplate> = emptyList(),
     htmlTemplateMessage: String? = null,
@@ -103,9 +112,12 @@ fun PortalScreen(
     onRenameHtmlTemplate: (String, String) -> Unit = { _, _ -> },
     onDeleteHtmlTemplate: (String) -> Unit = {},
     onClearEventLog: () -> Unit,
+    onClearVisitors: () -> Unit = {},
     onStart: (ssid: String, channel: Int, targetBssid: String) -> Unit,
     onStop: () -> Unit,
     allowedChannels: List<Int> = emptyList(),
+    firmwareNoticeEnabled: Boolean = true,
+    onFirmwareNoticeEnabledChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by rememberSaveable { mutableStateOf(true) }
@@ -113,6 +125,11 @@ fun PortalScreen(
     var channel by rememberSaveable { mutableStateOf(6) }
     var targetBssid by rememberSaveable { mutableStateOf("") }
     var confirmStart by rememberSaveable { mutableStateOf(false) }
+
+    val effectiveAllowedChannels = allowedChannels.ifEmpty { WIFI_AUTO_CHANNELS }
+    LaunchedEffect(effectiveAllowedChannels) {
+        channel = normalizeWifiChannelForAllowed(channel, effectiveAllowedChannels)
+    }
 
     LaunchedEffect(running) {
         if (running) configExpanded = false
@@ -130,9 +147,19 @@ fun PortalScreen(
                 .fillMaxSize()
                 .padding(12.dp),
         ) {
+            PortalFirmwareNoticeToggle(
+                enabled = firmwareNoticeEnabled,
+                onEnabledChange = onFirmwareNoticeEnabledChange,
+            )
+            Spacer(Modifier.height(6.dp))
             RoundedTabRow(
                 selectedIndex = selectedTab,
-                tabs = listOf("Overview", "Logs (${eventLog.size})", "HTML Templates"),
+                tabs = listOf(
+                    "Overview",
+                    "Logs (${eventLog.size})",
+                    "Visitors (${visitors.size})",
+                    "HTML Templates",
+                ),
                 onSelect = { selectedTab = it },
             )
 
@@ -255,6 +282,13 @@ fun PortalScreen(
                         }
                     }
                 }
+            } else if (selectedTab == 2) {
+                PortalVisitorsTab(
+                    visitors = visitors,
+                    onClearVisitors = onClearVisitors,
+                    modifier = Modifier.weight(1f),
+                    emptyText = "No portal visitors yet. Page views, form posts, MAC, IP, and User-Agent will appear here.",
+                )
             } else {
                 HtmlTemplatesTab(
                     templates = htmlTemplates,
@@ -293,13 +327,22 @@ fun PortalScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
+                enabled = !starting && !stopping,
                 containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                Icon(
-                    imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = if (running) "Stop portal" else "Start portal",
-                )
+                if (starting || stopping) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.5.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        contentDescription = if (running) "Stop portal" else "Start portal",
+                    )
+                }
             }
         }
     }
@@ -561,6 +604,8 @@ private fun CapturedCredential.knownPortalFields(): List<Pair<String, String>> {
 private fun ResultZone(
     connected: Boolean,
     running: Boolean,
+    starting: Boolean = false,
+    stopping: Boolean = false,
     htmlSize: Int,
     htmlComplete: Boolean,
     activeSsid: String,

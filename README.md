@@ -72,8 +72,8 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 - [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; AUTO 2.4/5 GHz and regulatory-country channel filtering on C5-capable firmware
 - [x] **Beacon Spam** - Overview / SSID Lists tabs, custom or hidden SSIDs, saved-list CRUD, and a built-in short-form Rickroll preset
 - [x] **Deauthentication** - finite burst or unlimited loop until stopped, with elapsed time, frames/sec, sent/failed telemetry, multi-target selection, and app-side per-target channel hopping
-- [x] **Evil Twin** - rogue AP with captive portal
-- [x] **Captive Portal** - custom HTML credential capture
+- [x] **Evil Twin** - rogue AP with captive-portal HTML, captured-password verification, persistent results after auto-stop, FAB start/stop progress, and dedicated visitor/metric logs
+- [x] **Captive Portal** - file-backed custom HTML, GET and POST form capture, persistent HTTP/DNS listeners across restarts, hidden helper-AP restore, bounded visitor logging, and separate Portal/Evil Twin metrics
 - [x] **Portal authoring guide** - [Captive Portal / Evil Twin HTML authoring](docs/CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)
 - [x] **Packet Sniffer** - monitor-mode capture with PCAP export; per-module Auto/2.4/5 GHz hopping, target-channel-aware fixed capture, and retrying deauth assist that starts after the sniffer
 - [x] **Hidden AP Revealer** - passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution
@@ -482,7 +482,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide: branching model, PR
 
 | App version | Firmware version | Protocol spec |
 |---|---|---|
-| v1.0.0-beta.3 | v1.0.0-beta.3 | v1.0 (non-mesh); mesh protocol 1.1 is experimental |
+| v1.0.0-beta.3.1 | v1.0.0-beta.3.1 | v1.0 (non-mesh); mesh protocol 1.1 is experimental |
 
 This table is updated with each release. Always check compatibility before mixing app and firmware versions.
 

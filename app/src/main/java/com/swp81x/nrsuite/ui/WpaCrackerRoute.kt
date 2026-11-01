@@ -15,22 +15,30 @@ internal fun WpaCrackerRoute(
     modifier: Modifier = Modifier,
 ) {
     val credentialSessions by viewModel.credentialSessions.collectAsState()
+    val capturedHandshakes by viewModel.autoHandshake.captures.collectAsState()
     val selectedSession by viewModel.crackerSelectedSession.collectAsState()
-    val wordlists by viewModel.crackerWordlists.collectAsState()
+    val selectedCapturedPath by viewModel.crackerSelectedCapturedPath.collectAsState()
+    val sourceType by viewModel.crackerSourceType.collectAsState()
     val customPcapName by viewModel.crackerCustomPcapName.collectAsState()
-    val customPcapValid by viewModel.crackerCustomPcapValid.collectAsState()
-    val customPcapValidating by viewModel.crackerCustomPcapValidating.collectAsState()
-    val customPcapMessage by viewModel.crackerCustomPcapMessage.collectAsState()
-    val customSsidOptions by viewModel.crackerCustomSsidOptions.collectAsState()
-    val customSsidSelected by viewModel.crackerCustomSsidSelected.collectAsState()
-    val customSsidManual by viewModel.crackerCustomSsidManual.collectAsState()
-    val customSsid by viewModel.crackerCustomSsid.collectAsState()
+    val imported22000Name by viewModel.crackerImported22000Name.collectAsState()
+    val targets by viewModel.crackerTargets.collectAsState()
+    val targetsLoading by viewModel.crackerTargetsLoading.collectAsState()
+    val targetMessage by viewModel.crackerTargetMessage.collectAsState()
+    val manualMode by viewModel.crackerManualMode.collectAsState()
+    val manualSsid by viewModel.crackerManualSsid.collectAsState()
+    val wordlist by viewModel.crackerWordlist.collectAsState()
     val running by viewModel.crackerRunning.collectAsState()
     val paused by viewModel.crackerPaused.collectAsState()
     val tested by viewModel.crackerTested.collectAsState()
     val speed by viewModel.crackerSpeed.collectAsState()
     val result by viewModel.crackerResult.collectAsState()
     val status by viewModel.crackerStatus.collectAsState()
+    val currentTargetIndex by viewModel.crackerCurrentTargetIndex.collectAsState()
+    val selectedTargetCount by viewModel.crackerSelectedTargetCount.collectAsState()
+    val currentTargetSsid by viewModel.crackerCurrentTargetSsid.collectAsState()
+    val progressFraction by viewModel.crackerProgressFraction.collectAsState()
+    val progressKnown by viewModel.crackerProgressKnown.collectAsState()
+    val savedSessions by viewModel.crackerSessions.collectAsState()
 
     val wordlistPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -60,33 +68,49 @@ internal fun WpaCrackerRoute(
         }
     }
 
-    val exportPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/octet-stream"),
+    val hash22000Picker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
         if (uri != null) {
-            viewModel.exportCracker22000(uri)
+            runCatching {
+                viewModel.app.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            viewModel.setCrackerImported22000(uri, null)
         }
     }
 
     WpaCrackerScreen(
         sessions = credentialSessions,
+        capturedHandshakes = capturedHandshakes,
         selectedSession = selectedSession,
+        selectedCapturedPath = selectedCapturedPath,
+        sourceType = sourceType,
         customPcapName = customPcapName,
-        customPcapValid = customPcapValid,
-        customPcapValidating = customPcapValidating,
-        customPcapMessage = customPcapMessage,
-        customSsidOptions = customSsidOptions,
-        customSsidSelected = customSsidSelected,
-        customSsidManualEnabled = customSsidManual,
-        customSsid = customSsid,
-        wordlists = wordlists.map { it.name },
+        imported22000Name = imported22000Name,
+        targets = targets,
+        targetsLoading = targetsLoading,
+        targetMessage = targetMessage,
+        manualMode = manualMode,
+        manualSsid = manualSsid,
+        wordlistName = wordlist?.name,
         running = running,
         paused = paused,
         tested = tested,
         speed = speed,
         result = result,
         status = status,
+        currentTargetIndex = currentTargetIndex,
+        selectedTargetCount = selectedTargetCount,
+        currentTargetSsid = currentTargetSsid,
+        progressFraction = progressFraction,
+        progressKnown = progressKnown,
+        savedSessions = savedSessions,
+        onSourceSelected = viewModel::selectCrackerSource,
         onSelectSession = viewModel::selectCrackerSession,
+        onSelectCapturedHandshake = viewModel::selectCrackerCapturedHandshake,
         onChooseCustomPcap = {
             pcapPicker.launch(
                 arrayOf(
@@ -96,20 +120,24 @@ internal fun WpaCrackerRoute(
                 ),
             )
         },
-        onClearCustomPcap = viewModel::clearCrackerCustomPcap,
-        onSelectCustomSsid = viewModel::selectCrackerCustomSsid,
-        onUseManualCustomSsid = viewModel::useManualCrackerSsid,
-        onCustomSsidChange = viewModel::setCrackerCustomSsid,
+        onChoose22000 = {
+            hash22000Picker.launch(
+                arrayOf("application/octet-stream", "text/plain", "*/*"),
+            )
+        },
+        onClearSource = viewModel::clearCrackerCustomPcap,
+        onManualModeChange = viewModel::setCrackerManualMode,
+        onManualSsidChange = viewModel::setCrackerManualSsid,
+        onToggleTarget = viewModel::toggleCrackerTarget,
+        onSelectAllTargets = viewModel::selectAllCrackerTargets,
         onChooseWordlist = { wordlistPicker.launch(arrayOf("text/plain", "*/*")) },
-        onRemoveWordlist = viewModel::removeCrackerWordlist,
-        onClearWordlists = viewModel::clearCrackerWordlist,
+        onClearWordlist = viewModel::clearCrackerWordlist,
         onStart = viewModel::startCracker,
         onPause = viewModel::pauseCracker,
         onResume = viewModel::resumeCracker,
         onStop = viewModel::stopCracker,
-        onExport22000 = {
-            exportPicker.launch("NRSuite-handshake-${System.currentTimeMillis()}.22000")
-        },
+        onResumeSession = viewModel::resumeCrackerSession,
+        onDeleteSession = viewModel::deleteCrackerSession,
         modifier = modifier,
     )
 }
