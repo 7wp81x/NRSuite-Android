@@ -60,6 +60,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".nativepreview"
+            versionNameSuffix = "-native-preview"
+        }
         release {
             signingConfig = if (hasReleaseSigning) {
                 signingConfigs.getByName("release")

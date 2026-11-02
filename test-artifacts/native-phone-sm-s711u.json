@@ -1,0 +1,36 @@
+{
+  "recorded_at": "2026-11-02T10:01:11-07:00",
+  "base_tag": "v1.0.0-beta.3.1.2",
+  "base_commit": "b83d825983c6c2c595d5660821c87f0e00f0f2c1",
+  "test_package": "com.swp81x.nrsuite.nativepreview",
+  "device_model": "SM-S711U",
+  "android_release": "16",
+  "android_api": 36,
+  "root_state": "non-rooted, requester confirmed; no su executable returned",
+  "tests": {
+    "tests": 126,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "physical_checks": {
+    "launch_without_esp32": "passed",
+    "permission_denied_message": "passed",
+    "permission_retry_and_grant": "passed",
+    "wifi_discovery": "passed, at least 3 visible result rows; network identifiers not retained",
+    "ble_discovery": "passed, 12 distinct visible advertisement rows counted; device identifiers not retained",
+    "ble_bounded_scan": "stopped state observed after scan",
+    "nfc_reader_mode_start": "passed, waiting-for-tag state shown",
+    "nfc_tag_read": "not tested, requires physical tag",
+    "background_lifecycle": "passed on final APK: BLE stopped after Android settings foreground transition; NFC stopped status and restart control confirmed",
+    "rooted_phone": "pending separate device",
+    "nethunter_phone": "pending separate device"
+  },
+  "limits": [
+    "No privileged root or NetHunter tools are integrated.",
+    "No monitor-mode or packet-injection acceptance.",
+    "Existing installed release package was preserved."
+  ],
+  "final_build": "assembleDebug and testDebugUnitTest successful, 4m17s, final APK reinstalled",
+  "apk_sha256": "e5107d8fb295486c3b0e2d49974a5390c9b5bc93228d9f3a81ca2cbdfba1b87f"
+}
