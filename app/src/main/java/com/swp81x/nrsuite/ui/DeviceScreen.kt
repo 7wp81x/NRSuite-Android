@@ -64,6 +64,7 @@ import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputAntenna
@@ -141,6 +142,7 @@ import org.json.JSONObject
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.ui.theme.LogBgError
+import java.util.Locale
 
 @Composable
 internal fun DeviceScreen(
@@ -155,6 +157,7 @@ internal fun DeviceScreen(
     onConnect: (UsbDevice) -> Unit,
     onDisconnect: () -> Unit,
     onDisconnectDevice: (UsbDevice) -> Unit,
+    onRefreshStatus: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val usbConnectBusy = deviceConnectionStates.values.any {
@@ -215,7 +218,10 @@ internal fun DeviceScreen(
 
         if (connectionState is ConnectionState.Connected) {
             item {
-                HardwareInfoCard(state = connectionState)
+                HardwareInfoCard(
+                    state = connectionState,
+                    onRefresh = onRefreshStatus,
+                )
             }
         }
 
@@ -446,27 +452,140 @@ internal fun DeviceRow(
 }
 
 @Composable
-internal fun HardwareInfoCard(state: ConnectionState.Connected) {
+internal fun HardwareInfoCard(
+    state: ConnectionState.Connected,
+    onRefresh: () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(0.5.dp, NrOutline),
     ) {
         Column(Modifier.padding(14.dp)) {
-            Text(
-                text = "Hardware info",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Device specs",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onRefresh) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("Refresh")
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+
+            SpecRow("Chip", state.chip ?: "Unknown")
+            SpecRow("Firmware", state.firmwareVersion ?: "Unknown")
+            SpecRow("Device ID", state.deviceId ?: "Unknown")
+            SpecRow(
+                "Protocol",
+                buildString {
+                    append(state.protocolVersion?.toString() ?: "?")
+                    if (state.protocolMinor != null) {
+                        append(" · minor ")
+                        append(state.protocolMinor)
+                    }
+                },
             )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "Chip: ${state.chip ?: "unknown"}",
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            SpecRow("Uptime", formatUptime(state.uptimeMs))
+            SpecRow(
+                "RAM / heap",
+                formatPair(state.heapFree, state.heapTotal, "free"),
             )
-            Text(
-                text = "Transport: USB serial / CDC",
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            SpecRow("Min free heap", formatBytes(state.heapMinFree))
+            SpecRow("Largest block", formatBytes(state.heapMaxAlloc))
+            SpecRow(
+                "PSRAM",
+                if (state.psramTotal == null) {
+                    "Not reported"
+                } else if (state.psramTotal == 0L) {
+                    "Not present"
+                } else {
+                    formatPair(state.psramFree, state.psramTotal, "free")
+                },
             )
+            SpecRow(
+                "CPU",
+                when {
+                    state.cpuMhz != null && state.chipCores != null ->
+                        "${state.cpuMhz} MHz · ${state.chipCores} cores"
+                    state.cpuMhz != null -> "${state.cpuMhz} MHz"
+                    state.chipCores != null -> "${state.chipCores} cores"
+                    else -> "Not reported"
+                },
+            )
+            SpecRow("Flash", formatBytes(state.flashSize))
+            if (!state.sdkVersion.isNullOrBlank()) {
+                SpecRow("SDK", state.sdkVersion)
+            }
+            SpecRow("Features", "${state.features.size} advertised")
+            SpecRow("Transport", "USB serial / CDC")
         }
+    }
+}
+
+@Composable
+private fun SpecRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = NrOnSurfaceVariant,
+            modifier = Modifier.width(112.dp),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            color = NrOnSurface,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+private fun formatBytes(bytes: Long?): String {
+    if (bytes == null) return "Not reported"
+    if (bytes >= 1024L * 1024L) {
+        return String.format(Locale.US, "%.2f MiB", bytes / (1024.0 * 1024.0))
+    }
+    if (bytes >= 1024L) {
+        return String.format(Locale.US, "%.1f KiB", bytes / 1024.0)
+    }
+    return "$bytes B"
+}
+
+private fun formatPair(free: Long?, total: Long?, suffix: String): String {
+    if (free == null && total == null) return "Not reported"
+    if (free == null) return formatBytes(total)
+    if (total == null) return formatBytes(free)
+    return "${formatBytes(free)} $suffix / ${formatBytes(total)}"
+}
+
+private fun formatUptime(uptimeMs: Long?): String {
+    if (uptimeMs == null) return "Not reported"
+    val totalSeconds = uptimeMs / 1000
+    val days = totalSeconds / 86_400
+    val hours = (totalSeconds % 86_400) / 3_600
+    val minutes = (totalSeconds % 3_600) / 60
+    val seconds = totalSeconds % 60
+    return when {
+        days > 0 -> "${days}d ${hours}h ${minutes}m ${seconds}s"
+        hours > 0 -> "${hours}h ${minutes}m ${seconds}s"
+        minutes > 0 -> "${minutes}m ${seconds}s"
+        else -> "${seconds}s"
     }
 }

@@ -91,6 +91,20 @@ internal fun MainViewModel.onUsbDeviceAttachedImpl() {
     tryManualFirmwareFlashOnAttachImpl()
 }
 
+internal fun MainViewModel.refreshActiveDeviceStatusImpl() {
+    val session = activeDeviceFingerprint?.let { deviceSessions[it]?.session } ?: return
+    scope.launch {
+        runCatching { session.refreshStatus() }
+            .onFailure { error ->
+                appendLog(
+                    "Device status refresh failed: ${error.message ?: error.javaClass.simpleName}",
+                    level = LogLevel.ERROR,
+                    tag = "USB",
+                )
+            }
+    }
+}
+
 internal fun MainViewModel.deviceFingerprintImpl(device: UsbDevice): String {
     val serial = runCatching { device.serialNumber }.getOrNull().orEmpty()
     return buildDeviceFingerprintKey(

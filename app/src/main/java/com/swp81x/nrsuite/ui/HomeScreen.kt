@@ -221,6 +221,7 @@ internal fun HomeScreen(
     onOpenFirmwareFlasher: () -> Unit,
     onOpenModule: (String) -> Unit,
     onOpenCategory: (String) -> Unit,
+    onBrowseAllModules: () -> Unit,
     onRefreshDevices: () -> Unit,
     onConnect: (UsbDevice) -> Unit,
     onDisconnect: () -> Unit,
@@ -395,12 +396,27 @@ internal fun HomeScreen(
         }
 
         item {
-            Text(
-                text = "Modules",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Modules",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onBrowseAllModules) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp),
+                        tint = NrOnSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("Browse all", color = NrOnSurfaceVariant)
+                }
+            }
         }
 
         item {

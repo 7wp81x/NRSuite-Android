@@ -16,6 +16,21 @@ sealed interface ConnectionState {
         val irTxGpios: List<Int> = emptyList(),
         val irRxGpios: List<Int> = emptyList(),
         val irRxActive: Boolean = false,
+        // Device telemetry from STATUS. Nullable because older firmware only
+        // reports a subset of these fields.
+        val uptimeMs: Long? = null,
+        val heapFree: Long? = null,
+        val heapTotal: Long? = null,
+        val heapMinFree: Long? = null,
+        val heapMaxAlloc: Long? = null,
+        val psramFree: Long? = null,
+        val psramTotal: Long? = null,
+        val chipCores: Int? = null,
+        val cpuMhz: Int? = null,
+        val flashSize: Long? = null,
+        val sdkVersion: String? = null,
+        val protocolVersion: Int? = null,
+        val protocolMinor: Int? = null,
     ) : ConnectionState
 
     data class Failed(val message: String) : ConnectionState

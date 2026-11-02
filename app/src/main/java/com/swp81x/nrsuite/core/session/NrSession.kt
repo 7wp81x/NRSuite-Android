@@ -197,7 +197,33 @@ class NrSession(
             irTxGpios = parseIntArray(status, "ir_tx_gpios"),
             irRxGpios = parseIntArray(status, "ir_rx_gpios"),
             irRxActive = status.optBoolean("ir_rx_active", false),
+            uptimeMs = optionalLong(status, "uptime"),
+            heapFree = optionalLong(status, "heap"),
+            heapTotal = optionalLong(status, "heap_total"),
+            heapMinFree = optionalLong(status, "heap_min_free"),
+            heapMaxAlloc = optionalLong(status, "heap_max_alloc"),
+            psramFree = optionalLong(status, "psram_free"),
+            psramTotal = optionalLong(status, "psram_total"),
+            chipCores = optionalInt(status, "chip_cores"),
+            cpuMhz = optionalInt(status, "cpu_mhz"),
+            flashSize = optionalLong(status, "flash_size"),
+            sdkVersion = status.optString("sdk").takeIf { it.isNotBlank() },
+            protocolVersion = optionalInt(status, "proto"),
+            protocolMinor = optionalInt(status, "proto_minor"),
         )
+    }
+
+    /**
+     * Refresh the Connected snapshot from a new STATUS response. This is
+     * intentionally non-destructive: a transient STATUS timeout must not tear
+     * down an otherwise healthy USB session.
+     */
+    suspend fun refreshStatus(timeoutMs: Long = 5_000): Boolean {
+        if (_state.value !is ConnectionState.Connected) return false
+        val status = sendCommand("STATUS", timeoutMs = timeoutMs) ?: return false
+        if (!status.optBoolean("ok")) return false
+        _state.value = connectedFromStatus(status)
+        return true
     }
 
     /** Update the connected state from an IR_STATUS or IR_SET_PINS response. */
@@ -230,6 +256,12 @@ class NrSession(
                 .ifEmpty { current.allowed5gChannels },
         )
     }
+
+    private fun optionalLong(source: JSONObject, key: String): Long? =
+        if (!source.has(key) || source.isNull(key)) null else source.optLong(key, 0L)
+
+    private fun optionalInt(source: JSONObject, key: String): Int? =
+        if (!source.has(key) || source.isNull(key)) null else source.optInt(key, 0)
 
     private fun parseChannelArray(source: JSONObject, key: String): List<Int> {
         val array = source.optJSONArray(key) ?: return emptyList()

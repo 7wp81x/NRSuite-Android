@@ -488,13 +488,13 @@ NRSuite uses a custom framing protocol (`FrameCodec` / `NrJson`) over USB serial
 
 ## Screenshots
 
-| Home | Modules | Logs |
+| Home | Devices | Logs |
 |---|---|---|
-| ![Home](screenshots/home.jpg) | ![Modules](screenshots/module-catalog.jpg) | ![Logs](screenshots/logs-screen.jpg) |
+| ![Home](screenshots/home.jpg) | ![Devices](screenshots/device-manager.jpg) | ![Logs](screenshots/logs-screen.jpg) |
 
-| Device Manager | WiFi Scan | Packet Sniffer |
+| Module Catalog | WiFi Scan | Packet Sniffer |
 |---|---|---|
-| ![Device Manager](screenshots/device-manager.jpg) | ![WiFi Scan](screenshots/wifi-scan.jpg) | ![Packet Sniffer](screenshots/packet-sniffer.jpg) |
+| ![Module Catalog](screenshots/module-catalog.jpg) | ![WiFi Scan](screenshots/wifi-scan.jpg) | ![Packet Sniffer](screenshots/packet-sniffer.jpg) |
 
 | Deauth Detector | Rogue AP Detector | BLE Scanner |
 |---|---|---|

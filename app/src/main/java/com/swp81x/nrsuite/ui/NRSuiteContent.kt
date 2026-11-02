@@ -132,6 +132,11 @@ import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.ir.IrRemoteSource
 import com.swp81x.nrsuite.core.ir.IrTransmitBackend
 import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
+import com.swp81x.nrsuite.core.update.AppUpdateInfo
+import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
+import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
+import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.defense.DeauthFeedFilter
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
@@ -949,7 +954,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "serial_monitor",
             "badusb",
         )) ||
-        (activeModuleId == null && selectedCategory == null && selectedTab == AppTab.HOME)
+        (activeModuleId == null && selectedCategory == null &&
+            selectedTab in setOf(AppTab.HOME, AppTab.DEVICES))
 
     // If a device snackbar is already showing, dismiss it when navigating to
     // a screen that has its own device connect/target flow.
@@ -1083,96 +1089,50 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         activeModuleId == "rfid_config" -> "RFID config"
         activeModuleId == "sensor_config" -> "Sensor config"
         activeModuleId == "devices" -> "Devices"
+        activeModuleId == "module_catalog" -> "All Modules"
         activeModule != null -> activeModule.title
         activeModuleId == "settings" -> "Settings"
         selectedCategory != null -> selectedCategory!!
+        selectedTab == AppTab.DEVICES -> "Devices"
+        selectedTab == AppTab.LOGS -> "Logs"
         else -> "NRSuite"
     }
 
     Scaffold(
         topBar = {
-            Column {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = activeTitle,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+            NRSuiteTopBar(
+                title = activeTitle,
+                showBack = showBack,
+                backDescription = when {
+                    irRemoteDetailVisible && irRemoteReturnTarget == "ir_search" ->
+                        "Back to IR Finder"
+                    irRemoteDetailVisible -> "Back to IR Remotes"
+                    else -> "Back"
                 },
-                navigationIcon = {
-                    if (showBack) {
-                        IconButton(onClick = navigateBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = when {
-                                    irRemoteDetailVisible && irRemoteReturnTarget == "ir_search" ->
-                                        "Back to IR Finder"
-                                    irRemoteDetailVisible -> "Back to IR Remotes"
-                                    else -> "Back"
-                                },
-                            )
-                        }
-                    }
+                onBack = navigateBack,
+                connectionState = connectionState,
+                hasDevices = devices.isNotEmpty(),
+                hasPermission = devices.firstOrNull()?.let {
+                    usbManager.hasPermission(it.device)
+                } == true,
+                hasPendingPermissions = pendingPermissionRequests.any { deviceId ->
+                    !isSerialMonitorActiveDevice(deviceId)
                 },
-                actions = {
-                    ConnectionStatusIndicator(
-                        state = connectionState,
-                        hasDevices = devices.isNotEmpty(),
-                        hasPermission = devices.firstOrNull()?.let {
-                            usbManager.hasPermission(it.device)
-                        } == true,
-                        hasPendingPermissions = pendingPermissionRequests.any { deviceId ->
-                            !isSerialMonitorActiveDevice(deviceId)
-                        },
-                    )
-                    IconButton(onClick = { activeModuleId = "settings" }) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Settings",
-                            tint = NrOnSurfaceVariant,
-                        )
-                    }
-                },
+                showCatalogAction = activeModuleId == null && selectedCategory == null,
+                onOpenCatalog = { activeModuleId = "module_catalog" },
+                onOpenSettings = { activeModuleId = "settings" },
             )
-            }
         },
         bottomBar = {
             if (activeModuleId == null && selectedCategory == null) {
-                NavigationBar(
-                    containerColor = NrSurface,
-                    tonalElevation = 0.dp,
-                ) {
-                    AppTab.entries.forEach { tab ->
-                        NavigationBarItem(
-                            selected = selectedTab == tab,
-                            onClick = {
-                                selectedTab = tab
-                                activeModuleId = null
-                                selectedCategory = null
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = NrAccent,
-                                selectedTextColor = NrAccent,
-                                indicatorColor = NrAccent.copy(alpha = 0.16f),
-                                unselectedIconColor = NrOnSurfaceVariant,
-                                unselectedTextColor = NrOnSurfaceVariant,
-                            ),
-                            icon = {
-                                Icon(
-                                    imageVector = when (tab) {
-                                        AppTab.HOME -> Icons.Default.Home
-                                        AppTab.MODULES -> Icons.Default.GridView
-                                        AppTab.LOGS -> Icons.Default.Terminal
-                                    },
-                                    contentDescription = tab.label,
-                                )
-                            },
-                            label = { Text(tab.label) },
-                        )
-                    }
-                }
+                NRSuiteBottomBar(
+                    selectedTab = selectedTab,
+                    onSelectTab = { tab ->
+                        selectedTab = tab
+                        activeModuleId = null
+                        selectedCategory = null
+                    },
+                )
             }
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
@@ -2053,6 +2013,18 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onConnect = { device -> connectOrRequestPermission(device) },
                     onDisconnect = viewModel::disconnect,
                     onDisconnectDevice = viewModel::disconnectDevice,
+                    onRefreshStatus = viewModel::refreshActiveDeviceStatus,
+                    modifier = Modifier,
+                )
+            }
+
+            activeModuleId == "module_catalog" -> {
+                ModulesScreen(
+                    modules = liveModules.filterNot { it.id == "ir_config" },
+                    onOpenModule = {
+                        viewModel.onModuleOpened(it)
+                        activeModuleId = it
+                    },
                     modifier = Modifier,
                 )
             }
@@ -2130,88 +2102,46 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 )
             }
 
-            activeModuleId == "firmware" -> SettingsScreen(
-                connectionState = connectionState,
-                exportDirectoryName = exportDirectoryName,
-                firmwareFileName = firmwareFlashName,
-                firmwareFlashSize = firmwareFlashSize,
-                firmwareFlashing = firmwareFlashing,
-                firmwareFlashProgress = firmwareFlashProgress,
-                firmwareFlashStatus = firmwareFlashStatus,
-                devices = devices,
-                usbManager = usbManager,
-                permissionRevision = permissionRevision,
-                selectedFlashTarget = firmwareTargetDevice,
-                onChooseExportDirectory = { folderPicker.launch(null) },
-                onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "application/x-binary")) },
-                onClearFirmware = viewModel::clearFirmwareFlashFile,
-                onRefreshDevices = viewModel::refreshDevices,
-                onRequestPermission = { device -> requestFirmwarePermission(device) },
-                onSelectFlashTarget = viewModel::selectFirmwareTarget,
-                onStartFirmwareFlash = viewModel::startFirmwareFlash,
-                firmwareReleases = firmwareReleases,
-                firmwareAssetDownload = firmwareAssetDownload,
-                onDownloadFirmwareAsset = viewModel::downloadFirmwareAsset,
-                firmwareManualRecovery = firmwareManualRecovery,
-                onArmManualFirmwareRecovery = viewModel::armManualFirmwareRecovery,
-                onFlashManualFirmwareNow = viewModel::flashManualFirmwareNow,
-                onFlashManualFirmwareWithReset = viewModel::flashManualFirmwareWithReset,
-                onDisarmManualFirmwareRecovery = viewModel::disarmManualFirmwareRecovery,
-                autoUpdateCheck = autoUpdateCheck,
-                updateCheckInProgress = updateCheckInProgress,
-                updateError = updateError,
-                onCheckForUpdates = { viewModel.checkForUpdates(force = true) },
-                onAutoCheckForUpdates = { viewModel.checkForUpdates(force = false) },
-                flasherOnly = true,
-                modifier = Modifier,
-            )
-
-            activeModuleId == "settings" -> SettingsScreen(
-                connectionState = connectionState,
-                exportDirectoryName = exportDirectoryName,
-                firmwareFileName = firmwareFlashName,
-                firmwareFlashSize = firmwareFlashSize,
-                firmwareFlashing = firmwareFlashing,
-                firmwareFlashProgress = firmwareFlashProgress,
-                firmwareFlashStatus = firmwareFlashStatus,
-                devices = devices,
-                usbManager = usbManager,
-                permissionRevision = permissionRevision,
-                selectedFlashTarget = firmwareTargetDevice,
-                onChooseExportDirectory = { folderPicker.launch(null) },
-                onChooseFirmware = { firmwarePicker.launch(arrayOf("application/octet-stream", "application/x-binary")) },
-                onClearFirmware = viewModel::clearFirmwareFlashFile,
-                onRefreshDevices = viewModel::refreshDevices,
-                onRequestPermission = { device -> requestFirmwarePermission(device) },
-                onSelectFlashTarget = viewModel::selectFirmwareTarget,
-                onStartFirmwareFlash = viewModel::startFirmwareFlash,
-                firmwareManualRecovery = firmwareManualRecovery,
-                onArmManualFirmwareRecovery = viewModel::armManualFirmwareRecovery,
-                onFlashManualFirmwareNow = viewModel::flashManualFirmwareNow,
-                onFlashManualFirmwareWithReset = viewModel::flashManualFirmwareWithReset,
-                onDisarmManualFirmwareRecovery = viewModel::disarmManualFirmwareRecovery,
-                ouiDatabaseStatus = ouiDatabaseStatus,
-                ouiDatabaseProgress = ouiDatabaseProgress,
-                onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
-                autoUpdateCheck = autoUpdateCheck,
-                updateCheckInProgress = updateCheckInProgress,
-                appUpdate = appUpdate,
-                appUpdateDownload = appUpdateDownload,
-                firmwareUpdate = firmwareUpdate,
-                updateError = updateError,
-                onAutoUpdateCheckChange = viewModel::setAutoUpdateCheck,
-                onCheckForUpdates = { viewModel.checkForUpdates(force = true) },
-                onDownloadAppUpdate = viewModel::downloadAppUpdate,
-                onInstallAppUpdate = viewModel::installAppUpdate,
-                onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
-                onOpenFirmwareFlasher = {
-                    viewModel.prepareFirmwareFlasherForUpdate()
-                    viewModel.onModuleOpened("firmware")
-                    activeModuleId = "firmware"
-                },
-                onClearUpdateDownloads = viewModel::clearUpdateDownloads,
-                modifier = Modifier,
-            )
+            activeModuleId == "firmware" || activeModuleId == "settings" -> {
+                NRSuiteSettingsRoute(
+                    connectionState = connectionState,
+                    exportDirectoryName = exportDirectoryName,
+                    firmwareFileName = firmwareFlashName,
+                    firmwareFlashSize = firmwareFlashSize,
+                    firmwareFlashing = firmwareFlashing,
+                    firmwareFlashProgress = firmwareFlashProgress,
+                    firmwareFlashStatus = firmwareFlashStatus,
+                    devices = devices,
+                    usbManager = usbManager,
+                    permissionRevision = permissionRevision,
+                    selectedFlashTarget = firmwareTargetDevice,
+                    firmwareReleases = firmwareReleases,
+                    firmwareAssetDownload = firmwareAssetDownload,
+                    firmwareManualRecovery = firmwareManualRecovery,
+                    autoUpdateCheck = autoUpdateCheck,
+                    updateCheckInProgress = updateCheckInProgress,
+                    appUpdate = appUpdate,
+                    appUpdateDownload = appUpdateDownload,
+                    firmwareUpdate = firmwareUpdate,
+                    updateError = updateError,
+                    ouiDatabaseStatus = ouiDatabaseStatus,
+                    ouiDatabaseProgress = ouiDatabaseProgress,
+                    flasherOnly = activeModuleId == "firmware",
+                    onChooseExportDirectory = { folderPicker.launch(null) },
+                    onChooseFirmware = {
+                        firmwarePicker.launch(
+                            arrayOf("application/octet-stream", "application/x-binary"),
+                        )
+                    },
+                    onRequestPermission = { device -> requestFirmwarePermission(device) },
+                    onOpenFirmwareFlasher = {
+                        viewModel.prepareFirmwareFlasherForUpdate()
+                        viewModel.onModuleOpened("firmware")
+                        activeModuleId = "firmware"
+                    },
+                    viewModel = viewModel,
+                )
+            }
 
             selectedCategory != null && selectedTab == AppTab.HOME -> {
                 val categoryModules = when (selectedCategory) {
@@ -2295,6 +2225,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     activeModuleId = it
                 },
                 onOpenCategory = { selectedCategory = it },
+                onBrowseAllModules = { activeModuleId = "module_catalog" },
                 recentModuleIds = recentModuleIds,
                 onRefreshDevices = viewModel::refreshDevices,
                 onConnect = { device ->
@@ -2305,16 +2236,27 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     }
                 },
                 onDisconnect = viewModel::disconnect,
-                onManageDevice = { activeModuleId = "devices" },
+                onManageDevice = {
+                    activeModuleId = null
+                    selectedCategory = null
+                    selectedTab = AppTab.DEVICES
+                },
                 modifier = Modifier,
             )
 
-            selectedTab == AppTab.MODULES -> ModulesScreen(
-                modules = liveModules.filterNot { it.id == "ir_config" },
-                onOpenModule = {
-                    viewModel.onModuleOpened(it)
-                    activeModuleId = it
-                },
+            selectedTab == AppTab.DEVICES -> DeviceScreen(
+                connectionState = connectionState,
+                devices = devices,
+                deviceConnectionStates = deviceConnectionStates,
+                deviceFingerprint = { viewModel.deviceFingerprintImpl(it) },
+                pendingPermissionRequests = pendingPermissionRequests,
+                disconnectingFingerprints = disconnectingFingerprints,
+                usbManager = usbManager,
+                onRefresh = viewModel::refreshDevices,
+                onConnect = { device -> connectOrRequestPermission(device) },
+                onDisconnect = viewModel::disconnect,
+                onDisconnectDevice = viewModel::disconnectDevice,
+                onRefreshStatus = viewModel::refreshActiveDeviceStatus,
                 modifier = Modifier,
             )
 
@@ -2330,4 +2272,183 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
         }
     }
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NRSuiteTopBar(
+    title: String,
+    showBack: Boolean,
+    backDescription: String,
+    onBack: () -> Unit,
+    connectionState: ConnectionState,
+    hasDevices: Boolean,
+    hasPermission: Boolean,
+    hasPendingPermissions: Boolean,
+    showCatalogAction: Boolean,
+    onOpenCatalog: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    TopAppBar(
+        title = {
+            Text(
+                text = title,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        navigationIcon = {
+            if (showBack) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = backDescription,
+                    )
+                }
+            }
+        },
+        actions = {
+            ConnectionStatusIndicator(
+                state = connectionState,
+                hasDevices = hasDevices,
+                hasPermission = hasPermission,
+                hasPendingPermissions = hasPendingPermissions,
+            )
+            if (showCatalogAction) {
+                IconButton(onClick = onOpenCatalog) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "All modules",
+                        tint = NrOnSurfaceVariant,
+                    )
+                }
+            }
+            IconButton(onClick = onOpenSettings) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Settings",
+                    tint = NrOnSurfaceVariant,
+                )
+            }
+        },
+    )
+}
+
+@Composable
+private fun NRSuiteBottomBar(
+    selectedTab: AppTab,
+    onSelectTab: (AppTab) -> Unit,
+) {
+    NavigationBar(
+        containerColor = NrSurface,
+        tonalElevation = 0.dp,
+    ) {
+        AppTab.entries.forEach { tab ->
+            NavigationBarItem(
+                selected = selectedTab == tab,
+                onClick = { onSelectTab(tab) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = NrAccent,
+                    selectedTextColor = NrAccent,
+                    indicatorColor = NrAccent.copy(alpha = 0.16f),
+                    unselectedIconColor = NrOnSurfaceVariant,
+                    unselectedTextColor = NrOnSurfaceVariant,
+                ),
+                icon = {
+                    Icon(
+                        imageVector = when (tab) {
+                            AppTab.HOME -> Icons.Default.Home
+                            AppTab.DEVICES -> Icons.Default.Usb
+                            AppTab.LOGS -> Icons.Default.Terminal
+                        },
+                        contentDescription = tab.label,
+                    )
+                },
+                label = { Text(tab.label) },
+            )
+        }
+    }
+}
+
+
+@Composable
+private fun NRSuiteSettingsRoute(
+    connectionState: ConnectionState,
+    exportDirectoryName: String,
+    firmwareFileName: String?,
+    firmwareFlashSize: Long,
+    firmwareFlashing: Boolean,
+    firmwareFlashProgress: Int,
+    firmwareFlashStatus: String?,
+    devices: List<UsbSerialDevice>,
+    usbManager: UsbManager,
+    permissionRevision: Int,
+    selectedFlashTarget: UsbSerialDevice?,
+    firmwareReleases: List<ReleaseInfo>,
+    firmwareAssetDownload: FirmwareAssetDownloadState,
+    firmwareManualRecovery: Boolean,
+    autoUpdateCheck: Boolean,
+    updateCheckInProgress: Boolean,
+    appUpdate: AppUpdateInfo?,
+    appUpdateDownload: AppUpdateDownloadState,
+    firmwareUpdate: FirmwareUpdateInfo?,
+    updateError: String?,
+    ouiDatabaseStatus: OuiDatabaseStatus,
+    ouiDatabaseProgress: Float?,
+    flasherOnly: Boolean,
+    onChooseExportDirectory: () -> Unit,
+    onChooseFirmware: () -> Unit,
+    onRequestPermission: (UsbDevice) -> Unit,
+    onOpenFirmwareFlasher: () -> Unit,
+    viewModel: MainViewModel,
+) {
+    SettingsScreen(
+        connectionState = connectionState,
+        exportDirectoryName = exportDirectoryName,
+        firmwareFileName = firmwareFileName,
+        firmwareFlashSize = firmwareFlashSize,
+        firmwareFlashing = firmwareFlashing,
+        firmwareFlashProgress = firmwareFlashProgress,
+        firmwareFlashStatus = firmwareFlashStatus,
+        devices = devices,
+        usbManager = usbManager,
+        permissionRevision = permissionRevision,
+        selectedFlashTarget = selectedFlashTarget,
+        onChooseExportDirectory = onChooseExportDirectory,
+        onChooseFirmware = onChooseFirmware,
+        onClearFirmware = viewModel::clearFirmwareFlashFile,
+        onRefreshDevices = viewModel::refreshDevices,
+        onRequestPermission = onRequestPermission,
+        onSelectFlashTarget = viewModel::selectFirmwareTarget,
+        onStartFirmwareFlash = viewModel::startFirmwareFlash,
+        firmwareReleases = firmwareReleases,
+        firmwareAssetDownload = firmwareAssetDownload,
+        onDownloadFirmwareAsset = viewModel::downloadFirmwareAsset,
+        firmwareManualRecovery = firmwareManualRecovery,
+        onArmManualFirmwareRecovery = viewModel::armManualFirmwareRecovery,
+        onFlashManualFirmwareNow = viewModel::flashManualFirmwareNow,
+        onFlashManualFirmwareWithReset = viewModel::flashManualFirmwareWithReset,
+        onDisarmManualFirmwareRecovery = viewModel::disarmManualFirmwareRecovery,
+        ouiDatabaseStatus = ouiDatabaseStatus,
+        ouiDatabaseProgress = ouiDatabaseProgress,
+        onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
+        autoUpdateCheck = autoUpdateCheck,
+        updateCheckInProgress = updateCheckInProgress,
+        appUpdate = appUpdate,
+        appUpdateDownload = appUpdateDownload,
+        firmwareUpdate = firmwareUpdate,
+        updateError = updateError,
+        onAutoUpdateCheckChange = viewModel::setAutoUpdateCheck,
+        onCheckForUpdates = { viewModel.checkForUpdates(force = true) },
+        onAutoCheckForUpdates = { viewModel.checkForUpdates(force = false) },
+        onDownloadAppUpdate = viewModel::downloadAppUpdate,
+        onInstallAppUpdate = viewModel::installAppUpdate,
+        onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
+        onOpenFirmwareFlasher = onOpenFirmwareFlasher,
+        onClearUpdateDownloads = viewModel::clearUpdateDownloads,
+        flasherOnly = flasherOnly,
+        modifier = Modifier,
+    )
 }

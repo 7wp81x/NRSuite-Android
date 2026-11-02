@@ -1541,6 +1541,7 @@ class MainViewModel(internal val app: Application) {
     fun onPermissionResult(device: UsbDevice, granted: Boolean) = this.onPermissionResultImpl(device, granted)
 
     fun connect(device: UsbDevice) = this.connectImpl(device)
+    fun refreshActiveDeviceStatus() = this.refreshActiveDeviceStatusImpl()
     fun markPermissionRequested(device: UsbDevice) = this.markPermissionRequestedImpl(device)
     fun clearPermissionRequest(deviceId: Int) = this.clearPermissionRequestImpl(deviceId)
     fun disconnectDevice(device: UsbDevice) = this.disconnectDeviceImpl(device)
@@ -2346,6 +2347,7 @@ class MainViewModel(internal val app: Application) {
     internal fun observe(fingerprint: String, session: NrSession) {
         val observers = listOf(
             scope.launch {
+                var wasConnected = false
                 session.state.collect { state ->
                     // A replaced session's observer may still be cancelling.
                     // Never let a stale session overwrite its replacement.
@@ -2358,15 +2360,25 @@ class MainViewModel(internal val app: Application) {
                     }
 
                     when (state) {
-                        is ConnectionState.Connecting -> tracked?.opening = true
+                        is ConnectionState.Connecting -> {
+                            tracked?.opening = true
+                            wasConnected = false
+                        }
                         is ConnectionState.Connected -> {
                             tracked?.opening = false
                             tracked?.openedOnce = true
-                            this@MainViewModel.checkForUpdates()
+                            if (!wasConnected) {
+                                this@MainViewModel.checkForUpdates()
+                            }
+                            wasConnected = true
                         }
-                        is ConnectionState.Failed -> tracked?.opening = false
+                        is ConnectionState.Failed -> {
+                            tracked?.opening = false
+                            wasConnected = false
+                        }
                         is ConnectionState.Disconnected -> {
                             tracked?.opening = false
+                            wasConnected = false
                             if (fingerprint == activeDeviceFingerprint) {
                                 this@MainViewModel.handleRfidDisconnectedImpl()
                             }
@@ -2392,6 +2404,15 @@ class MainViewModel(internal val app: Application) {
             },
             scope.launch {
                 session.logs.collect { appendLog(it) }
+            },
+            scope.launch {
+                while (isActive) {
+                    delay(5_000)
+                    val tracked = deviceSessions[fingerprint]
+                    if (tracked?.session !== session) break
+                    if (session.state.value !is ConnectionState.Connected) continue
+                    runCatching { session.refreshStatus() }
+                }
             },
             scope.launch {
                 session.events.collect { event ->
