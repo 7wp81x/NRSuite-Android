@@ -1952,6 +1952,8 @@ class MainViewModel(internal val app: Application) {
     fun selectWpsTarget(target: NetworkTarget) = this.selectWpsTargetImpl(target)
 
     fun setWpsOnlyFilter(enabled: Boolean) = this.setWpsOnlyFilterImpl(enabled)
+    fun setWpsCandidatePin(value: String) = this.setWpsCandidatePinImpl(value)
+    fun useGeneratedWpsPin() = this.useGeneratedWpsPinImpl()
 
     fun startWpsPixieLiveAttempt(pin: String? = null, source: WpsPinSource? = null) =
         this.startWpsPixieLiveAttemptImpl(pin, source)

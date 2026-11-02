@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -38,6 +39,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -56,12 +58,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.MainViewModel
 import com.swp81x.nrsuite.WpsPixieLiveLogEntry
 import com.swp81x.nrsuite.WpsPixieLiveUiState
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
+import com.swp81x.nrsuite.core.wps.WpsPinSource
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
@@ -89,6 +93,8 @@ fun WpsPixieLiveRoute(
         onScan = viewModel::scanWpsTargets,
         onWpsOnlyChange = viewModel::setWpsOnlyFilter,
         onSelectTarget = viewModel::selectWpsTarget,
+        onCandidatePinChange = viewModel::setWpsCandidatePin,
+        onUseGeneratedPin = viewModel::useGeneratedWpsPin,
         onStart = { viewModel.startWpsPixieLiveAttempt() },
         onStop = viewModel::stopWpsPixieLiveAttempt,
         onClearLogs = viewModel::clearWpsPixieLiveLog,
@@ -103,6 +109,8 @@ fun WpsPixieLiveScreen(
     onScan: () -> Unit,
     onWpsOnlyChange: (Boolean) -> Unit,
     onSelectTarget: (NetworkTarget) -> Unit,
+    onCandidatePinChange: (String) -> Unit,
+    onUseGeneratedPin: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onClearLogs: () -> Unit,
@@ -112,6 +120,9 @@ fun WpsPixieLiveScreen(
     val clipboard = LocalClipboardManager.current
     val displayedTargets = state.targets.filter { !state.wpsOnly || it.wps }
     val selected = state.selectedTarget
+    val candidatePinValid =
+        (state.candidatePin.length == 4 || state.candidatePin.length == 8) &&
+            state.candidatePin.all { it.isDigit() }
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var configExpanded by rememberSaveable { mutableStateOf(true) }
     var confirmStart by remember { mutableStateOf(false) }
@@ -172,10 +183,14 @@ fun WpsPixieLiveScreen(
                     wpsOnly = state.wpsOnly,
                     targets = displayedTargets,
                     selected = selected,
+                    candidatePin = state.candidatePin,
+                    candidateSource = state.candidateSource,
                     onToggleExpanded = { configExpanded = !configExpanded },
                     onScan = onScan,
                     onWpsOnlyChange = onWpsOnlyChange,
                     onSelectTarget = onSelectTarget,
+                    onCandidatePinChange = onCandidatePinChange,
+                    onUseGeneratedPin = onUseGeneratedPin,
                 )
 
                 if (state.running || state.psk != null || state.recoveredPin != null ||
@@ -215,6 +230,11 @@ fun WpsPixieLiveScreen(
                             "AP may be WPS locked. Wait before retrying.",
                             Toast.LENGTH_SHORT,
                         ).show()
+                        !candidatePinValid -> Toast.makeText(
+                            context,
+                            "Enter a 4- or 8-digit WPS PIN.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
                         else -> confirmStart = true
                     }
                 },
@@ -251,6 +271,11 @@ fun WpsPixieLiveScreen(
                         } else {
                             "The selected PIN will be verified through the full M4-M8 exchange. " +
                                 "A wrong PIN or AP lockout can trigger a WPS cool-down."
+                        } +
+                        if (!candidatePinValid) {
+                            "\n\nEnter a 4- or 8-digit numeric PIN before running."
+                        } else {
+                            ""
                         },
                 )
             },
@@ -260,6 +285,7 @@ fun WpsPixieLiveScreen(
                         confirmStart = false
                         onStart()
                     },
+                    enabled = candidatePinValid,
                 ) {
                     Text("Run")
                 }
@@ -282,11 +308,19 @@ private fun TargetConfigCard(
     wpsOnly: Boolean,
     targets: List<NetworkTarget>,
     selected: NetworkTarget?,
+    candidatePin: String,
+    candidateSource: WpsPinSource?,
     onToggleExpanded: () -> Unit,
     onScan: () -> Unit,
     onWpsOnlyChange: (Boolean) -> Unit,
     onSelectTarget: (NetworkTarget) -> Unit,
+    onCandidatePinChange: (String) -> Unit,
+    onUseGeneratedPin: () -> Unit,
 ) {
+    var pinEditorExpanded by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(running) {
+        if (running) pinEditorExpanded = false
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
@@ -393,6 +427,101 @@ private fun TargetConfigCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
+                }
+
+                if (selected != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = NrSurfaceVariant),
+                        border = BorderStroke(0.5.dp, NrOutline),
+                        shape = RoundedCornerShape(10.dp),
+                    ) {
+                        Column(Modifier.padding(10.dp)) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = !running) {
+                                        pinEditorExpanded = !pinEditorExpanded
+                                    },
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Candidate PIN",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = NrOnSurfaceVariant,
+                                    )
+                                    Text(
+                                        text = candidatePin.ifBlank { "—" },
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                        ),
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Text(
+                                        text = "Source: ${candidateSource?.name?.lowercase() ?: "unknown"}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = NrOnSurfaceVariant,
+                                    )
+                                }
+                                Icon(
+                                    imageVector = if (pinEditorExpanded) {
+                                        Icons.Default.ExpandLess
+                                    } else {
+                                        Icons.Default.ExpandMore
+                                    },
+                                    contentDescription = if (pinEditorExpanded) {
+                                        "Collapse candidate PIN editor"
+                                    } else {
+                                        "Expand candidate PIN editor"
+                                    },
+                                    tint = NrOnSurfaceVariant,
+                                )
+                            }
+
+                            if (pinEditorExpanded) {
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = candidatePin,
+                                    onValueChange = onCandidatePinChange,
+                                    enabled = !running,
+                                    singleLine = true,
+                                    label = { Text("4- or 8-digit WPS PIN") },
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                    ),
+                                    isError = candidatePin.isNotEmpty() &&
+                                        candidatePin.length != 4 &&
+                                        candidatePin.length != 8,
+                                    supportingText = {
+                                        Text(
+                                            "Manual PIN uses full online M4-M8 validation. " +
+                                                "A wrong PIN may trigger an AP lockout.",
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = "Editing replaces the generated candidate.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = NrOnSurfaceVariant,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    TextButton(
+                                        onClick = onUseGeneratedPin,
+                                        enabled = !running,
+                                    ) {
+                                        Text("Use generated")
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

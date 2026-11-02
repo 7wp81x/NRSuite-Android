@@ -217,6 +217,60 @@ internal fun MainViewModel.selectWpsTargetImpl(target: NetworkTarget) {
     logWpsPixieLive("Candidate PIN $candidatePin from ${source.name.lowercase()}.")
 }
 
+internal fun MainViewModel.setWpsCandidatePinImpl(value: String) {
+    if (_wpsPixieLive.value.running) return
+    val normalized = value.filter { it.isDigit() }.take(8)
+    _wpsPixieLive.update { state ->
+        state.copy(
+            candidatePin = normalized,
+            candidateSource = WpsPinSource.MANUAL,
+            material = null,
+            firstHalfValid = null,
+            recoveredPin = null,
+            psk = null,
+            error = null,
+            locked = false,
+            stage = "",
+            message = if (normalized.length == 4 || normalized.length == 8) {
+                "Manual PIN ready for full M4-M8 validation."
+            } else {
+                "Enter a 4- or 8-digit WPS PIN."
+            },
+            autoRetryUsed = false,
+            retryCountdownSeconds = null,
+        )
+    }
+    logWpsPixieLive("Candidate PIN changed to ${normalized.ifBlank { "(empty)" }} (manual).")
+}
+
+internal fun MainViewModel.useGeneratedWpsPinImpl() {
+    if (_wpsPixieLive.value.running) return
+    val target = _wpsPixieLive.value.selectedTarget ?: return
+    val generated = WpsPinGenerator.getLikely(target.bssid)
+    val pin = generated ?: "12345670"
+    _wpsPixieLive.update { state ->
+        state.copy(
+            candidatePin = pin,
+            candidateSource = WpsPinSource.GENERATED,
+            material = null,
+            firstHalfValid = null,
+            recoveredPin = null,
+            psk = null,
+            error = null,
+            locked = false,
+            stage = "",
+            message = if (generated != null) {
+                "Generated likely PIN restored."
+            } else {
+                "Fallback PIN 12345670 restored."
+            },
+            autoRetryUsed = false,
+            retryCountdownSeconds = null,
+        )
+    }
+    logWpsPixieLive("Candidate PIN reset to generated value $pin.")
+}
+
 internal fun MainViewModel.startWpsPixieLiveAttemptImpl(
     pinOverride: String? = null,
     sourceOverride: WpsPinSource? = null,
