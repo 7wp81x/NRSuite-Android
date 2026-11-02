@@ -483,6 +483,7 @@ class MainViewModel(internal val app: Application) {
     internal var irTransmitJob: Job? = null
     internal var irSearchJob: Job? = null
     internal var irDatabaseJob: Job? = null
+    internal var irScanJob: Job? = null
     internal var irJammerJob: Job? = null
     internal var lastIrSearchNotificationState: IrSearchRunState = IrSearchRunState.IDLE
 
@@ -1951,6 +1952,8 @@ class MainViewModel(internal val app: Application) {
     fun selectWpsTarget(target: NetworkTarget) = this.selectWpsTargetImpl(target)
 
     fun setWpsOnlyFilter(enabled: Boolean) = this.setWpsOnlyFilterImpl(enabled)
+    fun setWpsCandidatePin(value: String) = this.setWpsCandidatePinImpl(value)
+    fun useGeneratedWpsPin() = this.useGeneratedWpsPinImpl()
 
     fun startWpsPixieLiveAttempt(pin: String? = null, source: WpsPinSource? = null) =
         this.startWpsPixieLiveAttemptImpl(pin, source)
