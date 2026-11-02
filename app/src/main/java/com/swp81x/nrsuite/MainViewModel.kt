@@ -483,6 +483,7 @@ class MainViewModel(internal val app: Application) {
     internal var irTransmitJob: Job? = null
     internal var irSearchJob: Job? = null
     internal var irDatabaseJob: Job? = null
+    internal var irScanJob: Job? = null
     internal var irJammerJob: Job? = null
     internal var lastIrSearchNotificationState: IrSearchRunState = IrSearchRunState.IDLE
 
