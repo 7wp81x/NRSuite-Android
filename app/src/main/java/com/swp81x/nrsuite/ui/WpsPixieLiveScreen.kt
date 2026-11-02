@@ -392,43 +392,6 @@ private fun TargetConfigCard(
                     )
                 }
 
-                if (targets.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 260.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        items(targets, key = { it.bssid }) { target ->
-                            NetworkTargetRow(
-                                ssid = target.ssid,
-                                bssid = target.bssid,
-                                channel = target.channel,
-                                rssi = target.rssi,
-                                security = target.security,
-                                selected = selected?.bssid?.equals(target.bssid, ignoreCase = true) == true,
-                                wps = target.wps,
-                                wpsColor = StatusGreen,
-                                wpsLockState = target.wpsLockState,
-                                vendor = target.vendor,
-                                ouiWhitelisted = target.ouiWhitelisted,
-                                ouiBlacklisted = target.ouiBlacklisted,
-                                enabled = !running && target.wps,
-                                onClick = { onSelectTarget(target) },
-                                modifier = Modifier.padding(vertical = 3.dp),
-                            )
-                        }
-                    }
-                } else if (!scanning) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "No matching networks yet. Run a scan to populate this list.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                }
-
                 if (selected != null) {
                     Spacer(Modifier.height(10.dp))
                     Card(
@@ -522,6 +485,44 @@ private fun TargetConfigCard(
                             }
                         }
                     }
+
+                if (targets.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 260.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        items(targets, key = { it.bssid }) { target ->
+                            NetworkTargetRow(
+                                ssid = target.ssid,
+                                bssid = target.bssid,
+                                channel = target.channel,
+                                rssi = target.rssi,
+                                security = target.security,
+                                selected = selected?.bssid?.equals(target.bssid, ignoreCase = true) == true,
+                                wps = target.wps,
+                                wpsColor = StatusGreen,
+                                wpsLockState = target.wpsLockState,
+                                vendor = target.vendor,
+                                ouiWhitelisted = target.ouiWhitelisted,
+                                ouiBlacklisted = target.ouiBlacklisted,
+                                enabled = !running && target.wps,
+                                onClick = { onSelectTarget(target) },
+                                modifier = Modifier.padding(vertical = 3.dp),
+                            )
+                        }
+                    }
+                } else if (!scanning) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "No matching networks yet. Run a scan to populate this list.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+
                 }
             }
         }
