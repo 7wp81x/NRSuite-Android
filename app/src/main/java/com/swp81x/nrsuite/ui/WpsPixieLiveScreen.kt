@@ -485,6 +485,7 @@ private fun TargetConfigCard(
                             }
                         }
                     }
+                }
 
                 if (targets.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
@@ -521,8 +522,6 @@ private fun TargetConfigCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
-                }
-
                 }
             }
         }
