@@ -10,7 +10,7 @@
 
 **NRSuite turns a phone and a cheap ESP32 board into a portable Wi-Fi/BLE security research platform** - no laptop required.
 
-Install the Android app, flash an ESP32 over USB-OTG with NRSuite firmware, and the app drives it as a combined offense/defense toolkit: Wi-Fi recon and attack modules, passive threat detection, BLE tooling, IR, BadUSB/HID, and more - all from a single pocketable setup.
+Install the Android app, flash an ESP32 over USB-OTG with NRSuite firmware, and the app drives it as a combined offense/defense toolkit: Wi-Fi recon and attack modules, WPS Pixie Dust and lock/attempt detection, passive threat detection, BLE tooling, IR, BadUSB/HID, and more - all from a single pocketable setup.
 
 > **Authorized use only.** NRSuite is for security research and testing on networks and devices you own or are explicitly authorized to test. See [LEGAL.md](./LEGAL.md).
 
@@ -18,17 +18,11 @@ Install the Android app, flash an ESP32 over USB-OTG with NRSuite firmware, and 
 
 ## Quick Start
 
-```sh
-# 1. Clone and build the app
-git clone https://github.com/7wp81x/nrsuite-android.git
-cd nrsuite-android
-./gradlew assembleDebug
+1. Grab the latest signed [prebuilt APK](../../releases) and install it - verify its SHA256 first, see [Installation](#installation).
+2. Flash an ESP32 with NRSuite firmware using the in-app flasher (no PC needed).
+3. Connect ESP32 ↔ phone via USB-OTG, open the app, grant USB permission.
 
-# 2. Flash an ESP32 with NRSuite firmware (in-app flasher, or see nrsuite-firmware)
-# 3. Connect ESP32 <-> phone via USB-OTG, open the app, grant USB permission
-```
-
-Prefer not to build from source? Grab the latest signed [prebuilt APK](../../releases) instead - see [Installation](#installation).
+Want to build from source instead? See [Building from Source](#building-from-source).
 
 ---
 
@@ -49,6 +43,7 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 - [Features](#features)
 - [Usage Guide](#usage-guide)
 - [Installation](#installation)
+- [Updating](#updating)
 - [Getting Started](#getting-started)
 - [Requirements](#requirements)
 - [Building from Source](#building-from-source)
@@ -66,35 +61,140 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 
 ## Features
 
-<details>
-<summary><strong>Wireless</strong></summary>
+Categories below match the app's actual module grid and navigation.
+
+### Board Capability Matrix
+
+Not every ESP32 variant supports every capability. Check your board before relying on a feature:
+
+| Board | Wi-Fi scan/sniff/deauth/portal | BLE (scan/GATT/HID) | Mass Storage / BadUSB | C5 regulatory channel filtering |
+|---|---|---|---|---|
+| ESP32 (classic) | ✅ | ✅ | ❌ | ❌ |
+| ESP32-C3 | ✅ | ✅ | ❌ | ❌ |
+| ESP32-S2 | ✅ | ❌ | ✅ | ❌ |
+| ESP32-S3 | ✅ | ✅ | ✅ | ❌ |
+| ESP32-C5 | ✅ | ✅ | ❌ | ✅ |
+
+See [nrsuite-firmware](https://github.com/7wp81x/nrsuite-firmware) for the authoritative per-board build matrix - this table covers core transport capabilities, not every individual module.
+
+<details open>
+<summary><strong>WiFi Recon</strong></summary>
 
 - [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; AUTO 2.4/5 GHz and regulatory-country channel filtering on C5-capable firmware; serialized/reliable scans with retry, previous-result preservation, and response-vs-event transport diagnostics
-- [x] **Beacon Spam** - Overview / SSID Lists tabs, custom or hidden SSIDs, saved-list CRUD, and a built-in short-form Rickroll preset
-- [x] **Deauthentication** - finite burst or unlimited loop until stopped, with elapsed time, frames/sec, sent/failed telemetry, multi-target selection, and app-side per-target channel hopping
-- [x] **Evil Twin** - rogue AP with captive-portal HTML, captured-password verification, persistent results after auto-stop, FAB start/stop progress, and dedicated visitor/metric logs
-- [x] **Captive Portal** - file-backed custom HTML, GET and POST form capture, persistent HTTP/DNS listeners across restarts, hidden helper-AP restore, bounded visitor logging, and separate Portal/Evil Twin metrics
-- [x] **Portal authoring guide** - [Captive Portal / Evil Twin HTML authoring](docs/CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)
 - [x] **Packet Sniffer** - monitor-mode capture with PCAP export; per-module Auto/2.4/5 GHz hopping, target-channel-aware fixed capture, and retrying deauth assist that starts after the sniffer
-- [x] **Hidden AP Revealer** - passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution
 - [x] **Probe Request Monitor** - probe requests by MAC/SSID/channel/RSSI with vendor and randomized-MAC indication
 - [x] **Channel Analyzer** - FAB-driven scan with loading state, compact 2.4/5 GHz occupancy bars, selected-channel detail, and a scrollable nearby-AP list sorted by RSSI with band filters and WPS/security metadata
+- [x] **Hidden AP Revealer** - passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution
+
+</details>
+
+<details open>
+<summary><strong>WiFi Attacks</strong></summary>
+
+- [x] **WPS Pixie Dust** - live registrar flow with module-isolated target scans, AP-lock preflight, M3-only capture, on-phone Pixiewps recovery, same-session recovered-PIN continuation, and PIN/PSK persistence on all supported ESP32 targets
+- [x] **Evil Twin** - rogue AP with captive-portal HTML, captured-password verification, persistent results after auto-stop, FAB start/stop progress, and dedicated visitor/metric logs
+- [x] **Captive Portal** - file-backed custom HTML, GET and POST form capture, persistent HTTP/DNS listeners across restarts, hidden helper-AP restore, bounded visitor logging, and separate Portal/Evil Twin metrics
+- [x] **NRuGochi** - Pwnagotchi-style channel-density RECON/INTERACT loop, multi-AP authorized deauth with frame telemetry, all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` output, mood UI, and today/total stats
+- [x] **Deauth** - finite burst or unlimited loop until stopped, with elapsed time, frames/sec, sent/failed telemetry, multi-target selection, and app-side per-target channel hopping
+- [x] **Beacon** - broadcast custom or hidden SSIDs; Overview / SSID Lists tabs, saved-list CRUD, and a built-in short-form Rickroll preset
 - [x] **HTML Template Manager** - shared Portal/Evil Twin template tab with template dropdown, custom-file picker, import, rename, delete, SHA-256 duplicate rejection, 16 KB warning, 24 KB hard limit, and start-time firmware heap preflight
-- [x] **WiFi Config OUI rules** - manage Rogue AP whitelist/blacklist rules from WiFi Config
+- [x] **Portal authoring guide** - [Captive Portal / Evil Twin HTML authoring](docs/CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)
 - [ ] **PMKID Capture**
 
 </details>
 
-<details>
-<summary><strong>Detection</strong></summary>
+<details open>
+<summary><strong>WiFi Defense</strong></summary>
 
 - [x] **Deauth Detector** - passive deauth/disassoc monitoring with BSSID, client, RSSI, and reason filters; async alerts; live logs
-- [x] **Rogue AP Detector** - compares nearby visible APs and OUI rules to flag duplicate SSIDs, security downgrades, and suspected impersonation
-- [x] **Client/Presence Detector** - passive probe/assoc/reassoc/auth monitoring with optional active deauth-trigger mode
-- [x] **Tracker Detector** - Find My / AirTag-style advertisement detection with repeated sightings
+- [x] **Rogue AP Detector** - compares nearby visible APs and OUI rules to flag duplicate SSIDs, security downgrades, and suspected impersonation; whitelist/blacklist OUI rules managed from WiFi Config
+- [x] **Client Detector** - passive probe/assoc/reassoc/auth monitoring with optional active deauth-trigger mode
+- [x] **WPS Lock Detector** - passive scan of nearby WPS APs with `Locked`, `Likely unlocked`, and `Unknown` lock-state reporting
+- [x] **WPS Attempt Detector** - scan and multi-select nearby WPS APs, then passively monitor only their BSSIDs/channels for Identity/M1–M8 activity with source MAC/vendor, progression, and low/medium/high risk scoring; keeps a foreground-service notification while monitoring and shows active state in the module catalog
 - [ ] **Karma/MANA Detector**
-- [ ] **Unauthorized RFID Reader Detector**
 - [ ] **Jam Detector** (detection only - see [FEATURES.md](./FEATURES.md#explicitly-out-of-scope))
+
+</details>
+
+<details>
+<summary><strong>Planned Wi-Fi automation</strong></summary>
+
+See [`../WIFI-AUTOMATION-ROADMAP.md`](../WIFI-AUTOMATION-ROADMAP.md) for the full design and acceptance criteria.
+
+- [x] Credential Manager QR sharing
+- [x] resumable WPA cracker jobs, multiple/compressed wordlists, direct handshake linkage, and `.22000` export
+- [ ] single-target Wifite-style Auto Capture + Crack; Evil Twin remains explicitly confirmed
+- [ ] custom STA/AP MAC configuration and a separate experimental repeater prototype
+
+</details>
+
+<details>
+<summary><strong>Credentials</strong></summary>
+
+- [x] **Credential Manager** - local storage and management of captured credentials, with compact Evil Twin/WPA Cracker/WPS Pixie rows and a separate WPS PIN row; per-credential standard Wi-Fi QR generated locally with ZXing, QR image sharing/payload copy, and WPS PIN kept separate
+- [x] **WPA/WPA2 Cracker** - offline dictionary cracking with WPA*02 `.22000` import, multi-target/select-all and manual single-target modes, best M1/M2 selection, pause/resume, foreground progress, and checkpointed sessions
+- [x] **PCAP to .hs22000** - multi-select classic PCAP merge into a Hashcat `.22000` file; automatic best-handshake-per-BSSID+station dedupe; automatic SSID extraction; dropdown-based BSSID→ESSID overrides; preview, successful-export display, and malformed/missing-SSID reporting
+
+</details>
+
+<details>
+<summary><strong>BLE</strong></summary>
+
+- [x] **BLE Scanner** - device discovery with names, RSSI, manufacturer data, service UUIDs, service badges, and module-owned scan lifecycle
+- [x] **BLE GATT Profile** - read-only service/characteristic enumeration with integrated BLE target scanner
+- [x] **Tracker Detector** - Find My / AirTag-style advertisement detection with repeated sightings
+- [ ] **FastPair Model Identification** - map FastPair model IDs to known device names/types
+
+</details>
+
+<details>
+<summary><strong>Sensors</strong></summary>
+
+- [x] **mmWave Radar (LD2450)** - 120° fan with green blurred dots, heartbeat scan/sleep mode, position-based dot persistence, configurable dot cap, scan wave animation, max-range display control, and no-data/parse-error/zero-target states
+
+</details>
+
+<details>
+<summary><strong>Mesh</strong></summary>
+
+Provision, monitor, and control the ESP-NOW mesh from its own module. The underlying mesh capabilities are still experimental - see [Mesh (ESP-NOW) - Experimental](#mesh-esp-now---experimental) below for status.
+
+</details>
+
+<details>
+<summary><strong>Tools</strong></summary>
+
+- [x] **MAC Lookup** - offline OUI/vendor lookup using the bundled local OUI snapshot, with locally-administered/multicast indicators and copy/share actions; no map or network request
+- [x] **BSSID Geolocation** - offline OUI/vendor lookup plus approximate Wi-Fi access-point location, persistent lookup history, and an embedded Leaflet map with external Google Maps fallback
+
+</details>
+
+<details>
+<summary><strong>HID / BadUSB</strong></summary>
+
+- [x] **Ducky Editor** - create, import, and export DuckyScript payloads
+- [x] **BLE HID** - BadBLE payloads and realtime keyboard input, Bluetooth LE keyboard/mouse HID and DuckyScript payloads
+- [x] **BadUSB** - native USB HID payload injection
+- [x] **PIN Bruteforce** - supervised native-HID range/wordlist tester; one-shot boot-arm like BadUSB; max-attempt cap, progress/ETA, configurable typing/start delays, saved sessions, compact attempt feed
+- [x] **BLE HID PIN Bruteforce** - hidden/experimental BLE-HID tester retained for future unlocked-host and mesh HID work; not exposed in the normal module grid, lock-screen use is unsupported
+- [x] **Multi-device USB sessions** - connect and use multiple USB serial devices independently, with per-device permissions and connection state; idle-session reuse keeps S2 CDC stable on user-initiated disconnect
+- [x] **BadUSB device picker** - choose the target USB device without interrupting other connections
+
+</details>
+
+<details>
+<summary><strong>Storage</strong></summary>
+
+- [x] **Mass Storage** - list/delete files on ESP32 flash and enter USB MSC mode
+
+</details>
+
+<details>
+<summary><strong>Firmware</strong></summary>
+
+- [x] **Firmware Flasher** - flash merged NRSuite firmware directly from the app over USB; supports ESP32, S2, S3, C3, and C5 images with target-chip validation, esptool-aligned reset timing, C5 SYNC/SPI-attach handling, TinyUSB-to-ROM bootloader restart, automatic manual-recovery fallback, and background foreground-service progress notification
+- [x] **Serial Monitor** - raw USB serial monitor for any ESP32 or USB-UART firmware, with reliable clipboard copy, bounded log retention, and visible save/export feedback
+- [x] **Persistent firmware device ID** - `NRxxxxxxx` NVS ID shown in the app so devices remain identifiable across reconnects
 
 </details>
 
@@ -110,78 +210,12 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 
 </details>
 
-<details>
-<summary><strong>BLE</strong></summary>
-
-- [x] **BLE Scanner** - device discovery with names, RSSI, manufacturer data, service UUIDs, service badges, and module-owned scan lifecycle
-- [x] **BLE GATT Profile** - read-only service/characteristic enumeration with integrated BLE target scanner
-- [x] **BLE HID** - Bluetooth LE keyboard/mouse HID and DuckyScript payloads
-- [ ] **FastPair Model Identification** - map FastPair model IDs to known device names/types
-
-</details>
-
-<details>
-<summary><strong>Sensors</strong></summary>
-
-- [x] **mmWave Radar (LD2450)** - 120° fan with green blurred dots, heartbeat scan/sleep mode, position-based dot persistence, configurable dot cap, scan wave animation, max-range display control, and no-data/parse-error/zero-target states
-- [ ] **Zone alerts / mesh broadcast** - disabled until firmware zone commands or the mesh branch is integrated
-
-</details>
-
-<details>
-<summary><strong>HID / BadUSB</strong></summary>
-
-- [x] **Ducky Script Editor** - create, import, and export DuckyScript payloads
-- [x] **BadUSB** - HID injection via USB
-- [x] **PIN Bruteforce** - Supervised native-HID range/wordlist tester; one-shot boot-arm like BadUSB; max-attempt cap, progress/ETA, configurable typing/start delays, saved sessions, compact attempt feed
-- [x] **BLE HID PIN Bruteforce** - Hidden/experimental BLE-HID tester retained for future unlocked-host and mesh HID work; lock-screen use is unsupported
-- [x] **Multi-device USB sessions** - connect and use multiple USB serial devices independently, with per-device permissions and connection state
-- [x] **BadUSB device picker** - choose the target USB device without interrupting other connections
-
-</details>
-
-<details>
-<summary><strong>Credentials</strong></summary>
-
-- [x] **WPA Handshake Capture/Crack** - offline dictionary cracking with WPA*02 `.22000` import, multi-target/select-all and manual single-target modes, best M1/M2 selection, pause/resume, foreground progress, and checkpointed sessions
-- [x] **Deauth telemetry** - unlimited loop plus elapsed time, frames/sec, sent, and failed counters
-- [x] **WPS Pixie Dust** - live registrar flow with module-isolated target scans, AP-lock preflight, M3-only capture, on-phone Pixiewps recovery, same-session recovered-PIN continuation, and PIN/PSK persistence on all supported ESP32 targets
-- [x] **WPS Lock Detector** - passive scan of nearby WPS APs with `Locked`, `Likely unlocked`, and `Unknown` lock-state reporting
-- [x] **WPS Attempt Detector** - scan and multi-select nearby WPS APs, then passively monitor only their BSSIDs/channels for Identity/M1–M8 activity with source MAC/vendor, progression, and low/medium/high risk scoring; keeps a foreground-service notification while monitoring and shows active state in the module catalog
-- [x] **Nrugochi** - Pwnagotchi-style channel-density RECON/INTERACT loop, multi-AP authorized deauth with frame telemetry, all-EAPOL/all-beacon capture, per-BSSID `HS_<BSSID>.pcap` output, mood UI, and today/total stats
-- [x] **Credential Manager** - local storage and management of captured credentials with compact Evil Twin/WPA Cracker/WPS Pixie rows and a separate WPS PIN row
-- [x] **Credential QR sharing** - per-credential standard Wi-Fi QR generated locally with ZXing, QR image sharing/payload copy, and WPS PIN kept separate
-
-</details>
-
-### Planned Wi-Fi automation
-
-See [`../WIFI-AUTOMATION-ROADMAP.md`](../WIFI-AUTOMATION-ROADMAP.md) for the full design and acceptance criteria.
-
-- Credential Manager QR sharing
-- resumable WPA cracker jobs, multiple/compressed wordlists, direct handshake linkage, and `.22000` export
-- single-target Wifite-style Auto Capture + Crack; Evil Twin remains explicitly confirmed
-- custom STA/AP MAC configuration and a separate experimental repeater prototype
-
-<details>
-<summary><strong>Storage, Firmware & Tools</strong></summary>
-
-- [x] **Mass Storage** - list/delete files on ESP32 flash and enter USB MSC mode
-- [x] **ESP32 Flasher** - flash merged NRSuite firmware directly from the app over USB; supports ESP32, S2, S3, C3, and C5 images with target-chip validation
-- [x] **Serial Monitor** - raw USB serial monitor with reliable clipboard copy, bounded log retention, and visible save/export feedback
-- [x] **BSSID Geolocation** - offline OUI/vendor lookup plus approximate Wi-Fi access-point location, persistent lookup history, and an embedded Leaflet map with external Google Maps fallback
-- [x] **Offline MAC Lookup** - separate OUI/vendor lookup using the bundled local OUI snapshot, with locally-administered/multicast indicators and copy/share actions; no map or network request
-- [x] **Rogue AP OUI rules** - whitelist/blacklist OUI rules from WiFi Config for the Rogue AP Detector
-- [x] **Persistent firmware device ID** - `NRxxxxxxx` NVS ID shown in the app so devices remain identifiable across reconnects
-
-</details>
-
 ### Visible but not yet functional
 
 The following modules appear in the app as disabled ("Unavailable") placeholder cards, reserving their place in the catalog ahead of hardware support:
 
-- [ ] **RF** (Sub-GHz)
-- [ ] **RFID/NFC** - PN532 code is retained but hidden/disabled pending reliable hardware validation
+- [ ] **RF** (Sub-GHz) - radio frequency module
+- [ ] **RFID** - PN532 code is retained but hidden/disabled pending reliable hardware validation; read (125kHz + 13.56MHz), access-control analyzer, write/clone, and an unauthorized-reader detector are all planned here once hardware support lands
 
 ### Planned
 
@@ -202,7 +236,7 @@ For a full status and roadmap breakdown across every phase, see [FEATURES.md](./
 - [x] **Peer snapshots, chip metadata, RSSI, and online state**
 - [x] **Configurable mesh channel `1..13` and recovery hopping**
 - [x] **Master-requested channel switching with ACK/commit flow**
-- [x] **Distributed node-health sensor reporting**
+- [x] **Distributed node-health sensor reporting** - hardware-validated on S3 + S2
 - [x] **Distributed same-channel Deauth Detector reporting** - hardware-validated on S3 + S2
 - [ ] **Fixed/hop detector windows final hardware validation**
 - [ ] **Same-frame deauth correlation**
@@ -248,6 +282,7 @@ For a full status and roadmap breakdown across every phase, see [FEATURES.md](./
 
 ---
 
+
 ## Usage Guide
 
 See [docs/USAGE-GUIDE.md](docs/USAGE-GUIDE.md) for:
@@ -268,16 +303,23 @@ The guide is intentionally general and is not tied to a single release version.
 ### Option A - Prebuilt APK (recommended for beta)
 
 1. Download the latest `nrsuite-vX.X.X-beta.apk` from [Releases](../../releases).
-2. Verify the SHA256 checksum listed in the release notes before installing:
-   ```sh
-   # Linux / macOS
-   sha256sum nrsuite-vX.X.X-beta.apk
+2. Enable **Install from unknown sources** on your device if needed - Settings → Security.
+3. Install the APK. Android's package installer checks the APK signature against the previous install on update, so a tampered or mismatched build will simply fail to install.
 
-   # Windows (PowerShell)
-   certutil -hashfile nrsuite-vX.X.X-beta.apk SHA256
-   ```
-3. Enable **Install from unknown sources** on your device if needed - Settings → Security.
-4. Install the APK.
+<details>
+<summary>Optional: verify the SHA256 checksum yourself</summary>
+
+Each release lists a SHA256 checksum in its notes. To confirm the file you downloaded matches it:
+
+```sh
+# Linux / macOS
+sha256sum nrsuite-vX.X.X-beta.apk
+
+# Windows (PowerShell)
+certutil -hashfile nrsuite-vX.X.X-beta.apk SHA256
+```
+
+</details>
 
 ### Option B - Build from source
 
@@ -294,6 +336,18 @@ You can also open the project in Android Studio and sync Gradle - see [Building 
 ### Flashing the ESP32
 
 You also need an ESP32 dev board flashed with NRSuite firmware. Flash it directly from inside the app using the built-in flasher, or manually via PlatformIO - see [nrsuite-firmware](https://github.com/7wp81x/nrsuite-firmware) for supported boards and instructions.
+
+---
+
+## Updating
+
+NRSuite checks the `nrsuite-android` and `nrsuite-firmware` GitHub repos for new releases automatically - no manual "check for updates" step needed day-to-day.
+
+- **Check frequency** - an update check runs on app start and roughly once per hour while in use (sooner if you force a check from Settings). Toggle automatic checks off in **Settings** if you'd rather check manually.
+- **App updates** - when a newer app release is found, NRSuite lets you download the APK in-app; once it's downloaded, you confirm the install through Android's standard package installer, same as sideloading. Nothing installs itself without that confirmation.
+- **Firmware updates** - the latest firmware release is surfaced on the Firmware Flasher screen (even without a device connected), so you can see what's available and flash it over USB when ready. Flashing itself is always a manual, in-app action.
+
+This does **not** reach out anywhere except GitHub's API to check release metadata - no telemetry, no third-party update server.
 
 ---
 
@@ -341,6 +395,9 @@ cd nrsuite-android
 Signed release APKs are published by the maintainer. For testing your own changes, the debug build is sufficient.
 
 ### Project Structure
+
+<details>
+<summary>Expand full directory layout</summary>
 
 ```
 app/src/main/java/com/swp81x/nrsuite/
@@ -416,6 +473,8 @@ app/src/main/java/com/swp81x/nrsuite/
   MainViewModelSerialMonitor.kt  # Serial Monitor
   NrSuiteApplication.kt
 ```
+
+</details>
 
 ---
 
