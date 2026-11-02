@@ -53,8 +53,8 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build release APK and AAB
-        run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
+      - name: Build release APK
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
       - name: Prepare release assets
         run: |
@@ -63,10 +63,8 @@ jobs:
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk \
             "dist/NRSuite-Android-${VERSION}-release.apk"
-          cp app/build/outputs/bundle/release/app-release.aab \
-            "dist/NRSuite-Android-${VERSION}-release.aab"
           cd dist
-          sha256sum NRSuite-Android-*.apk NRSuite-Android-*.aab > checksums.txt
+          sha256sum NRSuite-Android-*.apk > checksums.txt
           cat checksums.txt
 
       - name: Upload to GitHub Release
@@ -74,7 +72,6 @@ jobs:
         with:
           files: |
             dist/NRSuite-Android-*-release.apk
-            dist/NRSuite-Android-*-release.aab
             dist/checksums.txt
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
         env:
