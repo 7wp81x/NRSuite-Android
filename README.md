@@ -577,3 +577,7 @@ NRSuite is a tool for security research and authorized red-team operations, inte
 ## Native phone hardware
 
 Open **Phone** in the toolbar for built-in Wi-Fi discovery, BLE advertisements and NFC identification without an ESP32 or root. This Android API implementation also runs on rooted and NetHunter phones. See [capabilities and acceptance](docs/NATIVE-PHONE-HARDWARE.md). Open **Phone > Root / NetHunter controls** for native radio toggles, driver reports, Kali health and tools, chroot lifecycle, services, and installed app/terminal/KeX launchers. Root access must be granted explicitly.
+
+## Maintaining the custom native build
+
+Use [the native release updater](docs/NATIVE-UPDATER.md) to fetch a release, reapply the saved non-root/NetHunter changes and build a verified APK with the existing preview signing key. Run `scripts/Update-NativeNRSuite.ps1` from PowerShell.

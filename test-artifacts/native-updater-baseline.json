@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "tag": "v1.0.0-beta.3.1.2",
+  "upstream_commit": "b83d825983c6c2c595d5660821c87f0e00f0f2c1",
+  "patch_commits": [
+    "e00f866d504c1f23893c0ca8cb622de79823e5e1"
+  ],
+  "patch_results": [
+    {
+      "commit": "e00f866d504c1f23893c0ca8cb622de79823e5e1",
+      "result": "applied-to-index-without-commit"
+    }
+  ],
+  "status": "ready",
+  "application_id": "com.swp81x.nrsuite.nativepreview",
+  "version_code": 10,
+  "version_name": "1.0.0-beta.3.1.2-native-preview",
+  "signer_certificate_sha256": "b8651b4b8556d0f515d93be8009d345e33e7a8a24911824fd1c46c49d8b92a44",
+  "required_classes": {
+    "PhoneHardwareActivity": true,
+    "core/hardware/PhoneHardwareViewModel": true,
+    "RootControlActivity": true,
+    "core/hardware/RootControlViewModel": true
+  },
+  "unit_tests": {
+    "tests": 130,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "native_policy_tests": 4,
+  "lint": {
+    "Warning": 102,
+    "Hint": 18
+  },
+  "device_acceptance": "Not performed by this build script. Test on target phones before relying on new-release behavior.",
+  "apk_sha256": "d352fa21e674765f832fc54b71d20001cbcc6c55c66838af6738dfd46b66e1ba",
+  "source_sha256": "dcad3d06df102224c0f1b7b2250dc7a9eabc45917e3b114c36bd84cbf25a13e5",
+  "completed_at": "2026-11-02T18:32:46.224983+00:00",
+  "previous_errors": [
+    "Expected exactly one APK signer certificate."
+  ],
+  "updater_regression_tests": {
+    "tests": 19,
+    "failures": 0,
+    "errors": 0,
+    "command": "python -m unittest discover -s scripts/tests -v"
+  },
+  "provenance": "Local isolated baseline build on 2026-11-02; no GitHub CI success or new phone acceptance is claimed. Original machine paths and keystore location omitted.",
+  "completed_resume": "Returned existing artifact after SHA-256 verification without rebuilding."
+}
