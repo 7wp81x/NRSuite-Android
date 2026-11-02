@@ -246,7 +246,8 @@ fun WpsPixieLiveScreen(
                         if (state.candidateSource == com.swp81x.nrsuite.core.wps.WpsPinSource.GENERATED) {
                             "An unverified PIN will capture the AP's M3 response without sending M4. " +
                                 "The app will crack the PIN offline and continue M4-M8 on the same " +
-                                "active WPS session."
+                                "active WPS session. If the offline search finds no PIN, it will " +
+                                "validate the original candidate PIN online in that same session."
                         } else {
                             "The selected PIN will be verified through the full M4-M8 exchange. " +
                                 "A wrong PIN or AP lockout can trigger a WPS cool-down."
