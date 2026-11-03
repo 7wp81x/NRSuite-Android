@@ -40,7 +40,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,6 +52,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -123,6 +126,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -136,6 +140,7 @@ import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.ir.IrRemoteSource
 import com.swp81x.nrsuite.core.ir.IrTransmitBackend
 import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
 import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
 import com.swp81x.nrsuite.core.update.AppUpdateInfo
 import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
@@ -184,6 +189,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val usbAttachPrompts by viewModel.usbAttachPrompts.collectAsState()
     val firmwareOnboardingDismissed by viewModel.firmwareOnboardingDismissed.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
+    val terminalState by viewModel.terminalState.collectAsState()
     val primaryFingerprint by viewModel.primaryFingerprint.collectAsState()
     val wifiDeviceRevision by viewModel.wifiDeviceRevision.collectAsState()
     val deviceConnectionStates by viewModel.deviceConnectionStates.collectAsState()
@@ -1063,6 +1069,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         activeModuleId == "settings" -> "Settings"
         selectedCategory != null -> selectedCategory!!
         selectedTab == AppTab.DEVICES -> "Devices"
+        selectedTab == AppTab.TERMINAL -> "Terminal"
         selectedTab == AppTab.LOGS -> "Logs"
         else -> "NRSuite"
     }
@@ -1080,15 +1087,19 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             "badusb",
         )) ||
         (activeModuleId == null && selectedCategory == null &&
-            selectedTab in setOf(AppTab.HOME, AppTab.DEVICES))
+            selectedTab in setOf(AppTab.HOME, AppTab.DEVICES, AppTab.TERMINAL))
     LaunchedEffect(suppressUsbAttachPrompt) {
         if (suppressUsbAttachPrompt) viewModel.dismissUsbAttachPrompt()
     }
 
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val terminalImmersive = selectedTab == AppTab.TERMINAL &&
+        activeModuleId == null && selectedCategory == null && imeVisible
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            NRSuiteTopBar(
+            if (!terminalImmersive) NRSuiteTopBar(
                 title = activeTitle,
                 showBack = showBack,
                 backDescription = when {
@@ -1118,9 +1129,10 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             )
         },
         bottomBar = {
-            if (activeModuleId == null && selectedCategory == null) {
+            if (!terminalImmersive && activeModuleId == null && selectedCategory == null) {
                 NRSuiteBottomBar(
                     selectedTab = selectedTab,
+                    terminalConnected = terminalState is TerminalConnectionState.Connected,
                     onSelectTab = { tab ->
                         selectedTab = tab
                         activeModuleId = null
@@ -2472,6 +2484,27 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 modifier = Modifier,
             )
 
+            selectedTab == AppTab.TERMINAL -> TerminalScreen(
+                connectionState = terminalState,
+                terminalOutput = viewModel.terminalOutput,
+                initialHost = viewModel.savedTerminalHost(),
+                initialPort = viewModel.savedTerminalPort(),
+                initialUsername = viewModel.savedTerminalUsername(),
+                onConnect = viewModel::connectTerminal,
+                onDisconnect = { viewModel.disconnectTerminal() },
+                onSendInput = viewModel::sendTerminalInput,
+                onResize = viewModel::resizeTerminal,
+                onClearPinnedHostKey = {
+                    viewModel.clearTerminalPinnedHostKey()
+                    Toast.makeText(
+                        context,
+                        "Pinned SSH host key cleared. Connect again to trust the new key.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                },
+                modifier = Modifier,
+            )
+
             selectedTab == AppTab.LOGS -> LogsScreen(
                 logs = logs,
                 history = history,
@@ -2567,6 +2600,7 @@ private fun NRSuiteTopBar(
 @Composable
 private fun NRSuiteBottomBar(
     selectedTab: AppTab,
+    terminalConnected: Boolean,
     onSelectTab: (AppTab) -> Unit,
 ) {
     Surface(
@@ -2597,14 +2631,25 @@ private fun NRSuiteBottomBar(
                     ),
                     icon = {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = when (tab) {
-                                    AppTab.HOME -> Icons.Default.Home
-                                    AppTab.DEVICES -> Icons.Default.Usb
-                                    AppTab.LOGS -> Icons.Default.Terminal
-                                },
-                                contentDescription = tab.label,
-                            )
+                            Box {
+                                Icon(
+                                    imageVector = when (tab) {
+                                        AppTab.HOME -> Icons.Default.Home
+                                        AppTab.DEVICES -> Icons.Default.Usb
+                                        AppTab.TERMINAL -> Icons.Default.Terminal
+                                        AppTab.LOGS -> Icons.Default.Article
+                                    },
+                                    contentDescription = tab.label,
+                                )
+                                if (tab == AppTab.TERMINAL && terminalConnected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .size(6.dp)
+                                            .background(StatusGreen, CircleShape),
+                                    )
+                                }
+                            }
                             Spacer(Modifier.size(2.dp))
                             Box(
                                 modifier = Modifier

@@ -7,6 +7,10 @@
         android:required="true" />
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <queries>
+        <package android:name="com.termux" />
+    </queries>
     <uses-permission android:name="android.permission.TRANSMIT_IR" />
     <uses-feature
         android:name="android.hardware.consumerir"
@@ -32,7 +36,8 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.NRSuite">
+            android:theme="@style/Theme.NRSuite"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

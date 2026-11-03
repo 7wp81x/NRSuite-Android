@@ -94,6 +94,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.zxing.core)
+    implementation(libs.ssh.jsch)
     implementation(libs.usb.serial) {
         // The JitPack POM asks for Kotlin stdlib 2.2.x. This project uses Kotlin 2.0.21;
         // the serial library itself is Java, so exclude the transitive stdlib.

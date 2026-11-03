@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="color-scheme" content="dark light">
+  <link rel="stylesheet" href="xterm.css">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #08090B;
+      overscroll-behavior: none;
+    }
+    #terminal {
+      position: absolute;
+      inset: 0;
+      padding: 6px 4px 4px 6px;
+      box-sizing: border-box;
+      background: #08090B;
+    }
+    .xterm {
+      height: 100%;
+    }
+    .xterm-viewport {
+      overscroll-behavior: contain;
+    }
+  </style>
+</head>
+<body>
+<div id="terminal"></div>
+<script src="xterm.js"></script>
+<script src="addon-fit.js"></script>
+<script>
+  (function () {
+    const term = new Terminal({
+      cursorBlink: true,
+      cursorStyle: 'block',
+      fontFamily: '"Roboto Mono", "Droid Sans Mono", monospace',
+      fontSize: 13,
+      lineHeight: 1.05,
+      scrollback: 6000,
+      convertEol: false,
+      allowProposedApi: true,
+      theme: {
+        background: '#08090B',
+        foreground: '#F2F5F7',
+        cursor: '#B6F34B',
+        selectionBackground: '#4DB6F34B'
+      }
+    });
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(document.getElementById('terminal'));
+
+    function fitTerminal() {
+      try {
+        fitAddon.fit();
+      } catch (_) {
+        // The WebView may still be laying out.
+      }
+    }
+
+    function base64ToBytes(base64) {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    }
+
+    window.terminalWriteBase64 = function (base64) {
+      term.write(base64ToBytes(base64));
+    };
+    window.terminalReset = function () {
+      term.reset();
+      fitTerminal();
+    };
+    window.terminalFocus = function () {
+      term.focus();
+    };
+    window.terminalFit = fitTerminal;
+    window.setTerminalTheme = function (theme) {
+      term.options.theme = theme;
+      if (theme && theme.background) {
+        document.body.style.background = theme.background;
+        document.getElementById('terminal').style.background = theme.background;
+      }
+      fitTerminal();
+    };
+
+    term.onData(function (data) {
+      if (window.NrTerminal) window.NrTerminal.sendInput(data);
+    });
+    term.onResize(function (size) {
+      if (window.NrTerminal) window.NrTerminal.resize(size.cols, size.rows);
+    });
+
+    window.addEventListener('resize', fitTerminal);
+    setTimeout(fitTerminal, 30);
+    setTimeout(fitTerminal, 180);
+    if (window.NrTerminal) window.NrTerminal.ready();
+  })();
+</script>
+</body>
+</html>

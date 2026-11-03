@@ -11,6 +11,9 @@ import android.provider.OpenableColumns
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
+import com.swp81x.nrsuite.core.terminal.SshTerminalManager
+import com.swp81x.nrsuite.core.terminal.TerminalConfig
+import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.ble.BleDeviceObservation
 import com.swp81x.nrsuite.core.ble.BleScanOwner
@@ -199,6 +202,8 @@ class MainViewModel(internal val app: Application) {
     internal val preferences =
         app.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
+    internal val terminalManager = SshTerminalManager(app, scope)
+
     internal val _exportDirectory = MutableStateFlow<Uri?>(null)
     val exportDirectory: StateFlow<Uri?> = _exportDirectory.asStateFlow()
 
@@ -224,6 +229,18 @@ class MainViewModel(internal val app: Application) {
     val actionError: StateFlow<String?> = _actionError.asStateFlow()
     internal val _toastMessage = MutableStateFlow<String?>(null)
     val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
+
+    val terminalState: StateFlow<TerminalConnectionState> get() = terminalManager.state
+    val terminalOutput get() = terminalManager.output
+    fun savedTerminalHost(): String = terminalManager.savedHost()
+    fun savedTerminalPort(): Int = terminalManager.savedPort()
+    fun savedTerminalUsername(): String = terminalManager.savedUsername()
+    fun connectTerminal(config: TerminalConfig) = terminalManager.connect(config)
+    fun disconnectTerminal(message: String? = null) = terminalManager.disconnect(message)
+    fun sendTerminalInput(text: String) = terminalManager.sendInput(text)
+    fun resizeTerminal(columns: Int, rows: Int) = terminalManager.resize(columns, rows)
+    fun isTermuxInstalled(): Boolean = terminalManager.isTermuxInstalled()
+    fun clearTerminalPinnedHostKey() = terminalManager.clearPinnedHostKey()
 
     internal val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()

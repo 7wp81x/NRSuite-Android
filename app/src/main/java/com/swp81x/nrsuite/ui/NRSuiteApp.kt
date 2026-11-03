@@ -153,6 +153,7 @@ import com.swp81x.nrsuite.ui.theme.LogBgError
 internal enum class AppTab(val label: String) {
     HOME("Home"),
     DEVICES("Devices"),
+    TERMINAL("Terminal"),
     LOGS("Logs"),
 }
 
