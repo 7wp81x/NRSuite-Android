@@ -231,18 +231,24 @@ class MainViewModel(internal val app: Application) {
     val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
 
     val terminalState: StateFlow<TerminalConnectionState> get() = terminalManager.state
+    val terminalSessions get() = terminalManager.sessions
     fun savedTerminalHost(): String = terminalManager.savedHost()
     fun savedTerminalPort(): Int = terminalManager.savedPort()
     fun savedTerminalUsername(): String = terminalManager.savedUsername()
     fun connectTerminal(config: TerminalConfig) = terminalManager.connect(config)
     fun disconnectTerminal(message: String? = null) = terminalManager.disconnect(message)
-    fun sendTerminalInput(text: String) = terminalManager.sendInput(text)
-    fun resizeTerminal(columns: Int, rows: Int) = terminalManager.resize(columns, rows)
+    fun newTerminalSession() = terminalManager.newSession()
+    fun closeTerminalSession(id: Int) = terminalManager.closeSession(id)
     fun isTermuxInstalled(): Boolean = terminalManager.isTermuxInstalled()
     fun clearTerminalPinnedHostKey() = terminalManager.clearPinnedHostKey()
-    fun currentTerminalSession() = terminalManager.currentTerminalSession()
     fun setTerminalViewUpdateListener(listener: (() -> Unit)?) =
         terminalManager.setTerminalViewUpdateListener(listener)
+    fun setTerminalColorScheme(
+        palette: IntArray,
+        foreground: Int,
+        background: Int,
+        cursor: Int,
+    ) = terminalManager.applyColorScheme(palette, foreground, background, cursor)
 
     internal val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()

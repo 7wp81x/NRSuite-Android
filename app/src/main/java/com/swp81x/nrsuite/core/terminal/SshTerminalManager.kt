@@ -10,11 +10,12 @@ import com.jcraft.jsch.ChannelShell
 import com.jcraft.jsch.HostKey
 import com.jcraft.jsch.HostKeyRepository
 import com.jcraft.jsch.JSch
-import com.jcraft.jsch.JSchException
 import com.jcraft.jsch.Session
 import com.jcraft.jsch.UserInfo
+import com.termux.terminal.TerminalColors
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
+import com.termux.terminal.TextStyle
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -35,6 +36,12 @@ data class TerminalConfig(
     val port: Int = DEFAULT_TERMINAL_PORT,
     val username: String = "",
     val password: String = "",
+)
+
+data class TerminalSessionEntry(
+    val id: Int,
+    val title: String,
+    val session: TerminalSession,
 )
 
 sealed interface TerminalConnectionState {
@@ -58,33 +65,26 @@ internal class SshTerminalManager(
     private val jsch = JSch()
     private val writeMutex = Mutex()
     private val pinnedHostKeys = PinnedHostKeyRepository(preferences)
+    private val managedSessions = linkedMapOf<Int, ManagedTerminalSession>()
+    private var nextSessionId = 1
+
+    @Volatile
+    private var sshSession: Session? = null
+
+    @Volatile
+    private var screenUpdateListener: (() -> Unit)? = null
 
     private val _state = MutableStateFlow<TerminalConnectionState>(
         TerminalConnectionState.Disconnected(),
     )
     val state: StateFlow<TerminalConnectionState> = _state.asStateFlow()
 
-    // The native Termux TerminalSession/Emulator keeps the full screen and
-    // scrollback state across tab switches.
-    @Volatile
-    private var terminalSession: TerminalSession? = null
-    @Volatile
-    private var screenUpdateListener: (() -> Unit)? = null
-
-    fun currentTerminalSession(): TerminalSession? = terminalSession
+    private val _sessions = MutableStateFlow<List<TerminalSessionEntry>>(emptyList())
+    val sessions: StateFlow<List<TerminalSessionEntry>> = _sessions.asStateFlow()
 
     fun setTerminalViewUpdateListener(listener: (() -> Unit)?) {
         screenUpdateListener = listener
     }
-
-    private var session: Session? = null
-    private var channel: ChannelShell? = null
-    private var channelInput: InputStream? = null
-    private var channelOutput: OutputStream? = null
-    private var readerJob: Job? = null
-    private var connectJob: Job? = null
-    private var columns = 80
-    private var rows = 24
 
     fun savedHost(): String = preferences.getString(KEY_HOST, DEFAULT_TERMINAL_HOST)
         ?: DEFAULT_TERMINAL_HOST
@@ -122,73 +122,80 @@ internal class SshTerminalManager(
             password = config.password,
         )
         saveConnectionPreferences(normalized)
-        terminalSession?.finishIfRunning()
-        terminalSession = TerminalSession(terminalSessionClient).apply {
-            setExternalTransport(sessionTransport)
-        }
         _state.value = TerminalConnectionState.Connecting
-        connectJob?.cancel()
-        connectJob = scope.launch {
+        scope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
                     openSshSession(normalized)
+                    openShellSession(normalized)
                 }
             }
-            result.onSuccess { connected ->
-                if (!isActive) {
-                    closeTransport()
-                    return@onSuccess
-                }
+            result.onSuccess { first ->
+                managedSessions[first.id] = first
+                publishSessions()
                 _state.value = TerminalConnectionState.Connected(
                     host = normalized.host,
                     port = normalized.port,
                     username = normalized.username,
                 )
-                startReader(connected)
+                first.start()
             }.onFailure { error ->
-                if (isActive) {
-                    closeTransport()
-                    _state.value = TerminalConnectionState.Failed(
-                        terminalErrorMessage(error, normalized),
-                    )
-                }
+                closeTransport()
+                _state.value = TerminalConnectionState.Failed(
+                    terminalErrorMessage(error, normalized),
+                )
             }
+        }
+    }
+
+    fun newSession() {
+        if (_state.value !is TerminalConnectionState.Connected) return
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { openShellSession(null) }
+            }.onSuccess { newSession ->
+                managedSessions[newSession.id] = newSession
+                publishSessions()
+                newSession.start()
+            }.onFailure { error ->
+                Log.w("NRSuiteTerminal", "Could not open new shell session", error)
+            }
+        }
+    }
+
+    fun closeSession(id: Int) {
+        val managed = managedSessions.remove(id) ?: return
+        managed.close("Session closed")
+        publishSessions()
+        if (managedSessions.isEmpty()) {
+            disconnect("Disconnected")
         }
     }
 
     fun disconnect(message: String? = null) {
-        connectJob?.cancel()
-        connectJob = null
-        readerJob?.cancel()
-        readerJob = null
-        terminalSession?.markDisconnected(message ?: "Disconnected")
+        managedSessions.values.toList().forEach { it.close(message ?: "Disconnected") }
+        managedSessions.clear()
+        publishSessions()
         closeTransport()
         _state.value = TerminalConnectionState.Disconnected(message)
     }
 
-    fun sendInput(text: String) {
-        if (text.isEmpty()) return
-        val bytes = text.toByteArray(Charsets.UTF_8)
-        scope.launch(Dispatchers.IO) {
-            writeMutex.withLock {
-                runCatching { channelOutput?.write(bytes); channelOutput?.flush() }
-            }
+    fun applyColorScheme(
+        palette: IntArray,
+        foreground: Int,
+        background: Int,
+        cursor: Int,
+    ) {
+        val defaults = TerminalColors.COLOR_SCHEME.mDefaultColors
+        val count = minOf(palette.size, 16)
+        for (i in 0 until count) defaults[i] = palette[i]
+        defaults[TextStyle.COLOR_INDEX_FOREGROUND] = foreground
+        defaults[TextStyle.COLOR_INDEX_BACKGROUND] = background
+        defaults[TextStyle.COLOR_INDEX_CURSOR] = cursor
+        managedSessions.values.forEach { managed ->
+            managed.terminalSession.getEmulator()?.mColors?.reset()
         }
-    }
-
-    fun resize(columns: Int, rows: Int) {
-        this.columns = columns.coerceIn(2, 500)
-        this.rows = rows.coerceIn(1, 300)
-        scope.launch(Dispatchers.IO) {
-            runCatching {
-                channel?.setPtySize(
-                    this@SshTerminalManager.columns,
-                    this@SshTerminalManager.rows,
-                    0,
-                    0,
-                )
-            }
-        }
+        screenUpdateListener?.invoke()
     }
 
     private fun openSshSession(config: TerminalConfig): Session {
@@ -198,56 +205,153 @@ internal class SshTerminalManager(
         if (config.password.isEmpty()) {
             throw IllegalArgumentException("Enter the Termux SSH password.")
         }
-        val newSession = jsch.getSession(config.username, config.host, config.port).apply {
+        return jsch.getSession(config.username, config.host, config.port).apply {
             setPassword(config.password)
             setHostKeyRepository(pinnedHostKeys)
             setConfig("StrictHostKeyChecking", "yes")
             setConfig("PreferredAuthentications", "password,keyboard-interactive")
             timeout = 15_000
             connect(15_000)
+            sshSession = this
         }
-        val newChannel = (newSession.openChannel("shell") as ChannelShell).apply {
-            setPty(true)
-            setPtyType("xterm-256color")
-            setPtySize(columns, rows, 0, 0)
-            connect(15_000)
-        }
-        session = newSession
-        channel = newChannel
-        channelInput = newChannel.inputStream
-        channelOutput = newChannel.outputStream
-        return newSession
     }
 
-    private fun startReader(@Suppress("UNUSED_PARAMETER") connectedSession: Session) {
-        val input = channelInput ?: return
-        readerJob?.cancel()
-        readerJob = scope.launch(Dispatchers.IO) {
-            val buffer = ByteArray(8192)
-            try {
-                while (isActive) {
-                    val read = input.read(buffer)
-                    if (read < 0) break
-                    if (read > 0) {
-                        terminalSession?.feedOutput(buffer, 0, read)
+    private fun openShellSession(@Suppress("UNUSED_PARAMETER") config: TerminalConfig?): ManagedTerminalSession {
+        val activeSsh = sshSession ?: throw IllegalStateException("SSH session is not connected.")
+        val channel = (activeSsh.openChannel("shell") as ChannelShell).apply {
+            setPty(true)
+            setPtyType("xterm-256color")
+            setPtySize(80, 24, 0, 0)
+            connect(15_000)
+        }
+        val id = nextSessionId++
+        val terminal = TerminalSession(terminalSessionClient)
+        return ManagedTerminalSession(
+            id = id,
+            title = "Session $id",
+            channel = channel,
+            terminalSession = terminal,
+        )
+    }
+
+    private fun publishSessions() {
+        _sessions.value = managedSessions.values.map {
+            TerminalSessionEntry(
+                id = it.id,
+                title = it.title,
+                session = it.terminalSession,
+            )
+        }
+    }
+
+    private fun closeTransport() {
+        runCatching { sshSession?.disconnect() }
+        sshSession = null
+    }
+
+    private fun terminalErrorMessage(error: Throwable, config: TerminalConfig): String {
+        val raw = error.message.orEmpty()
+        if (raw.contains("Auth fail", ignoreCase = true) ||
+            raw.contains("auth", ignoreCase = true) && raw.contains("fail", ignoreCase = true)
+        ) {
+            return "Authentication failed. Check the Termux username and password."
+        }
+        if (raw.contains("HostKey", ignoreCase = true) ||
+            raw.contains("host key", ignoreCase = true)
+        ) {
+            return "The pinned Termux SSH host key changed. Reinstalling Termux creates " +
+                "a new key; clear the pinned key below if that was intentional."
+        }
+        if (error is IllegalArgumentException) return raw
+        return "Could not connect to ${config.host}:${config.port}. " +
+            "Start SSH in Termux with: sshd\n" +
+            (raw.takeIf { it.isNotBlank() } ?: "")
+    }
+
+    private inner class ManagedTerminalSession(
+        val id: Int,
+        val title: String,
+        private val channel: ChannelShell,
+        val terminalSession: TerminalSession,
+    ) {
+        private var readerJob: Job? = null
+        private var output: OutputStream? = null
+
+        fun start() {
+            terminalSession.setExternalTransport(
+                object : TerminalSession.ExternalTerminalTransport {
+                    override fun write(data: ByteArray, offset: Int, count: Int) {
+                        scope.launch(Dispatchers.IO) {
+                            writeMutex.withLock {
+                                runCatching {
+                                    output?.write(data, offset, count)
+                                    output?.flush()
+                                }
+                            }
+                        }
+                    }
+
+                    override fun resize(
+                        columns: Int,
+                        rows: Int,
+                        cellWidthPixels: Int,
+                        cellHeightPixels: Int,
+                    ) {
+                        scope.launch(Dispatchers.IO) {
+                            runCatching {
+                                channel.setPtySize(
+                                    columns.coerceIn(2, 500),
+                                    rows.coerceIn(1, 300),
+                                    cellWidthPixels,
+                                    cellHeightPixels,
+                                )
+                            }
+                        }
+                    }
+
+                    override fun disconnect() {
+                        close("Session closed")
+                    }
+                },
+            )
+            output = runCatching { channel.outputStream }.getOrNull()
+            val input: InputStream = runCatching { channel.inputStream }.getOrNull() ?: return
+            readerJob = scope.launch(Dispatchers.IO) {
+                val buffer = ByteArray(8192)
+                try {
+                    while (isActive) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        if (read > 0) terminalSession.feedOutput(buffer, 0, read)
+                    }
+                    if (isActive) {
+                        terminalSession.markDisconnected("SSH session ended")
+                        scope.launch { removeManagedSession(this@ManagedTerminalSession) }
+                    }
+                } catch (error: IOException) {
+                    if (isActive) {
+                        terminalSession.markDisconnected("SSH connection lost")
+                        scope.launch { removeManagedSession(this@ManagedTerminalSession) }
                     }
                 }
-                if (isActive) {
-                    terminalSession?.markDisconnected("SSH session ended")
-                    _state.value = TerminalConnectionState.Disconnected(
-                        "SSH session ended.",
-                    )
-                    closeTransport()
-                }
-            } catch (error: IOException) {
-                if (isActive) {
-                    terminalSession?.markDisconnected("SSH connection lost")
-                    _state.value = TerminalConnectionState.Failed(
-                        "SSH connection lost: ${error.message ?: "I/O error"}",
-                    )
-                    closeTransport()
-                }
             }
+        }
+
+        fun close(message: String) {
+            readerJob?.cancel()
+            readerJob = null
+            terminalSession.markDisconnected(message)
+            runCatching { output?.close() }
+            output = null
+            runCatching { channel.disconnect() }
+        }
+    }
+
+    private fun removeManagedSession(managed: ManagedTerminalSession) {
+        managedSessions.remove(managed.id)
+        publishSessions()
+        if (managedSessions.isEmpty()) {
+            disconnect("SSH session ended.")
         }
     }
 
@@ -322,69 +426,6 @@ internal class SshTerminalManager(
         }
     }
 
-    private val sessionTransport = object : TerminalSession.ExternalTerminalTransport {
-        override fun write(data: ByteArray, offset: Int, count: Int) {
-            scope.launch(Dispatchers.IO) {
-                writeMutex.withLock {
-                    runCatching {
-                        channelOutput?.write(data, offset, count)
-                        channelOutput?.flush()
-                    }
-                }
-            }
-        }
-
-        override fun resize(columns: Int, rows: Int, cellWidthPixels: Int, cellHeightPixels: Int) {
-            this@SshTerminalManager.columns = columns.coerceIn(2, 500)
-            this@SshTerminalManager.rows = rows.coerceIn(1, 300)
-            scope.launch(Dispatchers.IO) {
-                runCatching {
-                    channel?.setPtySize(
-                        this@SshTerminalManager.columns,
-                        this@SshTerminalManager.rows,
-                        cellWidthPixels,
-                        cellHeightPixels,
-                    )
-                }
-            }
-        }
-
-        override fun disconnect() {
-            disconnect("Disconnected")
-        }
-    }
-
-    private fun closeTransport() {
-        runCatching { channelInput?.close() }
-        runCatching { channelOutput?.close() }
-        channelInput = null
-        channelOutput = null
-        runCatching { channel?.disconnect() }
-        channel = null
-        runCatching { session?.disconnect() }
-        session = null
-    }
-
-    private fun terminalErrorMessage(error: Throwable, config: TerminalConfig): String {
-        val raw = error.message.orEmpty()
-        if (raw.contains("Auth fail", ignoreCase = true) ||
-            raw.contains("auth", ignoreCase = true) && raw.contains("fail", ignoreCase = true)
-        ) {
-            return "Authentication failed. Check the Termux username and password."
-        }
-        if (raw.contains("HostKey", ignoreCase = true) ||
-            raw.contains("host key", ignoreCase = true)
-        ) {
-            return "The pinned Termux SSH host key changed. Reinstalling Termux creates " +
-                "a new key; clear the pinned key below if that was intentional."
-        }
-        if (error is IllegalArgumentException) {
-            return raw
-        }
-        return "Could not connect to ${config.host}:${config.port}. " +
-            "Start SSH in Termux with: sshd\n${raw.takeIf { it.isNotBlank() } ?: ""}".trim()
-    }
-
     private class PinnedHostKeyRepository(
         private val preferences: SharedPreferences,
     ) : HostKeyRepository {
@@ -392,8 +433,6 @@ internal class SshTerminalManager(
             if (key == null) return HostKeyRepository.NOT_INCLUDED
             val saved = preferences.getString(KEY_PINNED_HOST_KEY, null)
             if (saved.isNullOrBlank()) {
-                // Trust-on-first-use for the local Termux SSH daemon. Later
-                // connections require the same key.
                 save(key)
                 return HostKeyRepository.OK
             }

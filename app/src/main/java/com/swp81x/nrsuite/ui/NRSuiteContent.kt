@@ -190,6 +190,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val firmwareOnboardingDismissed by viewModel.firmwareOnboardingDismissed.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val terminalState by viewModel.terminalState.collectAsState()
+    val terminalSessions by viewModel.terminalSessions.collectAsState()
     val primaryFingerprint by viewModel.primaryFingerprint.collectAsState()
     val wifiDeviceRevision by viewModel.wifiDeviceRevision.collectAsState()
     val deviceConnectionStates by viewModel.deviceConnectionStates.collectAsState()
@@ -2486,14 +2487,16 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
             selectedTab == AppTab.TERMINAL -> TerminalScreen(
                 connectionState = terminalState,
-                terminalSession = viewModel.currentTerminalSession(),
+                terminalSessions = terminalSessions,
                 initialHost = viewModel.savedTerminalHost(),
                 initialPort = viewModel.savedTerminalPort(),
                 initialUsername = viewModel.savedTerminalUsername(),
                 onConnect = viewModel::connectTerminal,
                 onDisconnect = { viewModel.disconnectTerminal() },
-                onSendInput = viewModel::sendTerminalInput,
+                onNewSession = viewModel::newTerminalSession,
+                onCloseSession = viewModel::closeTerminalSession,
                 onSetUpdateListener = viewModel::setTerminalViewUpdateListener,
+                onSetColorScheme = viewModel::setTerminalColorScheme,
                 onClearPinnedHostKey = {
                     viewModel.clearTerminalPinnedHostKey()
                     Toast.makeText(
