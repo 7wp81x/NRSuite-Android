@@ -32,7 +32,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -41,10 +40,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,7 +64,9 @@ import com.swp81x.nrsuite.core.history.HistoryEntry
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
+import com.swp81x.nrsuite.ui.components.NrDangerButton
 import com.swp81x.nrsuite.ui.components.NrFilterChip
+import com.swp81x.nrsuite.ui.components.NrQuietButton
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.theme.LogBgError
 import com.swp81x.nrsuite.ui.theme.LogColorError
@@ -393,10 +392,16 @@ private fun LogDetailDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onCopy(); onDismiss() }) { Text("Copy") }
+            NrQuietButton(
+                text = "Copy",
+                onClick = { onCopy(); onDismiss() },
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
+            NrQuietButton(
+                text = "Close",
+                onClick = onDismiss,
+            )
         },
     )
 }
@@ -644,16 +649,17 @@ private fun ConfirmClearDialog(
         title = { Text(title) },
         text = { Text(text) },
         confirmButton = {
-            Button(
+            NrDangerButton(
+                text = "Clear",
                 onClick = onConfirm,
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = StatusRed,
-                    contentColor = Color.White,
-                ),
-            ) { Text("Clear") }
+                filled = true,
+            )
         },
         dismissButton = {
-            OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+            NrQuietButton(
+                text = "Cancel",
+                onClick = onDismiss,
+            )
         },
     )
 }

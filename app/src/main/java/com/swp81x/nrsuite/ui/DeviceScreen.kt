@@ -78,9 +78,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -91,7 +89,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -100,7 +97,6 @@ import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.history.HistoryEntry
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -134,7 +130,14 @@ import com.swp81x.nrsuite.ui.components.FirmwareUpdateInlineNotice
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
+import com.swp81x.nrsuite.ui.components.NrCompactPrimaryButton
+import com.swp81x.nrsuite.ui.components.NrCompactSecondaryButton
+import com.swp81x.nrsuite.ui.components.NrCompactStatusButton
 import com.swp81x.nrsuite.ui.components.NrFilterChip
+import com.swp81x.nrsuite.ui.components.NrPrimaryButton
+import com.swp81x.nrsuite.ui.components.NrQuietButton
+import com.swp81x.nrsuite.ui.components.NrSecondaryButton
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import com.swp81x.nrsuite.ui.theme.NrAccent
@@ -218,9 +221,10 @@ internal fun DeviceScreen(
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onRefresh) {
-                    Text("Refresh")
-                }
+                NrQuietButton(
+                    text = "Refresh",
+                    onClick = onRefresh,
+                )
             }
         }
 
@@ -346,17 +350,11 @@ internal fun DeviceConnectionCard(
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
                 )
-                TextButton(
+                NrQuietButton(
+                    text = if (detailsExpanded) "Hide details" else "Show details",
                     onClick = { detailsExpanded = !detailsExpanded },
-                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp),
-                ) {
-                    Text(if (detailsExpanded) "Hide details" else "Show details")
-                    Icon(
-                        imageVector = if (detailsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        modifier = Modifier.size(17.dp),
-                    )
-                }
+                    leadingIcon = if (detailsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                )
                 NrAnimatedVisibility(visible = detailsExpanded) {
                     DeviceSpecsContent(state)
                 }
@@ -369,13 +367,11 @@ internal fun DeviceConnectionCard(
                     modifier = Modifier.padding(top = 8.dp),
                 )
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(
+                NrSecondaryButton(
+                    text = "Disconnect",
                     onClick = onDisconnect,
-                    modifier = Modifier.height(34.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                ) {
-                    Text("Disconnect", style = MaterialTheme.typography.labelMedium)
-                }
+                    compact = true,
+                )
             }
             if (state is ConnectionState.Failed && state.diagnostic != null) {
                 Spacer(Modifier.height(8.dp))
@@ -390,12 +386,12 @@ internal fun DeviceConnectionCard(
                 when (state) {
                     ConnectionState.Connecting -> {
                         Spacer(Modifier.height(8.dp))
-                        OutlinedButton(onClick = onDisconnect) { Text("Cancel") }
+                        NrQuietButton(text = "Cancel", onClick = onDisconnect)
                     }
                     ConnectionState.Diagnosing -> Unit
                     is ConnectionState.Failed -> {
                         Spacer(Modifier.height(8.dp))
-                        OutlinedButton(onClick = onDisconnect) { Text("Clear") }
+                        NrQuietButton(text = "Clear", onClick = onDisconnect)
                     }
                     else -> Unit
                 }
@@ -499,73 +495,44 @@ internal fun DeviceRow(
                 Spacer(Modifier.width(8.dp))
                 when {
                     disconnecting -> {
-                        Button(
+                        NrCompactStatusButton(
+                            text = "Disconnecting…",
+                            status = NrStatusAction.PAUSE,
                             onClick = {},
                             enabled = false,
-                            modifier = Modifier
-                                .width(108.dp)
-                                .height(32.dp),
-                            contentPadding = PaddingValues(horizontal = 6.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = StatusAmber,
-                                contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
-                            ),
-                        ) {
-                            Text("Disconnecting…", style = MaterialTheme.typography.labelSmall)
-                        }
+                            modifier = Modifier.width(108.dp),
+                        )
                     }
 
                     state is ConnectionState.Connected -> {
-                        Button(
+                        NrCompactPrimaryButton(
+                            text = "Switch",
                             onClick = onSwitch,
-                            modifier = Modifier
-                                .width(108.dp)
-                                .height(32.dp),
-                            contentPadding = PaddingValues(horizontal = 6.dp),
-                        ) {
-                            Text("Switch", style = MaterialTheme.typography.labelSmall)
-                        }
+                            modifier = Modifier.width(108.dp),
+                        )
                     }
 
                     state is ConnectionState.Connecting || state is ConnectionState.Diagnosing -> {
-                        Button(
+                        NrCompactStatusButton(
+                            text = if (state is ConnectionState.Diagnosing) {
+                                "Diagnosing…"
+                            } else {
+                                "Connecting…"
+                            },
+                            status = NrStatusAction.PAUSE,
                             onClick = {},
                             enabled = false,
-                            modifier = Modifier
-                                .width(108.dp)
-                                .height(32.dp),
-                            contentPadding = PaddingValues(horizontal = 6.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = StatusAmber,
-                                contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
-                            ),
-                        ) {
-                            Text(
-                                if (state is ConnectionState.Diagnosing) {
-                                    "Diagnosing…"
-                                } else {
-                                    "Connecting…"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        }
+                            modifier = Modifier.width(108.dp),
+                        )
                     }
 
                     else -> {
-                        Button(
+                        NrCompactPrimaryButton(
+                            text = "Connect",
                             onClick = onConnect,
                             enabled = connectEnabled,
-                            modifier = Modifier
-                                .width(108.dp)
-                                .height(32.dp),
-                            contentPadding = PaddingValues(horizontal = 6.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                            ),
-                        ) {
-                            Text("Connect", style = MaterialTheme.typography.labelSmall)
-                        }
+                            modifier = Modifier.width(108.dp),
+                        )
                     }
                 }
             }
@@ -584,17 +551,12 @@ internal fun DeviceRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(
+                NrQuietButton(
+                    text = if (expanded) "Hide" else "Details",
                     onClick = { expanded = !expanded },
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                ) {
-                    Text(if (expanded) "Hide" else "Details")
-                    Icon(
-                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        modifier = Modifier.size(17.dp),
-                    )
-                }
+                    leadingIcon = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    compact = true,
+                )
             }
 
             NrAnimatedVisibility(visible = expanded) {
@@ -642,35 +604,28 @@ private fun DeviceDetailsContent(
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onRefreshStatus) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text("Refresh")
-                }
+                NrQuietButton(
+                    text = "Refresh",
+                    onClick = onRefreshStatus,
+                    leadingIcon = Icons.Default.Refresh,
+                    compact = true,
+                )
             }
             DeviceSpecsContent(state)
             if (updateAvailableTag != null) {
                 Spacer(Modifier.height(6.dp))
-                Button(
+                NrPrimaryButton(
+                    text = "Update this device",
                     onClick = { onOpenFirmwareFlasher(state.chip) },
-                    modifier = Modifier.height(32.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                ) {
-                    Text("Update this device", style = MaterialTheme.typography.labelMedium)
-                }
+                    compact = true,
+                )
             }
             Spacer(Modifier.height(6.dp))
-            OutlinedButton(
+            NrSecondaryButton(
+                text = "Disconnect inactive device",
                 onClick = onDisconnect,
-                modifier = Modifier.height(32.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp),
-            ) {
-                Text("Disconnect inactive device", style = MaterialTheme.typography.labelMedium)
-            }
+                compact = true,
+            )
         }
         is ConnectionState.Failed -> {
             if (state.diagnostic != null) {
@@ -802,15 +757,12 @@ internal fun HardwareInfoCard(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onRefresh) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(17.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text("Refresh")
-                }
+                NrQuietButton(
+                    text = "Refresh",
+                    onClick = onRefresh,
+                    leadingIcon = Icons.Default.Refresh,
+                    compact = true,
+                )
             }
             Spacer(Modifier.height(4.dp))
 

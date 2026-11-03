@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -91,16 +90,13 @@ fun FirmwareUpdateInlineNotice(
             is FirmwareAssetDownloadState.Failed -> "Retry download"
             FirmwareAssetDownloadState.Idle -> "Download update"
         }
-        Button(
+        NrPrimaryButton(
+            text = label,
             onClick = if (downloaded) onOpenFlasher else onDownload,
             enabled = !downloading,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(34.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
-        ) {
-            Text(label, style = MaterialTheme.typography.labelMedium)
-        }
+            modifier = Modifier.fillMaxWidth(),
+            compact = true,
+        )
         if (failed) {
             Text(
                 text = (downloadState as FirmwareAssetDownloadState.Failed).message,

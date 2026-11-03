@@ -31,6 +31,10 @@ import com.swp81x.nrsuite.ui.theme.LogColorInfo
 import com.swp81x.nrsuite.ui.theme.LogColorSuccess
 import com.swp81x.nrsuite.ui.theme.LogColorUsb
 import com.swp81x.nrsuite.ui.components.IrModuleConfigRow
+import com.swp81x.nrsuite.ui.components.NrCompactPrimaryButton
+import com.swp81x.nrsuite.ui.components.NrPrimaryButton
+import com.swp81x.nrsuite.ui.components.NrQuietButton
+import com.swp81x.nrsuite.ui.components.NrSecondaryButton
 import com.swp81x.nrsuite.ui.components.RfidModuleConfigRow
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import androidx.compose.foundation.layout.Box
@@ -89,9 +93,7 @@ import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.filled.WifiFind
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
@@ -105,7 +107,6 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -114,7 +115,6 @@ import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.history.HistoryEntry
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -380,16 +380,11 @@ internal fun HomeScreen(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = onBrowseAllModules) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = null,
-                        modifier = Modifier.size(17.dp),
-                        tint = NrOnSurfaceVariant,
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text("Browse all", color = NrOnSurfaceVariant)
-                }
+                NrQuietButton(
+                    text = "Browse all",
+                    onClick = onBrowseAllModules,
+                    leadingIcon = Icons.Default.Search,
+                )
             }
         }
 
@@ -660,23 +655,11 @@ internal fun CategoryModulesScreen(
                     ModuleInfoTag("2.4 GHz")
                     ModuleInfoTag("5 GHz")
                     Spacer(Modifier.weight(1f))
-                    TextButton(
+                    NrQuietButton(
+                        text = "WiFi Config",
                         onClick = onOpenWifiConfig,
-                        colors = ButtonDefaults.textButtonColors(contentColor = NrOnSurfaceVariant),
-                    ) {
-                        Icon(
-                            Icons.Default.Tune,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = effectiveAccent,
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            "WiFi Config",
-                            color = NrOnSurfaceVariant,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
+                        leadingIcon = Icons.Default.Tune,
+                    )
                 }
             }
             item {
@@ -762,25 +745,11 @@ internal fun CategoryModulesScreen(
                         color = NrOnSurfaceVariant,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(
+                    NrQuietButton(
+                        text = "Sensor Config",
                         onClick = onOpenSensorConfig,
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = NrOnSurfaceVariant,
-                        ),
-                    ) {
-                        Icon(
-                            Icons.Default.Tune,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = effectiveAccent,
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            "Sensor Config",
-                            color = NrOnSurfaceVariant,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
+                        leadingIcon = Icons.Default.Tune,
+                    )
                 }
             }
         }
@@ -811,17 +780,19 @@ internal fun CategoryModulesScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                NrPrimaryButton(
+                    text = "Rescan",
                     onClick = {
                         showIrDatabaseRescanDialog = false
                         onRescanIrLibrary()
                     },
-                ) { Text("Rescan") }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showIrDatabaseRescanDialog = false }) {
-                    Text("Not now")
-                }
+                NrQuietButton(
+                    text = "Not now",
+                    onClick = { showIrDatabaseRescanDialog = false },
+                )
             },
         )
     }
@@ -916,7 +887,8 @@ private fun IrDatabaseCategoryCard(
             }
             if (rootMissing) {
                 Spacer(Modifier.height(8.dp))
-                Button(
+                NrPrimaryButton(
+                    text = "Choose NRSuite root",
                     onClick = {
                         Toast.makeText(
                             context,
@@ -925,15 +897,8 @@ private fun IrDatabaseCategoryCard(
                         ).show()
                         onChooseRoot()
                     },
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Folder,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text("Choose NRSuite root")
-                }
+                    leadingIcon = Icons.Default.Folder,
+                )
             } else if (state.running) {
                 Spacer(Modifier.height(8.dp))
                 val progress = when (state.phase) {
@@ -967,36 +932,26 @@ private fun IrDatabaseCategoryCard(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    TextButton(onClick = onCancel) { Text("Cancel") }
+                    NrQuietButton(text = "Cancel", onClick = onCancel)
                 }
             } else {
                 Spacer(Modifier.height(8.dp))
                 if (emptyIndex) {
-                    Button(onClick = onRescan) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text("Rescan library")
-                    }
+                    NrPrimaryButton(
+                        text = "Rescan library",
+                        onClick = onRescan,
+                        leadingIcon = Icons.Default.Refresh,
+                    )
                 } else {
-                    Button(onClick = onDownload) {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            if (state.phase == IrDatabasePhase.FAILED) {
-                                "Retry download"
-                            } else {
-                                "Download Flipper-IRDB"
-                            },
-                        )
-                    }
+                    NrPrimaryButton(
+                        text = if (state.phase == IrDatabasePhase.FAILED) {
+                            "Retry download"
+                        } else {
+                            "Download Flipper-IRDB"
+                        },
+                        onClick = onDownload,
+                        leadingIcon = Icons.Default.Download,
+                    )
                 }
             }
         }
@@ -1142,9 +1097,11 @@ internal fun DashboardDeviceCard(
                         modifier = Modifier.padding(top = 8.dp),
                     )
                     Spacer(Modifier.height(10.dp))
-                    OutlinedButton(onClick = onDisconnect) {
-                        Text("Disconnect")
-                    }
+                    NrSecondaryButton(
+                        text = "Disconnect",
+                        onClick = onDisconnect,
+                        compact = true,
+                    )
                 }
 
                 is ConnectionState.Failed -> {
@@ -1263,27 +1220,17 @@ private fun HomeDeviceRow(
                 color = statusColor,
             )
         }
-        OutlinedButton(
+        NrCompactPrimaryButton(
+            text = when {
+                pendingPermission -> "Waiting…"
+                state is ConnectionState.Connected -> "Connected"
+                state is ConnectionState.Connecting -> "Connecting…"
+                else -> "Connect"
+            },
             onClick = onConnect,
             enabled = buttonEnabled,
-            modifier = Modifier.height(32.dp),
-            shape = RoundedCornerShape(50),
-            border = BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.55f),
-            ),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-        ) {
-            Text(
-                text = when {
-                    pendingPermission -> "Waiting…"
-                    state is ConnectionState.Connected -> "Connected"
-                    state is ConnectionState.Connecting -> "Connecting…"
-                    else -> "Connect"
-                },
-                style = MaterialTheme.typography.labelMedium,
-            )
-        }
+            modifier = Modifier.width(108.dp),
+        )
     }
 }
 
@@ -1337,7 +1284,8 @@ private fun UpdateAvailableCard(
                 )
             }
             Spacer(Modifier.width(8.dp))
-            OutlinedButton(
+            NrCompactPrimaryButton(
+                text = buttonLabel,
                 onClick = {
                     if (onButtonClick != null) {
                         onButtonClick()
@@ -1350,15 +1298,7 @@ private fun UpdateAvailableCard(
                 },
                 enabled = buttonEnabled,
                 modifier = Modifier.widthIn(min = 112.dp),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    text = buttonLabel,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            )
         }
     }
 }
@@ -1511,9 +1451,10 @@ private fun OuiDatabaseDashboardWarning(
                 }
             } else {
                 Spacer(Modifier.height(8.dp))
-                Button(onClick = onDownload) {
-                    Text(if (error) "Retry download" else "Download database")
-                }
+                NrPrimaryButton(
+                    text = if (error) "Retry download" else "Download database",
+                    onClick = onDownload,
+                )
             }
         }
     }

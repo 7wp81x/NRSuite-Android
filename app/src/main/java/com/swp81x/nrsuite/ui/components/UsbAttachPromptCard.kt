@@ -11,11 +11,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Usb
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -91,17 +91,11 @@ fun UsbAttachPromptCard(
                 )
             }
             Spacer(Modifier.width(6.dp))
-            Button(
+            NrCompactPrimaryButton(
+                text = "Connect",
                 onClick = onConnect,
-                modifier = Modifier.height(34.dp),
-                shape = RoundedCornerShape(50),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    horizontal = 12.dp,
-                    vertical = 0.dp,
-                ),
-            ) {
-                Text("Connect", style = MaterialTheme.typography.labelMedium)
-            }
+                modifier = Modifier.widthIn(min = 96.dp),
+            )
             IconButton(onClick = onDismiss, modifier = Modifier.size(30.dp)) {
                 Icon(
                     imageVector = Icons.Default.Close,
