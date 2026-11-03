@@ -33,21 +33,16 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -70,12 +65,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.mesh.MeshNodeStatus
 import com.swp81x.nrsuite.ui.components.ChannelStepper
+import com.swp81x.nrsuite.ui.components.NrDangerButton
+import com.swp81x.nrsuite.ui.components.NrPrimaryButton
+import com.swp81x.nrsuite.ui.components.NrQuietButton
+import com.swp81x.nrsuite.ui.components.NrSecondaryButton
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.CategoryBleBlue
 import com.swp81x.nrsuite.ui.theme.CategoryMeshIndigo
-import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrBackground
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -341,23 +340,20 @@ fun MeshScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = NrOnSurfaceVariant,
                         )
-                        OutlinedButton(
+                        NrDangerButton(
+                            text = "Clear device keys",
                             onClick = { confirmClearKeys = true },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = connected && initialized && !provisioning,
-                        ) {
-                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.size(6.dp))
-                            Text("Clear device keys")
-                        }
-                        OutlinedButton(
+                            leadingIcon = Icons.Default.Delete,
+                        )
+                        NrDangerButton(
+                            text = "Forget saved credentials",
                             onClick = { confirmForgetCredentials = true },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = hasGlobalCredentials || hasStoredCredentials ||
                                 passphrase.isNotBlank() || keyId.isNotBlank(),
-                        ) {
-                            Text("Forget saved credentials")
-                        }
+                        )
                     }
                 }
             }
@@ -387,9 +383,10 @@ fun MeshScreen(
                                 color = NrOnSurface,
                             )
                         }
-                        TextButton(onClick = onClearError) {
-                            Text("Dismiss")
-                        }
+                        NrQuietButton(
+                            text = "Dismiss",
+                            onClick = onClearError,
+                        )
                     }
                 }
             }
@@ -398,26 +395,29 @@ fun MeshScreen(
         }
 
         if (connected) {
-            FloatingActionButton(
+            ModuleActionFab(
                 onClick = {
-                    if (!fabEnabled) return@FloatingActionButton
                     when {
                         sessionActive -> onDeactivate()
                         useSavedCredentials -> onAuthenticateStored()
                         else -> onAuthenticateAndActivate(passphrase)
                     }
                 },
+                enabled = fabEnabled,
+                statusAction = if (sessionActive) NrStatusAction.STOP else NrStatusAction.START,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(16.dp)
-                    .alpha(if (fabEnabled) 1f else 0.4f),
-                containerColor = if (sessionActive) StatusRed else NrAccent,
+                    .padding(16.dp),
             ) {
                 if (busy) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(18.dp),
                         strokeWidth = 2.dp,
-                        color = NrBackground,
+                        color = if (sessionActive) {
+                            MaterialTheme.colorScheme.onError
+                        } else {
+                            MaterialTheme.colorScheme.onPrimary
+                        },
                     )
                 } else {
                     Icon(
@@ -440,19 +440,20 @@ fun MeshScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                NrDangerButton(
+                    text = "Replace keys",
                     onClick = {
                         confirmReplace = false
                         onProvision(passphrase, keyId.ifBlank { null }, channel)
                     },
-                ) {
-                    Text("Replace keys", color = StatusRed)
-                }
+                    filled = true,
+                )
             },
             dismissButton = {
-                TextButton(onClick = { confirmReplace = false }) {
-                    Text("Cancel")
-                }
+                NrQuietButton(
+                    text = "Cancel",
+                    onClick = { confirmReplace = false },
+                )
             },
         )
     }
@@ -468,19 +469,20 @@ fun MeshScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                NrDangerButton(
+                    text = "Clear keys",
                     onClick = {
                         confirmClearKeys = false
                         onClearKeys()
                     },
-                ) {
-                    Text("Clear keys", color = StatusRed)
-                }
+                    filled = true,
+                )
             },
             dismissButton = {
-                TextButton(onClick = { confirmClearKeys = false }) {
-                    Text("Cancel")
-                }
+                NrQuietButton(
+                    text = "Cancel",
+                    onClick = { confirmClearKeys = false },
+                )
             },
         )
     }
@@ -496,19 +498,20 @@ fun MeshScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                NrDangerButton(
+                    text = "Forget credentials",
                     onClick = {
                         confirmForgetCredentials = false
                         onForgetPassphrase()
                     },
-                ) {
-                    Text("Forget credentials", color = StatusRed)
-                }
+                    filled = true,
+                )
             },
             dismissButton = {
-                TextButton(onClick = { confirmForgetCredentials = false }) {
-                    Text("Cancel")
-                }
+                NrQuietButton(
+                    text = "Cancel",
+                    onClick = { confirmForgetCredentials = false },
+                )
             },
         )
     }
@@ -622,16 +625,13 @@ private fun MeshSetupTab(
                 )
             }
 
-            Button(
+            NrPrimaryButton(
+                text = if (provisioning) "Setting up device..." else "Set up this device",
                 onClick = { onProvision(passphrase, keyId.ifBlank { null }, channel) },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = canProvision,
-                colors = ButtonDefaults.buttonColors(containerColor = NrAccent),
-            ) {
-                Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.size(8.dp))
-                Text(if (provisioning) "Setting up device..." else "Set up this device")
-            }
+                leadingIcon = Icons.Default.Key,
+            )
 
             if (!setupMessage.isNullOrBlank()) {
                 MeshSetupMessage(message = setupMessage)
@@ -787,12 +787,11 @@ private fun MeshNetworkTab(
                     color = NrOnSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
-                OutlinedButton(
+                NrSecondaryButton(
+                    text = "Go to Setup",
                     onClick = onSwitchToSetup,
                     enabled = connected,
-                ) {
-                    Text("Go to Setup")
-                }
+                )
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -846,12 +845,12 @@ private fun MeshNetworkTab(
                     onIncrease = { selectedChannel = (selectedChannel + 1).coerceAtMost(13) },
                 )
                 if (selectedChannel != channel) {
-                    OutlinedButton(
+                    NrSecondaryButton(
+                        text = "Apply channel $selectedChannel",
                         onClick = { confirmChannelChange = true },
                         enabled = connected && !busy,
-                    ) {
-                        Text("Apply channel $selectedChannel")
-                    }
+                        compact = true,
+                    )
                 }
             } else {
                 Text(
@@ -911,18 +910,18 @@ private fun MeshNetworkTab(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                TextButton(
+                NrQuietButton(
+                    text = "Copy status",
                     onClick = onCopyStatus,
                     enabled = nodes.isNotEmpty(),
-                ) {
-                    Text("Copy status")
-                }
-                TextButton(
+                    compact = true,
+                )
+                NrDangerButton(
+                    text = "Clear node list",
                     onClick = onClearNodes,
                     enabled = nodes.isNotEmpty(),
-                ) {
-                    Text("Clear node list")
-                }
+                    compact = true,
+                )
             }
         }
     }
@@ -938,19 +937,19 @@ private fun MeshNetworkTab(
                 )
             },
             confirmButton = {
-                TextButton(
+                NrPrimaryButton(
+                    text = "Change channel",
                     onClick = {
                         confirmChannelChange = false
                         onApplyChannel(selectedChannel)
                     },
-                ) {
-                    Text("Change channel")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { confirmChannelChange = false }) {
-                    Text("Cancel")
-                }
+                NrQuietButton(
+                    text = "Cancel",
+                    onClick = { confirmChannelChange = false },
+                )
             },
         )
     }
@@ -1052,13 +1051,11 @@ private fun SavedCredentialsCard(keyLabel: String?, onUse: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
             )
-            Button(
+            NrPrimaryButton(
+                text = "Use saved credentials",
                 onClick = onUse,
-                colors = ButtonDefaults.buttonColors(containerColor = NrAccent),
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Use saved credentials")
-            }
+            )
         }
     }
 }
@@ -1104,22 +1101,22 @@ private fun MeshPassphraseFields(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (passphrase.isBlank()) {
-                OutlinedButton(
+                NrSecondaryButton(
+                    text = "Generate passphrase",
                     onClick = onGeneratePassphrase,
                     enabled = enabled,
                     modifier = Modifier.weight(1f),
-                ) {
-                    Text("Generate passphrase")
-                }
+                    compact = true,
+                )
             } else {
                 Spacer(Modifier.weight(1f))
             }
-            OutlinedButton(
+            NrQuietButton(
+                text = if (showPassphrase) "Hide" else "Show",
                 onClick = onToggleShowPassphrase,
                 enabled = passphrase.isNotEmpty(),
-            ) {
-                Text(if (showPassphrase) "Hide" else "Show")
-            }
+                compact = true,
+            )
         }
         OutlinedTextField(
             value = confirmPassphrase,
@@ -1206,13 +1203,25 @@ private fun MeshActionCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
             )
-            Button(
-                onClick = onClick,
-                enabled = buttonEnabled,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = toneColor),
-            ) {
-                Text(buttonLabel)
+            when (tone) {
+                ActionTone.Warning -> NrDangerButton(
+                    text = buttonLabel,
+                    onClick = onClick,
+                    enabled = buttonEnabled,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                ActionTone.Positive -> NrSecondaryButton(
+                    text = buttonLabel,
+                    onClick = onClick,
+                    enabled = buttonEnabled,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                ActionTone.Neutral -> NrPrimaryButton(
+                    text = buttonLabel,
+                    onClick = onClick,
+                    enabled = buttonEnabled,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }

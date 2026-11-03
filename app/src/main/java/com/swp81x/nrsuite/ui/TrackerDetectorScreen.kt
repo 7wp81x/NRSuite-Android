@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.ble.MAX_TRACKER_OBSERVATIONS
 import com.swp81x.nrsuite.core.ble.TrackerObservation
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -129,8 +130,7 @@ fun TrackerDetectorScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = if (scanning) StatusRed else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (scanning) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 Icon(
                     imageVector = if (scanning) Icons.Default.Stop else Icons.Default.PlayArrow,

@@ -53,6 +53,7 @@ import com.swp81x.nrsuite.core.ble.BleCharacteristicProfile
 import com.swp81x.nrsuite.core.ble.BleDeviceObservation
 import com.swp81x.nrsuite.core.ble.BleServiceProfile
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -145,13 +146,11 @@ fun BleProfileScreen(
                     .align(Alignment.BottomEnd)
                     .padding(20.dp)
                     .alpha(if (!scanBusy && !running && target == null) 0.4f else 1f),
-                containerColor = when {
-                    running -> StatusRed
-                    scanBusy -> StatusAmber
-                    target == null -> StatusNeutral
-                    else -> MaterialTheme.colorScheme.primary
+                statusAction = when {
+                    running -> NrStatusAction.STOP
+                    scanBusy -> NrStatusAction.PAUSE
+                    else -> NrStatusAction.START
                 },
-                contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 when {
                     scanBusy -> CircularProgressIndicator(

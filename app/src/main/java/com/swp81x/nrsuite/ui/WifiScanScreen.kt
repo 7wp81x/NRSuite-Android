@@ -49,6 +49,7 @@ import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.components.WifiBandSelector
 import com.swp81x.nrsuite.ui.util.copyWithToast
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.util.ouiStatusColor
@@ -147,8 +148,7 @@ fun WifiScanScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = NrAccent,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = NrStatusAction.START,
             ) {
                 if (scanning) {
                     CircularProgressIndicator(

@@ -55,6 +55,7 @@ import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.SavedScriptPicker
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
@@ -160,8 +161,7 @@ fun BadUsbScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = if (uploading) StatusAmber else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (uploading) NrStatusAction.PAUSE else NrStatusAction.START,
             ) {
                 Icon(
                     imageVector = if (uploading) Icons.Default.Stop else Icons.Default.PlayArrow,

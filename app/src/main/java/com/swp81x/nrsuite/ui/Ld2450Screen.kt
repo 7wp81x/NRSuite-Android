@@ -70,6 +70,7 @@ import com.swp81x.nrsuite.core.sensors.Ld2450Target
 import com.swp81x.nrsuite.core.sensors.Ld2450UiState
 import com.swp81x.nrsuite.ui.components.ModuleStatusCard
 import com.swp81x.nrsuite.ui.components.ModuleStatusState
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.CategoryDetectionBlue
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -295,8 +296,7 @@ fun Ld2450Screen(
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
                 enabled = !state.starting && !state.stopping,
-                containerColor = if (state.running) StatusRed else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (state.running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 if (state.starting || state.stopping) {
                     CircularProgressIndicator(

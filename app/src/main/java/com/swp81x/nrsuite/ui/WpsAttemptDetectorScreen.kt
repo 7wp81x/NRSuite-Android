@@ -58,6 +58,7 @@ import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.ScanButtonContent
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.TargetSelectionControl
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -439,8 +440,7 @@ fun WpsAttemptDetectorScreen(
                     }
                 },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
-                containerColor = if (state.running) StatusRed else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (state.running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 when {
                     state.starting -> CircularProgressIndicator(

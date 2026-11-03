@@ -37,9 +37,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -71,6 +71,8 @@ import com.swp81x.nrsuite.ui.components.ModuleStatusCard
 import com.swp81x.nrsuite.ui.components.ModuleStatusState
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.WifiBandConfigSection
+import com.swp81x.nrsuite.ui.components.NrSecondaryButton
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -197,8 +199,7 @@ fun DeauthDetectorScreen(
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
                 enabled = running || canStart,
-                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 Icon(
                     imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
@@ -304,14 +305,11 @@ private fun DetectorStatusCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                OutlinedButton(
+                NrSecondaryButton(
+                    text = "Locate",
                     onClick = onLocateClick,
-                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.primary,
-                    ),
-                ) {
-                    Text("Locate")
-                }
+                    compact = true,
+                )
                 Spacer(Modifier.weight(1f))
                 ConfidenceBadge(alert.confidence)
             }

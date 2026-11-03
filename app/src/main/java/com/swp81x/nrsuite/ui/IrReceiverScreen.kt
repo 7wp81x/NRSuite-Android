@@ -24,14 +24,13 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Card
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -50,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.ir.IrLearnedButton
 import com.swp81x.nrsuite.core.ir.IrReceivedSignal
 import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.ui.components.NrStatusAction
+import com.swp81x.nrsuite.ui.components.NrStatusButton
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -181,23 +182,13 @@ fun IrReceiverScreen(
                     )
                     if (canToggleReceiver) {
                         Spacer(Modifier.height(10.dp))
-                        OutlinedButton(
+                        NrStatusButton(
+                            text = if (listening) "Stop Receiver" else "Start Receiver",
+                            status = if (listening) NrStatusAction.STOP else NrStatusAction.START,
                             onClick = if (listening) onStopReceiver else onStartReceiver,
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = if (listening) StatusRed else StatusGreen,
-                            ),
-                        ) {
-                            if (listening) {
-                                Icon(Icons.Default.Stop, contentDescription = null)
-                                Spacer(Modifier.width(6.dp))
-                                Text("Stop Receiver")
-                            } else {
-                                Icon(Icons.Default.PlayArrow, contentDescription = null)
-                                Spacer(Modifier.width(6.dp))
-                                Text("Start Receiver")
-                            }
-                        }
+                            leadingIcon = if (listening) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        )
                     }
                 }
             }

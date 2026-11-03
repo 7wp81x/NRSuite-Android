@@ -60,6 +60,7 @@ import com.swp81x.nrsuite.core.hid.BlePinAttemptRecord
 import com.swp81x.nrsuite.core.hid.BlePinBruteforceSource
 import com.swp81x.nrsuite.core.hid.BlePinBruteforceUiState
 import com.swp81x.nrsuite.ui.components.NrFilterChip
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -212,8 +213,7 @@ fun BlePinBruteforceScreen(
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
                 enabled = state.source != null && !state.starting,
-                containerColor = if (state.starting) StatusAmber else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (state.starting) NrStatusAction.PAUSE else NrStatusAction.START,
             ) {
                 if (state.starting) {
                     CircularProgressIndicator(
@@ -231,8 +231,7 @@ fun BlePinBruteforceScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
-                containerColor = StatusRed,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = NrStatusAction.STOP,
             ) {
                 Icon(Icons.Default.Stop, contentDescription = "Stop BLE PIN bruteforce")
             }

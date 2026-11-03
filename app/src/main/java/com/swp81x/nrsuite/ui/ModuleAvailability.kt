@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrSurface
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
@@ -86,8 +87,19 @@ internal fun ModuleActionFab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    containerColor: Color = MaterialTheme.colorScheme.primary,
-    contentColor: Color = MaterialTheme.colorScheme.onPrimary,
+    statusAction: NrStatusAction? = null,
+    containerColor: Color = when (statusAction) {
+        NrStatusAction.START, NrStatusAction.RESUME -> MaterialTheme.colorScheme.primary
+        NrStatusAction.STOP -> MaterialTheme.colorScheme.error
+        NrStatusAction.PAUSE -> StatusAmber
+        null -> MaterialTheme.colorScheme.primary
+    },
+    contentColor: Color = when (statusAction) {
+        NrStatusAction.START, NrStatusAction.RESUME -> MaterialTheme.colorScheme.onPrimary
+        NrStatusAction.STOP -> MaterialTheme.colorScheme.onError
+        NrStatusAction.PAUSE -> MaterialTheme.colorScheme.onPrimary
+        null -> MaterialTheme.colorScheme.onPrimary
+    },
     content: @Composable () -> Unit,
 ) {
     val unavailableMessage = LocalModuleUnavailableMessage.current?.takeIf { it.isNotBlank() }

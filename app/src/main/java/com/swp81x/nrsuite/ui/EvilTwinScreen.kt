@@ -75,6 +75,7 @@ import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
 import com.swp81x.nrsuite.ui.components.WifiChannelSummaryPill
 import com.swp81x.nrsuite.ui.util.copyWithToast
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
@@ -567,8 +568,7 @@ fun EvilTwinScreen(
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
                 enabled = !starting && !stopping,
-                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 if (starting || stopping) {
                     CircularProgressIndicator(

@@ -55,6 +55,7 @@ import com.swp81x.nrsuite.core.ble.BleDeviceObservation
 import com.swp81x.nrsuite.core.ble.MAX_BLE_SCAN_DEVICES
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -143,12 +144,11 @@ fun BleScannerScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = when {
-                    starting || stopping -> StatusAmber
-                    running -> StatusRed
-                    else -> MaterialTheme.colorScheme.primary
+                statusAction = when {
+                    starting || stopping -> NrStatusAction.PAUSE
+                    running -> NrStatusAction.STOP
+                    else -> NrStatusAction.START
                 },
-                contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 if (starting || stopping) {
                     CircularProgressIndicator(
