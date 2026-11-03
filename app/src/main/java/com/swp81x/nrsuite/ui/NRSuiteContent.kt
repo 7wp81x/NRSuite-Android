@@ -81,6 +81,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -180,6 +181,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
     val devices by viewModel.devices.collectAsState()
     val usbAttachPrompts by viewModel.usbAttachPrompts.collectAsState()
+    val firmwareOnboardingDismissed by viewModel.firmwareOnboardingDismissed.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val primaryFingerprint by viewModel.primaryFingerprint.collectAsState()
     val wifiDeviceRevision by viewModel.wifiDeviceRevision.collectAsState()
@@ -628,6 +630,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     var selectedCategory by rememberSaveable { mutableStateOf<String?>(null) }
     var showRootDirectoryDialog by rememberSaveable { mutableStateOf(false) }
     var showOuiDatabaseDialog by rememberSaveable { mutableStateOf(false) }
+    var showFirmwareOnboardingDialog by rememberSaveable { mutableStateOf(false) }
+    var firmwareOnboardingDontShowAgain by rememberSaveable { mutableStateOf(false) }
     var rootDirectoryPickerActive by rememberSaveable { mutableStateOf(false) }
     var previousActiveModuleId by remember { mutableStateOf<String?>(null) }
     var irRemoteReturnTarget by rememberSaveable { mutableStateOf<String?>(null) }
@@ -705,6 +709,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
             selectedCategory != null -> selectedCategory = null
         }
+    }
+
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(1_300)
+        if (!firmwareOnboardingDismissed) showFirmwareOnboardingDialog = true
     }
 
     BackHandler(enabled = activeModuleId != null || selectedCategory != null) {
@@ -1201,6 +1210,62 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 dismissButton = {
                     OutlinedButton(onClick = { showOuiDatabaseDialog = false }) {
                         Text("Later")
+                    }
+                },
+            )
+        }
+
+        if (showFirmwareOnboardingDialog &&
+            !showRootDirectoryDialog &&
+            !rootDirectoryPickerActive &&
+            !showOuiDatabaseDialog
+        ) {
+            AlertDialog(
+                onDismissRequest = { showFirmwareOnboardingDialog = false },
+                title = { Text("Flash NRSuite firmware?") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "To use the ESP32 modules, the board needs NRSuite firmware. " +
+                                "You can flash it now or find the flasher later in Settings → Firmware.",
+                            color = NrOnSurfaceVariant,
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = firmwareOnboardingDontShowAgain,
+                                onCheckedChange = { firmwareOnboardingDontShowAgain = it },
+                            )
+                            Text(
+                                text = "Don't show again",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showFirmwareOnboardingDialog = false
+                            viewModel.dismissFirmwareOnboarding()
+                            viewModel.onModuleOpened("firmware")
+                            activeModuleId = "firmware"
+                        },
+                    ) {
+                        Text("Open Flasher")
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = {
+                            showFirmwareOnboardingDialog = false
+                            if (firmwareOnboardingDontShowAgain) {
+                                viewModel.dismissFirmwareOnboarding()
+                            }
+                        },
+                    ) {
+                        Text("Not now")
                     }
                 },
             )
@@ -2021,12 +2086,28 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     pendingPermissionRequests = pendingPermissionRequests,
                     disconnectingFingerprints = disconnectingFingerprints,
                     usbManager = usbManager,
+                    firmwareUpdate = firmwareUpdate,
+                    firmwareAssetDownload = firmwareAssetDownload,
+                    onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
+                    onOpenFirmwareFlasherForUpdate = {
+                        viewModel.prepareFirmwareFlasherForUpdate()
+                        viewModel.onModuleOpened("firmware")
+                        activeModuleId = "firmware"
+                    },
                     onRefresh = viewModel::refreshDevices,
                     onConnect = { device -> connectOrRequestPermission(device) },
                     onDisconnect = viewModel::disconnect,
                     onDisconnectDevice = viewModel::disconnectDevice,
                     onRefreshStatus = viewModel::refreshActiveDeviceStatus,
-                    onSwitchDevice = viewModel::switchActiveDevice,
+                    onSwitchDevice = { device ->
+                        if (viewModel.switchActiveDevice(device)) {
+                            uiScope.launch {
+                                snackbarHostState.showSnackbar(
+                                    "Active device switched to ${device.productName ?: "USB device"}",
+                                )
+                            }
+                        }
+                    },
                     onOpenFirmwareFlasher = { device, chip ->
                         viewModel.prepareFirmwareFlasherForDiagnostic(chip)
                         if (device != null) {
@@ -2266,11 +2347,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     }
                 },
                 onDisconnect = viewModel::disconnect,
-                onManageDevice = {
-                    activeModuleId = null
-                    selectedCategory = null
-                    selectedTab = AppTab.DEVICES
-                },
                 modifier = Modifier,
             )
 
@@ -2283,12 +2359,28 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 pendingPermissionRequests = pendingPermissionRequests,
                 disconnectingFingerprints = disconnectingFingerprints,
                 usbManager = usbManager,
+                firmwareUpdate = firmwareUpdate,
+                firmwareAssetDownload = firmwareAssetDownload,
+                onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
+                onOpenFirmwareFlasherForUpdate = {
+                    viewModel.prepareFirmwareFlasherForUpdate()
+                    viewModel.onModuleOpened("firmware")
+                    activeModuleId = "firmware"
+                },
                 onRefresh = viewModel::refreshDevices,
                 onConnect = { device -> connectOrRequestPermission(device) },
                 onDisconnect = viewModel::disconnect,
                 onDisconnectDevice = viewModel::disconnectDevice,
                 onRefreshStatus = viewModel::refreshActiveDeviceStatus,
-                onSwitchDevice = viewModel::switchActiveDevice,
+                onSwitchDevice = { device ->
+                    if (viewModel.switchActiveDevice(device)) {
+                        uiScope.launch {
+                            snackbarHostState.showSnackbar(
+                                "Active device switched to ${device.productName ?: "USB device"}",
+                            )
+                        }
+                    }
+                },
                 onOpenFirmwareFlasher = { device, chip ->
                     viewModel.prepareFirmwareFlasherForDiagnostic(chip)
                     if (device != null) {

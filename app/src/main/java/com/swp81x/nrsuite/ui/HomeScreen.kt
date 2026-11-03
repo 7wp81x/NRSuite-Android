@@ -149,6 +149,7 @@ import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ConnectionDiagnosticSummary
+import com.swp81x.nrsuite.ui.components.FirmwareUpdateInlineNotice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrFilterChip
@@ -235,7 +236,6 @@ internal fun HomeScreen(
     onRefreshDevices: () -> Unit,
     onConnect: (UsbDevice) -> Unit,
     onDisconnect: () -> Unit,
-    onManageDevice: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val usbConnectBusy = deviceConnectionStates.values.any {
@@ -272,31 +272,6 @@ internal fun HomeScreen(
             }
         }
 
-        if (connectionState is ConnectionState.Connected) {
-            firmwareUpdate?.let { update ->
-                item {
-                    val downloadState = firmwareAssetDownload
-                    UpdateAvailableCard(
-                        title = "Firmware update available",
-                        latest = update.latest,
-                        buttonLabel = when (downloadState) {
-                            is FirmwareAssetDownloadState.Downloading -> {
-                                downloadState.percent?.let { "Downloading ${it.toInt()}%" }
-                                    ?: "Downloading…"
-                            }
-                            is FirmwareAssetDownloadState.Downloaded -> "Flash"
-                            is FirmwareAssetDownloadState.Failed -> "Retry"
-                            FirmwareAssetDownloadState.Idle -> "Download"
-                        },
-                        buttonEnabled = downloadState !is FirmwareAssetDownloadState.Downloading,
-                        onButtonClick = when (downloadState) {
-                            is FirmwareAssetDownloadState.Downloaded -> onOpenFirmwareFlasher
-                            else -> onDownloadFirmwareUpdate
-                        },
-                    )
-                }
-            }
-        }
 
         if (ouiDatabaseStatus is OuiDatabaseStatus.NotDownloaded ||
             ouiDatabaseStatus is OuiDatabaseStatus.Downloading ||
@@ -325,7 +300,10 @@ internal fun HomeScreen(
                 onRefreshDevices = onRefreshDevices,
                 onConnect = onConnect,
                 onDisconnect = onDisconnect,
-                onManageDevice = onManageDevice,
+                firmwareUpdate = firmwareUpdate,
+                firmwareAssetDownload = firmwareAssetDownload,
+                onDownloadFirmwareUpdate = onDownloadFirmwareUpdate,
+                onOpenFirmwareFlasher = onOpenFirmwareFlasher,
                 onOpenFirmwareFlasherForDiagnostic = onOpenFirmwareFlasherForDiagnostic,
             )
         }
@@ -1021,7 +999,10 @@ internal fun DashboardDeviceCard(
     onRefreshDevices: () -> Unit,
     onConnect: (UsbDevice) -> Unit,
     onDisconnect: () -> Unit,
-    onManageDevice: () -> Unit,
+    firmwareUpdate: FirmwareUpdateInfo?,
+    firmwareAssetDownload: FirmwareAssetDownloadState,
+    onDownloadFirmwareUpdate: () -> Unit,
+    onOpenFirmwareFlasher: () -> Unit,
     onOpenFirmwareFlasherForDiagnostic: (String?) -> Unit,
 ) {
     @Suppress("UNUSED_EXPRESSION")
@@ -1134,14 +1115,17 @@ internal fun DashboardDeviceCard(
                             color = MaterialTheme.colorScheme.primary,
                         )
                     }
+                    FirmwareUpdateInlineNotice(
+                        currentVersion = state.firmwareVersion,
+                        update = firmwareUpdate,
+                        downloadState = firmwareAssetDownload,
+                        onDownload = onDownloadFirmwareUpdate,
+                        onOpenFlasher = onOpenFirmwareFlasher,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
                     Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onManageDevice) {
-                            Text("Manage devices")
-                        }
-                        OutlinedButton(onClick = onDisconnect) {
-                            Text("Disconnect")
-                        }
+                    OutlinedButton(onClick = onDisconnect) {
+                        Text("Disconnect")
                     }
                 }
 
@@ -1190,17 +1174,6 @@ internal fun DashboardDeviceCard(
                         text = "+${devices.size - 3} more — open Devices to manage all",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                TextButton(
-                    onClick = onManageDevice,
-                    modifier = Modifier.align(Alignment.End),
-                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
-                ) {
-                    Text(
-                        text = "Manage devices",
-                        style = MaterialTheme.typography.labelMedium,
                     )
                 }
             }

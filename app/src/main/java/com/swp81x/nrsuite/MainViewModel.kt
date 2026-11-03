@@ -358,6 +358,12 @@ class MainViewModel(internal val app: Application) {
     private val _themeMode = MutableStateFlow(loadThemeMode())
     val themeMode: StateFlow<NrThemeMode> = _themeMode.asStateFlow()
 
+    private val _firmwareOnboardingDismissed = MutableStateFlow(
+        preferences.getBoolean(PREF_FIRMWARE_ONBOARDING_DISMISSED, false),
+    )
+    val firmwareOnboardingDismissed: StateFlow<Boolean> =
+        _firmwareOnboardingDismissed.asStateFlow()
+
     internal val _appUpdate = MutableStateFlow<AppUpdateInfo?>(null)
     val appUpdate: StateFlow<AppUpdateInfo?> = _appUpdate.asStateFlow()
 
@@ -1562,7 +1568,8 @@ class MainViewModel(internal val app: Application) {
         }
     }
 
-    fun switchActiveDevice(device: UsbDevice) = this.switchActiveDeviceImpl(device)
+    fun switchActiveDevice(device: UsbDevice): Boolean =
+        this.switchActiveDeviceImpl(device)
 
 
     fun onUsbDeviceDetached(device: UsbDevice) = this.onUsbDeviceDetachedImpl(device)
@@ -1666,6 +1673,11 @@ class MainViewModel(internal val app: Application) {
     fun setThemeMode(mode: NrThemeMode) {
         _themeMode.value = mode
         preferences.edit().putString(PREF_THEME_MODE, mode.name).apply()
+    }
+
+    fun dismissFirmwareOnboarding() {
+        _firmwareOnboardingDismissed.value = true
+        preferences.edit().putBoolean(PREF_FIRMWARE_ONBOARDING_DISMISSED, true).apply()
     }
 
     private fun loadThemeMode(): NrThemeMode {
@@ -3036,6 +3048,7 @@ class MainViewModel(internal val app: Application) {
         private const val PREF_HISTORY = "session_history"
         private const val PREF_RECENT_MODULES = "recent_modules"
         private const val PREF_THEME_MODE = "theme_mode"
+        private const val PREF_FIRMWARE_ONBOARDING_DISMISSED = "firmware_onboarding_dismissed"
         private const val DISCONNECT_TEARDOWN_WAIT_MS = 8_000L
         internal val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
     }

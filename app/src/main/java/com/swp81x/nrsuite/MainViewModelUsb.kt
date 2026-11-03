@@ -231,17 +231,17 @@ internal fun MainViewModel.onPermissionResultImpl(device: UsbDevice, granted: Bo
     }
 }
 
-internal fun MainViewModel.switchActiveDeviceImpl(device: UsbDevice) {
+internal fun MainViewModel.switchActiveDeviceImpl(device: UsbDevice): Boolean {
     val fingerprint = deviceFingerprintImpl(device)
     val entry = deviceSessions[fingerprint] ?: run {
         appendLog("Device is not connected; connect it before switching.", tag = "USB")
-        return
+        return false
     }
-    if (fingerprint == activeDeviceFingerprint) return
+    if (fingerprint == activeDeviceFingerprint) return false
     val state = entry.session.state.value
     if (state !is ConnectionState.Connected) {
         appendLog("Device is not ready to become active yet.", tag = "USB")
-        return
+        return false
     }
     stopActiveOperations()
     _primaryFingerprint.value = fingerprint
@@ -251,6 +251,7 @@ internal fun MainViewModel.switchActiveDeviceImpl(device: UsbDevice) {
     }
     appendLog("Active device switched to ${entry.device.displayName}.", tag = "USB")
     updateForegroundService()
+    return true
 }
 
 internal fun MainViewModel.connectImpl(device: UsbDevice) {

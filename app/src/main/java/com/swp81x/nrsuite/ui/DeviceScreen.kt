@@ -124,7 +124,10 @@ import androidx.core.content.ContextCompat
 import com.swp81x.nrsuite.MainViewModel
 import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
+import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
 import com.swp81x.nrsuite.ui.components.ConnectionDiagnosticSummary
+import com.swp81x.nrsuite.ui.components.FirmwareUpdateInlineNotice
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
@@ -158,6 +161,10 @@ internal fun DeviceScreen(
     pendingPermissionRequests: Set<Int>,
     disconnectingFingerprints: Set<String>,
     usbManager: UsbManager,
+    firmwareUpdate: FirmwareUpdateInfo?,
+    firmwareAssetDownload: FirmwareAssetDownloadState,
+    onDownloadFirmwareUpdate: () -> Unit,
+    onOpenFirmwareFlasherForUpdate: () -> Unit,
     onRefresh: () -> Unit,
     onConnect: (UsbDevice) -> Unit,
     onDisconnect: () -> Unit,
@@ -190,6 +197,10 @@ internal fun DeviceScreen(
                 onDisconnect = onDisconnect,
                 onRefreshStatus = onRefreshStatus,
                 onOpenFirmwareFlasher = onOpenFirmwareFlasher,
+                firmwareUpdate = firmwareUpdate,
+                firmwareAssetDownload = firmwareAssetDownload,
+                onDownloadFirmwareUpdate = onDownloadFirmwareUpdate,
+                onOpenFirmwareFlasherForUpdate = onOpenFirmwareFlasherForUpdate,
             )
         }
 
@@ -253,6 +264,10 @@ internal fun DeviceConnectionCard(
     onDisconnect: () -> Unit,
     onRefreshStatus: () -> Unit,
     onOpenFirmwareFlasher: (UsbDevice?, String?) -> Unit,
+    firmwareUpdate: FirmwareUpdateInfo?,
+    firmwareAssetDownload: FirmwareAssetDownloadState,
+    onDownloadFirmwareUpdate: () -> Unit,
+    onOpenFirmwareFlasherForUpdate: () -> Unit,
 ) {
     var detailsExpanded by rememberSaveable { mutableStateOf(false) }
     Card(
@@ -337,22 +352,21 @@ internal fun DeviceConnectionCard(
                 NrAnimatedVisibility(visible = detailsExpanded) {
                     DeviceSpecsContent(state)
                 }
+                FirmwareUpdateInlineNotice(
+                    currentVersion = state.firmwareVersion,
+                    update = firmwareUpdate,
+                    downloadState = firmwareAssetDownload,
+                    onDownload = onDownloadFirmwareUpdate,
+                    onOpenFlasher = onOpenFirmwareFlasherForUpdate,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = onDisconnect,
-                        modifier = Modifier.height(34.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp),
-                    ) {
-                        Text("Disconnect", style = MaterialTheme.typography.labelMedium)
-                    }
-                    OutlinedButton(
-                        onClick = { onOpenFirmwareFlasher(activeDevice?.device, state.chip) },
-                        modifier = Modifier.height(34.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp),
-                    ) {
-                        Text("Firmware flasher", style = MaterialTheme.typography.labelMedium)
-                    }
+                OutlinedButton(
+                    onClick = onDisconnect,
+                    modifier = Modifier.height(34.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                ) {
+                    Text("Disconnect", style = MaterialTheme.typography.labelMedium)
                 }
             }
             if (state is ConnectionState.Failed && state.diagnostic != null) {
@@ -472,22 +486,28 @@ internal fun DeviceRow(
                         Button(
                             onClick = {},
                             enabled = false,
+                            modifier = Modifier
+                                .width(108.dp)
+                                .height(32.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = StatusAmber,
                                 contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
                             ),
                         ) {
-                            Text("Disconnecting...")
+                            Text("Disconnecting…", style = MaterialTheme.typography.labelSmall)
                         }
                     }
 
                     state is ConnectionState.Connected -> {
                         Button(
                             onClick = onSwitch,
-                            modifier = Modifier.height(32.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp),
+                            modifier = Modifier
+                                .width(108.dp)
+                                .height(32.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp),
                         ) {
-                            Text("Switch", style = MaterialTheme.typography.labelMedium)
+                            Text("Switch", style = MaterialTheme.typography.labelSmall)
                         }
                     }
 
@@ -495,12 +515,23 @@ internal fun DeviceRow(
                         Button(
                             onClick = {},
                             enabled = false,
+                            modifier = Modifier
+                                .width(108.dp)
+                                .height(32.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = StatusAmber,
                                 contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
                             ),
                         ) {
-                            Text(if (state is ConnectionState.Diagnosing) "Diagnosing..." else "Connecting...")
+                            Text(
+                                if (state is ConnectionState.Diagnosing) {
+                                    "Diagnosing…"
+                                } else {
+                                    "Connecting…"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                            )
                         }
                     }
 
@@ -508,14 +539,16 @@ internal fun DeviceRow(
                         Button(
                             onClick = onConnect,
                             enabled = connectEnabled,
-                            modifier = Modifier.height(32.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp),
+                            modifier = Modifier
+                                .width(108.dp)
+                                .height(32.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary,
                                 contentColor = MaterialTheme.colorScheme.onPrimary,
                             ),
                         ) {
-                            Text("Connect", style = MaterialTheme.typography.labelMedium)
+                            Text("Connect", style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
