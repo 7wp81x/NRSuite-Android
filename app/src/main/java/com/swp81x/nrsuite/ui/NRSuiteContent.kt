@@ -145,6 +145,7 @@ import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.UsbAttachPromptCard
 import com.swp81x.nrsuite.ui.theme.CategoryAccentTheme
 import com.swp81x.nrsuite.ui.theme.categoryColor
 import com.swp81x.nrsuite.ui.theme.NrAccent
@@ -179,6 +180,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     }
 
     val devices by viewModel.devices.collectAsState()
+    val usbAttachPrompt by viewModel.usbAttachPrompt.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val primaryFingerprint by viewModel.primaryFingerprint.collectAsState()
     val wifiDeviceRevision by viewModel.wifiDeviceRevision.collectAsState()
@@ -1141,7 +1143,32 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 )
             }
         },
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        snackbarHost = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                usbAttachPrompt?.let { prompt ->
+                    UsbAttachPromptCard(
+                        prompt = prompt,
+                        onConnect = {
+                            viewModel.dismissUsbAttachPrompt()
+                            connectOrRequestPermission(prompt.device.device)
+                        },
+                        onOpenDevices = {
+                            viewModel.dismissUsbAttachPrompt()
+                            activeModuleId = null
+                            selectedCategory = null
+                            selectedTab = AppTab.DEVICES
+                        },
+                        onDismiss = viewModel::dismissUsbAttachPrompt,
+                    )
+                }
+                SnackbarHost(hostState = snackbarHostState)
+            }
+        },
     ) { innerPadding ->
         val contentModifier = Modifier.padding(innerPadding)
 

@@ -152,6 +152,11 @@ data class CapturedPassword(
     val capturedAt: String,
 )
 
+data class UsbAttachPrompt(
+    val device: com.swp81x.nrsuite.core.usb.UsbSerialDevice,
+    val hasPermission: Boolean,
+)
+
 internal data class DeviceSession(
     val fingerprint: String,
     val device: UsbSerialDevice,
@@ -220,6 +225,11 @@ class MainViewModel(internal val app: Application) {
 
     internal val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()
+
+    internal val _usbAttachPrompt = MutableStateFlow<UsbAttachPrompt?>(null)
+    val usbAttachPrompt: StateFlow<UsbAttachPrompt?> = _usbAttachPrompt.asStateFlow()
+    internal var usbAttachPromptJob: Job? = null
+    internal var lastUsbAttachPromptAtMs = 0L
 
     internal val _serialMonitorSelected = MutableStateFlow<UsbSerialDevice?>(null)
     val serialMonitorSelected: StateFlow<UsbSerialDevice?> = _serialMonitorSelected.asStateFlow()
@@ -1536,7 +1546,12 @@ class MainViewModel(internal val app: Application) {
         preferences.edit().putString(PREF_HISTORY, array.toString()).apply()
     }
 
-    fun onUsbDeviceAttached() = this.onUsbDeviceAttachedImpl()
+    fun onUsbDeviceAttached(device: UsbDevice? = null) = this.onUsbDeviceAttachedImpl(device)
+    fun dismissUsbAttachPrompt() {
+        usbAttachPromptJob?.cancel()
+        usbAttachPromptJob = null
+        _usbAttachPrompt.value = null
+    }
 
 
     fun onUsbDeviceDetached(device: UsbDevice) = this.onUsbDeviceDetachedImpl(device)

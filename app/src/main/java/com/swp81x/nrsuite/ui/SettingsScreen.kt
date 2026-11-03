@@ -418,46 +418,64 @@ internal fun SettingsScreen(
                         color = StatusAmber,
                     )
                 } else {
-                    devices.forEach { entry ->
-                        val hasPermission = usbManager.hasPermission(entry.device)
-                        val selected = hasPermission &&
-                            selectedFlashTarget?.device?.deviceId == entry.device.deviceId
+                    val flashDeviceIds = devices.map { it.device.deviceId.toString() }
+                    SavedItemDropdown(
+                        label = "Flash target",
+                        selectedName = selectedFlashTarget?.device?.deviceId?.toString(),
+                        selectedDisplayName = selectedFlashTarget?.displayName
+                            ?: "Select a device",
+                        names = flashDeviceIds,
+                        enabled = !firmwareFlashing,
+                        sortNames = false,
+                        itemLabel = { id ->
+                            devices.firstOrNull { it.device.deviceId.toString() == id }
+                                ?.displayName ?: "Unknown USB device"
+                        },
+                        itemSupportingText = { id ->
+                            val entry = devices.firstOrNull {
+                                it.device.deviceId.toString() == id
+                            }
+                            when {
+                                entry == null -> "No longer attached"
+                                usbManager.hasPermission(entry.device) -> "USB permission granted"
+                                else -> "USB permission required"
+                            }
+                        },
+                        onSelect = { id ->
+                            val entry = devices.firstOrNull {
+                                it.device.deviceId.toString() == id
+                            } ?: return@SavedItemDropdown
+                            if (usbManager.hasPermission(entry.device)) {
+                                onSelectFlashTarget(entry.device)
+                            } else {
+                                onRequestPermission(entry.device)
+                            }
+                        },
+                    )
+                    selectedFlashTarget?.let { entry ->
+                        Spacer(Modifier.height(6.dp))
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 3.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    text = entry.displayName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                )
-                                Text(
-                                    text = if (hasPermission) "Permission granted" else "Permission required",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = NrOnSurfaceVariant,
-                                )
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    if (hasPermission) {
-                                        onSelectFlashTarget(entry.device)
-                                    } else {
-                                        onRequestPermission(entry.device)
-                                    }
+                            Text(
+                                text = if (usbManager.hasPermission(entry.device)) {
+                                    "Permission granted · ${entry.displayName}"
+                                } else {
+                                    "Permission required · ${entry.displayName}"
                                 },
-                                enabled = !firmwareFlashing && !selected,
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
-                            ) {
-                                Text(
-                                    when {
-                                        selected -> "Selected"
-                                        !hasPermission -> "Grant permission"
-                                        else -> "Select"
-                                    }
-                                )
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NrOnSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (!usbManager.hasPermission(entry.device)) {
+                                OutlinedButton(
+                                    onClick = { onRequestPermission(entry.device) },
+                                    enabled = !firmwareFlashing,
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
+                                ) {
+                                    Text("Grant permission")
+                                }
                             }
                         }
                     }

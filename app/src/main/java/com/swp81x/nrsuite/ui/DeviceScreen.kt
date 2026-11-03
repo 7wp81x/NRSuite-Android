@@ -64,6 +64,8 @@ import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -128,6 +130,7 @@ import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
@@ -215,15 +218,8 @@ internal fun DeviceScreen(
                     connectEnabled = !usbConnectBusy,
                     onConnect = { onConnect(device.device) },
                     onDisconnect = { onDisconnectDevice(device.device) },
-                )
-            }
-        }
-
-        if (connectionState is ConnectionState.Connected) {
-            item {
-                HardwareInfoCard(
-                    state = connectionState,
-                    onRefresh = onRefreshStatus,
+                    onRefreshStatus = onRefreshStatus,
+                    onOpenFirmwareFlasher = onOpenFirmwareFlasher,
                 )
             }
         }
@@ -350,138 +346,301 @@ internal fun DeviceRow(
     connectEnabled: Boolean = true,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
+    onRefreshStatus: () -> Unit,
+    onOpenFirmwareFlasher: (String?) -> Unit,
 ) {
     @Suppress("UNUSED_EXPRESSION")
     permissionRevision
+    var expanded by rememberSaveable(entry.device.deviceId) { mutableStateOf(false) }
+    LaunchedEffect(state is ConnectionState.Failed) {
+        if (state is ConnectionState.Failed) expanded = true
+    }
+    val borderColor = when {
+        state is ConnectionState.Connected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+        state is ConnectionState.Failed -> StatusRed.copy(alpha = 0.55f)
+        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(0.5.dp, NrOutline),
+        border = BorderStroke(1.dp, borderColor),
+        shape = RoundedCornerShape(12.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = if (state is ConnectionState.Connected) {
-                        "NRSuite ${state.chip ?: "ESP32"}"
-                    } else {
-                        entry.displayName
+        Column(Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Usb,
+                    contentDescription = null,
+                    tint = when {
+                        state is ConnectionState.Connected -> StatusGreen
+                        state is ConnectionState.Failed -> StatusRed
+                        else -> NrOnSurfaceVariant
                     },
-                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.size(20.dp),
                 )
-                val statusText = when {
-                    disconnecting -> "Disconnecting..."
-                    state is ConnectionState.Connected -> "Connected"
-                    state is ConnectionState.Connecting -> "Connecting..."
-                    state is ConnectionState.Diagnosing -> "Diagnosing..."
-                    pendingPermission -> "Permission requested"
-                    state is ConnectionState.Failed -> "Connection failed"
-                    hasPermission -> "Permission granted"
-                    else -> "Permission required"
-                }
-                val statusColor = when {
-                    disconnecting -> StatusAmber
-                    state is ConnectionState.Connected -> StatusGreen
-                    state is ConnectionState.Connecting -> StatusAmber
-                    state is ConnectionState.Diagnosing -> StatusAmber
-                    pendingPermission -> StatusAmber
-                    state is ConnectionState.Failed -> StatusRed
-                    else -> NrOnSurfaceVariant
-                }
-                Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = statusColor,
-                )
-                if (state is ConnectionState.Failed) {
+                Spacer(Modifier.width(9.dp))
+                Column(Modifier.weight(1f)) {
                     Text(
-                        text = state.message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = StatusRed,
+                        text = if (state is ConnectionState.Connected) {
+                            "NRSuite ${state.chip ?: "ESP32"}"
+                        } else {
+                            entry.displayName
+                        },
+                        fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    val statusText = when {
+                        disconnecting -> "Disconnecting..."
+                        state is ConnectionState.Connected -> "Connected"
+                        state is ConnectionState.Connecting -> "Connecting..."
+                        state is ConnectionState.Diagnosing -> "Diagnosing..."
+                        pendingPermission -> "Permission requested"
+                        state is ConnectionState.Failed -> "Connection failed"
+                        hasPermission -> "Permission granted"
+                        else -> "Permission required"
+                    }
+                    val statusColor = when {
+                        disconnecting -> StatusAmber
+                        state is ConnectionState.Connected -> StatusGreen
+                        state is ConnectionState.Connecting -> StatusAmber
+                        state is ConnectionState.Diagnosing -> StatusAmber
+                        pendingPermission -> StatusAmber
+                        state is ConnectionState.Failed -> StatusRed
+                        else -> NrOnSurfaceVariant
+                    }
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = statusColor,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                when {
+                    disconnecting -> {
+                        Button(
+                            onClick = {},
+                            enabled = false,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = StatusAmber,
+                                contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
+                            ),
+                        ) {
+                            Text("Disconnecting...")
+                        }
+                    }
+
+                    state is ConnectionState.Connected -> {
+                        OutlinedButton(onClick = onDisconnect) {
+                            Text("Disconnect")
+                        }
+                    }
+
+                    state is ConnectionState.Connecting || state is ConnectionState.Diagnosing -> {
+                        Button(
+                            onClick = {},
+                            enabled = false,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = StatusAmber,
+                                contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
+                            ),
+                        ) {
+                            Text(if (state is ConnectionState.Diagnosing) "Diagnosing..." else "Connecting...")
+                        }
+                    }
+
+                    else -> {
+                        Button(
+                            onClick = onConnect,
+                            enabled = connectEnabled,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                        ) {
+                            Text("Connect")
+                        }
+                    }
                 }
             }
-            Spacer(Modifier.width(8.dp))
-            when {
-                disconnecting -> {
-                    Button(
-                        onClick = {},
-                        enabled = false,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = StatusAmber,
-                            contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
-                        ),
-                    ) {
-                        Text("Disconnecting...")
-                    }
-                }
 
-                state is ConnectionState.Connected -> {
-                    OutlinedButton(onClick = onDisconnect) {
-                        Text("Disconnect")
-                    }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = if (state is ConnectionState.Connected) {
+                        "Live device details"
+                    } else {
+                        "USB and firmware details"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = { expanded = !expanded },
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                ) {
+                    Text(if (expanded) "Hide" else "Details")
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp),
+                    )
                 }
+            }
 
-                state is ConnectionState.Connecting -> {
-                    Button(
-                        onClick = {},
-                        enabled = false,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = StatusAmber,
-                            contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
-                        ),
-                    ) {
-                        Text("Connecting...")
-                    }
-                }
-
-                state is ConnectionState.Diagnosing -> {
-                    Button(
-                        onClick = {},
-                        enabled = false,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = StatusAmber,
-                            contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
-                        ),
-                    ) {
-                        Text("Diagnosing...")
-                    }
-                }
-
-                pendingPermission -> {
-                    Button(
-                        onClick = onConnect,
-                        enabled = connectEnabled,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
-                    ) {
-                        Text("Connect")
-                    }
-                }
-
-                else -> {
-                    Button(
-                        onClick = onConnect,
-                        enabled = connectEnabled,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = NrAccent,
-                            contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
-                        ),
-                    ) {
-                        Text("Connect")
-                    }
-                }
+            NrAnimatedVisibility(visible = expanded) {
+                Spacer(Modifier.height(4.dp))
+                DeviceDetailsContent(
+                    entry = entry,
+                    hasPermission = hasPermission,
+                    state = state,
+                    onRefreshStatus = onRefreshStatus,
+                    onOpenFirmwareFlasher = onOpenFirmwareFlasher,
+                )
             }
         }
     }
+}
+
+@Composable
+private fun DeviceDetailsContent(
+    entry: UsbSerialDevice,
+    hasPermission: Boolean,
+    state: ConnectionState?,
+    onRefreshStatus: () -> Unit,
+    onOpenFirmwareFlasher: (String?) -> Unit,
+) {
+    DeviceInfoLine("Transport", entry.displayName)
+    DeviceInfoLine("USB permission", if (hasPermission) "Granted" else "Required")
+    DeviceInfoLine(
+        "USB IDs",
+        "VID 0x%04X · PID 0x%04X".format(Locale.US, entry.device.vendorId, entry.device.productId),
+    )
+    DeviceInfoLine("Device path", entry.device.deviceName)
+    when (state) {
+        is ConnectionState.Connected -> {
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Live device specs",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onRefreshStatus) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("Refresh")
+                }
+            }
+            DeviceSpecsContent(state)
+        }
+        is ConnectionState.Failed -> {
+            if (state.diagnostic != null) {
+                Spacer(Modifier.height(8.dp))
+                ConnectionDiagnosticSummary(
+                    diagnostic = state.diagnostic,
+                    onOpenFirmwareFlasher = onOpenFirmwareFlasher,
+                )
+            } else {
+                Text(
+                    text = state.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusRed,
+                )
+            }
+        }
+        ConnectionState.Connecting -> Text(
+            text = "Waiting for the NRSuite handshake.",
+            style = MaterialTheme.typography.bodySmall,
+            color = NrOnSurfaceVariant,
+        )
+        ConnectionState.Diagnosing -> Text(
+            text = "Collecting connection diagnostics.",
+            style = MaterialTheme.typography.bodySmall,
+            color = StatusAmber,
+        )
+        else -> Unit
+    }
+}
+
+@Composable
+private fun DeviceInfoLine(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = NrOnSurfaceVariant,
+            modifier = Modifier.width(108.dp),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun DeviceSpecsContent(state: ConnectionState.Connected) {
+    SpecRow("Chip", state.chip ?: "Unknown")
+    SpecRow("Firmware", state.firmwareVersion ?: "Unknown")
+    SpecRow("Device ID", state.deviceId ?: "Unknown")
+    SpecRow(
+        "Protocol",
+        buildString {
+            append(state.protocolVersion?.toString() ?: "?")
+            if (state.protocolMinor != null) {
+                append(" · minor ")
+                append(state.protocolMinor)
+            }
+        },
+    )
+    SpecRow("Uptime", formatUptime(state.uptimeMs))
+    SpecRow("RAM / heap", formatPair(state.heapFree, state.heapTotal, "free"))
+    SpecRow("Min free heap", formatBytes(state.heapMinFree))
+    SpecRow("Largest block", formatBytes(state.heapMaxAlloc))
+    SpecRow(
+        "PSRAM",
+        if (state.psramTotal == null) {
+            "Not reported"
+        } else if (state.psramTotal == 0L) {
+            "Not present"
+        } else {
+            formatPair(state.psramFree, state.psramTotal, "free")
+        },
+    )
+    SpecRow(
+        "CPU",
+        when {
+            state.cpuMhz != null && state.chipCores != null ->
+                "${state.cpuMhz} MHz · ${state.chipCores} cores"
+            state.cpuMhz != null -> "${state.cpuMhz} MHz"
+            state.chipCores != null -> "${state.chipCores} cores"
+            else -> "Not reported"
+        },
+    )
+    SpecRow("Flash", formatBytes(state.flashSize))
+    if (!state.sdkVersion.isNullOrBlank()) SpecRow("SDK", state.sdkVersion)
+    SpecRow("Features", "${state.features.size} advertised")
 }
 
 @Composable

@@ -27,7 +27,9 @@ class NrSuiteApplication : Application() {
     private val attachReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
-                controller.onUsbDeviceAttached()
+                @Suppress("DEPRECATION")
+                val device = intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE)
+                controller.onUsbDeviceAttached(device)
             }
         }
     }
