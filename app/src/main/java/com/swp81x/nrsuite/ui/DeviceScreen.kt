@@ -492,7 +492,7 @@ internal fun DeviceRow(
                         )
                     }
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(12.dp))
                 when {
                     disconnecting -> {
                         NrCompactStatusButton(
@@ -500,7 +500,7 @@ internal fun DeviceRow(
                             status = NrStatusAction.PAUSE,
                             onClick = {},
                             enabled = false,
-                            modifier = Modifier.width(108.dp),
+                            modifier = Modifier.width(100.dp),
                         )
                     }
 
@@ -508,7 +508,7 @@ internal fun DeviceRow(
                         NrCompactPrimaryButton(
                             text = "Switch",
                             onClick = onSwitch,
-                            modifier = Modifier.width(108.dp),
+                            modifier = Modifier.width(100.dp),
                         )
                     }
 
@@ -522,7 +522,7 @@ internal fun DeviceRow(
                             status = NrStatusAction.PAUSE,
                             onClick = {},
                             enabled = false,
-                            modifier = Modifier.width(108.dp),
+                            modifier = Modifier.width(100.dp),
                         )
                     }
 
@@ -531,7 +531,7 @@ internal fun DeviceRow(
                             text = "Connect",
                             onClick = onConnect,
                             enabled = connectEnabled,
-                            modifier = Modifier.width(108.dp),
+                            modifier = Modifier.width(100.dp),
                         )
                     }
                 }

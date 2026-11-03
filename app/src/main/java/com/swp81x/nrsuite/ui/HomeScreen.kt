@@ -1220,6 +1220,7 @@ private fun HomeDeviceRow(
                 color = statusColor,
             )
         }
+        Spacer(Modifier.width(12.dp))
         NrCompactPrimaryButton(
             text = when {
                 pendingPermission -> "Waiting…"
@@ -1229,7 +1230,7 @@ private fun HomeDeviceRow(
             },
             onClick = onConnect,
             enabled = buttonEnabled,
-            modifier = Modifier.width(108.dp),
+            modifier = Modifier.width(100.dp),
         )
     }
 }
