@@ -107,6 +107,20 @@ internal fun MainViewModel.selectFirmwareTargetImpl(device: UsbDevice) {
         appendLog("No supported USB serial driver for ${device.deviceName}.")
         return
     }
+
+    // A flash target selection is device-scoped. Never carry a chip/firmware
+    // identity from the previously selected board into a new USB target.
+    val previousTarget = _firmwareTargetDevice.value
+    val targetChanged = previousTarget == null || runCatching {
+        deviceFingerprintImpl(previousTarget.device) != deviceFingerprintImpl(device)
+    }.getOrDefault(true)
+    if (targetChanged) {
+        _firmwareTargetChip.value = null
+        _firmwareTargetFirmwareVersion.value = null
+        _firmwareAssetDownload.value =
+            com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState.Idle
+    }
+
     _firmwareTargetDevice.value = entry
     val fingerprint = deviceFingerprintImpl(device)
     val targetState = _deviceConnectionStates.value[fingerprint] as? ConnectionState.Connected

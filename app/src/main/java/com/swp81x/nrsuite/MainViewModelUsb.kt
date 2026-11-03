@@ -54,8 +54,22 @@ internal fun MainViewModel.refreshDevicesImpl() {
         }
         if (stillPresent == null || !usbManager.hasPermission(stillPresent.device)) {
             _firmwareTargetDevice.value = null
+            _firmwareTargetChip.value = null
+            _firmwareTargetFirmwareVersion.value = null
         } else {
-            _firmwareTargetDevice.value = stillPresent
+            val sameTarget = runCatching {
+                deviceFingerprintImpl(selectedTarget.device) ==
+                    deviceFingerprintImpl(stillPresent.device)
+            }.getOrDefault(false)
+            if (!sameTarget) {
+                // The USB device id was reused by a different board. Clear the
+                // target and let the UI require an explicit new selection.
+                _firmwareTargetDevice.value = null
+                _firmwareTargetChip.value = null
+                _firmwareTargetFirmwareVersion.value = null
+            } else {
+                _firmwareTargetDevice.value = stillPresent
+            }
         }
     }
 

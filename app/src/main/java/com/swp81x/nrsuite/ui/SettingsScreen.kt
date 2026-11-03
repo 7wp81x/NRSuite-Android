@@ -165,6 +165,9 @@ import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.ui.theme.LogBgError
 
+private fun sanitizeFirmwareFileNamePart(raw: String): String =
+    raw.replace(Regex("[^A-Za-z0-9._-]"), "_")
+
 @Composable
 internal fun SettingsScreen(
     connectionState: ConnectionState,
@@ -233,14 +236,6 @@ internal fun SettingsScreen(
     val diagnosticChipHint = (connectionState as? ConnectionState.Failed)
         ?.diagnostic
         ?.detectedChip
-    val boardName = when (chip) {
-        "ESP32-C5" -> "ESP32-C5"
-        "ESP32-C3" -> "ESP32-C3"
-        "ESP32-S3" -> "ESP32-S3"
-        "ESP32-S2" -> "ESP32-S2"
-        "ESP32" -> "Classic ESP32 devkit"
-        else -> "Not connected / unknown"
-    }
     var selectedTargetChip by remember {
         mutableStateOf(diagnosticChipHint ?: chip ?: "")
     }
@@ -254,19 +249,46 @@ internal fun SettingsScreen(
     var selectedFirmwareAssetName by remember { mutableStateOf<String?>(null) }
     var firmwareSourceRemote by remember { mutableStateOf(true) }
     val localFirmwareChip = firmwareChipFromFirmwareName(firmwareFileName)
+    val flashTargetIdentity = selectedFlashTarget?.device?.let { device ->
+        runCatching {
+            listOf(
+                device.deviceId,
+                device.deviceName,
+                device.vendorId,
+                device.productId,
+                device.productName.orEmpty(),
+                device.serialNumber.orEmpty(),
+            ).joinToString("|")
+        }.getOrElse { device.deviceId.toString() }
+    }
+    var previousFlashTargetIdentity by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(
-        selectedFlashTarget?.device?.deviceId,
+        flashTargetIdentity,
         selectedFlashTargetChip,
         diagnosticChipHint,
         chip,
     ) {
         when {
-            !selectedFlashTargetChip.isNullOrBlank() ->
+            flashTargetIdentity == null -> {
+                // A disconnected target must not leave its chip/firmware
+                // selection attached to the next board that is plugged in.
+                if (previousFlashTargetIdentity != null) {
+                    selectedTargetChip = ""
+                    selectedFirmwareAssetName = null
+                }
+                previousFlashTargetIdentity = null
+            }
+            flashTargetIdentity != previousFlashTargetIdentity -> {
+                previousFlashTargetIdentity = flashTargetIdentity
+                selectedTargetChip = selectedFlashTargetChip?.takeIf { it.isNotBlank() } ?: ""
+                selectedFirmwareAssetName = null
+            }
+            !selectedFlashTargetChip.isNullOrBlank() &&
+                !selectedFlashTargetChip.equals(selectedTargetChip, ignoreCase = true) -> {
+                // The selected bootloader target later identified its chip.
                 selectedTargetChip = selectedFlashTargetChip
-            selectedFlashTarget == null && !chip.isNullOrBlank() ->
-                selectedTargetChip = chip
-            selectedTargetChip.isBlank() && !diagnosticChipHint.isNullOrBlank() ->
-                selectedTargetChip = diagnosticChipHint
+                selectedFirmwareAssetName = null
+            }
         }
     }
     val selectedImageChip = localFirmwareChip
@@ -276,6 +298,22 @@ internal fun SettingsScreen(
     val connectedChipMismatch = !selectedFlashTargetChip.isNullOrBlank() &&
         selectedTargetChip.isNotBlank() &&
         !selectedFlashTargetChip.equals(selectedTargetChip, ignoreCase = true)
+    val expectedRemoteFirmwareFile = selectedFirmwareReleaseTag
+        ?.takeIf { it.isNotBlank() }
+        ?.let { releaseTag ->
+            selectedFirmwareAssetName
+                ?.takeIf { it.isNotBlank() }
+                ?.let { assetName ->
+                    "${sanitizeFirmwareFileNamePart(releaseTag)}-" +
+                        sanitizeFirmwareFileNamePart(assetName)
+                }
+        }
+    val firmwareReadyForFlash = if (firmwareSourceRemote) {
+        expectedRemoteFirmwareFile != null &&
+            firmwareFileName == expectedRemoteFirmwareFile
+    } else {
+        firmwareFileName != null
+    }
 
     LaunchedEffect(firmwareAssetDownload) {
         if (firmwareAssetDownload is FirmwareAssetDownloadState.Downloaded) {
@@ -283,26 +321,27 @@ internal fun SettingsScreen(
         }
     }
     LaunchedEffect(firmwareReleases, selectedTargetChip) {
-        val compatibleReleases = firmwareReleases.filter {
-            it.compatibleFirmwareAssets(selectedTargetChip).isNotEmpty()
+        val compatibleReleases = if (selectedTargetChip.isBlank()) {
+            firmwareReleases
+        } else {
+            firmwareReleases.filter {
+                it.compatibleFirmwareAssets(selectedTargetChip).isNotEmpty()
+            }
         }
         val release = compatibleReleases.firstOrNull { it.tag == selectedFirmwareReleaseTag }
             ?: compatibleReleases.firstOrNull()
-            ?: firmwareReleases.firstOrNull().takeIf { selectedTargetChip.isBlank() }
         selectedFirmwareReleaseTag = release?.tag
-        val selectionAssets = if (selectedTargetChip.isBlank()) {
-            release?.assets.orEmpty()
-        } else {
-            release?.compatibleFirmwareAssets(selectedTargetChip).orEmpty()
-        }
+
+        // Do not silently choose the first asset when the target chip is
+        // unknown: that can leave a firmware image from the previous board
+        // selected after a re-enumeration.
+        val selectionAssets = selectedTargetChip
+            .takeIf { it.isNotBlank() }
+            ?.let { release?.compatibleFirmwareAssets(it).orEmpty() }
+            .orEmpty()
         selectedFirmwareAssetName =
             selectionAssets.firstOrNull { it.name == selectedFirmwareAssetName }?.name
                 ?: selectionAssets.firstOrNull()?.name
-    }
-    LaunchedEffect(firmwareSourceRemote, selectedFirmwareAssetName) {
-        if (firmwareSourceRemote && selectedFirmwareAssetName != null) {
-            firmwareChipFromAssetName(selectedFirmwareAssetName)?.let { selectedTargetChip = it }
-        }
     }
     LaunchedEffect(devices) {
         if (devices.size == 1 &&
@@ -388,42 +427,9 @@ internal fun SettingsScreen(
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-
-                Text(
-                    text = "Flash target: ${selectedFlashTarget?.displayName ?: "not selected"}",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
-                )
-                Text(
-                    text = "Target board: ${
-                        selectedFlashTargetChip ?: selectedTargetChip.ifBlank { "unknown" }
-                    }",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
-                )
-                Text(
-                    text = "Target firmware: ${
-                        selectedFlashTargetFirmwareVersion ?: "not checked"
-                    }",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
-                )
-                Spacer(Modifier.height(12.dp))
-
-                Text(
-                    text = "1. Target device",
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Select the board to flash and grant USB permission.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
-                Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Flash target",
+                        text = "Target device",
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f),
                     )
@@ -434,6 +440,7 @@ internal fun SettingsScreen(
                         compact = true,
                     )
                 }
+                Spacer(Modifier.height(6.dp))
                 if (devices.isEmpty()) {
                     Text(
                         text = "No supported USB serial device found. Plug in the board and tap Refresh.",
@@ -443,7 +450,7 @@ internal fun SettingsScreen(
                 } else {
                     val flashDeviceIds = devices.map { it.device.deviceId.toString() }
                     SavedItemDropdown(
-                        label = "Flash target",
+                        label = "Target device",
                         selectedName = selectedFlashTarget?.device?.deviceId?.toString(),
                         selectedDisplayName = selectedFlashTarget?.displayName
                             ?: "Select a device",
@@ -476,22 +483,18 @@ internal fun SettingsScreen(
                         },
                     )
                     selectedFlashTarget?.let { entry ->
-                        Spacer(Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = if (usbManager.hasPermission(entry.device)) {
-                                    "Permission granted · ${entry.displayName}"
-                                } else {
-                                    "Permission required · ${entry.displayName}"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = NrOnSurfaceVariant,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (!usbManager.hasPermission(entry.device)) {
+                        if (!usbManager.hasPermission(entry.device)) {
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = "USB permission required",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = StatusAmber,
+                                    modifier = Modifier.weight(1f),
+                                )
                                 NrSecondaryButton(
                                     text = "Grant permission",
                                     onClick = { onRequestPermission(entry.device) },
@@ -505,14 +508,8 @@ internal fun SettingsScreen(
                 Spacer(Modifier.height(12.dp))
 
                 Text(
-                    text = "2. Firmware image",
+                    text = "Firmware image",
                     fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Choose a cached GitHub release or a local .bin file.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -626,7 +623,7 @@ internal fun SettingsScreen(
                         val assetCandidates = allAssets
                         val selectedAsset = assetCandidates.firstOrNull {
                             it.name == selectedFirmwareAssetName
-                        } ?: assetCandidates.firstOrNull()
+                        }
 
                         SavedItemDropdown(
                             label = "Firmware version",
@@ -641,6 +638,8 @@ internal fun SettingsScreen(
                                     ?.compatibleFirmwareAssets(selectedTargetChip)
                                     ?.isNotEmpty() == true
                                 when {
+                                    selectedTargetChip.isBlank() && isLatest -> "Latest"
+                                    selectedTargetChip.isBlank() -> "Select an asset to set the chip"
                                     isLatest && compatible -> "Latest · compatible with $selectedTargetChip"
                                     isLatest -> "Latest"
                                     compatible -> "Compatible with $selectedTargetChip"
@@ -655,10 +654,10 @@ internal fun SettingsScreen(
 
                         Spacer(Modifier.height(8.dp))
                         SavedItemDropdown(
-                            label = "Firmware target",
+                            label = "Firmware asset",
                             selectedName = selectedAsset?.name,
                             selectedDisplayName = selectedAsset?.let { asset ->
-                                firmwareChipFromAssetName(asset.name) ?: asset.name
+                                firmwareChipFromAssetName(asset.name) ?: "Select firmware asset"
                             },
                             names = assetCandidates.map { it.name },
                             enabled = !firmwareFlashing && assetCandidates.isNotEmpty(),
@@ -676,12 +675,14 @@ internal fun SettingsScreen(
                         if (assetCandidates.isEmpty()) {
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                text = if (selectedTargetChip.isBlank()) {
-                                    "This release has no firmware assets."
-                                } else {
-                                    "This release has no asset for $selectedTargetChip. " +
-                                        "Select a version/firmware that matches the target chip."
-                                },
+                                text = "This release has no firmware assets.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusAmber,
+                            )
+                        } else if (selectedTargetChip.isBlank() || selectedAsset == null) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Select a firmware asset; its chip becomes the flash target chip.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = StatusAmber,
                             )
@@ -689,14 +690,17 @@ internal fun SettingsScreen(
 
                         Spacer(Modifier.height(8.dp))
                         val downloadState = firmwareAssetDownload
-                        val downloaded = downloadState is FirmwareAssetDownloadState.Downloaded
+                        val downloaded = downloadState is FirmwareAssetDownloadState.Downloaded &&
+                            expectedRemoteFirmwareFile != null &&
+                            firmwareFileName == expectedRemoteFirmwareFile
                         NrPrimaryButton(
                             text = when (downloadState) {
                                 is FirmwareAssetDownloadState.Downloading ->
                                     downloadState.percent?.let {
                                         "Downloading ${it.toInt()}%"
                                     } ?: "Downloading…"
-                                is FirmwareAssetDownloadState.Downloaded -> "Downloaded"
+                                is FirmwareAssetDownloadState.Downloaded ->
+                                    if (downloaded) "Downloaded" else "Download selected firmware"
                                 is FirmwareAssetDownloadState.Failed -> "Retry download"
                                 FirmwareAssetDownloadState.Idle -> "Download selected firmware"
                             },
@@ -739,35 +743,25 @@ internal fun SettingsScreen(
 
                 if (!firmwareSourceRemote) {
                     Text(
-                        text = "3. Verify target",
+                        text = "Target check",
                         fontWeight = FontWeight.SemiBold,
                     )
                     Spacer(Modifier.height(6.dp))
-                    val detectedChip = localFirmwareChip
-                    if (detectedChip != null) {
-                        Text(
-                            text = "Firmware image targets: $detectedChip",
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = StatusGreen,
-                        )
-                    } else {
-                        Text(
-                            text = "Firmware target chip could not be inferred from the filename.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusAmber,
-                        )
-                    }
-                    if (!diagnosticChipHint.isNullOrBlank()) {
-                        Text(
-                            text = "Chip hint from diagnostics: $diagnosticChipHint",
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = NrOnSurfaceVariant,
-                        )
-                    }
-                    if (selectedTargetChip.isBlank()) {
+                    val imageChip = localFirmwareChip
+                    val targetChipLabel = selectedTargetChip.ifBlank { "unknown" }
+                    Text(
+                        text = "Image: ${imageChip ?: "unknown"} · Target: $targetChipLabel",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = when {
+                            imageChip == null || selectedTargetChip.isBlank() -> StatusAmber
+                            targetChipMismatch -> StatusRed
+                            else -> StatusGreen
+                        },
+                    )
+                    if (imageChip == null) {
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "Select the ESP32 chip family before flashing.",
+                            text = "Could not infer the chip from the firmware filename.",
                             style = MaterialTheme.typography.bodySmall,
                             color = StatusAmber,
                         )
@@ -775,16 +769,14 @@ internal fun SettingsScreen(
                     if (targetChipMismatch) {
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "Target mismatch: image is for $selectedImageChip, " +
-                                "but the selected target chip is $selectedTargetChip. " +
-                                "Select the matching image or target chip.",
+                            text = "Image and target chip do not match.",
                             style = MaterialTheme.typography.bodySmall,
                             color = StatusRed,
                         )
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "Confirm target chip",
+                        text = "Expected target chip",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
@@ -804,12 +796,6 @@ internal fun SettingsScreen(
                             )
                         }
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "Flash offset: 0x0",
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = NrOnSurfaceVariant,
-                    )
                 }
                 Spacer(Modifier.height(6.dp))
                 NrSecondaryButton(
@@ -844,8 +830,8 @@ internal fun SettingsScreen(
                 if (connectedChipMismatch) {
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "Firmware image targets $selectedTargetChip, but the selected " +
-                            "flash device is $selectedFlashTargetChip. Select matching firmware.",
+                        text = "Selected firmware targets $selectedTargetChip, " +
+                            "but the device reports $selectedFlashTargetChip.",
                         style = MaterialTheme.typography.bodySmall,
                         color = StatusRed,
                     )
@@ -856,7 +842,7 @@ internal fun SettingsScreen(
                     onClick = { showFlashConfirm = true },
                     enabled = selectedFlashTarget != null &&
                         targetHasPermission &&
-                        firmwareFileName != null &&
+                        firmwareReadyForFlash &&
                         selectedTargetChip.isNotBlank() &&
                         !targetChipMismatch &&
                         !connectedChipMismatch &&
