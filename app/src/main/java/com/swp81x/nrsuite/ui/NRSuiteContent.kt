@@ -2486,14 +2486,14 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
             selectedTab == AppTab.TERMINAL -> TerminalScreen(
                 connectionState = terminalState,
-                terminalOutput = viewModel.terminalOutput,
+                terminalSession = viewModel.currentTerminalSession(),
                 initialHost = viewModel.savedTerminalHost(),
                 initialPort = viewModel.savedTerminalPort(),
                 initialUsername = viewModel.savedTerminalUsername(),
                 onConnect = viewModel::connectTerminal,
                 onDisconnect = { viewModel.disconnectTerminal() },
                 onSendInput = viewModel::sendTerminalInput,
-                onResize = viewModel::resizeTerminal,
+                onSetUpdateListener = viewModel::setTerminalViewUpdateListener,
                 onClearPinnedHostKey = {
                     viewModel.clearTerminalPinnedHostKey()
                     Toast.makeText(

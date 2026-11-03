@@ -1,15 +1,11 @@
 package com.swp81x.nrsuite.ui
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color as AndroidColor
 import android.net.Uri
-import android.util.Base64
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.inputmethod.InputMethodManager
-import android.webkit.JavascriptInterface
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -31,6 +27,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.OpenInNew
@@ -40,13 +37,13 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -56,7 +53,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -67,23 +63,20 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.swp81x.nrsuite.core.terminal.DEFAULT_TERMINAL_HOST
 import com.swp81x.nrsuite.core.terminal.DEFAULT_TERMINAL_PORT
 import com.swp81x.nrsuite.core.terminal.TERMUX_PACKAGE_NAME
 import com.swp81x.nrsuite.core.terminal.TerminalConfig
-import com.swp81x.nrsuite.core.terminal.TerminalOutputSnapshot
 import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
 import com.swp81x.nrsuite.ui.components.NrDangerButton
 import com.swp81x.nrsuite.ui.components.NrPrimaryButton
 import com.swp81x.nrsuite.ui.components.NrQuietButton
 import com.swp81x.nrsuite.ui.components.NrSecondaryButton
-import com.swp81x.nrsuite.ui.theme.NrOutline
-import com.swp81x.nrsuite.ui.theme.NrTheme
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusRed
-import kotlinx.coroutines.flow.Flow
-import org.json.JSONObject
+import com.termux.terminal.TerminalSession
+import com.termux.view.TerminalView
+import com.termux.view.TerminalViewClient
 
 private const val TERMUX_FDROID_URL = "https://f-droid.org/packages/com.termux/"
 private const val TERMUX_GITHUB_URL = "https://github.com/termux/termux-app"
@@ -98,14 +91,14 @@ whoami
 @Composable
 internal fun TerminalScreen(
     connectionState: TerminalConnectionState,
-    terminalOutput: Flow<TerminalOutputSnapshot>,
+    terminalSession: TerminalSession?,
     initialHost: String,
     initialPort: Int,
     initialUsername: String,
     onConnect: (TerminalConfig) -> Unit,
     onDisconnect: () -> Unit,
     onSendInput: (String) -> Unit,
-    onResize: (Int, Int) -> Unit,
+    onSetUpdateListener: ((() -> Unit)?) -> Unit,
     onClearPinnedHostKey: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -124,14 +117,16 @@ internal fun TerminalScreen(
 
     when (connectionState) {
         is TerminalConnectionState.Connected -> {
-            ConnectedTerminal(
-                state = connectionState,
-                terminalOutput = terminalOutput,
-                onDisconnect = onDisconnect,
-                onSendInput = onSendInput,
-                onResize = onResize,
-                modifier = modifier,
-            )
+            if (terminalSession != null) {
+                ConnectedTerminal(
+                    state = connectionState,
+                    terminalSession = terminalSession,
+                    onDisconnect = onDisconnect,
+                    onSendInput = onSendInput,
+                    onSetUpdateListener = onSetUpdateListener,
+                    modifier = modifier,
+                )
+            }
         }
         else -> {
             TerminalSetup(
@@ -402,52 +397,31 @@ private fun TerminalSetup(
 @Composable
 private fun ConnectedTerminal(
     state: TerminalConnectionState.Connected,
-    terminalOutput: Flow<TerminalOutputSnapshot>,
+    terminalSession: TerminalSession,
     onDisconnect: () -> Unit,
     onSendInput: (String) -> Unit,
-    onResize: (Int, Int) -> Unit,
+    onSetUpdateListener: ((() -> Unit)?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    var webView by remember { mutableStateOf<WebView?>(null) }
-    var webReady by remember { mutableStateOf(false) }
-    val colorScheme = MaterialTheme.colorScheme
-    val nrColors = NrTheme.colors
-    val terminalThemeJson = remember(colorScheme, nrColors) {
-        JSONObject().apply {
-            put("background", colorScheme.background.toCssHex())
-            put("foreground", colorScheme.onSurface.toCssHex())
-            put("cursor", colorScheme.primary.toCssHex())
-            put("cursorAccent", colorScheme.background.toCssHex())
-            put("selectionBackground", colorScheme.primary.copy(alpha = 0.35f).toCssHex())
-            put("black", colorScheme.surface.toCssHex())
-            put("red", colorScheme.error.toCssHex())
-            put("green", nrColors.statusGreen.toCssHex())
-            put("yellow", nrColors.statusAmber.toCssHex())
-            put("blue", nrColors.statusInfo.toCssHex())
-            put("magenta", colorScheme.secondary.toCssHex())
-            put("cyan", colorScheme.tertiary.toCssHex())
-            put("white", colorScheme.onSurface.toCssHex())
-            put("brightBlack", colorScheme.onSurfaceVariant.toCssHex())
-            put("brightRed", colorScheme.error.toCssHex())
-            put("brightGreen", nrColors.statusGreen.toCssHex())
-            put("brightYellow", nrColors.statusAmber.toCssHex())
-            put("brightBlue", nrColors.statusInfo.toCssHex())
-            put("brightMagenta", colorScheme.secondary.toCssHex())
-            put("brightCyan", colorScheme.tertiary.toCssHex())
-            put("brightWhite", colorScheme.onSurface.toCssHex())
-        }.toString()
-    }
-
-    val focusTerminal: () -> Unit = {
-        webView?.post {
-            webView?.requestFocus()
-            webView?.evaluateJavascript("terminalFocus()", null)
+    val terminalViewState = remember { mutableStateOf<TerminalView?>(null) }
+    val showKeyboard: () -> Unit = {
+        terminalViewState.value?.let { view ->
+            view.requestFocus()
+            view.requestFocusFromTouch()
+            view.post {
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE)
+                    as? InputMethodManager
+                imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+            }
         }
     }
     val hideKeyboard: () -> Unit = {
         val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-        imm?.hideSoftInputFromWindow(webView?.windowToken, 0)
+        imm?.hideSoftInputFromWindow(terminalViewState.value?.windowToken, 0)
+    }
+    val terminalViewClient = remember {
+        NativeTerminalViewClient(onSingleTap = showKeyboard)
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -471,13 +445,12 @@ private fun ConnectedTerminal(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            NrQuietButton(
-                text = "Keyboard",
-                onClick = hideKeyboard,
-                leadingIcon = Icons.Default.KeyboardArrowDown,
-                compact = true,
-            )
-            Spacer(Modifier.width(6.dp))
+            IconButton(onClick = showKeyboard) {
+                Icon(Icons.Default.Keyboard, contentDescription = "Show keyboard")
+            }
+            IconButton(onClick = hideKeyboard) {
+                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Hide keyboard")
+            }
             NrDangerButton(
                 text = "Disconnect",
                 onClick = onDisconnect,
@@ -489,97 +462,44 @@ private fun ConnectedTerminal(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .background(colorScheme.background),
+                .background(MaterialTheme.colorScheme.background),
             factory = { viewContext ->
-                WebView(viewContext).apply {
-                    @SuppressLint("SetJavaScriptEnabled")
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.allowContentAccess = false
-                    settings.allowFileAccess = true
-                    settings.allowFileAccessFromFileURLs = false
-                    settings.allowUniversalAccessFromFileURLs = false
-                    setBackgroundColor(AndroidColor.TRANSPARENT)
-                    webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView?, url: String?) {
-                            super.onPageFinished(view, url)
-                            webReady = true
-                            view?.evaluateJavascript("terminalFit()", null)
-                        }
-
-                        override fun shouldOverrideUrlLoading(
-                            view: WebView?,
-                            url: String?,
-                        ): Boolean = true
-                    }
-                    addJavascriptInterface(
-                        TerminalWebBridge(
-                            onInput = onSendInput,
-                            onResize = onResize,
-                            onReady = {
-                                webReady = true
-                            },
-                        ),
-                        "NrTerminal",
-                    )
-                    loadUrl("file:///android_asset/terminal/index.html")
-                    webView = this
+                TerminalView(viewContext, null).apply {
+                    setTextSize(13)
+                    setTerminalViewClient(terminalViewClient)
+                    terminalViewState.value = this
+                    attachSession(terminalSession)
+                    isFocusable = true
+                    isFocusableInTouchMode = true
+                    requestFocus()
+                    postInvalidate()
                 }
             },
             update = { view ->
-                webView = view
+                terminalViewState.value = view
+                if (view.currentSession !== terminalSession) {
+                    view.attachSession(terminalSession)
+                }
             },
         )
 
-        LaunchedEffect(webView, webReady, terminalThemeJson) {
-            if (webReady) {
-                webView?.evaluateJavascript("setTerminalTheme($terminalThemeJson)", null)
+        DisposableEffect(terminalViewState.value, terminalSession) {
+            val view = terminalViewState.value
+            onSetUpdateListener {
+                view?.post { view.onScreenUpdated() }
             }
-        }
-        var consumedGeneration by remember { mutableStateOf(-1L) }
-        var consumedBytes by remember { mutableStateOf(0) }
-        LaunchedEffect(webView, webReady, terminalOutput) {
-            if (!webReady) return@LaunchedEffect
-            terminalOutput.collect { snapshot ->
-                val writeChunk: ByteArray? = if (snapshot.generation != consumedGeneration) {
-                    consumedGeneration = snapshot.generation
-                    consumedBytes = snapshot.bytes.size
-                    webView?.post {
-                        webView?.evaluateJavascript("terminalReset()", null)
-                    }
-                    snapshot.bytes.takeIf { it.isNotEmpty() }
-                } else if (snapshot.bytes.size > consumedBytes) {
-                    val chunk = snapshot.bytes.copyOfRange(consumedBytes, snapshot.bytes.size)
-                    consumedBytes = snapshot.bytes.size
-                    chunk
-                } else {
-                    null
-                }
-                writeChunk?.let { bytes ->
-                    val encoded = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    webView?.post {
-                        webView?.evaluateJavascript(
-                            "terminalWriteBase64('$encoded')",
-                            null,
-                        )
-                    }
-                }
+            onDispose {
+                onSetUpdateListener(null)
             }
         }
 
         TerminalKeyRow(
             onKey = { value ->
                 onSendInput(value)
-                focusTerminal()
+                terminalViewState.value?.requestFocus()
+                showKeyboard()
             },
         )
-    }
-
-    DisposableEffect(webView) {
-        onDispose {
-            webView?.removeJavascriptInterface("NrTerminal")
-            webView?.destroy()
-        }
     }
 }
 
@@ -628,40 +548,60 @@ private fun TerminalKeyRow(
     }
 }
 
-private class TerminalWebBridge(
-    private val onInput: (String) -> Unit,
-    private val onResize: (Int, Int) -> Unit,
-    private val onReady: () -> Unit,
-) {
-    @JavascriptInterface
-    fun sendInput(data: String) {
-        onInput(data)
+private class NativeTerminalViewClient(
+    private val onSingleTap: () -> Unit,
+) : TerminalViewClient {
+    override fun onScale(scale: Float): Float = scale
+
+    override fun onSingleTapUp(e: MotionEvent) {
+        onSingleTap()
     }
 
-    @JavascriptInterface
-    fun resize(columns: Int, rows: Int) {
-        onResize(columns, rows)
-    }
+    override fun shouldBackButtonBeMappedToEscape(): Boolean = false
 
-    @JavascriptInterface
-    fun ready() {
-        onReady()
-    }
+    override fun shouldEnforceCharBasedInput(): Boolean = false
+
+    override fun shouldUseCtrlSpaceWorkaround(): Boolean = false
+
+    override fun isTerminalViewSelected(): Boolean = true
+
+    override fun copyModeChanged(copyMode: Boolean) = Unit
+
+    override fun onKeyDown(keyCode: Int, e: KeyEvent, session: TerminalSession?): Boolean = false
+
+    override fun onKeyUp(keyCode: Int, e: KeyEvent): Boolean = false
+
+    override fun onLongPress(event: MotionEvent): Boolean = false
+
+    override fun readControlKey(): Boolean = false
+
+    override fun readAltKey(): Boolean = false
+
+    override fun readShiftKey(): Boolean = false
+
+    override fun readFnKey(): Boolean = false
+
+    override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession?): Boolean = false
+
+    override fun onEmulatorSet() = Unit
+
+    override fun logError(tag: String, message: String) = Unit
+
+    override fun logWarn(tag: String, message: String) = Unit
+
+    override fun logInfo(tag: String, message: String) = Unit
+
+    override fun logDebug(tag: String, message: String) = Unit
+
+    override fun logVerbose(tag: String, message: String) = Unit
+
+    override fun logStackTraceWithMessage(tag: String, message: String, e: Exception) = Unit
+
+    override fun logStackTrace(tag: String, e: Exception) = Unit
 }
 
 private fun openBrowser(context: Context, url: String) {
     runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-    }
-}
-
-private fun Color.toCssHex(): String {
-    val argb = toArgb()
-    val rgb = argb and 0xFFFFFF
-    val alpha = (argb ushr 24) and 0xFF
-    return if (alpha == 0xFF) {
-        String.format("#%06X", rgb)
-    } else {
-        String.format("#%06X%02X", rgb, alpha)
     }
 }

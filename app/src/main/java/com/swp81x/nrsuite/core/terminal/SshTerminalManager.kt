@@ -1,8 +1,11 @@
 package com.swp81x.nrsuite.core.terminal
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Base64
+import android.util.Log
 import com.jcraft.jsch.ChannelShell
 import com.jcraft.jsch.HostKey
 import com.jcraft.jsch.HostKeyRepository
@@ -10,6 +13,8 @@ import com.jcraft.jsch.JSch
 import com.jcraft.jsch.JSchException
 import com.jcraft.jsch.Session
 import com.jcraft.jsch.UserInfo
+import com.termux.terminal.TerminalSession
+import com.termux.terminal.TerminalSessionClient
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -30,11 +35,6 @@ data class TerminalConfig(
     val port: Int = DEFAULT_TERMINAL_PORT,
     val username: String = "",
     val password: String = "",
-)
-
-data class TerminalOutputSnapshot(
-    val generation: Long,
-    val bytes: ByteArray,
 )
 
 sealed interface TerminalConnectionState {
@@ -64,14 +64,18 @@ internal class SshTerminalManager(
     )
     val state: StateFlow<TerminalConnectionState> = _state.asStateFlow()
 
-    // The renderer consumes the accumulated raw terminal byte stream. Keeping
-    // a bounded snapshot lets it recover output after a tab switch or WebView
-    // recreation without terminating the SSH session.
-    private val outputLock = Any()
-    private var outputBytes = ByteArray(0)
-    private var outputGeneration = 0L
-    private val _output = MutableStateFlow(TerminalOutputSnapshot(0L, ByteArray(0)))
-    val output: StateFlow<TerminalOutputSnapshot> = _output.asStateFlow()
+    // The native Termux TerminalSession/Emulator keeps the full screen and
+    // scrollback state across tab switches.
+    @Volatile
+    private var terminalSession: TerminalSession? = null
+    @Volatile
+    private var screenUpdateListener: (() -> Unit)? = null
+
+    fun currentTerminalSession(): TerminalSession? = terminalSession
+
+    fun setTerminalViewUpdateListener(listener: (() -> Unit)?) {
+        screenUpdateListener = listener
+    }
 
     private var session: Session? = null
     private var channel: ChannelShell? = null
@@ -118,7 +122,10 @@ internal class SshTerminalManager(
             password = config.password,
         )
         saveConnectionPreferences(normalized)
-        clearOutput()
+        terminalSession?.finishIfRunning()
+        terminalSession = TerminalSession(terminalSessionClient).apply {
+            setExternalTransport(sessionTransport)
+        }
         _state.value = TerminalConnectionState.Connecting
         connectJob?.cancel()
         connectJob = scope.launch {
@@ -154,6 +161,7 @@ internal class SshTerminalManager(
         connectJob = null
         readerJob?.cancel()
         readerJob = null
+        terminalSession?.markDisconnected(message ?: "Disconnected")
         closeTransport()
         _state.value = TerminalConnectionState.Disconnected(message)
     }
@@ -221,10 +229,11 @@ internal class SshTerminalManager(
                     val read = input.read(buffer)
                     if (read < 0) break
                     if (read > 0) {
-                        appendOutput(buffer.copyOf(read))
+                        terminalSession?.feedOutput(buffer, 0, read)
                     }
                 }
                 if (isActive) {
+                    terminalSession?.markDisconnected("SSH session ended")
                     _state.value = TerminalConnectionState.Disconnected(
                         "SSH session ended.",
                     )
@@ -232,6 +241,7 @@ internal class SshTerminalManager(
                 }
             } catch (error: IOException) {
                 if (isActive) {
+                    terminalSession?.markDisconnected("SSH connection lost")
                     _state.value = TerminalConnectionState.Failed(
                         "SSH connection lost: ${error.message ?: "I/O error"}",
                     )
@@ -241,29 +251,106 @@ internal class SshTerminalManager(
         }
     }
 
-    private fun clearOutput() {
-        synchronized(outputLock) {
-            outputGeneration += 1
-            outputBytes = ByteArray(0)
-            _output.value = TerminalOutputSnapshot(outputGeneration, outputBytes)
+    private val terminalSessionClient = object : TerminalSessionClient {
+        override fun onTextChanged(changedSession: TerminalSession) {
+            screenUpdateListener?.invoke()
+        }
+
+        override fun onTitleChanged(changedSession: TerminalSession) {
+            screenUpdateListener?.invoke()
+        }
+
+        override fun onSessionFinished(finishedSession: TerminalSession) {
+            screenUpdateListener?.invoke()
+        }
+
+        override fun onCopyTextToClipboard(session: TerminalSession, text: String) {
+            val clipboard = context.getSystemService(ClipboardManager::class.java)
+            clipboard?.setPrimaryClip(ClipData.newPlainText("Terminal", text))
+        }
+
+        override fun onPasteTextFromClipboard(session: TerminalSession?) {
+            val clipboard = context.getSystemService(ClipboardManager::class.java)
+            val text = clipboard?.primaryClip
+                ?.takeIf { it.itemCount > 0 }
+                ?.getItemAt(0)
+                ?.coerceToText(context)
+                ?.toString()
+            if (!text.isNullOrEmpty()) session?.write(text)
+        }
+
+        override fun onBell(session: TerminalSession) = Unit
+
+        override fun onColorsChanged(session: TerminalSession) {
+            screenUpdateListener?.invoke()
+        }
+
+        override fun onTerminalCursorStateChange(state: Boolean) {
+            screenUpdateListener?.invoke()
+        }
+
+        override fun setTerminalShellPid(session: TerminalSession, pid: Int) = Unit
+
+        override fun getTerminalCursorStyle(): Int? = null
+
+        override fun logError(tag: String, message: String) {
+            Log.e(tag, message)
+        }
+
+        override fun logWarn(tag: String, message: String) {
+            Log.w(tag, message)
+        }
+
+        override fun logInfo(tag: String, message: String) {
+            Log.i(tag, message)
+        }
+
+        override fun logDebug(tag: String, message: String) {
+            Log.d(tag, message)
+        }
+
+        override fun logVerbose(tag: String, message: String) {
+            Log.v(tag, message)
+        }
+
+        override fun logStackTraceWithMessage(tag: String, message: String, e: Exception) {
+            Log.e(tag, message, e)
+        }
+
+        override fun logStackTrace(tag: String, e: Exception) {
+            Log.e(tag, "Terminal stack trace", e)
         }
     }
 
-    private fun appendOutput(chunk: ByteArray) {
-        synchronized(outputLock) {
-            val combined = ByteArray(outputBytes.size + chunk.size)
-            outputBytes.copyInto(combined)
-            chunk.copyInto(combined, destinationOffset = outputBytes.size)
-            if (combined.size > MAX_TERMINAL_OUTPUT_BYTES) {
-                outputGeneration += 1
-                outputBytes = combined.copyOfRange(
-                    combined.size - MAX_TERMINAL_OUTPUT_BYTES,
-                    combined.size,
-                )
-            } else {
-                outputBytes = combined
+    private val sessionTransport = object : TerminalSession.ExternalTerminalTransport {
+        override fun write(data: ByteArray, offset: Int, count: Int) {
+            scope.launch(Dispatchers.IO) {
+                writeMutex.withLock {
+                    runCatching {
+                        channelOutput?.write(data, offset, count)
+                        channelOutput?.flush()
+                    }
+                }
             }
-            _output.value = TerminalOutputSnapshot(outputGeneration, outputBytes)
+        }
+
+        override fun resize(columns: Int, rows: Int, cellWidthPixels: Int, cellHeightPixels: Int) {
+            this@SshTerminalManager.columns = columns.coerceIn(2, 500)
+            this@SshTerminalManager.rows = rows.coerceIn(1, 300)
+            scope.launch(Dispatchers.IO) {
+                runCatching {
+                    channel?.setPtySize(
+                        this@SshTerminalManager.columns,
+                        this@SshTerminalManager.rows,
+                        cellWidthPixels,
+                        cellHeightPixels,
+                    )
+                }
+            }
+        }
+
+        override fun disconnect() {
+            disconnect("Disconnected")
         }
     }
 
@@ -350,6 +437,5 @@ internal class SshTerminalManager(
         const val KEY_PORT = "ssh_port"
         const val KEY_USERNAME = "ssh_username"
         const val KEY_PINNED_HOST_KEY = "ssh_pinned_host_key"
-        const val MAX_TERMINAL_OUTPUT_BYTES = 512 * 1024
     }
 }

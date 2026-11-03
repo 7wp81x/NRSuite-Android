@@ -10,13 +10,13 @@ Notable bundled/runtime components include:
 - libusb (where bundled for native USB support) — GNU LGPL 2.1
 - Other Gradle dependencies retain the licenses declared by their respective
   upstream projects and published Maven metadata.
-- xterm.js — MIT — https://github.com/xtermjs/xterm.js — bundled under
-  `app/src/main/assets/terminal/`
+- Termux terminal-emulator and terminal-view — Apache License 2.0 for the
+  terminal emulation libraries — https://github.com/termux/termux-app —
+  vendored as native Android terminal rendering/input code. Termux itself is
+  not bundled; the app connects to a separately installed Termux SSH server.
 - JSch (mwiede fork) — BSD-style revised license —
   https://github.com/mwiede/jsch — SSH client used for the local Termux
   terminal connection.
-- Termux is not bundled. The Terminal tab connects to a separately installed
-  Termux app over local SSH.
 - Firmware PN532 support uses Adafruit PN532 — BSD 3-Clause —
   https://github.com/adafruit/Adafruit-PN532 — and Adafruit BusIO — MIT —
   https://github.com/adafruit/Adafruit_BusIO

@@ -231,7 +231,6 @@ class MainViewModel(internal val app: Application) {
     val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
 
     val terminalState: StateFlow<TerminalConnectionState> get() = terminalManager.state
-    val terminalOutput get() = terminalManager.output
     fun savedTerminalHost(): String = terminalManager.savedHost()
     fun savedTerminalPort(): Int = terminalManager.savedPort()
     fun savedTerminalUsername(): String = terminalManager.savedUsername()
@@ -241,6 +240,9 @@ class MainViewModel(internal val app: Application) {
     fun resizeTerminal(columns: Int, rows: Int) = terminalManager.resize(columns, rows)
     fun isTermuxInstalled(): Boolean = terminalManager.isTermuxInstalled()
     fun clearTerminalPinnedHostKey() = terminalManager.clearPinnedHostKey()
+    fun currentTerminalSession() = terminalManager.currentTerminalSession()
+    fun setTerminalViewUpdateListener(listener: (() -> Unit)?) =
+        terminalManager.setTerminalViewUpdateListener(listener)
 
     internal val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()
