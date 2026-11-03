@@ -179,6 +179,7 @@ internal fun SettingsScreen(
     permissionRevision: Int,
     selectedFlashTarget: UsbSerialDevice?,
     selectedFlashTargetChip: String? = null,
+    selectedFlashTargetFirmwareVersion: String? = null,
     onChooseExportDirectory: () -> Unit,
     onChooseFirmware: () -> Unit,
     onClearFirmware: () -> Unit,
@@ -272,9 +273,9 @@ internal fun SettingsScreen(
     val targetChipMismatch = selectedImageChip != null &&
         selectedTargetChip.isNotBlank() &&
         !selectedImageChip.equals(selectedTargetChip, ignoreCase = true)
-    val connectedChipMismatch = !chip.isNullOrBlank() &&
+    val connectedChipMismatch = !selectedFlashTargetChip.isNullOrBlank() &&
         selectedTargetChip.isNotBlank() &&
-        !chip.equals(selectedTargetChip, ignoreCase = true)
+        !selectedFlashTargetChip.equals(selectedTargetChip, ignoreCase = true)
 
     LaunchedEffect(firmwareAssetDownload) {
         if (firmwareAssetDownload is FirmwareAssetDownloadState.Downloaded) {
@@ -388,12 +389,21 @@ internal fun SettingsScreen(
                 Spacer(Modifier.height(8.dp))
 
                 Text(
-                    text = "Current version: ${currentFirmware ?: "not connected"}",
+                    text = "Flash target: ${selectedFlashTarget?.displayName ?: "not selected"}",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
                 )
                 Text(
-                    text = "Detected board: $boardName",
+                    text = "Target board: ${
+                        selectedFlashTargetChip ?: selectedTargetChip.ifBlank { "unknown" }
+                    }",
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                )
+                Text(
+                    text = "Target firmware: ${
+                        selectedFlashTargetFirmwareVersion ?: "not checked"
+                    }",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
                 )
@@ -861,8 +871,8 @@ internal fun SettingsScreen(
                 if (connectedChipMismatch) {
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "Firmware target $selectedTargetChip does not match the " +
-                            "connected device chip $chip. Select firmware for $chip.",
+                        text = "Firmware image targets $selectedTargetChip, but the selected " +
+                            "flash device is $selectedFlashTargetChip. Select matching firmware.",
                         style = MaterialTheme.typography.bodySmall,
                         color = StatusRed,
                     )

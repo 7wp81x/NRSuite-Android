@@ -2636,6 +2636,8 @@ private fun NRSuiteSettingsRoute(
 ) {
     val themeMode by viewModel.themeMode.collectAsState()
     val selectedFlashTargetChip by viewModel.firmwareTargetChip.collectAsState()
+    val selectedFlashTargetFirmwareVersion by
+        viewModel.firmwareTargetFirmwareVersion.collectAsState()
     SettingsScreen(
         connectionState = connectionState,
         exportDirectoryName = exportDirectoryName,
@@ -2649,6 +2651,7 @@ private fun NRSuiteSettingsRoute(
         permissionRevision = permissionRevision,
         selectedFlashTarget = selectedFlashTarget,
         selectedFlashTargetChip = selectedFlashTargetChip,
+        selectedFlashTargetFirmwareVersion = selectedFlashTargetFirmwareVersion,
         onChooseExportDirectory = onChooseExportDirectory,
         onChooseFirmware = onChooseFirmware,
         onClearFirmware = viewModel::clearFirmwareFlashFile,

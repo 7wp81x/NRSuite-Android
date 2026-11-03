@@ -335,6 +335,11 @@ class MainViewModel(internal val app: Application) {
 
     internal val _firmwareTargetChip = MutableStateFlow<String?>(null)
     val firmwareTargetChip: StateFlow<String?> = _firmwareTargetChip.asStateFlow()
+
+    internal val _firmwareTargetFirmwareVersion = MutableStateFlow<String?>(null)
+    val firmwareTargetFirmwareVersion: StateFlow<String?> =
+        _firmwareTargetFirmwareVersion.asStateFlow()
+
     internal val firmwareTargetChipHints = mutableMapOf<Int, String>()
 
     internal val _badUsbTargetDevice = MutableStateFlow<UsbSerialDevice?>(null)

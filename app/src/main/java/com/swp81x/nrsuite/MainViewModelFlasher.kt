@@ -109,9 +109,10 @@ internal fun MainViewModel.selectFirmwareTargetImpl(device: UsbDevice) {
     }
     _firmwareTargetDevice.value = entry
     val fingerprint = deviceFingerprintImpl(device)
-    val targetChip = (_deviceConnectionStates.value[fingerprint] as? ConnectionState.Connected)?.chip
-        ?: firmwareTargetChipHints[device.deviceId]
+    val targetState = _deviceConnectionStates.value[fingerprint] as? ConnectionState.Connected
+    val targetChip = targetState?.chip ?: firmwareTargetChipHints[device.deviceId]
     _firmwareTargetChip.value = targetChip
+    _firmwareTargetFirmwareVersion.value = targetState?.firmwareVersion
     if (!targetChip.isNullOrBlank()) {
         val imageChip = firmwareChipFromFirmwareName(_firmwareFlashName.value)
         if (imageChip != null && !imageChip.equals(targetChip, ignoreCase = true)) {
