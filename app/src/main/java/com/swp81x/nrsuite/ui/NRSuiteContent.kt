@@ -632,6 +632,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     var showOuiDatabaseDialog by rememberSaveable { mutableStateOf(false) }
     var showFirmwareOnboardingDialog by rememberSaveable { mutableStateOf(false) }
     var firmwareOnboardingDontShowAgain by rememberSaveable { mutableStateOf(false) }
+    var showDeviceSwitchDialog by rememberSaveable { mutableStateOf(false) }
     var rootDirectoryPickerActive by rememberSaveable { mutableStateOf(false) }
     var previousActiveModuleId by remember { mutableStateOf<String?>(null) }
     var irRemoteReturnTarget by rememberSaveable { mutableStateOf<String?>(null) }
@@ -1065,6 +1066,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         else -> "NRSuite"
     }
 
+    val connectedDeviceOptions = devices.filter { device ->
+        deviceConnectionStates[viewModel.deviceFingerprintImpl(device.device)] is ConnectionState.Connected
+    }
+    val canSwitchActiveDevice = connectedDeviceOptions.size > 1
+
     val suppressUsbAttachPrompt =
         (activeModuleId != null && activeModuleId in setOf(
             "devices",
@@ -1101,6 +1107,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     !isSerialMonitorActiveDevice(deviceId)
                 },
                 showConnectionStatus = showBack,
+                onConnectionClick = if (canSwitchActiveDevice) {
+                    { showDeviceSwitchDialog = true }
+                } else {
+                    null
+                },
                 showCatalogAction = activeModuleId == null && selectedCategory == null,
                 onOpenCatalog = { activeModuleId = "module_catalog" },
                 onOpenSettings = { activeModuleId = "settings" },
@@ -1211,6 +1222,65 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     OutlinedButton(onClick = { showOuiDatabaseDialog = false }) {
                         Text("Later")
                     }
+                },
+            )
+        }
+
+        if (showDeviceSwitchDialog && canSwitchActiveDevice) {
+            AlertDialog(
+                onDismissRequest = { showDeviceSwitchDialog = false },
+                title = { Text("Switch active device") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (anyModuleRunning) {
+                            Text(
+                                text = "Switching active devices will stop the current module operation.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusAmber,
+                            )
+                        }
+                        connectedDeviceOptions.forEach { entry ->
+                            val fingerprint = viewModel.deviceFingerprintImpl(entry.device)
+                            val active = fingerprint == primaryFingerprint
+                            OutlinedButton(
+                                onClick = {
+                                    if (viewModel.switchActiveDevice(entry.device)) {
+                                        showDeviceSwitchDialog = false
+                                        uiScope.launch {
+                                            snackbarHostState.showSnackbar(
+                                                "Active device switched to ${entry.displayName}",
+                                            )
+                                        }
+                                    }
+                                },
+                                enabled = !active,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp),
+                                    horizontalAlignment = Alignment.Start,
+                                ) {
+                                    Text(
+                                        text = (deviceConnectionStates[fingerprint] as? ConnectionState.Connected)
+                                            ?.chip
+                                            ?.let { "NRSuite $it" }
+                                            ?: entry.displayName,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                    Text(
+                                        text = if (active) "Active" else "Tap to switch",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (active) StatusGreen else NrOnSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showDeviceSwitchDialog = false }) { Text("Close") }
                 },
             )
         }
@@ -2087,6 +2157,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     disconnectingFingerprints = disconnectingFingerprints,
                     usbManager = usbManager,
                     firmwareUpdate = firmwareUpdate,
+                    firmwareReleases = firmwareReleases,
                     firmwareAssetDownload = firmwareAssetDownload,
                     onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
                     onOpenFirmwareFlasherForUpdate = {
@@ -2109,7 +2180,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                         }
                     },
                     onOpenFirmwareFlasher = { device, chip ->
-                        viewModel.prepareFirmwareFlasherForDiagnostic(chip)
+                        viewModel.prepareFirmwareFlasherForDiagnostic(chip, device?.deviceId)
                         if (device != null) {
                             if (usbManager.hasPermission(device)) {
                                 viewModel.selectFirmwareTarget(device)
@@ -2360,6 +2431,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 disconnectingFingerprints = disconnectingFingerprints,
                 usbManager = usbManager,
                 firmwareUpdate = firmwareUpdate,
+                firmwareReleases = firmwareReleases,
                 firmwareAssetDownload = firmwareAssetDownload,
                 onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
                 onOpenFirmwareFlasherForUpdate = {
@@ -2382,7 +2454,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     }
                 },
                 onOpenFirmwareFlasher = { device, chip ->
-                    viewModel.prepareFirmwareFlasherForDiagnostic(chip)
+                    viewModel.prepareFirmwareFlasherForDiagnostic(chip, device?.deviceId)
                     if (device != null) {
                         if (usbManager.hasPermission(device)) {
                             viewModel.selectFirmwareTarget(device)
@@ -2423,6 +2495,7 @@ private fun NRSuiteTopBar(
     hasPermission: Boolean,
     hasPendingPermissions: Boolean,
     showConnectionStatus: Boolean,
+    onConnectionClick: (() -> Unit)?,
     showCatalogAction: Boolean,
     onOpenCatalog: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -2455,6 +2528,7 @@ private fun NRSuiteTopBar(
                         hasDevices = hasDevices,
                         hasPermission = hasPermission,
                         hasPendingPermissions = hasPendingPermissions,
+                        onClick = onConnectionClick,
                     )
                 }
                 if (showCatalogAction) {
@@ -2561,6 +2635,7 @@ private fun NRSuiteSettingsRoute(
     viewModel: MainViewModel,
 ) {
     val themeMode by viewModel.themeMode.collectAsState()
+    val selectedFlashTargetChip by viewModel.firmwareTargetChip.collectAsState()
     SettingsScreen(
         connectionState = connectionState,
         exportDirectoryName = exportDirectoryName,
@@ -2573,6 +2648,7 @@ private fun NRSuiteSettingsRoute(
         usbManager = usbManager,
         permissionRevision = permissionRevision,
         selectedFlashTarget = selectedFlashTarget,
+        selectedFlashTargetChip = selectedFlashTargetChip,
         onChooseExportDirectory = onChooseExportDirectory,
         onChooseFirmware = onChooseFirmware,
         onClearFirmware = viewModel::clearFirmwareFlashFile,

@@ -178,6 +178,7 @@ internal fun SettingsScreen(
     usbManager: UsbManager,
     permissionRevision: Int,
     selectedFlashTarget: UsbSerialDevice?,
+    selectedFlashTargetChip: String? = null,
     onChooseExportDirectory: () -> Unit,
     onChooseFirmware: () -> Unit,
     onClearFirmware: () -> Unit,
@@ -252,11 +253,19 @@ internal fun SettingsScreen(
     var selectedFirmwareAssetName by remember { mutableStateOf<String?>(null) }
     var firmwareSourceRemote by remember { mutableStateOf(true) }
     val localFirmwareChip = firmwareChipFromFirmwareName(firmwareFileName)
-    LaunchedEffect(chip, diagnosticChipHint) {
+    LaunchedEffect(
+        selectedFlashTarget?.device?.deviceId,
+        selectedFlashTargetChip,
+        diagnosticChipHint,
+        chip,
+    ) {
         when {
-            selectedTargetChip.isNotBlank() -> Unit
-            !chip.isNullOrBlank() -> selectedTargetChip = chip
-            !diagnosticChipHint.isNullOrBlank() -> selectedTargetChip = diagnosticChipHint
+            !selectedFlashTargetChip.isNullOrBlank() ->
+                selectedTargetChip = selectedFlashTargetChip
+            selectedFlashTarget == null && !chip.isNullOrBlank() ->
+                selectedTargetChip = chip
+            selectedTargetChip.isBlank() && !diagnosticChipHint.isNullOrBlank() ->
+                selectedTargetChip = diagnosticChipHint
         }
     }
     val selectedImageChip = localFirmwareChip

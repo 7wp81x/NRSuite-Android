@@ -126,6 +126,9 @@ import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
 import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
+import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
+import com.swp81x.nrsuite.core.update.VersionComparator
+import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.ui.components.ConnectionDiagnosticSummary
 import com.swp81x.nrsuite.ui.components.FirmwareUpdateInlineNotice
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
@@ -162,6 +165,7 @@ internal fun DeviceScreen(
     disconnectingFingerprints: Set<String>,
     usbManager: UsbManager,
     firmwareUpdate: FirmwareUpdateInfo?,
+    firmwareReleases: List<ReleaseInfo>,
     firmwareAssetDownload: FirmwareAssetDownloadState,
     onDownloadFirmwareUpdate: () -> Unit,
     onOpenFirmwareFlasherForUpdate: () -> Unit,
@@ -242,6 +246,10 @@ internal fun DeviceScreen(
                     pendingPermission = device.device.deviceId in pendingPermissionRequests,
                     disconnecting = deviceFingerprint(device.device) in disconnectingFingerprints,
                     connectEnabled = !usbConnectBusy,
+                    updateAvailableTag = availableFirmwareUpdateTag(
+                        deviceConnectionStates[deviceFingerprint(device.device)],
+                        firmwareReleases,
+                    ),
                     onConnect = { onConnect(device.device) },
                     onDisconnect = { onDisconnectDevice(device.device) },
                     onSwitch = { onSwitchDevice(device.device) },
@@ -405,6 +413,7 @@ internal fun DeviceRow(
     pendingPermission: Boolean,
     disconnecting: Boolean = false,
     connectEnabled: Boolean = true,
+    updateAvailableTag: String? = null,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onSwitch: () -> Unit,
@@ -479,6 +488,13 @@ internal fun DeviceRow(
                         style = MaterialTheme.typography.bodySmall,
                         color = statusColor,
                     )
+                    if (updateAvailableTag != null) {
+                        Text(
+                            text = "Update available → $updateAvailableTag",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = StatusAmber,
+                        )
+                    }
                 }
                 Spacer(Modifier.width(8.dp))
                 when {
@@ -587,6 +603,7 @@ internal fun DeviceRow(
                     entry = entry,
                     hasPermission = hasPermission,
                     state = state,
+                    updateAvailableTag = updateAvailableTag,
                     onRefreshStatus = onRefreshStatus,
                     onOpenFirmwareFlasher = onOpenFirmwareFlasher,
                     onDisconnect = onDisconnect,
@@ -601,6 +618,7 @@ private fun DeviceDetailsContent(
     entry: UsbSerialDevice,
     hasPermission: Boolean,
     state: ConnectionState?,
+    updateAvailableTag: String?,
     onRefreshStatus: () -> Unit,
     onOpenFirmwareFlasher: (String?) -> Unit,
     onDisconnect: () -> Unit,
@@ -635,6 +653,16 @@ private fun DeviceDetailsContent(
                 }
             }
             DeviceSpecsContent(state)
+            if (updateAvailableTag != null) {
+                Spacer(Modifier.height(6.dp))
+                Button(
+                    onClick = { onOpenFirmwareFlasher(state.chip) },
+                    modifier = Modifier.height(32.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                ) {
+                    Text("Update this device", style = MaterialTheme.typography.labelMedium)
+                }
+            }
             Spacer(Modifier.height(6.dp))
             OutlinedButton(
                 onClick = onDisconnect,
@@ -738,6 +766,19 @@ private fun DeviceSpecsContent(state: ConnectionState.Connected) {
     SpecRow("Flash", formatBytes(state.flashSize))
     if (!state.sdkVersion.isNullOrBlank()) SpecRow("SDK", state.sdkVersion)
     SpecRow("Features", "${state.features.size} advertised")
+}
+
+private fun availableFirmwareUpdateTag(
+    state: ConnectionState?,
+    releases: List<ReleaseInfo>,
+): String? {
+    val connected = state as? ConnectionState.Connected ?: return null
+    val chip = connected.chip ?: return null
+    val current = connected.firmwareVersion ?: return null
+    return releases.firstOrNull { release ->
+        release.compatibleFirmwareAssets(chip).isNotEmpty() &&
+            VersionComparator.isNewer(release.tag, current)
+    }?.tag
 }
 
 @Composable

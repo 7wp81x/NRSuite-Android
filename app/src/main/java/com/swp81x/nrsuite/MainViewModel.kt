@@ -333,6 +333,10 @@ class MainViewModel(internal val app: Application) {
     internal val _firmwareTargetDevice = MutableStateFlow<UsbSerialDevice?>(null)
     val firmwareTargetDevice: StateFlow<UsbSerialDevice?> = _firmwareTargetDevice.asStateFlow()
 
+    internal val _firmwareTargetChip = MutableStateFlow<String?>(null)
+    val firmwareTargetChip: StateFlow<String?> = _firmwareTargetChip.asStateFlow()
+    internal val firmwareTargetChipHints = mutableMapOf<Int, String>()
+
     internal val _badUsbTargetDevice = MutableStateFlow<UsbSerialDevice?>(null)
     val badUsbTargetDevice: StateFlow<UsbSerialDevice?> = _badUsbTargetDevice.asStateFlow()
 
@@ -1695,8 +1699,8 @@ class MainViewModel(internal val app: Application) {
         this.downloadFirmwareAssetImpl(releaseTag, assetName)
     fun downloadFirmwareUpdate() = this.downloadFirmwareUpdateForCurrentDeviceImpl()
     fun prepareFirmwareFlasherForUpdate() = this.prepareFirmwareFlasherForUpdateImpl()
-    fun prepareFirmwareFlasherForDiagnostic(chip: String?) =
-        this.prepareFirmwareFlasherForDiagnosticImpl(chip)
+    fun prepareFirmwareFlasherForDiagnostic(chip: String?, deviceId: Int? = null) =
+        this.prepareFirmwareFlasherForDiagnosticImpl(chip, deviceId)
     fun armManualFirmwareRecovery(targetChip: String) =
         this.armManualFirmwareRecoveryImpl(targetChip)
     fun flashManualFirmwareNow() = this.flashManualFirmwareNowImpl()

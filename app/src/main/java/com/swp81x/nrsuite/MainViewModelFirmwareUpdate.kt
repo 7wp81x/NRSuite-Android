@@ -137,7 +137,14 @@ internal fun MainViewModel.prepareFirmwareFlasherForUpdateImpl() {
     }
 }
 
-internal fun MainViewModel.prepareFirmwareFlasherForDiagnosticImpl(chip: String?) {
+internal fun MainViewModel.prepareFirmwareFlasherForDiagnosticImpl(
+    chip: String?,
+    deviceId: Int? = null,
+) {
+    if (deviceId != null && !chip.isNullOrBlank()) {
+        firmwareTargetChipHints[deviceId] = chip
+        _firmwareTargetChip.value = chip
+    }
     val file = downloadedFirmwarePath?.let(::File)
     val matchesChip = file != null &&
         file.exists() &&

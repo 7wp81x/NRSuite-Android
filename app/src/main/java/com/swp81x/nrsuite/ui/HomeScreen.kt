@@ -53,6 +53,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -178,6 +179,7 @@ internal fun ConnectionStatusIndicator(
     hasDevices: Boolean,
     hasPermission: Boolean,
     hasPendingPermissions: Boolean,
+    onClick: (() -> Unit)? = null,
 ) {
     val (label, color) = when (state) {
         ConnectionState.Disconnected -> when {
@@ -192,17 +194,33 @@ internal fun ConnectionStatusIndicator(
         is ConnectionState.Failed -> "Error" to StatusRed
     }
 
-    StatusIndicator(
-        label = label,
-        color = color,
+    Row(
         modifier = Modifier
             .padding(end = 8.dp)
             .background(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f),
                 shape = RoundedCornerShape(50),
             )
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-    )
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(onClick = onClick)
+                } else {
+                    Modifier
+                },
+            )
+            .padding(start = 10.dp, end = if (onClick != null) 6.dp else 10.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StatusIndicator(label = label, color = color)
+        if (onClick != null) {
+            Icon(
+                imageVector = Icons.Default.ArrowDropDown,
+                contentDescription = "Switch active device",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(17.dp),
+            )
+        }
+    }
 }
 
 @Composable

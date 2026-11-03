@@ -10,6 +10,7 @@ import com.swp81x.nrsuite.core.flasher.recommendedEsp32ResetMode
 import com.swp81x.nrsuite.core.flasher.triggerTinyUsbBootloaderReboot
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
+import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
@@ -107,7 +108,24 @@ internal fun MainViewModel.selectFirmwareTargetImpl(device: UsbDevice) {
         return
     }
     _firmwareTargetDevice.value = entry
-    appendLog("Firmware flash target: ${entry.displayName}")
+    val fingerprint = deviceFingerprintImpl(device)
+    val targetChip = (_deviceConnectionStates.value[fingerprint] as? ConnectionState.Connected)?.chip
+        ?: firmwareTargetChipHints[device.deviceId]
+    _firmwareTargetChip.value = targetChip
+    if (!targetChip.isNullOrBlank()) {
+        val imageChip = firmwareChipFromFirmwareName(_firmwareFlashName.value)
+        if (imageChip != null && !imageChip.equals(targetChip, ignoreCase = true)) {
+            clearFirmwareFlashFileImpl()
+            _firmwareAssetDownload.value =
+                com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState.Idle
+            _toastMessage.value =
+                "Firmware image cleared: target $targetChip requires matching firmware."
+        }
+    }
+    appendLog(
+        "Firmware flash target: ${entry.displayName}" +
+            (targetChip?.let { " ($it)" } ?: ""),
+    )
 }
 
 internal fun MainViewModel.armManualFirmwareRecoveryImpl(targetChip: String) {

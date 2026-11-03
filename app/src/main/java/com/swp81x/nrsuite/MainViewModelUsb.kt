@@ -148,6 +148,7 @@ internal fun MainViewModel.deviceFingerprintImpl(device: UsbDevice): String {
 
 internal fun MainViewModel.onUsbDeviceDetachedImpl(device: UsbDevice) {
     clearPermissionRequestImpl(device.deviceId)
+    firmwareTargetChipHints.remove(device.deviceId)
     usbAttachPromptJobs.remove(device.deviceId)?.cancel()
     _usbAttachPrompts.update { prompts ->
         prompts.filterNot { it.deviceId == device.deviceId }
