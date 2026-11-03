@@ -100,8 +100,8 @@ class NrSession(
         repeat(AUTO_CONNECT_ATTEMPTS) { attempt ->
             if (attempt > 0) {
                 log("Retrying NRSuite handshake automatically...")
+                _state.value = ConnectionState.Diagnosing
                 delay(AUTO_RETRY_DELAY_MS)
-                _state.value = ConnectionState.Connecting
             }
 
             try {

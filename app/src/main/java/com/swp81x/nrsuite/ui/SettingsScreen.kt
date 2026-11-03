@@ -280,9 +280,14 @@ internal fun SettingsScreen(
             ?: compatibleReleases.firstOrNull()
             ?: firmwareReleases.firstOrNull().takeIf { selectedTargetChip.isBlank() }
         selectedFirmwareReleaseTag = release?.tag
-        val assets = release?.compatibleFirmwareAssets(selectedTargetChip).orEmpty()
-        selectedFirmwareAssetName = assets.firstOrNull { it.name == selectedFirmwareAssetName }?.name
-            ?: assets.firstOrNull()?.name
+        val selectionAssets = if (selectedTargetChip.isBlank()) {
+            release?.assets.orEmpty()
+        } else {
+            release?.compatibleFirmwareAssets(selectedTargetChip).orEmpty()
+        }
+        selectedFirmwareAssetName =
+            selectionAssets.firstOrNull { it.name == selectedFirmwareAssetName }?.name
+                ?: selectionAssets.firstOrNull()?.name
     }
     LaunchedEffect(firmwareSourceRemote, selectedFirmwareAssetName) {
         if (firmwareSourceRemote && selectedFirmwareAssetName != null) {
@@ -581,14 +586,10 @@ internal fun SettingsScreen(
                         val compatibleAssets = selectedRelease
                             ?.compatibleFirmwareAssets(selectedTargetChip)
                             .orEmpty()
-                        // When the handshake failed and no chip is known, list all
-                        // release assets. Selecting one sets the target chip to
-                        // the chip encoded in that firmware filename.
-                        val assetCandidates = if (selectedTargetChip.isBlank()) {
-                            allAssets
-                        } else {
-                            compatibleAssets
-                        }
+                        // The target dropdown doubles as the remote target-chip
+                        // selector, so expose every firmware asset in the release.
+                        // Selecting one commits the chip encoded in its filename.
+                        val assetCandidates = allAssets
                         val selectedAsset = assetCandidates.firstOrNull {
                             it.name == selectedFirmwareAssetName
                         } ?: assetCandidates.firstOrNull()
@@ -659,6 +660,10 @@ internal fun SettingsScreen(
                             onClick = {
                                 val release = selectedRelease ?: return@Button
                                 val asset = selectedAsset ?: return@Button
+                                selectedFirmwareAssetName = asset.name
+                                firmwareChipFromAssetName(asset.name)?.let {
+                                    selectedTargetChip = it
+                                }
                                 onDownloadFirmwareAsset(release.tag, asset.name)
                             },
                             enabled = selectedRelease != null &&
