@@ -199,6 +199,14 @@ public final class TerminalView extends View {
                 // Do not start scrolling until last fling has been taken care of:
                 if (!mScroller.isFinished()) return true;
 
+                // Horizontal swipes are used to switch terminal sessions. Keep
+                // vertical swipes for terminal scrollback.
+                if (Math.abs(velocityX) > Math.abs(velocityY) * 1.8f &&
+                    Math.abs(velocityX) > 900f) {
+                    mClient.onSessionSwipe(velocityX < 0 ? 1 : -1);
+                    return true;
+                }
+
                 final boolean mouseTrackingAtStartOfFling = mEmulator.isMouseTrackingActive();
                 float SCALE = 0.25f;
                 if (mouseTrackingAtStartOfFling) {

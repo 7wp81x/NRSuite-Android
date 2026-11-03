@@ -48,6 +48,9 @@ public interface TerminalViewClient {
 
     boolean onLongPress(MotionEvent event);
 
+    /** Called for a horizontal fling across the terminal. Direction is -1 or 1. */
+    void onSessionSwipe(int direction);
+
 
 
     boolean readControlKey();

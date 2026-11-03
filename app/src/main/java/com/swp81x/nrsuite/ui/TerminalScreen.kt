@@ -33,6 +33,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -63,6 +65,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
@@ -92,6 +95,7 @@ import com.swp81x.nrsuite.ui.theme.StatusRed
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
+import kotlinx.coroutines.launch
 
 private const val TERMUX_FDROID_URL = "https://f-droid.org/packages/com.termux/"
 private const val TERMUX_GITHUB_URL = "https://github.com/termux/termux-app"
@@ -430,6 +434,7 @@ private fun ConnectedTerminal(
     val nrColors = NrTheme.colors
     val terminalViews = remember { mutableStateMapOf<Int, TerminalView>() }
     val pagerState = rememberPagerState(pageCount = { terminalSessions.size })
+    val coroutineScope = rememberCoroutineScope()
     var terminalMenuExpanded by remember { mutableStateOf(false) }
     var ctrlActive by remember { mutableStateOf(false) }
     var altActive by remember { mutableStateOf(false) }
@@ -570,11 +575,36 @@ private fun ConnectedTerminal(
                 }
             }
             if (terminalSessions.size > 1) {
+                IconButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(
+                                (pagerState.currentPage - 1).coerceAtLeast(0),
+                            )
+                        }
+                    },
+                    enabled = pagerState.currentPage > 0,
+                ) {
+                    Icon(Icons.Default.ChevronLeft, contentDescription = "Previous session")
+                }
                 Text(
                     text = "${pagerState.currentPage + 1} / ${terminalSessions.size}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                IconButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(
+                                (pagerState.currentPage + 1)
+                                    .coerceAtMost(terminalSessions.lastIndex),
+                            )
+                        }
+                    },
+                    enabled = pagerState.currentPage < terminalSessions.lastIndex,
+                ) {
+                    Icon(Icons.Default.ChevronRight, contentDescription = "Next session")
+                }
             }
             Spacer(Modifier.weight(1f))
             IconButton(onClick = showKeyboard) {
@@ -616,6 +646,14 @@ private fun ConnectedTerminal(
                     if (value) altActive = false
                     value
                 },
+                onSwipe = { direction ->
+                    coroutineScope.launch {
+                        pagerState.animateScrollToPage(
+                            (pagerState.currentPage + direction)
+                                .coerceIn(0, terminalSessions.lastIndex),
+                        )
+                    }
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -649,6 +687,7 @@ private fun NativeTerminalPage(
     onZoom: (Boolean) -> Unit,
     onCtrlRead: () -> Boolean,
     onAltRead: () -> Boolean,
+    onSwipe: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val viewState = remember { mutableStateOf<TerminalView?>(null) }
@@ -658,6 +697,7 @@ private fun NativeTerminalPage(
             onZoom = onZoom,
             readControl = onCtrlRead,
             readAlt = onAltRead,
+            onSwipe = onSwipe,
         )
     }
     AndroidView(
@@ -778,6 +818,7 @@ private class NativeTerminalViewClient(
     private val onZoom: (Boolean) -> Unit,
     private val readControl: () -> Boolean,
     private val readAlt: () -> Boolean,
+    private val onSwipe: (Int) -> Unit,
 ) : TerminalViewClient {
     override fun onScale(scale: Float): Float {
         if (scale < 0.9f || scale > 1.1f) {
@@ -806,6 +847,10 @@ private class NativeTerminalViewClient(
     override fun onKeyUp(keyCode: Int, e: KeyEvent): Boolean = false
 
     override fun onLongPress(event: MotionEvent): Boolean = false
+
+    override fun onSessionSwipe(direction: Int) {
+        onSwipe(direction)
+    }
 
     override fun readControlKey(): Boolean = readControl()
 
