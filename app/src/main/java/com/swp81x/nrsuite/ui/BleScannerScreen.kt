@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -285,7 +286,7 @@ private fun BleScannerConfigCard(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     NrFilterChip(

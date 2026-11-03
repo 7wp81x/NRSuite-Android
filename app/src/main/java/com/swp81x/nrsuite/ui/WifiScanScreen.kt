@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
@@ -210,7 +211,7 @@ private fun ScanConfigCard(
                 }
             }
 
-            AnimatedVisibility(visible = expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Column {
                     Spacer(Modifier.height(8.dp))
                     Text(

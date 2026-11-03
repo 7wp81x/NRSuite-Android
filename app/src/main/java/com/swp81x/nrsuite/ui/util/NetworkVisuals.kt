@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui.util
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.swp81x.nrsuite.core.defense.isLikelyInfrastructureVendor
 import com.swp81x.nrsuite.ui.theme.CategoryDetectionBlue
@@ -12,6 +13,7 @@ import com.swp81x.nrsuite.ui.theme.StatusRed
  * Scan-context signal quality. Stronger is better here, so this is not the
  * same color scale as threat proximity for deauth/rogue AP alerts.
  */
+@Composable
 fun signalQualityColor(rssi: Int): Color = when {
     rssi >= -50 -> NrAccent
     rssi >= -65 -> CategoryDetectionBlue
@@ -22,12 +24,14 @@ fun signalQualityColor(rssi: Int): Color = when {
 /**
  * Threat proximity used by deauth/rogue AP detection: closer means more urgent.
  */
+@Composable
 fun threatProximityColor(rssi: Int): Color = when {
     rssi >= -50 -> StatusRed
     rssi >= -65 -> StatusAmber
     else -> StatusNeutral
 }
 
+@Composable
 fun securityColor(security: String): Color {
     val normalized = security.uppercase()
     return when {
@@ -41,6 +45,7 @@ fun securityColor(security: String): Color {
     }
 }
 
+@Composable
 fun ouiStatusColor(
     vendor: String?,
     whitelisted: Boolean,

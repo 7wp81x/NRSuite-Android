@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -349,7 +350,7 @@ private fun HiddenApConfigCard(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Spacer(Modifier.height(10.dp))
                 ChannelModeToggle(
                     fixed = fixed,

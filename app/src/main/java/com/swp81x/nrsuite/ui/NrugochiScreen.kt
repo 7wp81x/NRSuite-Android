@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -510,7 +511,7 @@ private fun NrugochiConfigCard(
                 TextButton(onClick = onToggleAdvanced, enabled = fieldsEnabled) {
                     Text(if (advancedExpanded) "Hide advanced" else "Advanced options")
                 }
-                if (advancedExpanded) {
+                NrAnimatedVisibility(visible = advancedExpanded) {
                     NumberField(
                         label = "Max AP attempts per cycle",
                         value = maxApAttempts,

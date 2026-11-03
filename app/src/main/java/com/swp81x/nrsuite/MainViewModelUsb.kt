@@ -374,7 +374,9 @@ internal fun MainViewModel.connectImpl(device: UsbDevice) {
                 runCatching { old.session.disconnect() }
                 kotlinx.coroutines.delay(250)
             }
-            newSession.connect()
+            newSession.connect(
+                permissionGranted = usbManager.hasPermission(entry.device),
+            )
         }
     }
 }

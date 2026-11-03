@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import android.hardware.usb.UsbDevice
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -421,7 +422,7 @@ private fun ConfigZone(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Column {
                     Spacer(Modifier.height(10.dp))
                     SavedScriptPicker(
@@ -601,6 +602,7 @@ private fun badUsbStatusLabel(
         "ARMED"
     }
     state is ConnectionState.Connecting -> "Connecting..."
+    state is ConnectionState.Diagnosing -> "Diagnosing connection..."
     state is ConnectionState.Failed -> "Connection failed"
     state is ConnectionState.Connected -> if (isBadUsbSupported(state)) {
         buildString {

@@ -133,6 +133,7 @@ import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.theme.NRSuiteTheme
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
@@ -597,15 +598,18 @@ fun NRSuiteApp() {
     val viewModel = remember(appContext) {
         (appContext as NrSuiteApplication).controller
     }
+    val themeMode by viewModel.themeMode.collectAsState()
     var showStartup by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(900)
         showStartup = false
     }
-    Box(modifier = Modifier.fillMaxSize()) {
-        NRSuiteContent(viewModel = viewModel)
-        if (showStartup) {
-            StartupScreen()
+    NRSuiteTheme(mode = themeMode) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            NRSuiteContent(viewModel = viewModel)
+            if (showStartup) {
+                StartupScreen()
+            }
         }
     }
 }

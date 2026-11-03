@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -330,7 +331,7 @@ private fun TargetConfigCard(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onScan, enabled = connected && !scanning && !running) {

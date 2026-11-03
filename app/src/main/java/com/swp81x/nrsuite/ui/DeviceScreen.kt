@@ -122,6 +122,7 @@ import androidx.core.content.ContextCompat
 import com.swp81x.nrsuite.MainViewModel
 import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.ui.components.ConnectionDiagnosticSummary
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
@@ -158,10 +159,11 @@ internal fun DeviceScreen(
     onDisconnect: () -> Unit,
     onDisconnectDevice: (UsbDevice) -> Unit,
     onRefreshStatus: () -> Unit,
+    onOpenFirmwareFlasher: (String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val usbConnectBusy = deviceConnectionStates.values.any {
-        it is ConnectionState.Connecting
+        it is ConnectionState.Connecting || it is ConnectionState.Diagnosing
     } || pendingPermissionRequests.isNotEmpty() || disconnectingFingerprints.isNotEmpty()
 
     LazyColumn(
@@ -174,6 +176,7 @@ internal fun DeviceScreen(
                 state = connectionState,
                 disconnecting = disconnectingFingerprints.isNotEmpty(),
                 onDisconnect = onDisconnect,
+                onOpenFirmwareFlasher = onOpenFirmwareFlasher,
             )
         }
 
@@ -253,6 +256,7 @@ internal fun DeviceConnectionCard(
     state: ConnectionState,
     disconnecting: Boolean,
     onDisconnect: () -> Unit,
+    onOpenFirmwareFlasher: (String?) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -272,8 +276,9 @@ internal fun DeviceConnectionCard(
                 when (state) {
                     ConnectionState.Disconnected -> "Disconnected" to StatusNeutral
                     ConnectionState.Connecting -> "Connecting..." to StatusAmber
+                    ConnectionState.Diagnosing -> "Diagnosing..." to StatusAmber
                     is ConnectionState.Connected -> "Connected" to StatusGreen
-                    is ConnectionState.Failed -> "Error: ${state.message}" to StatusRed
+                    is ConnectionState.Failed -> "Connection diagnosis" to StatusRed
                 }
             }
             StatusIndicator(label = label, color = color)
@@ -295,6 +300,13 @@ internal fun DeviceConnectionCard(
                     color = NrOnSurfaceVariant,
                 )
             }
+            if (state is ConnectionState.Failed && state.diagnostic != null) {
+                Spacer(Modifier.height(8.dp))
+                ConnectionDiagnosticSummary(
+                    diagnostic = state.diagnostic,
+                    onOpenFirmwareFlasher = onOpenFirmwareFlasher,
+                )
+            }
             if (!disconnecting) {
                 when (state) {
                     is ConnectionState.Connected -> {
@@ -310,6 +322,8 @@ internal fun DeviceConnectionCard(
                             Text("Cancel")
                         }
                     }
+
+                    ConnectionState.Diagnosing -> Unit
 
                     is ConnectionState.Failed -> {
                         Spacer(Modifier.height(10.dp))
@@ -352,13 +366,18 @@ internal fun DeviceRow(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = entry.displayName,
+                    text = if (state is ConnectionState.Connected) {
+                        "NRSuite ${state.chip ?: "ESP32"}"
+                    } else {
+                        entry.displayName
+                    },
                     fontWeight = FontWeight.Medium,
                 )
                 val statusText = when {
                     disconnecting -> "Disconnecting..."
                     state is ConnectionState.Connected -> "Connected"
                     state is ConnectionState.Connecting -> "Connecting..."
+                    state is ConnectionState.Diagnosing -> "Diagnosing..."
                     pendingPermission -> "Permission requested"
                     state is ConnectionState.Failed -> "Connection failed"
                     hasPermission -> "Permission granted"
@@ -368,6 +387,7 @@ internal fun DeviceRow(
                     disconnecting -> StatusAmber
                     state is ConnectionState.Connected -> StatusGreen
                     state is ConnectionState.Connecting -> StatusAmber
+                    state is ConnectionState.Diagnosing -> StatusAmber
                     pendingPermission -> StatusAmber
                     state is ConnectionState.Failed -> StatusRed
                     else -> NrOnSurfaceVariant
@@ -418,6 +438,19 @@ internal fun DeviceRow(
                         ),
                     ) {
                         Text("Connecting...")
+                    }
+                }
+
+                state is ConnectionState.Diagnosing -> {
+                    Button(
+                        onClick = {},
+                        enabled = false,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = StatusAmber,
+                            contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
+                        ),
+                    ) {
+                        Text("Diagnosing...")
                     }
                 }
 

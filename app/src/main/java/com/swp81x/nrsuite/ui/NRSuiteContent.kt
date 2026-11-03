@@ -105,6 +105,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -151,6 +153,7 @@ import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrSurface
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
+import com.swp81x.nrsuite.ui.theme.NrTheme
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
@@ -482,7 +485,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             state.chip in setOf("ESP32-C3", "ESP32-S3", "ESP32") &&
             (state.features.isEmpty() || "ble_pin_bruteforce" in state.features)
     }
+    val themePalette = NrTheme.colors
     val liveModules = remember(
+        themePalette,
         connectionState,
         deviceConnectionStates,
         scanning,
@@ -577,14 +582,14 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
         val availabilityColor = when (availabilityLabel) {
             null -> null
-            "Device needed" -> StatusNeutral
-            "Unavailable" -> StatusNeutral.copy(alpha = 0.5f)
-            "Not supported" -> StatusRed
-            else -> StatusAmber
+            "Device needed" -> themePalette.statusNeutral
+            "Unavailable" -> themePalette.statusNeutral.copy(alpha = 0.5f)
+            "Not supported" -> themePalette.statusRed
+            else -> themePalette.statusAmber
         }
         module.copy(
             available = module.available,
-            iconTint = categoryColor(module.category),
+            iconTint = categoryColor(module.category, themePalette.isLight),
             statusLabel = availabilityLabel,
             statusColor = availabilityColor,
             isRunning = when (module.id) {
@@ -1066,16 +1071,15 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     } else activeModule?.let { module ->
         when (module.statusLabel) {
             "Device needed" ->
-                "No device connected. Connect your NRSuite ESP32 to run ${module.title}."
+                "Connect your NRSuite ESP32 over USB-OTG to use ${module.title}."
             "Not supported" ->
-                "${module.title} is not supported by the connected ESP32" +
-                    (connectedChip?.let { " ($it)" } ?: "") + "."
+                "This board doesn't support ${module.title}."
             "Firmware required" ->
-                "The connected firmware is missing the required feature for ${module.title}."
+                "Update the firmware to use ${module.title} on this board."
             "OUI DB required" ->
-                "Download the OUI/vendor database before using ${module.title}."
+                "Download the OUI/vendor database to use ${module.title}."
             "Unavailable" ->
-                "${module.title} is not available yet."
+                "${module.title} is not available in this build."
             else -> null
         }
     }
@@ -1099,6 +1103,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             NRSuiteTopBar(
                 title = activeTitle,
@@ -1118,6 +1123,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 hasPendingPermissions = pendingPermissionRequests.any { deviceId ->
                     !isSerialMonitorActiveDevice(deviceId)
                 },
+                showConnectionStatus = showBack,
                 showCatalogAction = activeModuleId == null && selectedCategory == null,
                 onOpenCatalog = { activeModuleId = "module_catalog" },
                 onOpenSettings = { activeModuleId = "settings" },
@@ -2014,6 +2020,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onDisconnect = viewModel::disconnect,
                     onDisconnectDevice = viewModel::disconnectDevice,
                     onRefreshStatus = viewModel::refreshActiveDeviceStatus,
+                    onOpenFirmwareFlasher = { chip ->
+                        viewModel.prepareFirmwareFlasherForDiagnostic(chip)
+                        viewModel.onModuleOpened("firmware")
+                        activeModuleId = "firmware"
+                    },
                     modifier = Modifier,
                 )
             }
@@ -2220,6 +2231,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     viewModel.onModuleOpened("firmware")
                     activeModuleId = "firmware"
                 },
+                onOpenFirmwareFlasherForDiagnostic = { chip ->
+                    viewModel.prepareFirmwareFlasherForDiagnostic(chip)
+                    viewModel.onModuleOpened("firmware")
+                    activeModuleId = "firmware"
+                },
                 onOpenModule = {
                     viewModel.onModuleOpened(it)
                     activeModuleId = it
@@ -2257,6 +2273,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onDisconnect = viewModel::disconnect,
                 onDisconnectDevice = viewModel::disconnectDevice,
                 onRefreshStatus = viewModel::refreshActiveDeviceStatus,
+                onOpenFirmwareFlasher = {
+                    viewModel.prepareFirmwareFlasherForUpdate()
+                    viewModel.onModuleOpened("firmware")
+                    activeModuleId = "firmware"
+                },
                 modifier = Modifier,
             )
 
@@ -2286,54 +2307,68 @@ private fun NRSuiteTopBar(
     hasDevices: Boolean,
     hasPermission: Boolean,
     hasPendingPermissions: Boolean,
+    showConnectionStatus: Boolean,
     showCatalogAction: Boolean,
     onOpenCatalog: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    TopAppBar(
-        title = {
-            Text(
-                text = title,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        navigationIcon = {
-            if (showBack) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = backDescription,
-                    )
-                }
-            }
-        },
-        actions = {
-            ConnectionStatusIndicator(
-                state = connectionState,
-                hasDevices = hasDevices,
-                hasPermission = hasPermission,
-                hasPendingPermissions = hasPendingPermissions,
-            )
-            if (showCatalogAction) {
-                IconButton(onClick = onOpenCatalog) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "All modules",
-                        tint = NrOnSurfaceVariant,
-                    )
-                }
-            }
-            IconButton(onClick = onOpenSettings) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Settings",
-                    tint = NrOnSurfaceVariant,
+    Column {
+        TopAppBar(
+            title = {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-            }
-        },
-    )
+            },
+            navigationIcon = {
+                if (showBack) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = backDescription,
+                        )
+                    }
+                }
+            },
+            actions = {
+                if (showConnectionStatus) {
+                    ConnectionStatusIndicator(
+                        state = connectionState,
+                        hasDevices = hasDevices,
+                        hasPermission = hasPermission,
+                        hasPendingPermissions = hasPendingPermissions,
+                    )
+                }
+                if (showCatalogAction) {
+                    IconButton(onClick = onOpenCatalog) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "All modules",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                IconButton(onClick = onOpenSettings) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.background,
+                scrolledContainerColor = MaterialTheme.colorScheme.background,
+            ),
+        )
+        HorizontalDivider(
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+        )
+    }
 }
 
 @Composable
@@ -2341,33 +2376,39 @@ private fun NRSuiteBottomBar(
     selectedTab: AppTab,
     onSelectTab: (AppTab) -> Unit,
 ) {
-    NavigationBar(
-        containerColor = NrSurface,
-        tonalElevation = 0.dp,
-    ) {
-        AppTab.entries.forEach { tab ->
-            NavigationBarItem(
-                selected = selectedTab == tab,
-                onClick = { onSelectTab(tab) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = NrAccent,
-                    selectedTextColor = NrAccent,
-                    indicatorColor = NrAccent.copy(alpha = 0.16f),
-                    unselectedIconColor = NrOnSurfaceVariant,
-                    unselectedTextColor = NrOnSurfaceVariant,
-                ),
-                icon = {
-                    Icon(
-                        imageVector = when (tab) {
-                            AppTab.HOME -> Icons.Default.Home
-                            AppTab.DEVICES -> Icons.Default.Usb
-                            AppTab.LOGS -> Icons.Default.Terminal
-                        },
-                        contentDescription = tab.label,
-                    )
-                },
-                label = { Text(tab.label) },
-            )
+    Column {
+        HorizontalDivider(
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+        )
+        NavigationBar(
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
+        ) {
+            AppTab.entries.forEach { tab ->
+                NavigationBarItem(
+                    selected = selectedTab == tab,
+                    onClick = { onSelectTab(tab) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                    icon = {
+                        Icon(
+                            imageVector = when (tab) {
+                                AppTab.HOME -> Icons.Default.Home
+                                AppTab.DEVICES -> Icons.Default.Usb
+                                AppTab.LOGS -> Icons.Default.Terminal
+                            },
+                            contentDescription = tab.label,
+                        )
+                    },
+                    label = { Text(tab.label) },
+                )
+            }
         }
     }
 }
@@ -2404,6 +2445,7 @@ private fun NRSuiteSettingsRoute(
     onOpenFirmwareFlasher: () -> Unit,
     viewModel: MainViewModel,
 ) {
+    val themeMode by viewModel.themeMode.collectAsState()
     SettingsScreen(
         connectionState = connectionState,
         exportDirectoryName = exportDirectoryName,
@@ -2448,6 +2490,8 @@ private fun NRSuiteSettingsRoute(
         onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
         onOpenFirmwareFlasher = onOpenFirmwareFlasher,
         onClearUpdateDownloads = viewModel::clearUpdateDownloads,
+        themeMode = themeMode,
+        onThemeModeChange = viewModel::setThemeMode,
         flasherOnly = flasherOnly,
         modifier = Modifier,
     )

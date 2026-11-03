@@ -121,6 +121,7 @@ import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
 import com.swp81x.nrsuite.core.usb.UsbSerialTransport
+import com.swp81x.nrsuite.ui.theme.NrThemeMode
 import com.swp81x.nrsuite.service.NrSuiteForegroundService
 import com.swp81x.nrsuite.service.WpaCrackerForegroundService
 import java.io.File
@@ -341,6 +342,9 @@ class MainViewModel(internal val app: Application) {
         preferences.getBoolean(PREF_AUTO_UPDATE_CHECK, true),
     )
     val autoUpdateCheck: StateFlow<Boolean> = _autoUpdateCheck.asStateFlow()
+
+    private val _themeMode = MutableStateFlow(loadThemeMode())
+    val themeMode: StateFlow<NrThemeMode> = _themeMode.asStateFlow()
 
     internal val _appUpdate = MutableStateFlow<AppUpdateInfo?>(null)
     val appUpdate: StateFlow<AppUpdateInfo?> = _appUpdate.asStateFlow()
@@ -1631,6 +1635,16 @@ class MainViewModel(internal val app: Application) {
     fun handleRfidDisconnected() = this.handleRfidDisconnectedImpl()
 
     fun setAutoUpdateCheck(enabled: Boolean) = this.setAutoUpdateCheckImpl(enabled)
+
+    fun setThemeMode(mode: NrThemeMode) {
+        _themeMode.value = mode
+        preferences.edit().putString(PREF_THEME_MODE, mode.name).apply()
+    }
+
+    private fun loadThemeMode(): NrThemeMode {
+        val stored = preferences.getString(PREF_THEME_MODE, null) ?: return NrThemeMode.DARK
+        return runCatching { NrThemeMode.valueOf(stored) }.getOrDefault(NrThemeMode.DARK)
+    }
     fun checkForUpdates(force: Boolean = false) = this.checkForUpdatesImpl(force)
     fun clearUpdateError() {
         _updateError.value = null
@@ -1642,6 +1656,8 @@ class MainViewModel(internal val app: Application) {
         this.downloadFirmwareAssetImpl(releaseTag, assetName)
     fun downloadFirmwareUpdate() = this.downloadFirmwareUpdateForCurrentDeviceImpl()
     fun prepareFirmwareFlasherForUpdate() = this.prepareFirmwareFlasherForUpdateImpl()
+    fun prepareFirmwareFlasherForDiagnostic(chip: String?) =
+        this.prepareFirmwareFlasherForDiagnosticImpl(chip)
     fun armManualFirmwareRecovery(targetChip: String) =
         this.armManualFirmwareRecoveryImpl(targetChip)
     fun flashManualFirmwareNow() = this.flashManualFirmwareNowImpl()
@@ -2372,6 +2388,10 @@ class MainViewModel(internal val app: Application) {
                             }
                             wasConnected = true
                         }
+                        is ConnectionState.Diagnosing -> {
+                            tracked?.opening = true
+                            wasConnected = false
+                        }
                         is ConnectionState.Failed -> {
                             tracked?.opening = false
                             wasConnected = false
@@ -2986,6 +3006,7 @@ class MainViewModel(internal val app: Application) {
         private const val PREF_WIFI_CAPTURE_DIRECTORY = "wifi_capture_directory_uri"
         private const val PREF_HISTORY = "session_history"
         private const val PREF_RECENT_MODULES = "recent_modules"
+        private const val PREF_THEME_MODE = "theme_mode"
         private const val DISCONNECT_TEARDOWN_WAIT_MS = 8_000L
         internal val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
     }

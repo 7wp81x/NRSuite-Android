@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -313,7 +314,7 @@ private fun SerialMonitorConnectionCard(
                     }
                 }
 
-                if (expanded) {
+                NrAnimatedVisibility(visible = expanded) {
                     Spacer(Modifier.height(10.dp))
 
                     Row(
@@ -634,6 +635,7 @@ private fun DropdownField(
     }
 }
 
+@Composable
 private fun logLevelColor(level: LogLevel): Color = when (level) {
     LogLevel.ERROR -> LogColorError
     LogLevel.SUCCESS -> LogColorSuccess

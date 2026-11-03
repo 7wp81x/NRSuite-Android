@@ -1,5 +1,8 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -409,7 +412,9 @@ private fun Ld2450ConfigZone(
     val controlsEnabled = connected && !state.running
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
         border = BorderStroke(0.5.dp, NrOutline),
         shape = RoundedCornerShape(12.dp),
@@ -439,7 +444,7 @@ private fun Ld2450ConfigZone(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Spacer(Modifier.height(10.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -634,7 +639,9 @@ private fun Ld2450RadarCard(
     onToggleExpanded: () -> Unit,
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
         border = BorderStroke(0.5.dp, NrOutline),
         shape = RoundedCornerShape(12.dp),
@@ -719,19 +726,29 @@ private fun Ld2450RadarPlot(
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val grid = NrOutline
+    val statusGreen = StatusGreen
     val maxRange = maxRangeCm.coerceAtLeast(100).toFloat()
+    val radarAspectRatio by animateFloatAsState(
+        targetValue = if (expanded) 1.05f else 1.25f,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "radar-aspect-ratio",
+    )
+    val horizontalFactor by animateFloatAsState(
+        targetValue = if (expanded) 0.57f else 0.54f,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "radar-horizontal-factor",
+    )
 
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(if (expanded) 1.05f else 1.25f),
+            .aspectRatio(radarAspectRatio),
     ) {
         val width = size.width
         val height = size.height
         val origin = Offset(width / 2f, height * 0.93f)
         // The 120-degree wedge can safely use more of the canvas width than
         // the old 0.47 factor; expanded mode gets a little more again.
-        val horizontalFactor = if (expanded) 0.57f else 0.54f
         val outerRadius = minOf(width * horizontalFactor, height * 0.86f)
         val ringWidth = 1.dp.toPx()
         val guideWidth = 1.dp.toPx()
@@ -784,7 +801,7 @@ private fun Ld2450RadarPlot(
             val progress = scanWaveProgress.coerceIn(0f, 1f)
             val waveRadius = outerRadius * progress
             drawArc(
-                color = StatusGreen.copy(alpha = (1f - progress) * 0.10f),
+                color = statusGreen.copy(alpha = (1f - progress) * 0.10f),
                 startAngle = -150f,
                 sweepAngle = 120f,
                 useCenter = true,
@@ -792,7 +809,7 @@ private fun Ld2450RadarPlot(
                 size = Size(waveRadius * 2f, waveRadius * 2f),
             )
             drawArc(
-                color = StatusGreen.copy(alpha = (1f - progress) * 0.55f),
+                color = statusGreen.copy(alpha = (1f - progress) * 0.55f),
                 startAngle = -150f,
                 sweepAngle = 120f,
                 useCenter = false,
@@ -805,7 +822,7 @@ private fun Ld2450RadarPlot(
             if (secondProgress > 0.001f) {
                 val secondRadius = outerRadius * secondProgress
                 drawArc(
-                    color = StatusGreen.copy(alpha = (1f - secondProgress) * 0.28f),
+                    color = statusGreen.copy(alpha = (1f - secondProgress) * 0.28f),
                     startAngle = -150f,
                     sweepAngle = 120f,
                     useCenter = false,
@@ -844,8 +861,8 @@ private fun Ld2450RadarPlot(
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        StatusGreen.copy(alpha = 0.42f * fade),
-                        StatusGreen.copy(alpha = 0f),
+                        statusGreen.copy(alpha = 0.42f * fade),
+                        statusGreen.copy(alpha = 0f),
                     ),
                     center = point,
                     radius = glowRadius,
@@ -854,17 +871,17 @@ private fun Ld2450RadarPlot(
                 center = point,
             )
             drawCircle(
-                color = StatusGreen.copy(alpha = 0.22f * fade),
+                color = statusGreen.copy(alpha = 0.22f * fade),
                 radius = 9.dp.toPx() * pulse,
                 center = point,
             )
             drawCircle(
-                color = StatusGreen.copy(alpha = 0.70f * fade),
+                color = statusGreen.copy(alpha = 0.70f * fade),
                 radius = 5.dp.toPx(),
                 center = point,
             )
             drawCircle(
-                color = StatusGreen.copy(alpha = 0.95f * fade),
+                color = statusGreen.copy(alpha = 0.95f * fade),
                 radius = 2.5.dp.toPx(),
                 center = point,
             )
@@ -1009,14 +1026,13 @@ private fun Ld2450AlertFooter(alertZoneBreach: Boolean) {
             .padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val statusColor = if (alertZoneBreach) StatusRed else StatusGreen
         Box(
             modifier = Modifier
                 .size(8.dp),
         ) {
             Canvas(Modifier.fillMaxSize()) {
-                drawCircle(
-                    color = if (alertZoneBreach) StatusRed else StatusGreen,
-                )
+                drawCircle(color = statusColor)
             }
         }
         Spacer(Modifier.width(8.dp))
@@ -1029,6 +1045,7 @@ private fun Ld2450AlertFooter(alertZoneBreach: Boolean) {
     }
 }
 
+@Composable
 private fun motionColor(motion: Ld2450Motion): Color = when (motion) {
     Ld2450Motion.APPROACHING -> StatusGreen
     Ld2450Motion.STATIONARY -> StatusNeutral

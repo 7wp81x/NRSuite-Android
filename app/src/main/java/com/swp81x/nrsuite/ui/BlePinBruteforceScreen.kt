@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -523,7 +524,7 @@ private fun ConfigCard(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Spacer(Modifier.height(8.dp))
                 if (state.configured && state.state in setOf("ready", "running", "paused")) {
                     Text(
@@ -614,7 +615,7 @@ private fun ConfigCard(
                 TextButton(onClick = onToggleAdvanced, enabled = controlsEnabled) {
                     Text(if (advancedExpanded) "Hide advanced" else "Advanced options")
                 }
-                if (advancedExpanded) {
+                NrAnimatedVisibility(visible = advancedExpanded) {
                     NumericField("Persist every N attempts", state.persistEvery.toString(), controlsEnabled) {
                         onPersistEveryChange(it.toIntOrNull() ?: state.persistEvery)
                     }

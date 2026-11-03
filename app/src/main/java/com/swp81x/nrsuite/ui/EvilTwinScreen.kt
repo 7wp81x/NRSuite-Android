@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -249,7 +250,7 @@ fun EvilTwinScreen(
                         )
                     }
                 }
-                if (targetExpanded && !running) {
+                NrAnimatedVisibility(visible = targetExpanded && !running) {
                     OutlinedButton(
                         onClick = onScanWifi,
                         enabled = connected && !scanning,
@@ -283,7 +284,7 @@ fun EvilTwinScreen(
                         )
                     }
                 }
-                if (targetExpanded) {
+                NrAnimatedVisibility(visible = targetExpanded) {
                     Spacer(Modifier.height(10.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),

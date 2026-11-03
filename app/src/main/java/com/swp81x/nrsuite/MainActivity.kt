@@ -10,7 +10,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.swp81x.nrsuite.ui.NRSuiteApp
-import com.swp81x.nrsuite.ui.theme.NRSuiteTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -18,9 +17,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         requestNotificationPermissionIfNeeded()
         setContent {
-            NRSuiteTheme {
-                NRSuiteApp()
-            }
+            NRSuiteApp()
         }
     }
 

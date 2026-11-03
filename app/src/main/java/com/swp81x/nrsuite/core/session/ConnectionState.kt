@@ -1,8 +1,53 @@
 package com.swp81x.nrsuite.core.session
 
+enum class ConnectionDiagnosticRecommendation {
+    FLASH_FIRMWARE,
+    RETRY,
+    REPORT_BUG,
+}
+
+data class ConnectionDiagnostic(
+    val permissionGranted: Boolean,
+    val deviceDetected: Boolean,
+    val portOpened: Boolean,
+    val handshakeAttempts: Int,
+    val sawDeviceActivity: Boolean,
+    val sawRomBootLog: Boolean,
+    val sawInvalidFirmwareHeader: Boolean,
+    val sawProtocolFrame: Boolean,
+    val detectedChip: String? = null,
+    val transportError: String? = null,
+    val rawLogPreview: String? = null,
+) {
+    val recommendation: ConnectionDiagnosticRecommendation
+        get() = when {
+            sawRomBootLog || sawInvalidFirmwareHeader || !sawProtocolFrame -> {
+                if (portOpened) ConnectionDiagnosticRecommendation.FLASH_FIRMWARE
+                else ConnectionDiagnosticRecommendation.RETRY
+            }
+            transportError != null -> ConnectionDiagnosticRecommendation.RETRY
+            else -> ConnectionDiagnosticRecommendation.REPORT_BUG
+        }
+
+    val summary: String
+        get() = when {
+            sawInvalidFirmwareHeader || sawRomBootLog ->
+                "The device appears to be in ROM bootloader or has no valid NRSuite firmware."
+            !portOpened ->
+                "The USB serial port could not be opened."
+            transportError != null ->
+                "The USB connection was interrupted while checking the device."
+            !sawProtocolFrame ->
+                "The device did not return an NRSuite protocol response."
+            else ->
+                "The device responded, but the NRSuite handshake did not complete."
+        }
+}
+
 sealed interface ConnectionState {
     data object Disconnected : ConnectionState
     data object Connecting : ConnectionState
+    data object Diagnosing : ConnectionState
     data class Connected(
         val chip: String?,
         val firmwareVersion: String?,
@@ -33,5 +78,8 @@ sealed interface ConnectionState {
         val protocolMinor: Int? = null,
     ) : ConnectionState
 
-    data class Failed(val message: String) : ConnectionState
+    data class Failed(
+        val message: String,
+        val diagnostic: ConnectionDiagnostic? = null,
+    ) : ConnectionState
 }

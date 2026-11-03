@@ -269,7 +269,7 @@ internal fun MainViewModel.importIrFileImpl(uri: Uri) {
 }
 
 internal fun MainViewModel.rescanIrLibraryImpl() {
-    if (_irImporting.value) return
+    if (_irImporting.value || irDatabaseJob?.isActive == true) return
     val rootUri = _exportDirectory.value
     if (rootUri == null) {
         _irErrorMessage.value = "Set the NRSuite root directory before scanning IR files."
@@ -277,10 +277,21 @@ internal fun MainViewModel.rescanIrLibraryImpl() {
     }
     _irImporting.value = true
     _irErrorMessage.value = null
+    _irDatabaseState.value = IrDatabaseUiState(
+        phase = IrDatabasePhase.INDEXING,
+        message = "Scanning IR library...",
+    )
     _irScanProgress.value = IrScanProgress(
         scanned = 0,
         total = 0,
         currentFile = "Discovering IR files...",
+    )
+    _toastMessage.value = "Scanning IR library..."
+    IrDatabaseForegroundService.start(app, "Scanning IR library...")
+    updateIrDatabaseNotification(
+        title = "IR library scan",
+        text = "Scanning the IR library...",
+        indeterminate = true,
     )
     scope.launch {
         val startedAt = System.currentTimeMillis()
@@ -295,13 +306,42 @@ internal fun MainViewModel.rescanIrLibraryImpl() {
             withContext(Dispatchers.IO) { irRemoteIndexStore.save(_irRemotes.value) }
             val elapsedMs = System.currentTimeMillis() - startedAt
             _irStatusMessage.value = "IR library scanned: ${scanned.size} remote(s)."
+            _irDatabaseState.value = IrDatabaseUiState(
+                phase = IrDatabasePhase.COMPLETED,
+                message = "IR library scan complete: ${scanned.size} remote(s) indexed.",
+            )
+            updateIrDatabaseNotification(
+                title = "IR library scan ready",
+                text = "${scanned.size} remote(s) indexed.",
+                indeterminate = false,
+            )
             Log.d("IrRemote", "IR library scan complete: ${scanned.size} remotes in ${elapsedMs} ms")
+        } catch (_: CancellationException) {
+            _irDatabaseState.value = IrDatabaseUiState(
+                phase = IrDatabasePhase.CANCELLED,
+                message = "IR library scan cancelled.",
+            )
+            updateIrDatabaseNotification(
+                title = "IR library scan cancelled",
+                text = "The scan was cancelled.",
+                indeterminate = false,
+            )
         } catch (t: Throwable) {
             _irErrorMessage.value = t.message ?: "Could not scan the IR library."
+            _irDatabaseState.value = IrDatabaseUiState(
+                phase = IrDatabasePhase.FAILED,
+                errorMessage = t.message ?: "Could not scan the IR library.",
+            )
+            updateIrDatabaseNotification(
+                title = "IR library scan failed",
+                text = t.message ?: "The IR library scan failed.",
+                indeterminate = false,
+            )
             Log.e("IrRemote", "IR library scan failed", t)
         } finally {
             _irImporting.value = false
             _irScanProgress.value = null
+            IrDatabaseForegroundService.stop(app)
         }
     }
 }

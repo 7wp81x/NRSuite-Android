@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -100,6 +101,7 @@ private fun currentMeshStep(connected: Boolean, initialized: Boolean): MeshSetup
         else -> MeshSetupStep.Activate
     }
 
+@Composable
 private fun meshRoleColor(role: String): Color = when (role) {
     "master" -> StatusGreen
     "client" -> CategoryMeshIndigo
@@ -107,6 +109,7 @@ private fun meshRoleColor(role: String): Color = when (role) {
     else -> StatusNeutral
 }
 
+@Composable
 private fun actionToneColor(tone: ActionTone): Color = when (tone) {
     ActionTone.Positive -> StatusGreen
     ActionTone.Warning -> StatusRed
@@ -317,7 +320,7 @@ fun MeshScreen(
                     modifier = Modifier.size(20.dp),
                 )
             }
-            if (advancedExpanded) {
+            NrAnimatedVisibility(visible = advancedExpanded) {
                 Spacer(Modifier.height(8.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth(),

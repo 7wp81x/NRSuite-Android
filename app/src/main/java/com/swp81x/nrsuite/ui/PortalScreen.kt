@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
@@ -443,7 +444,7 @@ private fun ConfigZone(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Column {
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(

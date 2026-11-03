@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -148,6 +149,7 @@ import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.SavedItemDropdown
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
+import com.swp81x.nrsuite.ui.theme.NrThemeMode
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -211,6 +213,8 @@ internal fun SettingsScreen(
     onDownloadFirmwareUpdate: () -> Unit = {},
     onOpenFirmwareFlasher: () -> Unit = {},
     onClearUpdateDownloads: () -> Unit = {},
+    themeMode: NrThemeMode = NrThemeMode.DARK,
+    onThemeModeChange: (NrThemeMode) -> Unit = {},
     flasherOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -224,6 +228,9 @@ internal fun SettingsScreen(
     val accent = MaterialTheme.colorScheme.primary
     val connectedInfo = connectionState as? ConnectionState.Connected
     val chip = connectedInfo?.chip
+    val diagnosticChipHint = (connectionState as? ConnectionState.Failed)
+        ?.diagnostic
+        ?.detectedChip
     val boardName = when (chip) {
         "ESP32-C5" -> "ESP32-C5"
         "ESP32-C3" -> "ESP32-C3"
@@ -232,7 +239,9 @@ internal fun SettingsScreen(
         "ESP32" -> "Classic ESP32 devkit"
         else -> "Not connected / unknown"
     }
-    var selectedTargetChip by remember { mutableStateOf(chip ?: "ESP32") }
+    var selectedTargetChip by remember {
+        mutableStateOf(diagnosticChipHint ?: chip ?: "")
+    }
     val targetHasPermission = selectedFlashTarget?.let { usbManager.hasPermission(it.device) } == true
     @Suppress("UNUSED_EXPRESSION")
     permissionRevision
@@ -243,13 +252,20 @@ internal fun SettingsScreen(
     var selectedFirmwareAssetName by remember { mutableStateOf<String?>(null) }
     var firmwareSourceRemote by remember { mutableStateOf(true) }
     val localFirmwareChip = firmwareChipFromFirmwareName(firmwareFileName)
-    LaunchedEffect(firmwareFileName, chip) {
-        val inferred = firmwareChipFromFirmwareName(firmwareFileName)
+    LaunchedEffect(chip, diagnosticChipHint) {
         when {
-            inferred != null -> selectedTargetChip = inferred
+            selectedTargetChip.isNotBlank() -> Unit
             !chip.isNullOrBlank() -> selectedTargetChip = chip
+            !diagnosticChipHint.isNullOrBlank() -> selectedTargetChip = diagnosticChipHint
         }
     }
+    val selectedImageChip = localFirmwareChip
+    val targetChipMismatch = selectedImageChip != null &&
+        selectedTargetChip.isNotBlank() &&
+        !selectedImageChip.equals(selectedTargetChip, ignoreCase = true)
+    val connectedChipMismatch = !chip.isNullOrBlank() &&
+        selectedTargetChip.isNotBlank() &&
+        !chip.equals(selectedTargetChip, ignoreCase = true)
 
     LaunchedEffect(firmwareAssetDownload) {
         if (firmwareAssetDownload is FirmwareAssetDownloadState.Downloaded) {
@@ -262,10 +278,16 @@ internal fun SettingsScreen(
         }
         val release = compatibleReleases.firstOrNull { it.tag == selectedFirmwareReleaseTag }
             ?: compatibleReleases.firstOrNull()
+            ?: firmwareReleases.firstOrNull().takeIf { selectedTargetChip.isBlank() }
         selectedFirmwareReleaseTag = release?.tag
         val assets = release?.compatibleFirmwareAssets(selectedTargetChip).orEmpty()
         selectedFirmwareAssetName = assets.firstOrNull { it.name == selectedFirmwareAssetName }?.name
             ?: assets.firstOrNull()?.name
+    }
+    LaunchedEffect(firmwareSourceRemote, selectedFirmwareAssetName) {
+        if (firmwareSourceRemote && selectedFirmwareAssetName != null) {
+            firmwareChipFromAssetName(selectedFirmwareAssetName)?.let { selectedTargetChip = it }
+        }
     }
     LaunchedEffect(devices) {
         if (devices.size == 1 &&
@@ -559,9 +581,17 @@ internal fun SettingsScreen(
                         val compatibleAssets = selectedRelease
                             ?.compatibleFirmwareAssets(selectedTargetChip)
                             .orEmpty()
-                        val selectedAsset = allAssets.firstOrNull {
+                        // When the handshake failed and no chip is known, list all
+                        // release assets. Selecting one sets the target chip to
+                        // the chip encoded in that firmware filename.
+                        val assetCandidates = if (selectedTargetChip.isBlank()) {
+                            allAssets
+                        } else {
+                            compatibleAssets
+                        }
+                        val selectedAsset = assetCandidates.firstOrNull {
                             it.name == selectedFirmwareAssetName
-                        } ?: compatibleAssets.firstOrNull()
+                        } ?: assetCandidates.firstOrNull()
 
                         SavedItemDropdown(
                             label = "Firmware version",
@@ -595,26 +625,28 @@ internal fun SettingsScreen(
                             selectedDisplayName = selectedAsset?.let { asset ->
                                 firmwareChipFromAssetName(asset.name) ?: asset.name
                             },
-                            names = allAssets.map { it.name },
-                            enabled = !firmwareFlashing && allAssets.isNotEmpty(),
+                            names = assetCandidates.map { it.name },
+                            enabled = !firmwareFlashing && assetCandidates.isNotEmpty(),
                             sortNames = false,
                             itemLabel = { name ->
-                                firmwareChipFromAssetName(name) ?: name
+                                firmwareChipFromAssetName(name) ?: "Unknown target chip"
                             },
-                            itemSupportingText = { name ->
-                                if (firmwareChipFromAssetName(name) == null) "Unknown target chip" else null
-                            },
+                            itemSupportingText = { name -> name },
                             onSelect = { name ->
                                 selectedFirmwareAssetName = name
                                 firmwareChipFromAssetName(name)?.let { selectedTargetChip = it }
                             },
                         )
 
-                        if (compatibleAssets.isEmpty()) {
+                        if (assetCandidates.isEmpty()) {
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "This release has no asset for $selectedTargetChip. " +
-                                    "Select a version/firmware that matches the target chip.",
+                                text = if (selectedTargetChip.isBlank()) {
+                                    "This release has no firmware assets."
+                                } else {
+                                    "This release has no asset for $selectedTargetChip. " +
+                                        "Select a version/firmware that matches the target chip."
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = StatusAmber,
                             )
@@ -689,20 +721,45 @@ internal fun SettingsScreen(
                     val detectedChip = localFirmwareChip
                     if (detectedChip != null) {
                         Text(
-                            text = "Detected target chip: $detectedChip",
+                            text = "Firmware image targets: $detectedChip",
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                             color = StatusGreen,
                         )
                     } else {
                         Text(
-                            text = "Target chip could not be inferred from the filename.",
+                            text = "Firmware target chip could not be inferred from the filename.",
                             style = MaterialTheme.typography.bodySmall,
                             color = StatusAmber,
                         )
                     }
+                    if (!diagnosticChipHint.isNullOrBlank()) {
+                        Text(
+                            text = "Chip hint from diagnostics: $diagnosticChipHint",
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                    if (selectedTargetChip.isBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Select the ESP32 chip family before flashing.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
+                        )
+                    }
+                    if (targetChipMismatch) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Target mismatch: image is for $selectedImageChip, " +
+                                "but the selected target chip is $selectedTargetChip. " +
+                                "Select the matching image or target chip.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusRed,
+                        )
+                    }
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "Confirm firmware target",
+                        text = "Confirm target chip",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
@@ -747,7 +804,7 @@ internal fun SettingsScreen(
                     Spacer(Modifier.width(8.dp))
                     Text(if (advancedExpanded) "Hide advanced options" else "Advanced options")
                 }
-                if (advancedExpanded) {
+                NrAnimatedVisibility(visible = advancedExpanded) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Switch(
                             checked = manualBootloader,
@@ -769,12 +826,24 @@ internal fun SettingsScreen(
                         color = NrOnSurfaceVariant,
                     )
                 }
+                if (connectedChipMismatch) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Firmware target $selectedTargetChip does not match the " +
+                            "connected device chip $chip. Select firmware for $chip.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusRed,
+                    )
+                }
                 Spacer(Modifier.height(10.dp))
                 Button(
                     onClick = { showFlashConfirm = true },
                     enabled = selectedFlashTarget != null &&
                         targetHasPermission &&
                         firmwareFileName != null &&
+                        selectedTargetChip.isNotBlank() &&
+                        !targetChipMismatch &&
+                        !connectedChipMismatch &&
                         !firmwareFlashing,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = accent,
@@ -892,6 +961,7 @@ internal fun SettingsScreen(
                     OutlinedButton(
                         onClick = { onArmManualFirmwareRecovery(selectedTargetChip) },
                         modifier = Modifier.fillMaxWidth(),
+                        enabled = selectedTargetChip.isNotBlank() && !targetChipMismatch,
                     ) {
                         Text("Use manual bootloader")
                     }
@@ -926,20 +996,10 @@ internal fun SettingsScreen(
             onClearUpdateDownloads = onClearUpdateDownloads,
         )
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(0.5.dp, NrOutline),
-        ) {
-            Column(Modifier.padding(14.dp)) {
-                Text("Appearance", fontWeight = FontWeight.SemiBold)
-                Text(
-                    text = "Dark technical theme is fixed.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
-            }
-        }
+        AppearanceCard(
+            themeMode = themeMode,
+            onThemeModeChange = onThemeModeChange,
+        )
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -982,6 +1042,52 @@ internal fun SettingsScreen(
         }
         }
 
+    }
+}
+
+@Composable
+private fun AppearanceCard(
+    themeMode: NrThemeMode,
+    onThemeModeChange: (NrThemeMode) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.55f)),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                text = "Appearance",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = "Choose the interface palette. The selection is saved for the next launch.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                NrThemeMode.entries.forEach { mode ->
+                    NrFilterChip(
+                        selected = themeMode == mode,
+                        onClick = { onThemeModeChange(mode) },
+                        label = mode.label,
+                        modifier = Modifier.weight(1f),
+                        selectedColor = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = themeMode.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
