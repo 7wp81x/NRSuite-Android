@@ -634,6 +634,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     var showOuiDatabaseDialog by rememberSaveable { mutableStateOf(false) }
     var showFirmwareOnboardingDialog by rememberSaveable { mutableStateOf(false) }
     var firmwareOnboardingDontShowAgain by rememberSaveable { mutableStateOf(false) }
+    var showDeviceSwitchDialog by rememberSaveable { mutableStateOf(false) }
     var rootDirectoryPickerActive by rememberSaveable { mutableStateOf(false) }
     var previousActiveModuleId by remember { mutableStateOf<String?>(null) }
     var irRemoteReturnTarget by rememberSaveable { mutableStateOf<String?>(null) }
@@ -1071,30 +1072,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         deviceConnectionStates[viewModel.deviceFingerprintImpl(device.device)] is ConnectionState.Connected
     }
     val canSwitchActiveDevice = connectedDeviceOptions.size > 1
-    val switchToNextActiveDevice: () -> Unit = {
-        if (canSwitchActiveDevice) {
-            val currentIndex = connectedDeviceOptions.indexOfFirst {
-                viewModel.deviceFingerprintImpl(it.device) == primaryFingerprint
-            }
-            val next = connectedDeviceOptions[
-                if (currentIndex >= 0) {
-                    (currentIndex + 1) % connectedDeviceOptions.size
-                } else {
-                    0
-                }
-            ]
-            if (viewModel.switchActiveDevice(next.device)) {
-                val nextFingerprint = viewModel.deviceFingerprintImpl(next.device)
-                val chip = (deviceConnectionStates[nextFingerprint] as? ConnectionState.Connected)?.chip
-                Toast.makeText(
-                    context,
-                    "Active device: ${chip?.let { "NRSuite $it" } ?: next.displayName}",
-                    Toast.LENGTH_SHORT,
-                ).show()
-            }
-        }
-    }
-
     val suppressUsbAttachPrompt =
         (activeModuleId != null && activeModuleId in setOf(
             "devices",
@@ -1132,7 +1109,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 },
                 showConnectionStatus = showBack,
                 onConnectionClick = if (canSwitchActiveDevice) {
-                    switchToNextActiveDevice
+                    { showDeviceSwitchDialog = true }
                 } else {
                     null
                 },
@@ -1246,6 +1223,69 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     OutlinedButton(onClick = { showOuiDatabaseDialog = false }) {
                         Text("Later")
                     }
+                },
+            )
+        }
+
+        if (showDeviceSwitchDialog && canSwitchActiveDevice) {
+            AlertDialog(
+                onDismissRequest = { showDeviceSwitchDialog = false },
+                title = { Text("Switch active device") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (anyModuleRunning) {
+                            Text(
+                                text = "Switching active devices will stop the current module operation.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusAmber,
+                            )
+                        }
+                        connectedDeviceOptions.forEach { entry ->
+                            val fingerprint = viewModel.deviceFingerprintImpl(entry.device)
+                            val active = fingerprint == primaryFingerprint
+                            OutlinedButton(
+                                onClick = {
+                                    if (viewModel.switchActiveDevice(entry.device)) {
+                                        showDeviceSwitchDialog = false
+                                        val chip =
+                                            (deviceConnectionStates[fingerprint] as? ConnectionState.Connected)?.chip
+                                        Toast.makeText(
+                                            context,
+                                            "Active device: ${
+                                                chip?.let { "NRSuite $it" } ?: entry.displayName
+                                            }",
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                                },
+                                enabled = !active,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp),
+                                    horizontalAlignment = Alignment.Start,
+                                ) {
+                                    Text(
+                                        text = (deviceConnectionStates[fingerprint] as? ConnectionState.Connected)
+                                            ?.chip
+                                            ?.let { "NRSuite $it" }
+                                            ?: entry.displayName,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                    Text(
+                                        text = if (active) "Active" else "Tap to switch",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (active) StatusGreen else NrOnSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showDeviceSwitchDialog = false }) { Text("Close") }
                 },
             )
         }
@@ -2137,11 +2177,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onRefreshStatus = viewModel::refreshActiveDeviceStatus,
                     onSwitchDevice = { device ->
                         if (viewModel.switchActiveDevice(device)) {
-                            uiScope.launch {
-                                snackbarHostState.showSnackbar(
-                                    "Active device switched to ${device.productName ?: "USB device"}",
-                                )
-                            }
+                            Toast.makeText(
+                                context,
+                                "Active device: ${device.productName ?: "USB device"}",
+                                Toast.LENGTH_SHORT,
+                            ).show()
                         }
                     },
                     onOpenFirmwareFlasher = { device, chip ->
@@ -2411,11 +2451,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onRefreshStatus = viewModel::refreshActiveDeviceStatus,
                 onSwitchDevice = { device ->
                     if (viewModel.switchActiveDevice(device)) {
-                        uiScope.launch {
-                            snackbarHostState.showSnackbar(
-                                "Active device switched to ${device.productName ?: "USB device"}",
-                            )
-                        }
+                        Toast.makeText(
+                            context,
+                            "Active device: ${device.productName ?: "USB device"}",
+                            Toast.LENGTH_SHORT,
+                        ).show()
                     }
                 },
                 onOpenFirmwareFlasher = { device, chip ->
