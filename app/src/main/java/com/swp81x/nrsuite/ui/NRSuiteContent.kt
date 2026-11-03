@@ -20,6 +20,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -94,6 +95,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import com.swp81x.nrsuite.core.history.HistoryLevel
@@ -632,7 +634,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     var showOuiDatabaseDialog by rememberSaveable { mutableStateOf(false) }
     var showFirmwareOnboardingDialog by rememberSaveable { mutableStateOf(false) }
     var firmwareOnboardingDontShowAgain by rememberSaveable { mutableStateOf(false) }
-    var showDeviceSwitchDialog by rememberSaveable { mutableStateOf(false) }
     var rootDirectoryPickerActive by rememberSaveable { mutableStateOf(false) }
     var previousActiveModuleId by remember { mutableStateOf<String?>(null) }
     var irRemoteReturnTarget by rememberSaveable { mutableStateOf<String?>(null) }
@@ -1070,6 +1071,29 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         deviceConnectionStates[viewModel.deviceFingerprintImpl(device.device)] is ConnectionState.Connected
     }
     val canSwitchActiveDevice = connectedDeviceOptions.size > 1
+    val switchToNextActiveDevice: () -> Unit = {
+        if (canSwitchActiveDevice) {
+            val currentIndex = connectedDeviceOptions.indexOfFirst {
+                viewModel.deviceFingerprintImpl(it.device) == primaryFingerprint
+            }
+            val next = connectedDeviceOptions[
+                if (currentIndex >= 0) {
+                    (currentIndex + 1) % connectedDeviceOptions.size
+                } else {
+                    0
+                }
+            ]
+            if (viewModel.switchActiveDevice(next.device)) {
+                val nextFingerprint = viewModel.deviceFingerprintImpl(next.device)
+                val chip = (deviceConnectionStates[nextFingerprint] as? ConnectionState.Connected)?.chip
+                Toast.makeText(
+                    context,
+                    "Active device: ${chip?.let { "NRSuite $it" } ?: next.displayName}",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
 
     val suppressUsbAttachPrompt =
         (activeModuleId != null && activeModuleId in setOf(
@@ -1108,7 +1132,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 },
                 showConnectionStatus = showBack,
                 onConnectionClick = if (canSwitchActiveDevice) {
-                    { showDeviceSwitchDialog = true }
+                    switchToNextActiveDevice
                 } else {
                     null
                 },
@@ -1222,65 +1246,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     OutlinedButton(onClick = { showOuiDatabaseDialog = false }) {
                         Text("Later")
                     }
-                },
-            )
-        }
-
-        if (showDeviceSwitchDialog && canSwitchActiveDevice) {
-            AlertDialog(
-                onDismissRequest = { showDeviceSwitchDialog = false },
-                title = { Text("Switch active device") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (anyModuleRunning) {
-                            Text(
-                                text = "Switching active devices will stop the current module operation.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = StatusAmber,
-                            )
-                        }
-                        connectedDeviceOptions.forEach { entry ->
-                            val fingerprint = viewModel.deviceFingerprintImpl(entry.device)
-                            val active = fingerprint == primaryFingerprint
-                            OutlinedButton(
-                                onClick = {
-                                    if (viewModel.switchActiveDevice(entry.device)) {
-                                        showDeviceSwitchDialog = false
-                                        uiScope.launch {
-                                            snackbarHostState.showSnackbar(
-                                                "Active device switched to ${entry.displayName}",
-                                            )
-                                        }
-                                    }
-                                },
-                                enabled = !active,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 2.dp),
-                                    horizontalAlignment = Alignment.Start,
-                                ) {
-                                    Text(
-                                        text = (deviceConnectionStates[fingerprint] as? ConnectionState.Connected)
-                                            ?.chip
-                                            ?.let { "NRSuite $it" }
-                                            ?: entry.displayName,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                    )
-                                    Text(
-                                        text = if (active) "Active" else "Tap to switch",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if (active) StatusGreen else NrOnSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showDeviceSwitchDialog = false }) { Text("Close") }
                 },
             )
         }
@@ -2565,35 +2530,56 @@ private fun NRSuiteBottomBar(
     selectedTab: AppTab,
     onSelectTab: (AppTab) -> Unit,
 ) {
-    Column {
-        HorizontalDivider(
-            thickness = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
-        )
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.30f),
+        ),
+    ) {
         NavigationBar(
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = Color.Transparent,
             tonalElevation = 0.dp,
         ) {
             AppTab.entries.forEach { tab ->
+                val selected = selectedTab == tab
                 NavigationBarItem(
-                    selected = selectedTab == tab,
+                    selected = selected,
                     onClick = { onSelectTab(tab) },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = MaterialTheme.colorScheme.primary,
                         selectedTextColor = MaterialTheme.colorScheme.primary,
-                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                        indicatorColor = Color.Transparent,
                         unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     ),
                     icon = {
-                        Icon(
-                            imageVector = when (tab) {
-                                AppTab.HOME -> Icons.Default.Home
-                                AppTab.DEVICES -> Icons.Default.Usb
-                                AppTab.LOGS -> Icons.Default.Terminal
-                            },
-                            contentDescription = tab.label,
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = when (tab) {
+                                    AppTab.HOME -> Icons.Default.Home
+                                    AppTab.DEVICES -> Icons.Default.Usb
+                                    AppTab.LOGS -> Icons.Default.Terminal
+                                },
+                                contentDescription = tab.label,
+                            )
+                            Spacer(Modifier.size(2.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(3.dp)
+                                    .background(
+                                        if (selected) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            Color.Transparent
+                                        },
+                                        CircleShape,
+                                    ),
+                            )
+                        }
                     },
                     label = { Text(tab.label) },
                 )
