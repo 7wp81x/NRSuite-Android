@@ -868,6 +868,8 @@ private fun IrDatabaseCategoryCard(
             Text(
                 text = when {
                     rootMissing -> "NRSuite root is not configured"
+                    state.running && state.phase == IrDatabasePhase.INDEXING ->
+                        "IR library indexing in progress"
                     state.running -> "Flipper-IRDB operation in progress"
                     emptyIndex -> "Flipper-IRDB found, but no remotes are indexed"
                     metadata == null && databasePresent -> "Flipper-IRDB found on storage"
@@ -938,17 +940,31 @@ private fun IrDatabaseCategoryCard(
                 }
             } else if (state.running) {
                 Spacer(Modifier.height(8.dp))
-                if (state.totalBytes > 0L) {
+                val progress = when (state.phase) {
+                    IrDatabasePhase.DOWNLOADING ->
+                        state.downloadPercent?.let { it / 100f }
+                    IrDatabasePhase.EXTRACTING,
+                    IrDatabasePhase.INDEXING ->
+                        state.extractionPercent?.let { it / 100f }
+                    else -> null
+                }
+                if (progress != null) {
                     LinearProgressIndicator(
-                        progress = {
-                            (state.downloadedBytes.toDouble() / state.totalBytes.toDouble())
-                                .toFloat()
-                                .coerceIn(0f, 1f)
-                        },
+                        progress = { progress.coerceIn(0f, 1f) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 } else {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                state.currentItem?.takeIf { it.isNotBlank() }?.let { item ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = item,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NrOnSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(
