@@ -174,13 +174,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val uiScope = rememberCoroutineScope()
     val homeListState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var previousUnacknowledgedDevices by remember { mutableStateOf<Set<Int>>(emptySet()) }
     val usbManager = remember {
         context.getSystemService(Context.USB_SERVICE) as UsbManager
     }
 
     val devices by viewModel.devices.collectAsState()
-    val usbAttachPrompt by viewModel.usbAttachPrompt.collectAsState()
+    val usbAttachPrompts by viewModel.usbAttachPrompts.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val primaryFingerprint by viewModel.primaryFingerprint.collectAsState()
     val wifiDeviceRevision by viewModel.wifiDeviceRevision.collectAsState()
@@ -950,53 +949,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     fun isSerialMonitorActiveDevice(deviceId: Int): Boolean =
         serialMonitorConnected && serialMonitorSelected?.device?.deviceId == deviceId
 
-    // Some screens already have an explicit device connect/target flow.
-    // Showing the global "tap to connect" snackbar there is redundant and can
-    // conflict with the dedicated flow, so suppress it in those cases.
-    val suppressDeviceSnackbar =
-        (activeModuleId != null && activeModuleId in setOf(
-            "devices",
-            "firmware",
-            "settings",
-            "serial_monitor",
-            "badusb",
-        )) ||
-        (activeModuleId == null && selectedCategory == null &&
-            selectedTab in setOf(AppTab.HOME, AppTab.DEVICES))
-
-    // If a device snackbar is already showing, dismiss it when navigating to
-    // a screen that has its own device connect/target flow.
-    LaunchedEffect(suppressDeviceSnackbar) {
-        if (suppressDeviceSnackbar) {
-            snackbarHostState.currentSnackbarData?.dismiss()
-        }
-    }
-
-    if (!suppressDeviceSnackbar) {
-        LaunchedEffect(unacknowledgedDevices) {
-            val current = unacknowledgedDevices
-            val newDeviceIds = current - previousUnacknowledgedDevices
-            previousUnacknowledgedDevices = current
-
-            newDeviceIds.forEach { deviceId ->
-                val device = devices.firstOrNull { it.device.deviceId == deviceId } ?: return@forEach
-                if (isSerialMonitorActiveDevice(deviceId)) return@forEach
-
-                uiScope.launch {
-                    val result = snackbarHostState.showSnackbar(
-                        message = "${device.displayName} detected - tap to connect",
-                        actionLabel = "Connect",
-                        withDismissAction = false,
-                        duration = SnackbarDuration.Short,
-                    )
-                    if (result == SnackbarResult.ActionPerformed) {
-                        connectOrRequestPermission(device.device)
-                    }
-                }
-            }
-        }
-    }
-
     val activeModule = liveModules.firstOrNull { it.id == activeModuleId }
     val irTxChipLabel = when (irTransmitBackend) {
         IrTransmitBackend.PHONE -> if (irCapabilities.hasEmitter) "TX: Phone" else "TX: Unavailable"
@@ -1104,6 +1056,20 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         else -> "NRSuite"
     }
 
+    val suppressUsbAttachPrompt =
+        (activeModuleId != null && activeModuleId in setOf(
+            "devices",
+            "firmware",
+            "settings",
+            "serial_monitor",
+            "badusb",
+        )) ||
+        (activeModuleId == null && selectedCategory == null &&
+            selectedTab in setOf(AppTab.HOME, AppTab.DEVICES))
+    LaunchedEffect(suppressUsbAttachPrompt) {
+        if (suppressUsbAttachPrompt) viewModel.dismissUsbAttachPrompt()
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -1150,21 +1116,33 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     .padding(horizontal = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                usbAttachPrompt?.let { prompt ->
-                    UsbAttachPromptCard(
-                        prompt = prompt,
-                        onConnect = {
-                            viewModel.dismissUsbAttachPrompt()
-                            connectOrRequestPermission(prompt.device.device)
-                        },
-                        onOpenDevices = {
-                            viewModel.dismissUsbAttachPrompt()
-                            activeModuleId = null
-                            selectedCategory = null
-                            selectedTab = AppTab.DEVICES
-                        },
-                        onDismiss = viewModel::dismissUsbAttachPrompt,
-                    )
+                if (!suppressUsbAttachPrompt) {
+                    usbAttachPrompts.takeLast(3).forEach { prompt ->
+                        UsbAttachPromptCard(
+                            prompt = prompt,
+                            onConnect = {
+                                viewModel.dismissUsbAttachPrompt(prompt.deviceId)
+                                connectOrRequestPermission(prompt.device.device)
+                            },
+                            onOpenDevices = {
+                                viewModel.dismissUsbAttachPrompt(prompt.deviceId)
+                                activeModuleId = null
+                                selectedCategory = null
+                                selectedTab = AppTab.DEVICES
+                            },
+                            onDismiss = {
+                                viewModel.dismissUsbAttachPrompt(prompt.deviceId)
+                            },
+                        )
+                    }
+                    if (usbAttachPrompts.size > 3) {
+                        Text(
+                            text = "+${usbAttachPrompts.size - 3} more USB device(s) detected",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                        )
+                    }
                 }
                 SnackbarHost(hostState = snackbarHostState)
             }
@@ -2036,6 +2014,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             activeModuleId == "devices" -> {
                 DeviceScreen(
                     connectionState = connectionState,
+                    activeFingerprint = primaryFingerprint,
                     devices = devices,
                     deviceConnectionStates = deviceConnectionStates,
                     deviceFingerprint = { viewModel.deviceFingerprintImpl(it) },
@@ -2047,8 +2026,16 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onDisconnect = viewModel::disconnect,
                     onDisconnectDevice = viewModel::disconnectDevice,
                     onRefreshStatus = viewModel::refreshActiveDeviceStatus,
-                    onOpenFirmwareFlasher = { chip ->
+                    onSwitchDevice = viewModel::switchActiveDevice,
+                    onOpenFirmwareFlasher = { device, chip ->
                         viewModel.prepareFirmwareFlasherForDiagnostic(chip)
+                        if (device != null) {
+                            if (usbManager.hasPermission(device)) {
+                                viewModel.selectFirmwareTarget(device)
+                            } else {
+                                requestFirmwarePermission(device)
+                            }
+                        }
                         viewModel.onModuleOpened("firmware")
                         activeModuleId = "firmware"
                     },
@@ -2289,6 +2276,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
             selectedTab == AppTab.DEVICES -> DeviceScreen(
                 connectionState = connectionState,
+                activeFingerprint = primaryFingerprint,
                 devices = devices,
                 deviceConnectionStates = deviceConnectionStates,
                 deviceFingerprint = { viewModel.deviceFingerprintImpl(it) },
@@ -2300,8 +2288,16 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onDisconnect = viewModel::disconnect,
                 onDisconnectDevice = viewModel::disconnectDevice,
                 onRefreshStatus = viewModel::refreshActiveDeviceStatus,
-                onOpenFirmwareFlasher = {
-                    viewModel.prepareFirmwareFlasherForUpdate()
+                onSwitchDevice = viewModel::switchActiveDevice,
+                onOpenFirmwareFlasher = { device, chip ->
+                    viewModel.prepareFirmwareFlasherForDiagnostic(chip)
+                    if (device != null) {
+                        if (usbManager.hasPermission(device)) {
+                            viewModel.selectFirmwareTarget(device)
+                        } else {
+                            requestFirmwarePermission(device)
+                        }
+                    }
                     viewModel.onModuleOpened("firmware")
                     activeModuleId = "firmware"
                 },

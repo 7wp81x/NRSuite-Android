@@ -151,6 +151,7 @@ import java.util.Locale
 @Composable
 internal fun DeviceScreen(
     connectionState: ConnectionState,
+    activeFingerprint: String?,
     devices: List<UsbSerialDevice>,
     deviceConnectionStates: Map<String, ConnectionState>,
     deviceFingerprint: (UsbDevice) -> String,
@@ -162,12 +163,19 @@ internal fun DeviceScreen(
     onDisconnect: () -> Unit,
     onDisconnectDevice: (UsbDevice) -> Unit,
     onRefreshStatus: () -> Unit,
-    onOpenFirmwareFlasher: (String?) -> Unit,
+    onSwitchDevice: (UsbDevice) -> Unit,
+    onOpenFirmwareFlasher: (UsbDevice?, String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val usbConnectBusy = deviceConnectionStates.values.any {
         it is ConnectionState.Connecting || it is ConnectionState.Diagnosing
     } || pendingPermissionRequests.isNotEmpty() || disconnectingFingerprints.isNotEmpty()
+    val activeDevice = activeFingerprint?.let { selected ->
+        devices.firstOrNull { deviceFingerprint(it.device) == selected }
+    }
+    val otherDevices = devices.filterNot {
+        activeFingerprint != null && deviceFingerprint(it.device) == activeFingerprint
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -177,8 +185,10 @@ internal fun DeviceScreen(
         item {
             DeviceConnectionCard(
                 state = connectionState,
+                activeDevice = activeDevice,
                 disconnecting = disconnectingFingerprints.isNotEmpty(),
                 onDisconnect = onDisconnect,
+                onRefreshStatus = onRefreshStatus,
                 onOpenFirmwareFlasher = onOpenFirmwareFlasher,
             )
         }
@@ -189,7 +199,7 @@ internal fun DeviceScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Attached USB devices",
+                    text = "Other USB devices",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
@@ -199,15 +209,20 @@ internal fun DeviceScreen(
             }
         }
 
-        if (devices.isEmpty()) {
+        if (otherDevices.isEmpty()) {
             item {
                 Text(
-                    text = "No supported USB serial devices found. Plug in an ESP32 via OTG and tap Refresh.",
+                    text = if (activeDevice != null) {
+                        "No other USB devices attached."
+                    } else {
+                        "No supported USB serial devices found. Plug in an ESP32 via OTG and tap Refresh."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
             }
         } else {
-            items(devices, key = { it.device.deviceId }) { device ->
+            items(otherDevices, key = { it.device.deviceId }) { device ->
                 DeviceRow(
                     entry = device,
                     hasPermission = usbManager.hasPermission(device.device),
@@ -218,54 +233,66 @@ internal fun DeviceScreen(
                     connectEnabled = !usbConnectBusy,
                     onConnect = { onConnect(device.device) },
                     onDisconnect = { onDisconnectDevice(device.device) },
+                    onSwitch = { onSwitchDevice(device.device) },
                     onRefreshStatus = onRefreshStatus,
-                    onOpenFirmwareFlasher = onOpenFirmwareFlasher,
+                    onOpenFirmwareFlasher = { chip ->
+                        onOpenFirmwareFlasher(device.device, chip)
+                    },
                 )
             }
         }
 
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(0.5.dp, NrOutline),
-            ) {
-                Column(Modifier.padding(14.dp)) {
-                    Text(
-                        text = "Firmware",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = "Use the in-app Firmware Flasher to write a complete merged .bin over USB. The current firmware version is reported by the device STATUS command.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                }
-            }
-        }
     }
 }
 
 @Composable
 internal fun DeviceConnectionCard(
     state: ConnectionState,
+    activeDevice: UsbSerialDevice?,
     disconnecting: Boolean,
     onDisconnect: () -> Unit,
-    onOpenFirmwareFlasher: (String?) -> Unit,
+    onRefreshStatus: () -> Unit,
+    onOpenFirmwareFlasher: (UsbDevice?, String?) -> Unit,
 ) {
+    var detailsExpanded by rememberSaveable { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(0.5.dp, NrOutline),
+        border = BorderStroke(
+            1.dp,
+            if (state is ConnectionState.Failed) {
+                StatusRed.copy(alpha = 0.55f)
+            } else {
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
+            },
+        ),
+        shape = RoundedCornerShape(12.dp),
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Text(
-                text = "Connection",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(8.dp))
+        Column(Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "ACTIVE DEVICE",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                if (state is ConnectionState.Connected) {
+                    IconButton(
+                        onClick = onRefreshStatus,
+                        modifier = Modifier.size(30.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh device status",
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
             val (label, color) = if (disconnecting) {
                 "Disconnecting..." to StatusAmber
             } else {
@@ -281,9 +308,10 @@ internal fun DeviceConnectionCard(
             if (state is ConnectionState.Connected) {
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "Chip: ${state.chip ?: "unknown"}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
+                    text = activeDevice?.let {
+                        if (state.chip != null) "NRSuite ${state.chip}" else it.displayName
+                    } ?: "NRSuite ${state.chip ?: "device"}",
+                    style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
                     text = "Firmware: ${state.firmwareVersion ?: "unknown"}",
@@ -295,40 +323,59 @@ internal fun DeviceConnectionCard(
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
                 )
+                TextButton(
+                    onClick = { detailsExpanded = !detailsExpanded },
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp),
+                ) {
+                    Text(if (detailsExpanded) "Hide details" else "Show details")
+                    Icon(
+                        imageVector = if (detailsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp),
+                    )
+                }
+                NrAnimatedVisibility(visible = detailsExpanded) {
+                    DeviceSpecsContent(state)
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = onDisconnect,
+                        modifier = Modifier.height(34.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                    ) {
+                        Text("Disconnect", style = MaterialTheme.typography.labelMedium)
+                    }
+                    OutlinedButton(
+                        onClick = { onOpenFirmwareFlasher(activeDevice?.device, state.chip) },
+                        modifier = Modifier.height(34.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                    ) {
+                        Text("Firmware flasher", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
             }
             if (state is ConnectionState.Failed && state.diagnostic != null) {
                 Spacer(Modifier.height(8.dp))
                 ConnectionDiagnosticSummary(
                     diagnostic = state.diagnostic,
-                    onOpenFirmwareFlasher = onOpenFirmwareFlasher,
+                    onOpenFirmwareFlasher = { chip ->
+                        onOpenFirmwareFlasher(activeDevice?.device, chip)
+                    },
                 )
             }
             if (!disconnecting) {
                 when (state) {
-                    is ConnectionState.Connected -> {
-                        Spacer(Modifier.height(10.dp))
-                        OutlinedButton(onClick = onDisconnect) {
-                            Text("Disconnect")
-                        }
-                    }
-
                     ConnectionState.Connecting -> {
-                        Spacer(Modifier.height(10.dp))
-                        OutlinedButton(onClick = onDisconnect) {
-                            Text("Cancel")
-                        }
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(onClick = onDisconnect) { Text("Cancel") }
                     }
-
                     ConnectionState.Diagnosing -> Unit
-
                     is ConnectionState.Failed -> {
-                        Spacer(Modifier.height(10.dp))
-                        OutlinedButton(onClick = onDisconnect) {
-                            Text("Clear")
-                        }
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(onClick = onDisconnect) { Text("Clear") }
                     }
-
-                    ConnectionState.Disconnected -> Unit
+                    else -> Unit
                 }
             }
         }
@@ -346,6 +393,7 @@ internal fun DeviceRow(
     connectEnabled: Boolean = true,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
+    onSwitch: () -> Unit,
     onRefreshStatus: () -> Unit,
     onOpenFirmwareFlasher: (String?) -> Unit,
 ) {
@@ -364,9 +412,9 @@ internal fun DeviceRow(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, borderColor),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(10.dp),
     ) {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(10.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -379,9 +427,9 @@ internal fun DeviceRow(
                         state is ConnectionState.Failed -> StatusRed
                         else -> NrOnSurfaceVariant
                     },
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(18.dp),
                 )
-                Spacer(Modifier.width(9.dp))
+                Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = if (state is ConnectionState.Connected) {
@@ -395,7 +443,7 @@ internal fun DeviceRow(
                     )
                     val statusText = when {
                         disconnecting -> "Disconnecting..."
-                        state is ConnectionState.Connected -> "Connected"
+                        state is ConnectionState.Connected -> "Connected · inactive"
                         state is ConnectionState.Connecting -> "Connecting..."
                         state is ConnectionState.Diagnosing -> "Diagnosing..."
                         pendingPermission -> "Permission requested"
@@ -434,8 +482,12 @@ internal fun DeviceRow(
                     }
 
                     state is ConnectionState.Connected -> {
-                        OutlinedButton(onClick = onDisconnect) {
-                            Text("Disconnect")
+                        Button(
+                            onClick = onSwitch,
+                            modifier = Modifier.height(32.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp),
+                        ) {
+                            Text("Switch", style = MaterialTheme.typography.labelMedium)
                         }
                     }
 
@@ -456,12 +508,14 @@ internal fun DeviceRow(
                         Button(
                             onClick = onConnect,
                             enabled = connectEnabled,
+                            modifier = Modifier.height(32.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary,
                                 contentColor = MaterialTheme.colorScheme.onPrimary,
                             ),
                         ) {
-                            Text("Connect")
+                            Text("Connect", style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
@@ -502,6 +556,7 @@ internal fun DeviceRow(
                     state = state,
                     onRefreshStatus = onRefreshStatus,
                     onOpenFirmwareFlasher = onOpenFirmwareFlasher,
+                    onDisconnect = onDisconnect,
                 )
             }
         }
@@ -515,6 +570,7 @@ private fun DeviceDetailsContent(
     state: ConnectionState?,
     onRefreshStatus: () -> Unit,
     onOpenFirmwareFlasher: (String?) -> Unit,
+    onDisconnect: () -> Unit,
 ) {
     DeviceInfoLine("Transport", entry.displayName)
     DeviceInfoLine("USB permission", if (hasPermission) "Granted" else "Required")
@@ -546,6 +602,14 @@ private fun DeviceDetailsContent(
                 }
             }
             DeviceSpecsContent(state)
+            Spacer(Modifier.height(6.dp))
+            OutlinedButton(
+                onClick = onDisconnect,
+                modifier = Modifier.height(32.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+            ) {
+                Text("Disconnect inactive device", style = MaterialTheme.typography.labelMedium)
+            }
         }
         is ConnectionState.Failed -> {
             if (state.diagnostic != null) {

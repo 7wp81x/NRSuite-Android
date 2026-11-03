@@ -155,7 +155,9 @@ data class CapturedPassword(
 data class UsbAttachPrompt(
     val device: com.swp81x.nrsuite.core.usb.UsbSerialDevice,
     val hasPermission: Boolean,
-)
+) {
+    val deviceId: Int get() = device.device.deviceId
+}
 
 internal data class DeviceSession(
     val fingerprint: String,
@@ -226,10 +228,10 @@ class MainViewModel(internal val app: Application) {
     internal val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()
 
-    internal val _usbAttachPrompt = MutableStateFlow<UsbAttachPrompt?>(null)
-    val usbAttachPrompt: StateFlow<UsbAttachPrompt?> = _usbAttachPrompt.asStateFlow()
-    internal var usbAttachPromptJob: Job? = null
-    internal var lastUsbAttachPromptAtMs = 0L
+    internal val _usbAttachPrompts = MutableStateFlow<List<UsbAttachPrompt>>(emptyList())
+    val usbAttachPrompts: StateFlow<List<UsbAttachPrompt>> = _usbAttachPrompts.asStateFlow()
+    internal val usbAttachPromptJobs = mutableMapOf<Int, Job>()
+    internal val lastUsbAttachPromptAtByDevice = mutableMapOf<Int, Long>()
 
     internal val _serialMonitorSelected = MutableStateFlow<UsbSerialDevice?>(null)
     val serialMonitorSelected: StateFlow<UsbSerialDevice?> = _serialMonitorSelected.asStateFlow()
@@ -1547,11 +1549,20 @@ class MainViewModel(internal val app: Application) {
     }
 
     fun onUsbDeviceAttached(device: UsbDevice? = null) = this.onUsbDeviceAttachedImpl(device)
-    fun dismissUsbAttachPrompt() {
-        usbAttachPromptJob?.cancel()
-        usbAttachPromptJob = null
-        _usbAttachPrompt.value = null
+    fun dismissUsbAttachPrompt(deviceId: Int? = null) {
+        if (deviceId == null) {
+            usbAttachPromptJobs.values.forEach { it.cancel() }
+            usbAttachPromptJobs.clear()
+            _usbAttachPrompts.value = emptyList()
+        } else {
+            usbAttachPromptJobs.remove(deviceId)?.cancel()
+            _usbAttachPrompts.value = _usbAttachPrompts.value.filterNot {
+                it.deviceId == deviceId
+            }
+        }
     }
+
+    fun switchActiveDevice(device: UsbDevice) = this.switchActiveDeviceImpl(device)
 
 
     fun onUsbDeviceDetached(device: UsbDevice) = this.onUsbDeviceDetachedImpl(device)

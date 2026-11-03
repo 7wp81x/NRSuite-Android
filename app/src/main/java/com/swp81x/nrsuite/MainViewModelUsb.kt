@@ -91,10 +91,10 @@ internal fun MainViewModel.onUsbDeviceAttachedImpl(device: UsbDevice?) {
     tryManualFirmwareFlashOnAttachImpl()
 
     // USB hotplug can re-enumerate several times while a board is booting.
-    // Debounce the prompt and suppress repeats for the same short window.
+    // Debounce each device independently and keep a per-device prompt stack.
     val targetDeviceId = device?.deviceId
-    usbAttachPromptJob?.cancel()
-    usbAttachPromptJob = scope.launch {
+    usbAttachPromptJobs[targetDeviceId ?: Int.MIN_VALUE]?.cancel()
+    usbAttachPromptJobs[targetDeviceId ?: Int.MIN_VALUE] = scope.launch {
         kotlinx.coroutines.delay(700)
         val entry = if (targetDeviceId != null) {
             _devices.value.firstOrNull { it.device.deviceId == targetDeviceId }
@@ -102,16 +102,20 @@ internal fun MainViewModel.onUsbDeviceAttachedImpl(device: UsbDevice?) {
             _devices.value.firstOrNull()
         } ?: return@launch
         val now = System.currentTimeMillis()
-        if (now - lastUsbAttachPromptAtMs < USB_ATTACH_PROMPT_COOLDOWN_MS) return@launch
-        lastUsbAttachPromptAtMs = now
-        _usbAttachPrompt.value = UsbAttachPrompt(
-            device = entry,
-            hasPermission = usbManager.hasPermission(entry.device),
-        )
-        kotlinx.coroutines.delay(USB_ATTACH_PROMPT_VISIBLE_MS)
-        if (_usbAttachPrompt.value?.device?.device?.deviceId == entry.device.deviceId) {
-            _usbAttachPrompt.value = null
+        val lastPromptAt = lastUsbAttachPromptAtByDevice[entry.device.deviceId] ?: 0L
+        if (now - lastPromptAt < USB_ATTACH_PROMPT_COOLDOWN_MS) return@launch
+        lastUsbAttachPromptAtByDevice[entry.device.deviceId] = now
+        _usbAttachPrompts.update { prompts ->
+            (prompts.filterNot { it.deviceId == entry.device.deviceId } + UsbAttachPrompt(
+                device = entry,
+                hasPermission = usbManager.hasPermission(entry.device),
+            )).takeLast(MAX_USB_ATTACH_PROMPTS)
         }
+        kotlinx.coroutines.delay(USB_ATTACH_PROMPT_VISIBLE_MS)
+        _usbAttachPrompts.update { prompts ->
+            prompts.filterNot { it.deviceId == entry.device.deviceId }
+        }
+        usbAttachPromptJobs.remove(entry.device.deviceId)
     }
 }
 
@@ -144,10 +148,9 @@ internal fun MainViewModel.deviceFingerprintImpl(device: UsbDevice): String {
 
 internal fun MainViewModel.onUsbDeviceDetachedImpl(device: UsbDevice) {
     clearPermissionRequestImpl(device.deviceId)
-    if (_usbAttachPrompt.value?.device?.device?.deviceId == device.deviceId) {
-        usbAttachPromptJob?.cancel()
-        usbAttachPromptJob = null
-        _usbAttachPrompt.value = null
+    usbAttachPromptJobs.remove(device.deviceId)?.cancel()
+    _usbAttachPrompts.update { prompts ->
+        prompts.filterNot { it.deviceId == device.deviceId }
     }
     runCatching { deviceFingerprintImpl(device) }.getOrNull()?.let { fingerprint ->
         _badUsbArmedFingerprints.update { it - fingerprint }
@@ -228,8 +231,30 @@ internal fun MainViewModel.onPermissionResultImpl(device: UsbDevice, granted: Bo
     }
 }
 
+internal fun MainViewModel.switchActiveDeviceImpl(device: UsbDevice) {
+    val fingerprint = deviceFingerprintImpl(device)
+    val entry = deviceSessions[fingerprint] ?: run {
+        appendLog("Device is not connected; connect it before switching.", tag = "USB")
+        return
+    }
+    if (fingerprint == activeDeviceFingerprint) return
+    val state = entry.session.state.value
+    if (state !is ConnectionState.Connected) {
+        appendLog("Device is not ready to become active yet.", tag = "USB")
+        return
+    }
+    stopActiveOperations()
+    _primaryFingerprint.value = fingerprint
+    _connectionState.value = state
+    if (_firmwareTargetDevice.value == null) {
+        _firmwareTargetDevice.value = entry.device
+    }
+    appendLog("Active device switched to ${entry.device.displayName}.", tag = "USB")
+    updateForegroundService()
+}
+
 internal fun MainViewModel.connectImpl(device: UsbDevice) {
-    dismissUsbAttachPrompt()
+    dismissUsbAttachPrompt(device.deviceId)
     if (!usbManager.hasPermission(device)) {
         appendLog("USB permission is required before connecting.")
         return
@@ -437,3 +462,4 @@ internal fun MainViewModel.disconnectDeviceImpl(device: UsbDevice) {
 
 private const val USB_ATTACH_PROMPT_COOLDOWN_MS = 8_000L
 private const val USB_ATTACH_PROMPT_VISIBLE_MS = 10_000L
+private const val MAX_USB_ATTACH_PROMPTS = 4

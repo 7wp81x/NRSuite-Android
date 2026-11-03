@@ -50,10 +50,12 @@ fun UsbAttachPromptCard(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.98f),
+        ),
         border = BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outline.copy(alpha = 0.38f),
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.42f),
         ),
         shape = RoundedCornerShape(14.dp),
     ) {
