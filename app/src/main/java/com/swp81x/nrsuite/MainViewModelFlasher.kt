@@ -10,6 +10,7 @@ import com.swp81x.nrsuite.core.flasher.recommendedEsp32ResetMode
 import com.swp81x.nrsuite.core.flasher.triggerTinyUsbBootloaderReboot
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
+import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
@@ -106,8 +107,40 @@ internal fun MainViewModel.selectFirmwareTargetImpl(device: UsbDevice) {
         appendLog("No supported USB serial driver for ${device.deviceName}.")
         return
     }
+
+    // A flash target selection is device-scoped. Never carry a chip/firmware
+    // identity from the previously selected board into a new USB target.
+    val previousTarget = _firmwareTargetDevice.value
+    val targetChanged = previousTarget == null || runCatching {
+        deviceFingerprintImpl(previousTarget.device) != deviceFingerprintImpl(device)
+    }.getOrDefault(true)
+    if (targetChanged) {
+        _firmwareTargetChip.value = null
+        _firmwareTargetFirmwareVersion.value = null
+        _firmwareAssetDownload.value =
+            com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState.Idle
+    }
+
     _firmwareTargetDevice.value = entry
-    appendLog("Firmware flash target: ${entry.displayName}")
+    val fingerprint = deviceFingerprintImpl(device)
+    val targetState = _deviceConnectionStates.value[fingerprint] as? ConnectionState.Connected
+    val targetChip = targetState?.chip ?: firmwareTargetChipHints[device.deviceId]
+    _firmwareTargetChip.value = targetChip
+    _firmwareTargetFirmwareVersion.value = targetState?.firmwareVersion
+    if (!targetChip.isNullOrBlank()) {
+        val imageChip = firmwareChipFromFirmwareName(_firmwareFlashName.value)
+        if (imageChip != null && !imageChip.equals(targetChip, ignoreCase = true)) {
+            clearFirmwareFlashFileImpl()
+            _firmwareAssetDownload.value =
+                com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState.Idle
+            _toastMessage.value =
+                "Firmware image cleared: target $targetChip requires matching firmware."
+        }
+    }
+    appendLog(
+        "Firmware flash target: ${entry.displayName}" +
+            (targetChip?.let { " ($it)" } ?: ""),
+    )
 }
 
 internal fun MainViewModel.armManualFirmwareRecoveryImpl(targetChip: String) {

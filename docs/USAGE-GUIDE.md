@@ -454,7 +454,72 @@ ESP32-S2 has no BLE radio.
 
 ---
 
-## 7. Mesh status
+## 7. Terminal / Termux SSH
+
+NRSuite includes a native SSH terminal for connecting to OpenSSH running in
+Termux. For local connections, NRSuite always uses:
+
+```text
+Host:      127.0.0.1
+Port:      8022
+Username:  nrsuite
+Auth:      publickey
+```
+
+### First-time setup
+
+1. Install Termux, OpenSSH, and Termux services.
+2. Generate an Ed25519 key in Termux.
+3. Add the public key to `~/.ssh/authorized_keys`.
+4. Start `sshd` with `sv up sshd`.
+5. Import the private key into NRSuite from the NRSuite shared folder.
+
+See [TERMINAL-GUIDE.md](TERMINAL-GUIDE.md) for the complete command block and
+key-import walkthrough.
+
+### Connection behavior
+
+- Autoconnect attempts one connection when entering Terminal and re-arms after
+  leaving and revisiting the tab.
+- A manual **Disconnect SSH** leaves the setup screen visible until the user
+  reconnects or revisits Terminal.
+- **Force reconnect** closes the old SSH transport and reconnects immediately.
+- Closing the last terminal tab is disabled. Use **Disconnect SSH** to close the
+  transport intentionally.
+
+### Terminal defaults
+
+Fresh installs use a 34 dp font, block cursor, 500 ms cursor blink, autoconnect,
+and a Home shortcut card. Extra key rows appear only while the on-screen keyboard
+is visible. Existing users keep their saved settings.
+
+### Terminal Shortcuts
+
+Open the shortcut sheet from the terminal toolbar. Shortcuts support search,
+categories, run modes, Home pinning, confirmations, and parameter placeholders:
+
+```bash
+nmap -sV {{target}}
+ping -c {{count}} {{host}}
+```
+
+When run, detected placeholders generate input fields and a command preview.
+Built-in example shortcuts are seeded once and can be edited or deleted.
+
+### Common terminal troubleshooting
+
+- If authentication fails, verify `sv up sshd`, the `authorized_keys` entry, and
+  the imported key fingerprint.
+- If the pinned host key changed after reinstalling Termux, review the old/new
+  fingerprints before trusting the new key.
+- If Enter or keyboard input stops working, tap the terminal once to restore focus
+  and toggle the keyboard off/on.
+- Use the `NRSuiteTerminal` and `NRSuiteTerminalJSch` logcat tags when reporting a
+  connection or input bug.
+
+---
+
+## 8. Mesh status
 
 Mesh code is present in merged development branches but remains **experimental**
 and is outside the non-mesh release validation matrix.
@@ -465,7 +530,7 @@ behavior as part of a non-mesh release validation.
 
 ---
 
-## 8. Common troubleshooting
+## 9. Common troubleshooting
 
 ### Device appears but commands time out
 
@@ -511,7 +576,7 @@ presence of compiled firmware code as hardware support.
 
 ---
 
-## 9. Safety and data handling
+## 10. Safety and data handling
 
 - Only test networks and devices you own or are authorized to test.
 - Confirm before using active deauth, portal, Evil Twin, IR Jammer, or other

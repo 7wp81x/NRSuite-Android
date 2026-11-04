@@ -31,6 +31,12 @@ import com.swp81x.nrsuite.ui.theme.LogColorInfo
 import com.swp81x.nrsuite.ui.theme.LogColorSuccess
 import com.swp81x.nrsuite.ui.theme.LogColorUsb
 import com.swp81x.nrsuite.ui.components.IrModuleConfigRow
+import com.swp81x.nrsuite.core.terminal.TerminalShortcut
+import com.swp81x.nrsuite.core.terminal.terminalShortcutParameterNames
+import com.swp81x.nrsuite.ui.components.NrCompactPrimaryButton
+import com.swp81x.nrsuite.ui.components.NrPrimaryButton
+import com.swp81x.nrsuite.ui.components.NrQuietButton
+import com.swp81x.nrsuite.ui.components.NrSecondaryButton
 import com.swp81x.nrsuite.ui.components.RfidModuleConfigRow
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import androidx.compose.foundation.layout.Box
@@ -53,6 +59,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -71,6 +78,7 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Radar
@@ -88,10 +96,9 @@ import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.filled.WifiFind
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -103,7 +110,6 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -112,7 +118,6 @@ import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.history.HistoryEntry
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -147,6 +152,8 @@ import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
 import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
+import com.swp81x.nrsuite.ui.components.ConnectionDiagnosticSummary
+import com.swp81x.nrsuite.ui.components.FirmwareUpdateInlineNotice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrFilterChip
@@ -175,6 +182,7 @@ internal fun ConnectionStatusIndicator(
     hasDevices: Boolean,
     hasPermission: Boolean,
     hasPendingPermissions: Boolean,
+    onClick: (() -> Unit)? = null,
 ) {
     val (label, color) = when (state) {
         ConnectionState.Disconnected -> when {
@@ -184,14 +192,114 @@ internal fun ConnectionStatusIndicator(
             else -> "Offline" to StatusNeutral
         }
         ConnectionState.Connecting -> "Connecting…" to StatusAmber
+        ConnectionState.Diagnosing -> "Diagnosing…" to StatusAmber
         is ConnectionState.Connected -> (state.chip ?: "Online") to StatusGreen
         is ConnectionState.Failed -> "Error" to StatusRed
     }
 
-    StatusIndicator(
-        label = label,
-        color = color,
-        modifier = Modifier.padding(end = 12.dp),
+    Row(
+        modifier = Modifier
+            .padding(end = 8.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f),
+                shape = RoundedCornerShape(50),
+            )
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(onClick = onClick)
+                } else {
+                    Modifier
+                },
+            )
+            .padding(start = 10.dp, end = if (onClick != null) 6.dp else 10.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StatusIndicator(label = label, color = color)
+        if (onClick != null) {
+            Icon(
+                imageVector = Icons.Default.ArrowDropDown,
+                contentDescription = "Switch active device",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(17.dp),
+            )
+        }
+    }
+}
+
+@Composable
+internal fun HomeTabContent(
+    connectionState: ConnectionState,
+    permissionRevision: Int,
+    devices: List<UsbSerialDevice>,
+    deviceConnectionStates: Map<String, ConnectionState>,
+    deviceFingerprint: (UsbDevice) -> String,
+    pendingPermissionRequests: Set<Int>,
+    disconnectingFingerprints: Set<String>,
+    usbManager: UsbManager,
+    modules: List<ModuleCardSpec>,
+    listState: LazyListState,
+    recentModuleIds: List<String>,
+    ouiDatabaseStatus: OuiDatabaseStatus,
+    ouiDatabaseProgress: Float?,
+    appUpdate: AppUpdateInfo?,
+    appUpdateDownload: AppUpdateDownloadState,
+    firmwareUpdate: FirmwareUpdateInfo?,
+    firmwareAssetDownload: FirmwareAssetDownloadState,
+    terminalShortcuts: List<TerminalShortcut>,
+    showTerminalLauncherCard: Boolean,
+    onOpenShortcuts: () -> Unit,
+    onManageTerminalShortcuts: () -> Unit,
+    onRunTerminalShortcut: (TerminalShortcut) -> Unit,
+    onDownloadOuiDatabase: () -> Unit,
+    onDownloadAppUpdate: () -> Unit,
+    onInstallAppUpdate: () -> Unit,
+    onDownloadFirmwareUpdate: () -> Unit,
+    onOpenFirmwareFlasher: () -> Unit,
+    onOpenFirmwareFlasherForDiagnostic: (String?) -> Unit,
+    onOpenModule: (String) -> Unit,
+    onOpenCategory: (String) -> Unit,
+    onBrowseAllModules: () -> Unit,
+    onRefreshDevices: () -> Unit,
+    onConnect: (UsbDevice) -> Unit,
+    onDisconnect: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    HomeScreen(
+        connectionState = connectionState,
+        permissionRevision = permissionRevision,
+        devices = devices,
+        deviceConnectionStates = deviceConnectionStates,
+        deviceFingerprint = deviceFingerprint,
+        pendingPermissionRequests = pendingPermissionRequests,
+        disconnectingFingerprints = disconnectingFingerprints,
+        usbManager = usbManager,
+        modules = modules,
+        listState = listState,
+        recentModuleIds = recentModuleIds,
+        ouiDatabaseStatus = ouiDatabaseStatus,
+        ouiDatabaseProgress = ouiDatabaseProgress,
+        appUpdate = appUpdate,
+        appUpdateDownload = appUpdateDownload,
+        firmwareUpdate = firmwareUpdate,
+        firmwareAssetDownload = firmwareAssetDownload,
+        terminalShortcuts = terminalShortcuts,
+        showTerminalLauncherCard = showTerminalLauncherCard,
+        onOpenShortcuts = onOpenShortcuts,
+        onManageTerminalShortcuts = onManageTerminalShortcuts,
+        onRunTerminalShortcut = onRunTerminalShortcut,
+        onDownloadOuiDatabase = onDownloadOuiDatabase,
+        onDownloadAppUpdate = onDownloadAppUpdate,
+        onInstallAppUpdate = onInstallAppUpdate,
+        onDownloadFirmwareUpdate = onDownloadFirmwareUpdate,
+        onOpenFirmwareFlasher = onOpenFirmwareFlasher,
+        onOpenFirmwareFlasherForDiagnostic = onOpenFirmwareFlasherForDiagnostic,
+        onOpenModule = onOpenModule,
+        onOpenCategory = onOpenCategory,
+        onBrowseAllModules = onBrowseAllModules,
+        onRefreshDevices = onRefreshDevices,
+        onConnect = onConnect,
+        onDisconnect = onDisconnect,
+        modifier = modifier,
     )
 }
 
@@ -214,21 +322,27 @@ internal fun HomeScreen(
     appUpdateDownload: AppUpdateDownloadState,
     firmwareUpdate: FirmwareUpdateInfo?,
     firmwareAssetDownload: FirmwareAssetDownloadState,
+    terminalShortcuts: List<TerminalShortcut> = emptyList(),
+    showTerminalLauncherCard: Boolean = true,
+    onOpenShortcuts: () -> Unit = {},
+    onManageTerminalShortcuts: () -> Unit = {},
+    onRunTerminalShortcut: (TerminalShortcut) -> Unit = {},
     onDownloadOuiDatabase: () -> Unit,
     onDownloadAppUpdate: () -> Unit,
     onInstallAppUpdate: () -> Unit,
     onDownloadFirmwareUpdate: () -> Unit,
     onOpenFirmwareFlasher: () -> Unit,
+    onOpenFirmwareFlasherForDiagnostic: (String?) -> Unit,
     onOpenModule: (String) -> Unit,
     onOpenCategory: (String) -> Unit,
+    onBrowseAllModules: () -> Unit,
     onRefreshDevices: () -> Unit,
     onConnect: (UsbDevice) -> Unit,
     onDisconnect: () -> Unit,
-    onManageDevice: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val usbConnectBusy = deviceConnectionStates.values.any {
-        it is ConnectionState.Connecting
+        it is ConnectionState.Connecting || it is ConnectionState.Diagnosing
     } || pendingPermissionRequests.isNotEmpty() || disconnectingFingerprints.isNotEmpty()
 
     LazyColumn(
@@ -261,31 +375,6 @@ internal fun HomeScreen(
             }
         }
 
-        if (connectionState is ConnectionState.Connected) {
-            firmwareUpdate?.let { update ->
-                item {
-                    val downloadState = firmwareAssetDownload
-                    UpdateAvailableCard(
-                        title = "Firmware update available",
-                        latest = update.latest,
-                        buttonLabel = when (downloadState) {
-                            is FirmwareAssetDownloadState.Downloading -> {
-                                downloadState.percent?.let { "Downloading ${it.toInt()}%" }
-                                    ?: "Downloading…"
-                            }
-                            is FirmwareAssetDownloadState.Downloaded -> "Flash"
-                            is FirmwareAssetDownloadState.Failed -> "Retry"
-                            FirmwareAssetDownloadState.Idle -> "Download"
-                        },
-                        buttonEnabled = downloadState !is FirmwareAssetDownloadState.Downloading,
-                        onButtonClick = when (downloadState) {
-                            is FirmwareAssetDownloadState.Downloaded -> onOpenFirmwareFlasher
-                            else -> onDownloadFirmwareUpdate
-                        },
-                    )
-                }
-            }
-        }
 
         if (ouiDatabaseStatus is OuiDatabaseStatus.NotDownloaded ||
             ouiDatabaseStatus is OuiDatabaseStatus.Downloading ||
@@ -303,51 +392,33 @@ internal fun HomeScreen(
         item {
             DashboardDeviceCard(
                 state = connectionState,
+                devices = devices,
+                deviceConnectionStates = deviceConnectionStates,
+                deviceFingerprint = deviceFingerprint,
+                pendingPermissionRequests = pendingPermissionRequests,
+                disconnectingFingerprints = disconnectingFingerprints,
+                usbManager = usbManager,
+                usbConnectBusy = usbConnectBusy,
+                permissionRevision = permissionRevision,
+                onRefreshDevices = onRefreshDevices,
+                onConnect = onConnect,
                 onDisconnect = onDisconnect,
-                onManageDevice = onManageDevice,
+                firmwareUpdate = firmwareUpdate,
+                firmwareAssetDownload = firmwareAssetDownload,
+                onDownloadFirmwareUpdate = onDownloadFirmwareUpdate,
+                onOpenFirmwareFlasher = onOpenFirmwareFlasher,
+                onOpenFirmwareFlasherForDiagnostic = onOpenFirmwareFlasherForDiagnostic,
             )
         }
 
-        if (connectionState !is ConnectionState.Connected) {
+        if (showTerminalLauncherCard) {
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Attached USB devices",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(onClick = onRefreshDevices) {
-                        Text("Refresh")
-                    }
-                }
-            }
-
-            if (devices.isEmpty()) {
-                item {
-                    Text(
-                        text = "No supported USB serial devices found. Plug in your NRSuite ESP32 over OTG.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                }
-            } else {
-                items(devices, key = { it.device.deviceId }) { device ->
-                    DeviceRow(
-                        entry = device,
-                        hasPermission = usbManager.hasPermission(device.device),
-                        permissionRevision = permissionRevision,
-                        state = deviceConnectionStates[deviceFingerprint(device.device)],
-                        pendingPermission = device.device.deviceId in pendingPermissionRequests,
-                        disconnecting = deviceFingerprint(device.device) in disconnectingFingerprints,
-                        connectEnabled = !usbConnectBusy,
-                        onConnect = { onConnect(device.device) },
-                        onDisconnect = {},
-                    )
-                }
+                HomeTerminalLauncherCard(
+                    shortcuts = terminalShortcuts.filter { it.pinHome }.take(3),
+                    onOpenShortcuts = onOpenShortcuts,
+                    onManageShortcuts = onManageTerminalShortcuts,
+                    onRunShortcut = onRunTerminalShortcut,
+                )
             }
         }
 
@@ -395,12 +466,22 @@ internal fun HomeScreen(
         }
 
         item {
-            Text(
-                text = "Modules",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Modules",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                NrQuietButton(
+                    text = "Browse all",
+                    onClick = onBrowseAllModules,
+                    leadingIcon = Icons.Default.Search,
+                )
+            }
         }
 
         item {
@@ -554,9 +635,9 @@ internal fun CategoryCard(
             .clickable(enabled = category.available) {
                 onOpenCategory(category.name)
             },
-        colors = CardDefaults.cardColors(containerColor = NrSurface),
+        colors = CardDefaults.cardColors(containerColor = NrSurfaceVariant.copy(alpha = 0.52f)),
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(0.5.dp, NrOutline),
+        border = BorderStroke(1.dp, NrOutline.copy(alpha = 0.30f)),
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Icon(
@@ -588,7 +669,7 @@ private fun ModuleInfoTag(label: String) {
         color = NrOnSurfaceVariant,
         modifier = Modifier
             .background(NrSurfaceVariant, RoundedCornerShape(7.dp))
-            .border(0.5.dp, NrOutline, RoundedCornerShape(7.dp))
+            .border(1.dp, NrOutline.copy(alpha = 0.30f), RoundedCornerShape(7.dp))
             .padding(horizontal = 8.dp, vertical = 5.dp),
     )
 }
@@ -670,23 +751,11 @@ internal fun CategoryModulesScreen(
                     ModuleInfoTag("2.4 GHz")
                     ModuleInfoTag("5 GHz")
                     Spacer(Modifier.weight(1f))
-                    TextButton(
+                    NrQuietButton(
+                        text = "WiFi Config",
                         onClick = onOpenWifiConfig,
-                        colors = ButtonDefaults.textButtonColors(contentColor = NrOnSurfaceVariant),
-                    ) {
-                        Icon(
-                            Icons.Default.Tune,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = effectiveAccent,
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            "WiFi Config",
-                            color = NrOnSurfaceVariant,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
+                        leadingIcon = Icons.Default.Tune,
+                    )
                 }
             }
             item {
@@ -772,25 +841,11 @@ internal fun CategoryModulesScreen(
                         color = NrOnSurfaceVariant,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(
+                    NrQuietButton(
+                        text = "Sensor Config",
                         onClick = onOpenSensorConfig,
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = NrOnSurfaceVariant,
-                        ),
-                    ) {
-                        Icon(
-                            Icons.Default.Tune,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = effectiveAccent,
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            "Sensor Config",
-                            color = NrOnSurfaceVariant,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
+                        leadingIcon = Icons.Default.Tune,
+                    )
                 }
             }
         }
@@ -821,17 +876,19 @@ internal fun CategoryModulesScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                NrPrimaryButton(
+                    text = "Rescan",
                     onClick = {
                         showIrDatabaseRescanDialog = false
                         onRescanIrLibrary()
                     },
-                ) { Text("Rescan") }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showIrDatabaseRescanDialog = false }) {
-                    Text("Not now")
-                }
+                NrQuietButton(
+                    text = "Not now",
+                    onClick = { showIrDatabaseRescanDialog = false },
+                )
             },
         )
     }
@@ -861,14 +918,12 @@ private fun IrDatabaseCategoryCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = NrSurfaceVariant),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        ),
         border = BorderStroke(
-            0.5.dp,
-            when {
-                state.phase == IrDatabasePhase.FAILED -> StatusRed
-                emptyIndex -> StatusAmber
-                else -> NrOutline
-            },
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.34f),
         ),
         shape = RoundedCornerShape(12.dp),
     ) {
@@ -876,6 +931,8 @@ private fun IrDatabaseCategoryCard(
             Text(
                 text = when {
                     rootMissing -> "NRSuite root is not configured"
+                    state.running && state.phase == IrDatabasePhase.INDEXING ->
+                        "IR library indexing in progress"
                     state.running -> "Flipper-IRDB operation in progress"
                     emptyIndex -> "Flipper-IRDB found, but no remotes are indexed"
                     metadata == null && databasePresent -> "Flipper-IRDB found on storage"
@@ -901,9 +958,33 @@ private fun IrDatabaseCategoryCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
             )
+            if (state.running) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = when (state.phase) {
+                            IrDatabasePhase.INDEXING -> "Scanning IR library..."
+                            IrDatabasePhase.EXTRACTING -> "Extracting IR database..."
+                            else -> "Preparing IR library..."
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
             if (rootMissing) {
                 Spacer(Modifier.height(8.dp))
-                Button(
+                NrPrimaryButton(
+                    text = "Choose NRSuite root",
                     onClick = {
                         Toast.makeText(
                             context,
@@ -912,64 +993,61 @@ private fun IrDatabaseCategoryCard(
                         ).show()
                         onChooseRoot()
                     },
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Folder,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text("Choose NRSuite root")
-                }
+                    leadingIcon = Icons.Default.Folder,
+                )
             } else if (state.running) {
                 Spacer(Modifier.height(8.dp))
-                if (state.totalBytes > 0L) {
+                val progress = when (state.phase) {
+                    IrDatabasePhase.DOWNLOADING ->
+                        state.downloadPercent?.let { it / 100f }
+                    IrDatabasePhase.EXTRACTING,
+                    IrDatabasePhase.INDEXING ->
+                        state.extractionPercent?.let { it / 100f }
+                    else -> null
+                }
+                if (progress != null) {
                     LinearProgressIndicator(
-                        progress = {
-                            (state.downloadedBytes.toDouble() / state.totalBytes.toDouble())
-                                .toFloat()
-                                .coerceIn(0f, 1f)
-                        },
+                        progress = { progress.coerceIn(0f, 1f) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 } else {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                state.currentItem?.takeIf { it.isNotBlank() }?.let { item ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = item,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = NrOnSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    TextButton(onClick = onCancel) { Text("Cancel") }
+                    NrQuietButton(text = "Cancel", onClick = onCancel)
                 }
             } else {
                 Spacer(Modifier.height(8.dp))
                 if (emptyIndex) {
-                    Button(onClick = onRescan) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text("Rescan library")
-                    }
+                    NrPrimaryButton(
+                        text = "Rescan library",
+                        onClick = onRescan,
+                        leadingIcon = Icons.Default.Refresh,
+                    )
                 } else {
-                    Button(onClick = onDownload) {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            if (state.phase == IrDatabasePhase.FAILED) {
-                                "Retry download"
-                            } else {
-                                "Download Flipper-IRDB"
-                            },
-                        )
-                    }
+                    NrPrimaryButton(
+                        text = if (state.phase == IrDatabasePhase.FAILED) {
+                            "Retry download"
+                        } else {
+                            "Download Flipper-IRDB"
+                        },
+                        onClick = onDownload,
+                        leadingIcon = Icons.Default.Download,
+                    )
                 }
             }
         }
@@ -979,24 +1057,78 @@ private fun IrDatabaseCategoryCard(
 @Composable
 internal fun DashboardDeviceCard(
     state: ConnectionState,
+    devices: List<UsbSerialDevice>,
+    deviceConnectionStates: Map<String, ConnectionState>,
+    deviceFingerprint: (UsbDevice) -> String,
+    pendingPermissionRequests: Set<Int>,
+    disconnectingFingerprints: Set<String>,
+    usbManager: UsbManager,
+    usbConnectBusy: Boolean,
+    permissionRevision: Int,
+    onRefreshDevices: () -> Unit,
+    onConnect: (UsbDevice) -> Unit,
     onDisconnect: () -> Unit,
-    onManageDevice: () -> Unit,
+    firmwareUpdate: FirmwareUpdateInfo?,
+    firmwareAssetDownload: FirmwareAssetDownloadState,
+    onDownloadFirmwareUpdate: () -> Unit,
+    onOpenFirmwareFlasher: () -> Unit,
+    onOpenFirmwareFlasherForDiagnostic: (String?) -> Unit,
 ) {
+    @Suppress("UNUSED_EXPRESSION")
+    permissionRevision
+    val accent = when (state) {
+        ConnectionState.Disconnected -> StatusAmber
+        ConnectionState.Connecting -> StatusAmber
+        ConnectionState.Diagnosing -> StatusAmber
+        is ConnectionState.Connected -> StatusGreen
+        is ConnectionState.Failed -> StatusRed
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(0.5.dp, NrOutline),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)),
     ) {
         Column(Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "DEVICE LINK",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = accent,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(
+                    onClick = onRefreshDevices,
+                    modifier = Modifier.size(30.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Refresh USB devices",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
             when (state) {
                 ConnectionState.Disconnected -> {
                     StatusIndicator(
-                        label = "No device connected",
+                        label = if (devices.isEmpty()) {
+                            "No device attached"
+                        } else {
+                            "Device attached, not connected"
+                        },
                         color = StatusAmber,
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "Plug in your NRSuite ESP32 with a USB OTG cable, then grant USB permission.",
+                        text = if (devices.isEmpty()) {
+                            "Plug in your NRSuite ESP32 with a USB-OTG cable."
+                        } else {
+                            "Select a device below and tap Connect."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
@@ -1007,9 +1139,22 @@ internal fun DashboardDeviceCard(
                         label = "Connecting to device...",
                         color = StatusAmber,
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(
                         text = "Waiting for the USB serial handshake and PING response.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+
+                ConnectionState.Diagnosing -> {
+                    StatusIndicator(
+                        label = "Diagnosing connection...",
+                        color = StatusAmber,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Checking USB permission, port state, firmware response, and boot activity.",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
@@ -1031,31 +1176,318 @@ internal fun DashboardDeviceCard(
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = NrOnSurfaceVariant,
                     )
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onManageDevice) {
-                            Text("Manage device")
-                        }
-                        OutlinedButton(onClick = onDisconnect) {
-                            Text("Disconnect")
-                        }
+                    if (devices.size > 1) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "${devices.size} USB devices attached",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                     }
+                    FirmwareUpdateInlineNotice(
+                        currentVersion = state.firmwareVersion,
+                        update = firmwareUpdate,
+                        downloadState = firmwareAssetDownload,
+                        onDownload = onDownloadFirmwareUpdate,
+                        onOpenFlasher = onOpenFirmwareFlasher,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    NrSecondaryButton(
+                        text = "Disconnect",
+                        onClick = onDisconnect,
+                        compact = true,
+                    )
                 }
 
                 is ConnectionState.Failed -> {
                     StatusIndicator(
-                        label = "Connection problem",
+                        label = "Connection diagnosis",
                         color = StatusRed,
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
+                    if (state.diagnostic != null) {
+                        ConnectionDiagnosticSummary(
+                            diagnostic = state.diagnostic,
+                            onOpenFirmwareFlasher = onOpenFirmwareFlasherForDiagnostic,
+                        )
+                    } else {
+                        Text(
+                            text = state.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            if (state !is ConnectionState.Connected && devices.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "ATTACHED USB DEVICES",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NrOnSurfaceVariant,
+                )
+                Spacer(Modifier.height(2.dp))
+                devices.take(3).forEach { device ->
+                    HomeDeviceRow(
+                        entry = device,
+                        hasPermission = usbManager.hasPermission(device.device),
+                        state = deviceConnectionStates[deviceFingerprint(device.device)],
+                        pendingPermission = device.device.deviceId in pendingPermissionRequests,
+                        disconnecting = deviceFingerprint(device.device) in disconnectingFingerprints,
+                        connectEnabled = !usbConnectBusy,
+                        onConnect = { onConnect(device.device) },
+                    )
+                }
+                if (devices.size > 3) {
                     Text(
-                        text = state.message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
+                        text = "+${devices.size - 3} more — open Devices to manage all",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun HomeDeviceRow(
+    entry: UsbSerialDevice,
+    hasPermission: Boolean,
+    state: ConnectionState?,
+    pendingPermission: Boolean,
+    disconnecting: Boolean,
+    connectEnabled: Boolean,
+    onConnect: () -> Unit,
+) {
+    val statusText = when {
+        disconnecting -> "Disconnecting..."
+        state is ConnectionState.Connected -> "Connected"
+        state is ConnectionState.Connecting -> "Connecting..."
+        state is ConnectionState.Diagnosing -> "Diagnosing..."
+        pendingPermission -> "Permission requested"
+        state is ConnectionState.Failed -> "Connection failed"
+        hasPermission -> "Ready to connect"
+        else -> "USB permission required"
+    }
+    val statusColor = when {
+        disconnecting -> StatusAmber
+        state is ConnectionState.Connected -> StatusGreen
+        state is ConnectionState.Connecting -> StatusAmber
+        state is ConnectionState.Diagnosing -> StatusAmber
+        pendingPermission -> StatusAmber
+        state is ConnectionState.Failed -> StatusRed
+        else -> NrOnSurfaceVariant
+    }
+    val buttonEnabled = connectEnabled && !pendingPermission && !disconnecting &&
+        state !is ConnectionState.Connected && state !is ConnectionState.Connecting &&
+        state !is ConnectionState.Diagnosing
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Default.Usb,
+            contentDescription = null,
+            tint = statusColor,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = if (state is ConnectionState.Connected) {
+                    "NRSuite ${state.chip ?: "ESP32"}"
+                } else {
+                    entry.displayName
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = statusText,
+                style = MaterialTheme.typography.labelSmall,
+                color = statusColor,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        NrCompactPrimaryButton(
+            text = when {
+                pendingPermission -> "Waiting…"
+                state is ConnectionState.Connected -> "Connected"
+                state is ConnectionState.Connecting -> "Connecting…"
+                else -> "Connect"
+            },
+            onClick = onConnect,
+            enabled = buttonEnabled,
+            modifier = Modifier.width(100.dp),
+        )
+    }
+}
+
+@Composable
+private fun HomeTerminalLauncherCard(
+    shortcuts: List<TerminalShortcut>,
+    onOpenShortcuts: () -> Unit,
+    onManageShortcuts: () -> Unit,
+    onRunShortcut: (TerminalShortcut) -> Unit,
+) {
+    var pendingShortcut by remember { mutableStateOf<TerminalShortcut?>(null) }
+    var pendingParameterShortcut by remember { mutableStateOf<TerminalShortcut?>(null) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Terminal,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Terminal Shortcuts",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                NrQuietButton(
+                    text = "Open shortcuts",
+                    onClick = onOpenShortcuts,
+                    compact = true,
+                )
+            }
+            if (shortcuts.isEmpty()) {
+                Text(
+                    text = "Run saved Termux commands from one place.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                )
+                NrSecondaryButton(
+                    text = "Manage shortcuts",
+                    onClick = onManageShortcuts,
+                    modifier = Modifier.fillMaxWidth(),
+                    compact = true,
+                )
+            } else {
+                shortcuts.forEach { shortcut ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (terminalShortcutParameterNames(shortcut.command).isNotEmpty()) {
+                                    pendingParameterShortcut = shortcut
+                                } else if (shortcut.confirmation) {
+                                    pendingShortcut = shortcut
+                                } else {
+                                    onRunShortcut(shortcut)
+                                }
+                            }
+                            .padding(vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = ">_",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                            ),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = shortcut.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = shortcut.command,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                ),
+                                color = NrOnSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Run ${shortcut.name}",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                NrQuietButton(
+                    text = "Manage shortcuts",
+                    onClick = onManageShortcuts,
+                    compact = true,
+                )
+            }
+        }
+    }
+
+    pendingShortcut?.let { shortcut ->
+        AlertDialog(
+            onDismissRequest = { pendingShortcut = null },
+            title = { Text("Run shortcut?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(shortcut.name, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        shortcut.command,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                        ),
+                    )
+                    if (shortcut.description.isNotBlank()) {
+                        Text(
+                            shortcut.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                NrPrimaryButton(
+                    text = "Run",
+                    onClick = {
+                        pendingShortcut = null
+                        onRunShortcut(shortcut)
+                    },
+                )
+            },
+            dismissButton = {
+                NrQuietButton(
+                    text = "Cancel",
+                    onClick = { pendingShortcut = null },
+                )
+            },
+        )
+    }
+
+    pendingParameterShortcut?.let { shortcut ->
+        TerminalShortcutParameterDialog(
+            shortcut = shortcut,
+            onDismiss = { pendingParameterShortcut = null },
+            onRun = { resolved ->
+                pendingParameterShortcut = null
+                onRunShortcut(resolved)
+            },
+        )
     }
 }
 
@@ -1070,9 +1502,14 @@ private fun UpdateAvailableCard(
     val context = LocalContext.current
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = NrSurfaceVariant),
-        border = BorderStroke(0.5.dp, StatusAmber),
-        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        ),
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.34f),
+        ),
+        shape = RoundedCornerShape(12.dp),
     ) {
         Row(
             modifier = Modifier
@@ -1104,7 +1541,8 @@ private fun UpdateAvailableCard(
                 )
             }
             Spacer(Modifier.width(8.dp))
-            OutlinedButton(
+            NrCompactPrimaryButton(
+                text = buttonLabel,
                 onClick = {
                     if (onButtonClick != null) {
                         onButtonClick()
@@ -1117,15 +1555,7 @@ private fun UpdateAvailableCard(
                 },
                 enabled = buttonEnabled,
                 modifier = Modifier.widthIn(min = 112.dp),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    text = buttonLabel,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            )
         }
     }
 }
@@ -1236,8 +1666,13 @@ private fun OuiDatabaseDashboardWarning(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(0.5.dp, borderColor),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        ),
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.34f),
+        ),
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -1273,9 +1708,10 @@ private fun OuiDatabaseDashboardWarning(
                 }
             } else {
                 Spacer(Modifier.height(8.dp))
-                Button(onClick = onDownload) {
-                    Text(if (error) "Retry download" else "Download database")
-                }
+                NrPrimaryButton(
+                    text = if (error) "Retry download" else "Download database",
+                    onClick = onDownload,
+                )
             }
         }
     }

@@ -652,7 +652,16 @@ fun IrConfigScreen(
                     enabled = rootConfigured && !databaseRunning && !importing,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(if (importing) "Scanning..." else "Rescan IR library")
+                    if (importing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Scanning...")
+                    } else {
+                        Text("Rescan IR library")
+                    }
                 }
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(

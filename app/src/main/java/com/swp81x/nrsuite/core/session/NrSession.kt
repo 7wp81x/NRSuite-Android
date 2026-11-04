@@ -64,64 +64,144 @@ class NrSession(
     @Volatile private var closed = false
     @Volatile private var lastInboundDataAtMs = 0L
 
-    suspend fun connect() {
+    // Connection diagnostics are collected during both handshake attempts and
+    // exposed only if the connection ultimately fails.
+    @Volatile private var diagnosticPortOpened = false
+    @Volatile private var diagnosticPingAttempts = 0
+    @Volatile private var diagnosticSawDeviceActivity = false
+    @Volatile private var diagnosticSawRomBootLog = false
+    @Volatile private var diagnosticSawInvalidHeader = false
+    @Volatile private var diagnosticSawProtocolFrame = false
+    @Volatile private var diagnosticDetectedChip: String? = null
+    @Volatile private var diagnosticTransportError: String? = null
+    private val diagnosticRawLog = StringBuilder()
+    private val diagnosticRawLogLock = Any()
+
+    suspend fun connect(permissionGranted: Boolean = true) {
         if (_state.value is ConnectionState.Connected) return
 
         closed = false
         lastInboundDataAtMs = 0L
+        diagnosticPortOpened = false
+        diagnosticPingAttempts = 0
+        diagnosticSawDeviceActivity = false
+        diagnosticSawRomBootLog = false
+        diagnosticSawInvalidHeader = false
+        diagnosticSawProtocolFrame = false
+        diagnosticDetectedChip = null
+        diagnosticTransportError = null
+        synchronized(diagnosticRawLogLock) { diagnosticRawLog.setLength(0) }
         android.util.Log.i("NRSuiteWire", "NrSession.connect start")
         _state.value = ConnectionState.Connecting
-        try {
-            withContext(Dispatchers.IO) { transport.open() }
-            readerJob = scope.launch(Dispatchers.IO) { readLoop() }
 
-            // UART bridges can take a moment after the port opens and modem
-            // lines change before host->device data is forwarded. This also
-            // gives native USB CDC devices time after a reconnect.
-            delay(HANDSHAKE_SETTLE_MS)
+        var lastFailureMessage = "No valid PING response from device"
+        var lastFailureWasStatus = false
 
-            var pong = pingUntilResponds()
-            if (pong?.optBoolean("ok") != true) {
-                // The serial-monitor workaround shows the device may still be
-                // booting or the first TX window may be missed. If it starts
-                // sending heartbeats/events, wait for that sign of life and
-                // retry the PING once.
-                log("No PING yet; waiting for device activity before retrying")
-                if (awaitDeviceActivity(DEVICE_ACTIVITY_TIMEOUT_MS)) {
-                    android.util.Log.i("NRSuiteWire", "device activity observed; retrying PING")
-                    delay(POST_ACTIVITY_SETTLE_MS)
-                    pong = pingUntilResponds()
-                } else {
-                    android.util.Log.i("NRSuiteWire", "no device activity observed during retry wait")
+        repeat(AUTO_CONNECT_ATTEMPTS) { attempt ->
+            if (attempt > 0) {
+                log("Retrying NRSuite handshake automatically...")
+                _state.value = ConnectionState.Diagnosing
+                delay(AUTO_RETRY_DELAY_MS)
+            }
+
+            try {
+                decoder.reset()
+                withContext(Dispatchers.IO) { transport.open() }
+                diagnosticPortOpened = true
+                readerJob = scope.launch(Dispatchers.IO) { readLoop() }
+
+                // UART bridges can take a moment after the port opens and modem
+                // lines change before host->device data is forwarded. This also
+                // gives native USB CDC devices time after a reconnect.
+                delay(HANDSHAKE_SETTLE_MS)
+
+                var ping = pingUntilResponds()
+                diagnosticPingAttempts += ping.attempts
+                if (ping.response?.optBoolean("ok") != true) {
+                    // The serial-monitor workaround shows the device may still be
+                    // booting or the first TX window may be missed. If it starts
+                    // sending heartbeats/events, wait for that sign of life and
+                    // retry the PING once.
+                    log("No PING yet; waiting for device activity before retrying")
+                    if (awaitDeviceActivity(DEVICE_ACTIVITY_TIMEOUT_MS)) {
+                        android.util.Log.i("NRSuiteWire", "device activity observed; retrying PING")
+                        delay(POST_ACTIVITY_SETTLE_MS)
+                        ping = pingUntilResponds()
+                        diagnosticPingAttempts += ping.attempts
+                    } else {
+                        android.util.Log.i("NRSuiteWire", "no device activity observed during retry wait")
+                    }
                 }
-            }
-            if (pong?.optBoolean("ok") != true) {
-                log("No valid PING response after handshake retries")
-                disconnect()
-                _state.value = ConnectionState.Failed("No valid PING response from device")
-                return
+                if (ping.response?.optBoolean("ok") != true) {
+                    lastFailureMessage = "No valid PING response from device"
+                    lastFailureWasStatus = false
+                    log("No valid PING response after handshake retries")
+                } else {
+                    val status = sendCommand("STATUS", timeoutMs = 5_000)
+                    if (status == null) {
+                        lastFailureMessage = "No STATUS response from device"
+                        lastFailureWasStatus = true
+                        log(lastFailureMessage)
+                    } else {
+                        val connected = connectedFromStatus(status)
+                        _state.value = connected
+                        log(
+                            "Connected to ${connected.chip ?: "NRSuite device"}" +
+                                (connected.deviceId?.let { " ($it)" } ?: "") +
+                                (connected.country?.let { " · regulatory $it" } ?: "")
+                        )
+                        return
+                    }
+                }
+            } catch (e: CancellationException) {
+                closeTransportForRetry()
+                throw e
+            } catch (t: Throwable) {
+                lastFailureMessage = t.message ?: "Connection failed"
+                lastFailureWasStatus = false
+                diagnosticTransportError = lastFailureMessage
+                log("Connection attempt failed: $lastFailureMessage")
             }
 
-            val status = sendCommand("STATUS", timeoutMs = 5_000) ?: run {
-                disconnect()
-                _state.value = ConnectionState.Failed("No STATUS response from device")
-                return
-            }
-            val connected = connectedFromStatus(status)
-            _state.value = connected
-            log(
-                "Connected to ${connected.chip ?: "NRSuite device"}" +
-                    (connected.deviceId?.let { " ($it)" } ?: "") +
-                    (connected.country?.let { " · regulatory $it" } ?: "")
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (t: Throwable) {
-            val message = t.message ?: "Connection failed"
-            log("Connection failed: $message")
-            disconnect()
-            _state.value = ConnectionState.Failed(message)
+            closeTransportForRetry()
         }
+
+        _state.value = ConnectionState.Diagnosing
+        delay(DIAGNOSTIC_SETTLE_MS)
+        val diagnostic = ConnectionDiagnostic(
+            permissionGranted = permissionGranted,
+            deviceDetected = permissionGranted,
+            portOpened = diagnosticPortOpened,
+            handshakeAttempts = diagnosticPingAttempts,
+            sawDeviceActivity = diagnosticSawDeviceActivity,
+            sawRomBootLog = diagnosticSawRomBootLog,
+            sawInvalidFirmwareHeader = diagnosticSawInvalidHeader,
+            sawProtocolFrame = diagnosticSawProtocolFrame,
+            detectedChip = diagnosticDetectedChip,
+            transportError = diagnosticTransportError,
+            rawLogPreview = synchronized(diagnosticRawLogLock) {
+                diagnosticRawLog.toString().trim().takeIf { it.isNotEmpty() }?.take(1_200)
+            },
+        )
+        val fallbackMessage = if (lastFailureWasStatus) {
+            "Device responded, but the STATUS request failed."
+        } else {
+            lastFailureMessage
+        }
+        log("Connection diagnosis: ${diagnostic.summary}")
+        _state.value = ConnectionState.Failed(fallbackMessage, diagnostic)
+    }
+
+    private suspend fun closeTransportForRetry() {
+        closed = true
+        readerJob?.cancel()
+        readerJob = null
+        pendingResponses.values.forEach { it.cancel() }
+        pendingResponses.clear()
+        withContext(NonCancellable + Dispatchers.IO) {
+            runCatching { transport.close() }
+        }
+        closed = false
     }
 
     /**
@@ -197,7 +277,33 @@ class NrSession(
             irTxGpios = parseIntArray(status, "ir_tx_gpios"),
             irRxGpios = parseIntArray(status, "ir_rx_gpios"),
             irRxActive = status.optBoolean("ir_rx_active", false),
+            uptimeMs = optionalLong(status, "uptime"),
+            heapFree = optionalLong(status, "heap"),
+            heapTotal = optionalLong(status, "heap_total"),
+            heapMinFree = optionalLong(status, "heap_min_free"),
+            heapMaxAlloc = optionalLong(status, "heap_max_alloc"),
+            psramFree = optionalLong(status, "psram_free"),
+            psramTotal = optionalLong(status, "psram_total"),
+            chipCores = optionalInt(status, "chip_cores"),
+            cpuMhz = optionalInt(status, "cpu_mhz"),
+            flashSize = optionalLong(status, "flash_size"),
+            sdkVersion = status.optString("sdk").takeIf { it.isNotBlank() },
+            protocolVersion = optionalInt(status, "proto"),
+            protocolMinor = optionalInt(status, "proto_minor"),
         )
+    }
+
+    /**
+     * Refresh the Connected snapshot from a new STATUS response. This is
+     * intentionally non-destructive: a transient STATUS timeout must not tear
+     * down an otherwise healthy USB session.
+     */
+    suspend fun refreshStatus(timeoutMs: Long = 5_000): Boolean {
+        if (_state.value !is ConnectionState.Connected) return false
+        val status = sendCommand("STATUS", timeoutMs = timeoutMs) ?: return false
+        if (!status.optBoolean("ok")) return false
+        _state.value = connectedFromStatus(status)
+        return true
     }
 
     /** Update the connected state from an IR_STATUS or IR_SET_PINS response. */
@@ -230,6 +336,12 @@ class NrSession(
                 .ifEmpty { current.allowed5gChannels },
         )
     }
+
+    private fun optionalLong(source: JSONObject, key: String): Long? =
+        if (!source.has(key) || source.isNull(key)) null else source.optLong(key, 0L)
+
+    private fun optionalInt(source: JSONObject, key: String): Int? =
+        if (!source.has(key) || source.isNull(key)) null else source.optInt(key, 0)
 
     private fun parseChannelArray(source: JSONObject, key: String): List<Int> {
         val array = source.optJSONArray(key) ?: return emptyList()
@@ -320,7 +432,11 @@ class NrSession(
                 val count = transport.read(buffer, READ_TIMEOUT_MS)
                 if (count > 0) {
                     lastInboundDataAtMs = System.currentTimeMillis()
-                    val frames = decoder.feed(buffer.copyOf(count))
+                    diagnosticSawDeviceActivity = true
+                    val received = buffer.copyOf(count)
+                    inspectDiagnosticBytes(received)
+                    val frames = decoder.feed(received)
+                    if (frames.isNotEmpty()) diagnosticSawProtocolFrame = true
                     for (frame in frames) {
                         handleFrame(frame)
                     }
@@ -373,10 +489,17 @@ class NrSession(
         return runCatching { JSONObject(frame.payloadAsString) }.getOrNull()
     }
 
-    private suspend fun pingUntilResponds(): JSONObject? {
+    private data class PingResult(
+        val response: JSONObject?,
+        val attempts: Int,
+    )
+
+    private suspend fun pingUntilResponds(): PingResult {
         var pong: JSONObject? = null
+        var attempts = 0
         for (attempt in 0 until MAX_PING_ATTEMPTS) {
             if (attempt > 0) delay(PING_RETRY_DELAY_MS)
+            attempts = attempt + 1
             android.util.Log.d("NRSuiteWire", "sending PING attempt ${attempt + 1}")
             // Keep the PING payload off the USB max-packet boundary. Some
             // CH34x/Android bulk stacks do not flush a 32-byte full packet
@@ -392,7 +515,49 @@ class NrSession(
             )
             if (pong?.optBoolean("ok") == true) break
         }
-        return pong
+        return PingResult(pong, attempts)
+    }
+
+    private fun inspectDiagnosticBytes(bytes: ByteArray) {
+        if (bytes.isEmpty()) return
+        if (bytes.size >= 2 &&
+            bytes[0] == FrameCodec.MAGIC_0.toByte() &&
+            bytes[1] == FrameCodec.MAGIC_1.toByte()
+        ) {
+            return
+        }
+        val text = buildString {
+            for (byte in bytes) {
+                val value = byte.toInt() and 0xFF
+                append(if (value == 10 || value == 13 || value in 32..126) value.toChar() else '.')
+            }
+        }
+        val lower = text.lowercase()
+        if (lower.contains("esp-rom:") || lower.contains("rst:0x") ||
+            lower.contains("ets_flash_boot") || lower.contains("boot:0x")
+        ) {
+            diagnosticSawRomBootLog = true
+        }
+        if (lower.contains("invalid header") || lower.contains("assertion") ||
+            lower.contains("guru meditation")
+        ) {
+            diagnosticSawInvalidHeader = true
+        }
+        if (diagnosticDetectedChip == null) {
+            diagnosticDetectedChip = when {
+                lower.contains("esp32c5") -> "ESP32-C5"
+                lower.contains("esp32c3") -> "ESP32-C3"
+                lower.contains("esp32s3") -> "ESP32-S3"
+                lower.contains("esp32s2") -> "ESP32-S2"
+                lower.contains("esp32") -> "ESP32"
+                else -> null
+            }
+        }
+        synchronized(diagnosticRawLogLock) {
+            if (diagnosticRawLog.length < 2_400) {
+                diagnosticRawLog.append(text)
+            }
+        }
     }
 
     private suspend fun awaitDeviceActivity(timeoutMs: Long): Boolean {
@@ -420,5 +585,8 @@ class NrSession(
         private const val PING_RETRY_DELAY_MS = 500L
         private const val DEVICE_ACTIVITY_TIMEOUT_MS = 5_000L
         private const val POST_ACTIVITY_SETTLE_MS = 250L
+        private const val AUTO_CONNECT_ATTEMPTS = 2
+        private const val AUTO_RETRY_DELAY_MS = 650L
+        private const val DIAGNOSTIC_SETTLE_MS = 700L
     }
 }

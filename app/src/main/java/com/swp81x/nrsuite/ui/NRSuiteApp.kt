@@ -84,7 +84,6 @@ import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -133,6 +132,7 @@ import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.theme.NRSuiteTheme
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
@@ -152,7 +152,8 @@ import com.swp81x.nrsuite.ui.theme.LogBgError
 
 internal enum class AppTab(val label: String) {
     HOME("Home"),
-    MODULES("Modules"),
+    DEVICES("Devices"),
+    TERMINAL("Terminal"),
     LOGS("Logs"),
 }
 
@@ -597,15 +598,18 @@ fun NRSuiteApp() {
     val viewModel = remember(appContext) {
         (appContext as NrSuiteApplication).controller
     }
+    val themeMode by viewModel.themeMode.collectAsState()
     var showStartup by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(900)
         showStartup = false
     }
-    Box(modifier = Modifier.fillMaxSize()) {
-        NRSuiteContent(viewModel = viewModel)
-        if (showStartup) {
-            StartupScreen()
+    NRSuiteTheme(mode = themeMode) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            NRSuiteContent(viewModel = viewModel)
+            if (showStartup) {
+                StartupScreen()
+            }
         }
     }
 }

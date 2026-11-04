@@ -1,5 +1,10 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
+import com.swp81x.nrsuite.ui.components.NrDangerButton
+import com.swp81x.nrsuite.ui.components.NrPrimaryButton
+import com.swp81x.nrsuite.ui.components.NrQuietButton
+import com.swp81x.nrsuite.ui.components.NrSecondaryButton
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -79,9 +84,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -95,7 +98,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -104,7 +106,6 @@ import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.history.HistoryEntry
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -148,6 +149,7 @@ import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.SavedItemDropdown
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.theme.NrAccent
+import com.swp81x.nrsuite.ui.theme.NrThemeMode
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -163,6 +165,9 @@ import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.ui.theme.LogBgError
 
+private fun sanitizeFirmwareFileNamePart(raw: String): String =
+    raw.replace(Regex("[^A-Za-z0-9._-]"), "_")
+
 @Composable
 internal fun SettingsScreen(
     connectionState: ConnectionState,
@@ -176,6 +181,8 @@ internal fun SettingsScreen(
     usbManager: UsbManager,
     permissionRevision: Int,
     selectedFlashTarget: UsbSerialDevice?,
+    selectedFlashTargetChip: String? = null,
+    selectedFlashTargetFirmwareVersion: String? = null,
     onChooseExportDirectory: () -> Unit,
     onChooseFirmware: () -> Unit,
     onClearFirmware: () -> Unit,
@@ -211,6 +218,8 @@ internal fun SettingsScreen(
     onDownloadFirmwareUpdate: () -> Unit = {},
     onOpenFirmwareFlasher: () -> Unit = {},
     onClearUpdateDownloads: () -> Unit = {},
+    themeMode: NrThemeMode = NrThemeMode.DARK,
+    onThemeModeChange: (NrThemeMode) -> Unit = {},
     flasherOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -224,15 +233,12 @@ internal fun SettingsScreen(
     val accent = MaterialTheme.colorScheme.primary
     val connectedInfo = connectionState as? ConnectionState.Connected
     val chip = connectedInfo?.chip
-    val boardName = when (chip) {
-        "ESP32-C5" -> "ESP32-C5"
-        "ESP32-C3" -> "ESP32-C3"
-        "ESP32-S3" -> "ESP32-S3"
-        "ESP32-S2" -> "ESP32-S2"
-        "ESP32" -> "Classic ESP32 devkit"
-        else -> "Not connected / unknown"
+    val diagnosticChipHint = (connectionState as? ConnectionState.Failed)
+        ?.diagnostic
+        ?.detectedChip
+    var selectedTargetChip by remember {
+        mutableStateOf(diagnosticChipHint ?: chip ?: "")
     }
-    var selectedTargetChip by remember { mutableStateOf(chip ?: "ESP32") }
     val targetHasPermission = selectedFlashTarget?.let { usbManager.hasPermission(it.device) } == true
     @Suppress("UNUSED_EXPRESSION")
     permissionRevision
@@ -243,12 +249,70 @@ internal fun SettingsScreen(
     var selectedFirmwareAssetName by remember { mutableStateOf<String?>(null) }
     var firmwareSourceRemote by remember { mutableStateOf(true) }
     val localFirmwareChip = firmwareChipFromFirmwareName(firmwareFileName)
-    LaunchedEffect(firmwareFileName, chip) {
-        val inferred = firmwareChipFromFirmwareName(firmwareFileName)
+    val flashTargetIdentity = selectedFlashTarget?.device?.let { device ->
+        runCatching {
+            listOf(
+                device.deviceId,
+                device.deviceName,
+                device.vendorId,
+                device.productId,
+                device.productName.orEmpty(),
+                device.serialNumber.orEmpty(),
+            ).joinToString("|")
+        }.getOrElse { device.deviceId.toString() }
+    }
+    var previousFlashTargetIdentity by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(
+        flashTargetIdentity,
+        selectedFlashTargetChip,
+        diagnosticChipHint,
+        chip,
+    ) {
         when {
-            inferred != null -> selectedTargetChip = inferred
-            !chip.isNullOrBlank() -> selectedTargetChip = chip
+            flashTargetIdentity == null -> {
+                // A disconnected target must not leave its chip/firmware
+                // selection attached to the next board that is plugged in.
+                if (previousFlashTargetIdentity != null) {
+                    selectedTargetChip = ""
+                    selectedFirmwareAssetName = null
+                }
+                previousFlashTargetIdentity = null
+            }
+            flashTargetIdentity != previousFlashTargetIdentity -> {
+                previousFlashTargetIdentity = flashTargetIdentity
+                selectedTargetChip = selectedFlashTargetChip?.takeIf { it.isNotBlank() } ?: ""
+                selectedFirmwareAssetName = null
+            }
+            !selectedFlashTargetChip.isNullOrBlank() &&
+                !selectedFlashTargetChip.equals(selectedTargetChip, ignoreCase = true) -> {
+                // The selected bootloader target later identified its chip.
+                selectedTargetChip = selectedFlashTargetChip
+                selectedFirmwareAssetName = null
+            }
         }
+    }
+    val selectedImageChip = localFirmwareChip
+    val targetChipMismatch = selectedImageChip != null &&
+        selectedTargetChip.isNotBlank() &&
+        !selectedImageChip.equals(selectedTargetChip, ignoreCase = true)
+    val connectedChipMismatch = !selectedFlashTargetChip.isNullOrBlank() &&
+        selectedTargetChip.isNotBlank() &&
+        !selectedFlashTargetChip.equals(selectedTargetChip, ignoreCase = true)
+    val expectedRemoteFirmwareFile = selectedFirmwareReleaseTag
+        ?.takeIf { it.isNotBlank() }
+        ?.let { releaseTag ->
+            selectedFirmwareAssetName
+                ?.takeIf { it.isNotBlank() }
+                ?.let { assetName ->
+                    "${sanitizeFirmwareFileNamePart(releaseTag)}-" +
+                        sanitizeFirmwareFileNamePart(assetName)
+                }
+        }
+    val firmwareReadyForFlash = if (firmwareSourceRemote) {
+        expectedRemoteFirmwareFile != null &&
+            firmwareFileName == expectedRemoteFirmwareFile
+    } else {
+        firmwareFileName != null
     }
 
     LaunchedEffect(firmwareAssetDownload) {
@@ -257,15 +321,27 @@ internal fun SettingsScreen(
         }
     }
     LaunchedEffect(firmwareReleases, selectedTargetChip) {
-        val compatibleReleases = firmwareReleases.filter {
-            it.compatibleFirmwareAssets(selectedTargetChip).isNotEmpty()
+        val compatibleReleases = if (selectedTargetChip.isBlank()) {
+            firmwareReleases
+        } else {
+            firmwareReleases.filter {
+                it.compatibleFirmwareAssets(selectedTargetChip).isNotEmpty()
+            }
         }
         val release = compatibleReleases.firstOrNull { it.tag == selectedFirmwareReleaseTag }
             ?: compatibleReleases.firstOrNull()
         selectedFirmwareReleaseTag = release?.tag
-        val assets = release?.compatibleFirmwareAssets(selectedTargetChip).orEmpty()
-        selectedFirmwareAssetName = assets.firstOrNull { it.name == selectedFirmwareAssetName }?.name
-            ?: assets.firstOrNull()?.name
+
+        // Do not silently choose the first asset when the target chip is
+        // unknown: that can leave a firmware image from the previous board
+        // selected after a re-enumeration.
+        val selectionAssets = selectedTargetChip
+            .takeIf { it.isNotBlank() }
+            ?.let { release?.compatibleFirmwareAssets(it).orEmpty() }
+            .orEmpty()
+        selectedFirmwareAssetName =
+            selectionAssets.firstOrNull { it.name == selectedFirmwareAssetName }?.name
+                ?: selectionAssets.firstOrNull()?.name
     }
     LaunchedEffect(devices) {
         if (devices.size == 1 &&
@@ -304,9 +380,10 @@ internal fun SettingsScreen(
                     color = NrOnSurfaceVariant,
                 )
                 Spacer(Modifier.height(10.dp))
-                Button(onClick = onChooseExportDirectory) {
-                    Text("Choose root folder")
-                }
+                NrPrimaryButton(
+                    text = "Choose root folder",
+                    onClick = onChooseExportDirectory,
+                )
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = "Captures are stored under Pcap/ inside this directory. Choose it once; the app creates the structure.",
@@ -350,40 +427,20 @@ internal fun SettingsScreen(
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-
-                Text(
-                    text = "Current version: ${currentFirmware ?: "not connected"}",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
-                )
-                Text(
-                    text = "Detected board: $boardName",
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
-                )
-                Spacer(Modifier.height(12.dp))
-
-                Text(
-                    text = "1. Target device",
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Select the board to flash and grant USB permission.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
-                Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Flash target",
+                        text = "Target device",
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = onRefreshDevices, enabled = !firmwareFlashing) {
-                        Text("Refresh")
-                    }
+                    NrQuietButton(
+                        text = "Refresh",
+                        onClick = onRefreshDevices,
+                        enabled = !firmwareFlashing,
+                        compact = true,
+                    )
                 }
+                Spacer(Modifier.height(6.dp))
                 if (devices.isEmpty()) {
                     Text(
                         text = "No supported USB serial device found. Plug in the board and tap Refresh.",
@@ -391,45 +448,58 @@ internal fun SettingsScreen(
                         color = StatusAmber,
                     )
                 } else {
-                    devices.forEach { entry ->
-                        val hasPermission = usbManager.hasPermission(entry.device)
-                        val selected = hasPermission &&
-                            selectedFlashTarget?.device?.deviceId == entry.device.deviceId
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    text = entry.displayName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                )
-                                Text(
-                                    text = if (hasPermission) "Permission granted" else "Permission required",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = NrOnSurfaceVariant,
-                                )
+                    val flashDeviceIds = devices.map { it.device.deviceId.toString() }
+                    SavedItemDropdown(
+                        label = "Target device",
+                        selectedName = selectedFlashTarget?.device?.deviceId?.toString(),
+                        selectedDisplayName = selectedFlashTarget?.displayName
+                            ?: "Select a device",
+                        names = flashDeviceIds,
+                        enabled = !firmwareFlashing,
+                        sortNames = false,
+                        itemLabel = { id ->
+                            devices.firstOrNull { it.device.deviceId.toString() == id }
+                                ?.displayName ?: "Unknown USB device"
+                        },
+                        itemSupportingText = { id ->
+                            val entry = devices.firstOrNull {
+                                it.device.deviceId.toString() == id
                             }
-                            OutlinedButton(
-                                onClick = {
-                                    if (hasPermission) {
-                                        onSelectFlashTarget(entry.device)
-                                    } else {
-                                        onRequestPermission(entry.device)
-                                    }
-                                },
-                                enabled = !firmwareFlashing && !selected,
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
+                            when {
+                                entry == null -> "No longer attached"
+                                usbManager.hasPermission(entry.device) -> "USB permission granted"
+                                else -> "USB permission required"
+                            }
+                        },
+                        onSelect = { id ->
+                            val entry = devices.firstOrNull {
+                                it.device.deviceId.toString() == id
+                            } ?: return@SavedItemDropdown
+                            if (usbManager.hasPermission(entry.device)) {
+                                onSelectFlashTarget(entry.device)
+                            } else {
+                                onRequestPermission(entry.device)
+                            }
+                        },
+                    )
+                    selectedFlashTarget?.let { entry ->
+                        if (!usbManager.hasPermission(entry.device)) {
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    when {
-                                        selected -> "Selected"
-                                        !hasPermission -> "Grant permission"
-                                        else -> "Select"
-                                    }
+                                    text = "USB permission required",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = StatusAmber,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                NrSecondaryButton(
+                                    text = "Grant permission",
+                                    onClick = { onRequestPermission(entry.device) },
+                                    enabled = !firmwareFlashing,
+                                    compact = true,
                                 )
                             }
                         }
@@ -438,14 +508,8 @@ internal fun SettingsScreen(
                 Spacer(Modifier.height(12.dp))
 
                 Text(
-                    text = "2. Firmware image",
+                    text = "Firmware image",
                     fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Choose a cached GitHub release or a local .bin file.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -486,31 +550,25 @@ internal fun SettingsScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     if (firmwareFileName == null) {
-                        Button(
+                        NrPrimaryButton(
+                            text = "Choose firmware .bin",
                             onClick = onChooseFirmware,
                             enabled = targetHasPermission && !firmwareFlashing,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = accent,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                            ),
-                        ) {
-                            Text("Choose firmware .bin")
-                        }
+                        )
                     } else {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(
+                            NrSecondaryButton(
+                                text = "Change",
                                 onClick = onChooseFirmware,
                                 enabled = targetHasPermission && !firmwareFlashing,
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
-                            ) {
-                                Text("Change")
-                            }
-                            TextButton(
+                                compact = true,
+                            )
+                            NrQuietButton(
+                                text = "Clear",
                                 onClick = onClearFirmware,
                                 enabled = !firmwareFlashing,
-                            ) {
-                                Text("Clear")
-                            }
+                                compact = true,
+                            )
                         }
                     }
                     if (!targetHasPermission) {
@@ -537,12 +595,12 @@ internal fun SettingsScreen(
                             color = StatusAmber,
                         )
                         Spacer(Modifier.height(4.dp))
-                        OutlinedButton(
+                        NrSecondaryButton(
+                            text = "Check now",
                             onClick = onCheckForUpdates,
                             enabled = autoUpdateCheck,
-                        ) {
-                            Text("Check now")
-                        }
+                            compact = true,
+                        )
                         if (updateError != null) {
                             Spacer(Modifier.height(4.dp))
                             Text(
@@ -559,9 +617,13 @@ internal fun SettingsScreen(
                         val compatibleAssets = selectedRelease
                             ?.compatibleFirmwareAssets(selectedTargetChip)
                             .orEmpty()
-                        val selectedAsset = allAssets.firstOrNull {
+                        // The target dropdown doubles as the remote target-chip
+                        // selector, so expose every firmware asset in the release.
+                        // Selecting one commits the chip encoded in its filename.
+                        val assetCandidates = allAssets
+                        val selectedAsset = assetCandidates.firstOrNull {
                             it.name == selectedFirmwareAssetName
-                        } ?: compatibleAssets.firstOrNull()
+                        }
 
                         SavedItemDropdown(
                             label = "Firmware version",
@@ -576,6 +638,8 @@ internal fun SettingsScreen(
                                     ?.compatibleFirmwareAssets(selectedTargetChip)
                                     ?.isNotEmpty() == true
                                 when {
+                                    selectedTargetChip.isBlank() && isLatest -> "Latest"
+                                    selectedTargetChip.isBlank() -> "Select an asset to set the chip"
                                     isLatest && compatible -> "Latest · compatible with $selectedTargetChip"
                                     isLatest -> "Latest"
                                     compatible -> "Compatible with $selectedTargetChip"
@@ -590,31 +654,35 @@ internal fun SettingsScreen(
 
                         Spacer(Modifier.height(8.dp))
                         SavedItemDropdown(
-                            label = "Firmware target",
+                            label = "Firmware asset",
                             selectedName = selectedAsset?.name,
                             selectedDisplayName = selectedAsset?.let { asset ->
-                                firmwareChipFromAssetName(asset.name) ?: asset.name
+                                firmwareChipFromAssetName(asset.name) ?: "Select firmware asset"
                             },
-                            names = allAssets.map { it.name },
-                            enabled = !firmwareFlashing && allAssets.isNotEmpty(),
+                            names = assetCandidates.map { it.name },
+                            enabled = !firmwareFlashing && assetCandidates.isNotEmpty(),
                             sortNames = false,
                             itemLabel = { name ->
-                                firmwareChipFromAssetName(name) ?: name
+                                firmwareChipFromAssetName(name) ?: "Unknown target chip"
                             },
-                            itemSupportingText = { name ->
-                                if (firmwareChipFromAssetName(name) == null) "Unknown target chip" else null
-                            },
+                            itemSupportingText = { name -> name },
                             onSelect = { name ->
                                 selectedFirmwareAssetName = name
                                 firmwareChipFromAssetName(name)?.let { selectedTargetChip = it }
                             },
                         )
 
-                        if (compatibleAssets.isEmpty()) {
+                        if (assetCandidates.isEmpty()) {
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "This release has no asset for $selectedTargetChip. " +
-                                    "Select a version/firmware that matches the target chip.",
+                                text = "This release has no firmware assets.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusAmber,
+                            )
+                        } else if (selectedTargetChip.isBlank() || selectedAsset == null) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Select a firmware asset; its chip becomes the flash target chip.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = StatusAmber,
                             )
@@ -622,11 +690,27 @@ internal fun SettingsScreen(
 
                         Spacer(Modifier.height(8.dp))
                         val downloadState = firmwareAssetDownload
-                        val downloaded = downloadState is FirmwareAssetDownloadState.Downloaded
-                        Button(
+                        val downloaded = downloadState is FirmwareAssetDownloadState.Downloaded &&
+                            expectedRemoteFirmwareFile != null &&
+                            firmwareFileName == expectedRemoteFirmwareFile
+                        NrPrimaryButton(
+                            text = when (downloadState) {
+                                is FirmwareAssetDownloadState.Downloading ->
+                                    downloadState.percent?.let {
+                                        "Downloading ${it.toInt()}%"
+                                    } ?: "Downloading…"
+                                is FirmwareAssetDownloadState.Downloaded ->
+                                    if (downloaded) "Downloaded" else "Download selected firmware"
+                                is FirmwareAssetDownloadState.Failed -> "Retry download"
+                                FirmwareAssetDownloadState.Idle -> "Download selected firmware"
+                            },
                             onClick = {
-                                val release = selectedRelease ?: return@Button
-                                val asset = selectedAsset ?: return@Button
+                                val release = selectedRelease ?: return@NrPrimaryButton
+                                val asset = selectedAsset ?: return@NrPrimaryButton
+                                selectedFirmwareAssetName = asset.name
+                                firmwareChipFromAssetName(asset.name)?.let {
+                                    selectedTargetChip = it
+                                }
                                 onDownloadFirmwareAsset(release.tag, asset.name)
                             },
                             enabled = selectedRelease != null &&
@@ -635,30 +719,7 @@ internal fun SettingsScreen(
                                 !downloaded &&
                                 !firmwareFlashing,
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = accent,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                            ),
-                        ) {
-                            when (downloadState) {
-                                is FirmwareAssetDownloadState.Downloading -> {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.onPrimary,
-                                    )
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        downloadState.percent?.let {
-                                            "Downloading ${it.toInt()}%"
-                                        } ?: "Downloading…",
-                                    )
-                                }
-                                is FirmwareAssetDownloadState.Downloaded -> Text("Downloaded")
-                                is FirmwareAssetDownloadState.Failed -> Text("Retry download")
-                                FirmwareAssetDownloadState.Idle -> Text("Download selected firmware")
-                            }
-                        }
+                        )
                         if (downloadState is FirmwareAssetDownloadState.Failed) {
                             Spacer(Modifier.height(4.dp))
                             Text(
@@ -682,27 +743,40 @@ internal fun SettingsScreen(
 
                 if (!firmwareSourceRemote) {
                     Text(
-                        text = "3. Verify target",
+                        text = "Target check",
                         fontWeight = FontWeight.SemiBold,
                     )
                     Spacer(Modifier.height(6.dp))
-                    val detectedChip = localFirmwareChip
-                    if (detectedChip != null) {
+                    val imageChip = localFirmwareChip
+                    val targetChipLabel = selectedTargetChip.ifBlank { "unknown" }
+                    Text(
+                        text = "Image: ${imageChip ?: "unknown"} · Target: $targetChipLabel",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = when {
+                            imageChip == null || selectedTargetChip.isBlank() -> StatusAmber
+                            targetChipMismatch -> StatusRed
+                            else -> StatusGreen
+                        },
+                    )
+                    if (imageChip == null) {
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "Detected target chip: $detectedChip",
-                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                            color = StatusGreen,
-                        )
-                    } else {
-                        Text(
-                            text = "Target chip could not be inferred from the filename.",
+                            text = "Could not infer the chip from the firmware filename.",
                             style = MaterialTheme.typography.bodySmall,
                             color = StatusAmber,
                         )
                     }
+                    if (targetChipMismatch) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Image and target chip do not match.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusRed,
+                        )
+                    }
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "Confirm firmware target",
+                        text = "Expected target chip",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
@@ -722,32 +796,16 @@ internal fun SettingsScreen(
                             )
                         }
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "Flash offset: 0x0",
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = NrOnSurfaceVariant,
-                    )
                 }
                 Spacer(Modifier.height(6.dp))
-                OutlinedButton(
+                NrSecondaryButton(
+                    text = if (advancedExpanded) "Hide advanced options" else "Advanced options",
                     onClick = { advancedExpanded = !advancedExpanded },
                     enabled = !firmwareFlashing,
+                    leadingIcon = if (advancedExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                     modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        imageVector = if (advancedExpanded) {
-                            Icons.Default.ExpandLess
-                        } else {
-                            Icons.Default.ExpandMore
-                        },
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (advancedExpanded) "Hide advanced options" else "Advanced options")
-                }
-                if (advancedExpanded) {
+                )
+                NrAnimatedVisibility(visible = advancedExpanded) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Switch(
                             checked = manualBootloader,
@@ -769,20 +827,27 @@ internal fun SettingsScreen(
                         color = NrOnSurfaceVariant,
                     )
                 }
+                if (connectedChipMismatch) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Selected firmware targets $selectedTargetChip, " +
+                            "but the device reports $selectedFlashTargetChip.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusRed,
+                    )
+                }
                 Spacer(Modifier.height(10.dp))
-                Button(
+                NrPrimaryButton(
+                    text = if (firmwareFlashing) "Flashing..." else "Flash firmware",
                     onClick = { showFlashConfirm = true },
                     enabled = selectedFlashTarget != null &&
                         targetHasPermission &&
-                        firmwareFileName != null &&
+                        firmwareReadyForFlash &&
+                        selectedTargetChip.isNotBlank() &&
+                        !targetChipMismatch &&
+                        !connectedChipMismatch &&
                         !firmwareFlashing,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = accent,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
-                ) {
-                    Text(if (firmwareFlashing) "Flashing..." else "Flash firmware")
-                }
+                )
                 if (showFlashConfirm) {
                     AlertDialog(
                         onDismissRequest = { showFlashConfirm = false },
@@ -796,21 +861,20 @@ internal fun SettingsScreen(
                             )
                         },
                         confirmButton = {
-                            Button(
+                            NrDangerButton(
+                                text = "Flash now",
                                 onClick = {
                                     showFlashConfirm = false
                                     onStartFirmwareFlash(selectedTargetChip, manualBootloader, false)
                                 },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = StatusAmber,
-                                    contentColor = com.swp81x.nrsuite.ui.theme.NrBackground,
-                                ),
-                            ) { Text("Flash now") }
+                                filled = true,
+                            )
                         },
                         dismissButton = {
-                            OutlinedButton(onClick = { showFlashConfirm = false }) {
-                                Text("Cancel")
-                            }
+                            NrQuietButton(
+                                text = "Cancel",
+                                onClick = { showFlashConfirm = false },
+                            )
                         },
                     )
                 }
@@ -864,37 +928,36 @@ internal fun SettingsScreen(
                             )
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(
+                                NrPrimaryButton(
+                                    text = "Flash now",
                                     onClick = onFlashManualFirmwareNow,
                                     enabled = !firmwareFlashing,
-                                ) {
-                                    Text("Flash now")
-                                }
-                                TextButton(
+                                    compact = true,
+                                )
+                                NrQuietButton(
+                                    text = "Cancel",
                                     onClick = onDisarmManualFirmwareRecovery,
                                     enabled = !firmwareFlashing,
-                                ) {
-                                    Text("Cancel")
-                                }
+                                    compact = true,
+                                )
                             }
-                            TextButton(
+                            NrQuietButton(
+                                text = "Try automatic DTR/RTS reset instead",
                                 onClick = onFlashManualFirmwareWithReset,
                                 enabled = !firmwareFlashing,
-                            ) {
-                                Text("Try automatic DTR/RTS reset instead")
-                            }
+                            )
                         }
                     }
                 } else if (!firmwareFlashing &&
                     firmwareFlashStatus?.startsWith("Flash failed") == true
                 ) {
                     Spacer(Modifier.height(10.dp))
-                    OutlinedButton(
+                    NrSecondaryButton(
+                        text = "Use manual bootloader",
                         onClick = { onArmManualFirmwareRecovery(selectedTargetChip) },
                         modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Use manual bootloader")
-                    }
+                        enabled = selectedTargetChip.isNotBlank() && !targetChipMismatch,
+                    )
                 }
             }
         }
@@ -926,20 +989,10 @@ internal fun SettingsScreen(
             onClearUpdateDownloads = onClearUpdateDownloads,
         )
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(0.5.dp, NrOutline),
-        ) {
-            Column(Modifier.padding(14.dp)) {
-                Text("Appearance", fontWeight = FontWeight.SemiBold)
-                Text(
-                    text = "Dark technical theme is fixed.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
-            }
-        }
+        AppearanceCard(
+            themeMode = themeMode,
+            onThemeModeChange = onThemeModeChange,
+        )
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -954,15 +1007,16 @@ internal fun SettingsScreen(
                     color = NrOnSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/7wp81x/NRSuite"))
-                        )
-                    }
-                }) {
-                    Text("Open GitHub")
-                }
+                NrSecondaryButton(
+                    text = "Open GitHub",
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/7wp81x/NRSuite"))
+                            )
+                        }
+                    },
+                )
             }
         }
 
@@ -982,6 +1036,52 @@ internal fun SettingsScreen(
         }
         }
 
+    }
+}
+
+@Composable
+private fun AppearanceCard(
+    themeMode: NrThemeMode,
+    onThemeModeChange: (NrThemeMode) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.55f)),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                text = "Appearance",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = "Choose the interface palette. The selection is saved for the next launch.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                NrThemeMode.entries.forEach { mode ->
+                    NrFilterChip(
+                        selected = themeMode == mode,
+                        onClick = { onThemeModeChange(mode) },
+                        label = mode.label,
+                        modifier = Modifier.weight(1f),
+                        selectedColor = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = themeMode.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -1032,9 +1132,10 @@ private fun OuiRulesCard(
             Spacer(Modifier.height(10.dp))
 
             if (!showAddForm) {
-                OutlinedButton(onClick = { showAddForm = true }) {
-                    Text("Add rule")
-                }
+                NrSecondaryButton(
+                    text = "Add rule",
+                    onClick = { showAddForm = true },
+                )
             } else {
                 Column {
                     OutlinedTextField(
@@ -1068,9 +1169,10 @@ private fun OuiRulesCard(
                     }
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
+                        NrPrimaryButton(
+                            text = "Save",
                             onClick = {
-                                val normalized = normalizeOuiPrefix(ouiInput) ?: return@Button
+                                val normalized = normalizeOuiPrefix(ouiInput) ?: return@NrPrimaryButton
                                 onAddOuiRule(normalized, labelInput.trim(), actionInput)
                                 ouiInput = ""
                                 labelInput = ""
@@ -1078,12 +1180,13 @@ private fun OuiRulesCard(
                                 showAddForm = false
                             },
                             enabled = normalizedOui != null && labelInput.isNotBlank(),
-                        ) {
-                            Text("Save")
-                        }
-                        TextButton(onClick = { showAddForm = false }) {
-                            Text("Cancel")
-                        }
+                            compact = true,
+                        )
+                        NrQuietButton(
+                            text = "Cancel",
+                            onClick = { showAddForm = false },
+                            compact = true,
+                        )
                     }
                 }
             }
@@ -1155,19 +1258,20 @@ private fun OuiRuleRow(
             title = { Text("Delete rule?") },
             text = { Text("Remove the rule for ${rule.ouiPrefix}?") },
             confirmButton = {
-                TextButton(
+                NrDangerButton(
+                    text = "Delete",
                     onClick = {
                         confirmDelete = false
                         onDelete()
                     },
-                ) {
-                    Text("Delete")
-                }
+                    filled = true,
+                )
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) {
-                    Text("Cancel")
-                }
+                NrQuietButton(
+                    text = "Cancel",
+                    onClick = { confirmDelete = false },
+                )
             },
         )
     }
@@ -1279,24 +1383,18 @@ private fun UpdatesCard(
             }
 
             Spacer(Modifier.height(10.dp))
-            OutlinedButton(
+            NrSecondaryButton(
+                text = if (updateCheckInProgress) "Checking..." else "Check now",
                 onClick = onCheckForUpdates,
                 enabled = !updateCheckInProgress,
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (updateCheckInProgress) {
-                    Text("Checking...")
-                } else {
-                    Text("Check now")
-                }
-            }
+            )
             Spacer(Modifier.height(6.dp))
-            TextButton(
+            NrDangerButton(
+                text = "Clear downloaded updates",
                 onClick = onClearUpdateDownloads,
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Clear downloaded updates")
-            }
+            )
         }
     }
 }
@@ -1337,7 +1435,8 @@ private fun UpdateInfoRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        OutlinedButton(
+        NrSecondaryButton(
+            text = buttonLabel,
             onClick = {
                 if (onButtonClick != null) {
                     onButtonClick()
@@ -1350,15 +1449,8 @@ private fun UpdateInfoRow(
             },
             enabled = buttonEnabled,
             modifier = Modifier.widthIn(min = 112.dp),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-        ) {
-            Text(
-                text = buttonLabel,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+            compact = true,
+        )
     }
 }
 
@@ -1445,13 +1537,16 @@ private fun OuiDatabaseCard(
             }
 
             Spacer(Modifier.height(10.dp))
-            Button(
+            NrPrimaryButton(
+                text = if (status is OuiDatabaseStatus.Ready) {
+                    "Update database"
+                } else {
+                    "Download database"
+                },
                 onClick = onDownload,
                 enabled = status !is OuiDatabaseStatus.Downloading &&
                     status !is OuiDatabaseStatus.Checking,
-            ) {
-                Text(if (status is OuiDatabaseStatus.Ready) "Update database" else "Download database")
-            }
+            )
         }
     }
 }

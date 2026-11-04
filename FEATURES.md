@@ -58,7 +58,17 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **Credential Manager Wi-Fi QR** - `Share QR` beside `Share PCAP`; standard Wi-Fi QR generated locally with ZXing, image share, and payload copy; WPS PIN remains separate
 - [x] **Serial Monitor** - Raw USB serial monitor with reliable clipboard copy, bounded log retention, and visible save/export success or failure feedback
 
-## 5. Mesh Network (ESP-NOW)
+## 5. Terminal / Termux SSH
+
+- [x] **Native terminal** - Native Termux terminal view over local OpenSSH; multiple shell tabs, PTY resize, scrollback, selection, clipboard, and session paging
+- [x] **SSH authentication** - Ed25519 and RSA public-key auth, Android Keystore-encrypted key storage, key fingerprint display, BouncyCastle Ed25519 signatures on Android, and pinned host-key validation
+- [x] **Connection lifecycle** - autoconnect, connecting status in the terminal surface, manual disconnect, force reconnect, and last-tab protection
+- [x] **Terminal UI defaults** - 34 dp font, block cursor, 500 ms blink, pinch-to-zoom, keyboard controls, and extra keys shown only with the IME
+- [x] **Terminal Shortcuts** - Quick shortcut bottom sheet, search/category filters, run modes, Home pinning, confirmations, parameterized `{{name}}` commands with previews, and seeded editable examples
+- [x] **Terminal documentation** - [Terminal / Termux SSH guide](docs/TERMINAL-GUIDE.md)
+- [ ] **Termux tools** - planned Nmap scanning/topology, PCAP workflows, and optional Wireshark through Termux:X11
+
+## 6. Mesh Network (ESP-NOW)
 
 - [x] **Shared Group Key Provisioning** - HKDF-derived auth/transport keys provisioned over USB and stored in NVS
 - [x] **Dynamic Master Election** - USB-authenticated candidate election with self-demotion
@@ -71,7 +81,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **Distributed Detector Reporting** - Deauth/Rogue AP reports and same-frame correlation (Phase 3B+)
 - [ ] **Triangulation Engine (app-side)** - Log-distance path-loss + trilateration from 3+ node RSSI reports
 
-## 6. Mesh Chat
+## 7. Mesh Chat
 
 - [ ] **ESP-NOW Chat Transport** - Reuses mesh group-key infra
 - [ ] **Multi-hop Relay** - Flood-fill with message-ID dedup
@@ -81,7 +91,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **Quick/Canned Messages** - Preset messages for fast field use
 - [ ] **Chat/Sensor Traffic Prioritization** - Alerts pre-empt chat traffic on shared channel
 
-## 7. Remote Camera Node (ESP32-CAM)
+## 8. Remote Camera Node (ESP32-CAM)
 
 - [ ] **Live Feed Streaming** - Separate Wi-Fi link (not over ESP-NOW - bandwidth)
 - [ ] **Snapshot-on-Trigger** - Captures still on detection events from other modules
@@ -90,7 +100,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **SD Card Buffering** - Local storage if master link is down
 - [ ] **Mesh Manager Integration** - Camera nodes shown alongside sensor/chat nodes
 
-## 8. Long-Range Relay (LoRa)
+## 9. Long-Range Relay (LoRa)
 
 - [ ] **LoRa Node-to-Node Link** - SX1276/78, kilometers of range, requires soldering
 - [ ] **LoRa Chat Bridge** - Bridges distant node clusters into mesh chat
@@ -98,7 +108,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **Long-baseline Locator Beacon** - Improves triangulation geometry via wider node spacing
 - [ ] **Multi-hop Routing** - Beyond simple flood-relay, given larger distances/node counts
 
-## 9. Peripheral Radios (planned expansion modules)
+## 10. Peripheral Radios (planned expansion modules)
 
 - [x] **IR** - Capture/Replay - Flipper `.ir` import/library, Flipper-IRDB download/rescan card on the Home > IR category screen with NRSuite-root guard/picker, direct extraction without large SAF directory renames, parallel SAF indexing, ESP32 GPIO defaults and save-state UI, raw TX/RX, and phone IR support
 - [ ] **IR** - Universal Remote DB - Common protocol library (NEC, SIRC, RC5)
@@ -114,7 +124,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [ ] **RFID/NFC** - Write/Clone - To blank/magic tags
 - [ ] **RFID/NFC** - Access Control Analyzer - Identify tag type + known weaknesses (e.g., MIFARE Classic)
 
-## 10. System / USB
+## 11. System / USB
 
 - [x] **Multi-device USB sessions** - Multiple simultaneous USB serial sessions with per-device permission, connect/disconnect, and reconnect state. User-initiated disconnect uses idle-session reuse for S2 CDC stability.
 - [x] **BadUSB device picker** - Select which connected device receives BadUSB independent of the primary Wireless/Flasher session.

@@ -269,7 +269,7 @@ internal fun MainViewModel.importIrFileImpl(uri: Uri) {
 }
 
 internal fun MainViewModel.rescanIrLibraryImpl() {
-    if (_irImporting.value) return
+    if (_irImporting.value || irScanJob?.isActive == true || irDatabaseJob?.isActive == true) return
     val rootUri = _exportDirectory.value
     if (rootUri == null) {
         _irErrorMessage.value = "Set the NRSuite root directory before scanning IR files."
@@ -277,12 +277,24 @@ internal fun MainViewModel.rescanIrLibraryImpl() {
     }
     _irImporting.value = true
     _irErrorMessage.value = null
+    _irDatabaseState.value = IrDatabaseUiState(
+        phase = IrDatabasePhase.INDEXING,
+        message = "Scanning IR library...",
+        currentItem = "Discovering IR files...",
+    )
     _irScanProgress.value = IrScanProgress(
         scanned = 0,
         total = 0,
         currentFile = "Discovering IR files...",
     )
-    scope.launch {
+    _toastMessage.value = "Scanning IR library..."
+    IrDatabaseForegroundService.start(app, "Scanning IR library...")
+    updateIrDatabaseNotification(
+        title = "IR library scan",
+        text = "Scanning the IR library...",
+        indeterminate = true,
+    )
+    irScanJob = scope.launch {
         val startedAt = System.currentTimeMillis()
         try {
             val previous = _irRemotes.value.associateBy { it.id }
@@ -293,15 +305,68 @@ internal fun MainViewModel.rescanIrLibraryImpl() {
                     .thenBy { it.name.lowercase() },
             )
             withContext(Dispatchers.IO) { irRemoteIndexStore.save(_irRemotes.value) }
+
+            val databasePresent = _irDatabasePresent.value || _irDatabaseMetadata.value != null
+            if (databasePresent) {
+                val flipperRemotes = scanned.count {
+                    it.source == IrRemoteSource.DATABASE &&
+                        it.relativePath.startsWith(
+                            "IR/$IR_DATABASE_DIRECTORY/$IR_DATABASE_FLIPPER_DIRECTORY/",
+                        )
+                }
+                val metadata = (_irDatabaseMetadata.value ?: IrDatabaseMetadata()).copy(
+                    indexedAtMs = System.currentTimeMillis(),
+                    indexedRemotes = flipperRemotes,
+                )
+                withContext(Dispatchers.IO) { irDatabaseMetadataStore.save(metadata) }
+                _irDatabaseMetadata.value = metadata
+                _irDatabasePresent.value = true
+            }
+
+            _irDatabaseState.value = IrDatabaseUiState(
+                phase = IrDatabasePhase.COMPLETED,
+                extractedFiles = scanned.size,
+                totalFiles = scanned.size,
+                message = "IR library scan complete: ${scanned.size} remote(s) indexed.",
+            )
             val elapsedMs = System.currentTimeMillis() - startedAt
             _irStatusMessage.value = "IR library scanned: ${scanned.size} remote(s)."
+            updateIrDatabaseNotification(
+                title = "IR library scan ready",
+                text = "${scanned.size} remote(s) indexed.",
+                indeterminate = false,
+            )
             Log.d("IrRemote", "IR library scan complete: ${scanned.size} remotes in ${elapsedMs} ms")
+        } catch (_: CancellationException) {
+            _irDatabaseState.value = IrDatabaseUiState(
+                phase = IrDatabasePhase.CANCELLED,
+                message = "IR library scan cancelled.",
+            )
+            _irStatusMessage.value = "IR library scan cancelled."
+            updateIrDatabaseNotification(
+                title = "IR library scan cancelled",
+                text = "The scan was cancelled.",
+                indeterminate = false,
+            )
+            Log.d("IrRemote", "IR library scan cancelled")
         } catch (t: Throwable) {
-            _irErrorMessage.value = t.message ?: "Could not scan the IR library."
+            val message = t.message ?: "Could not scan the IR library."
+            _irDatabaseState.value = IrDatabaseUiState(
+                phase = IrDatabasePhase.FAILED,
+                errorMessage = message,
+            )
+            _irErrorMessage.value = message
+            updateIrDatabaseNotification(
+                title = "IR library scan failed",
+                text = message,
+                indeterminate = false,
+            )
             Log.e("IrRemote", "IR library scan failed", t)
         } finally {
             _irImporting.value = false
             _irScanProgress.value = null
+            irScanJob = null
+            IrDatabaseForegroundService.stop(app)
         }
     }
 }
@@ -1123,6 +1188,7 @@ internal fun MainViewModel.retryIrDatabaseOperationImpl() {
 internal fun MainViewModel.cancelIrDatabaseOperationImpl() {
     irDatabaseDownloader.cancel()
     irDatabaseJob?.cancel()
+    irScanJob?.cancel()
 }
 
 private fun MainViewModel.startIrDatabasePipelineImpl(forceDownload: Boolean) {
@@ -1677,10 +1743,25 @@ private suspend fun MainViewModel.scanIrRoot(
     rootUri: Uri,
     previous: Map<String, IrRemoteSummary>,
 ): List<IrRemoteSummary> {
+    _irDatabaseState.value = IrDatabaseUiState(
+        phase = IrDatabasePhase.INDEXING,
+        message = "Discovering IR files...",
+    )
     val candidates = collectIrCandidatesFast(rootUri)
-    if (candidates.isEmpty()) return emptyList()
+    if (candidates.isEmpty()) {
+        _irDatabaseState.value = IrDatabaseUiState(
+            phase = IrDatabasePhase.INDEXING,
+            message = "No IR files found while scanning the library.",
+        )
+        return emptyList()
+    }
 
     _irScanProgress.value = IrScanProgress(0, candidates.size)
+    _irDatabaseState.value = IrDatabaseUiState(
+        phase = IrDatabasePhase.INDEXING,
+        totalFiles = candidates.size,
+        message = "Indexing IR library...",
+    )
     Log.d("IrRemote", "IR library scan candidates=${candidates.size}")
     val completed = AtomicInteger(0)
     val reused = AtomicInteger(0)
@@ -1726,6 +1807,13 @@ private suspend fun MainViewModel.scanIrRoot(
                                 scanned = index,
                                 total = candidates.size,
                                 currentFile = candidate.fileName,
+                            )
+                            _irDatabaseState.value = IrDatabaseUiState(
+                                phase = IrDatabasePhase.INDEXING,
+                                extractedFiles = index,
+                                totalFiles = candidates.size,
+                                currentItem = candidate.fileName,
+                                message = "Indexing IR library...",
                             )
                         }
                         if (canReuse) reused.incrementAndGet()

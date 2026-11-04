@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -63,6 +64,7 @@ import com.swp81x.nrsuite.ui.components.WifiChannelStepper
 import com.swp81x.nrsuite.ui.components.WifiChannelSummaryPill
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -185,12 +187,11 @@ fun HiddenApScreen(
                     .align(Alignment.BottomEnd)
                     .padding(20.dp)
                     .alpha(if (!canStart && !running && !starting) 0.4f else 1f),
-                containerColor = when {
-                    running -> StatusRed
-                    starting -> StatusAmber
-                    else -> MaterialTheme.colorScheme.primary
+                statusAction = when {
+                    running -> NrStatusAction.STOP
+                    starting -> NrStatusAction.PAUSE
+                    else -> NrStatusAction.START
                 },
-                contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 if (starting) {
                     CircularProgressIndicator(
@@ -349,7 +350,7 @@ private fun HiddenApConfigCard(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Spacer(Modifier.height(10.dp))
                 ChannelModeToggle(
                     fixed = fixed,

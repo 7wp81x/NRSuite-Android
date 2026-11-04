@@ -16,10 +16,25 @@ data class UsbSerialDevice(
 ) {
     val displayName: String
         get() {
-            val base = device.productName?.takeIf { it.isNotBlank() } ?: "USB Serial"
+            val base = friendlyUsbName(device)
             val chip = driverChipLabel(driver) ?: return base
             return "$base ($chip)"
         }
+}
+
+private fun friendlyUsbName(device: UsbDevice): String {
+    val manufacturer = device.manufacturerName.orEmpty()
+    val product = device.productName.orEmpty()
+    val advertisesNrSuite = manufacturer.contains("NRSuite", ignoreCase = true) ||
+        product.contains("NRSuite", ignoreCase = true)
+    if (advertisesNrSuite) {
+        return product.takeIf { it.isNotBlank() } ?: "NRSuite ESP32"
+    }
+
+    // Stock Espressif firmware and boards without NRSuite descriptors keep
+    // their own USB name. This lets the UI distinguish a ready-to-use NRSuite
+    // board from one that still needs firmware flashing.
+    return product.takeIf { it.isNotBlank() } ?: "USB Serial"
 }
 
 private fun driverChipLabel(driver: UsbSerialDriver): String? = when (driver) {

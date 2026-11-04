@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -69,6 +70,7 @@ import com.swp81x.nrsuite.ui.components.ModuleStatusCard
 import com.swp81x.nrsuite.ui.components.ModuleStatusState
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.LogColorError
 import com.swp81x.nrsuite.ui.theme.LogColorInfo
 import com.swp81x.nrsuite.ui.theme.LogColorSuccess
@@ -240,10 +242,10 @@ fun NrugochiScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = when {
-                    stopping -> StatusAmber
-                    state.running -> StatusRed
-                    else -> MaterialTheme.colorScheme.primary
+                statusAction = when {
+                    stopping -> NrStatusAction.PAUSE
+                    state.running -> NrStatusAction.STOP
+                    else -> NrStatusAction.START
                 },
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
@@ -510,7 +512,7 @@ private fun NrugochiConfigCard(
                 TextButton(onClick = onToggleAdvanced, enabled = fieldsEnabled) {
                     Text(if (advancedExpanded) "Hide advanced" else "Advanced options")
                 }
-                if (advancedExpanded) {
+                NrAnimatedVisibility(visible = advancedExpanded) {
                     NumberField(
                         label = "Max AP attempts per cycle",
                         value = maxApAttempts,

@@ -54,6 +54,7 @@ import kotlin.math.roundToInt
 import com.swp81x.nrsuite.ui.components.SavedScriptPicker
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
@@ -179,8 +180,7 @@ fun BleScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = StatusRed,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = NrStatusAction.STOP,
             ) {
                 Icon(Icons.Default.Stop, contentDescription = "Stop BLE")
             }
@@ -190,8 +190,7 @@ fun BleScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = NrStatusAction.START,
             ) {
                 Icon(Icons.Default.PlayArrow, contentDescription = "Start BLE")
             }

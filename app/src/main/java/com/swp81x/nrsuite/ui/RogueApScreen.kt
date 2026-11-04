@@ -55,6 +55,7 @@ import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.util.rssiToProximity
 import com.swp81x.nrsuite.ui.util.signalQualityColor
 import com.swp81x.nrsuite.ui.util.threatProximityColor
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -129,8 +130,7 @@ fun RogueApScreen(
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
                 enabled = connected,
-                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 Icon(
                     imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,

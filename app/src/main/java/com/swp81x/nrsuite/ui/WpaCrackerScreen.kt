@@ -57,6 +57,7 @@ import com.swp81x.nrsuite.core.wpa.CrackerSourceType
 import com.swp81x.nrsuite.core.wpa.CrackerTargetSnapshot
 import com.swp81x.nrsuite.core.wpa.CrackerTargetStatus
 import com.swp81x.nrsuite.ui.components.NrFilterChip
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -495,8 +496,7 @@ fun WpaCrackerScreen(
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
             enabled = running || canStart,
-            containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
-            contentColor = NrOnSurface,
+            statusAction = if (running) NrStatusAction.STOP else NrStatusAction.START,
         ) {
             Icon(
                 imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,

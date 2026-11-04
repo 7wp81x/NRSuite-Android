@@ -18,14 +18,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
@@ -47,6 +46,9 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.swp81x.nrsuite.core.ir.IrJammerUiState
+import com.swp81x.nrsuite.ui.components.NrPrimaryButton
+import com.swp81x.nrsuite.ui.components.NrStatusAction
+import com.swp81x.nrsuite.ui.components.NrStatusButton
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -160,16 +162,13 @@ fun IrJammerScreen(
                         }
                     }
                     Spacer(Modifier.height(10.dp))
-                    OutlinedButton(
+                    NrPrimaryButton(
+                        text = "Start IR Jammer",
                         onClick = { onStart(selectedDurationMs) },
                         enabled = txAvailable,
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusGreen),
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Start IR Jammer")
-                    }
+                        leadingIcon = Icons.Default.PlayArrow,
+                    )
                     Text(
                         text = "Stops when you leave this screen, background the app, or press Stop. " +
                             "Unlimited mode never runs in the background.",
@@ -210,15 +209,13 @@ fun IrJammerScreen(
                         color = NrOnSurfaceVariant,
                     )
                     Spacer(Modifier.height(16.dp))
-                    OutlinedButton(
+                    NrStatusButton(
+                        text = "STOP JAMMER",
+                        status = NrStatusAction.STOP,
                         onClick = onStop,
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusRed),
-                    ) {
-                        Icon(Icons.Default.Stop, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("STOP JAMMER")
-                    }
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = Icons.Default.Stop,
+                    )
                 }
             }
         }

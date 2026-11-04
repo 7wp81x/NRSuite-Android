@@ -26,8 +26,8 @@ android {
         applicationId = "com.swp81x.nrsuite"
         minSdk = 26
         targetSdk = 36
-        versionCode = 9
-        versionName = "1.0.0-beta.3.1.1"
+        versionCode = 10
+        versionName = "1.0.0-beta.3.1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -94,6 +94,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.zxing.core)
+    implementation(libs.ssh.jsch)
+    implementation(libs.bouncycastle.bcprov)
     implementation(libs.usb.serial) {
         // The JitPack POM asks for Kotlin stdlib 2.2.x. This project uses Kotlin 2.0.21;
         // the serial library itself is Java, so exclude the transitive stdlib.

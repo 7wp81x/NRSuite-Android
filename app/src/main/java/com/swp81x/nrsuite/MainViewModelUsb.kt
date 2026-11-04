@@ -54,8 +54,22 @@ internal fun MainViewModel.refreshDevicesImpl() {
         }
         if (stillPresent == null || !usbManager.hasPermission(stillPresent.device)) {
             _firmwareTargetDevice.value = null
+            _firmwareTargetChip.value = null
+            _firmwareTargetFirmwareVersion.value = null
         } else {
-            _firmwareTargetDevice.value = stillPresent
+            val sameTarget = runCatching {
+                deviceFingerprintImpl(selectedTarget.device) ==
+                    deviceFingerprintImpl(stillPresent.device)
+            }.getOrDefault(false)
+            if (!sameTarget) {
+                // The USB device id was reused by a different board. Clear the
+                // target and let the UI require an explicit new selection.
+                _firmwareTargetDevice.value = null
+                _firmwareTargetChip.value = null
+                _firmwareTargetFirmwareVersion.value = null
+            } else {
+                _firmwareTargetDevice.value = stillPresent
+            }
         }
     }
 
@@ -81,7 +95,7 @@ internal fun MainViewModel.refreshDevicesImpl() {
     }
 }
 
-internal fun MainViewModel.onUsbDeviceAttachedImpl() {
+internal fun MainViewModel.onUsbDeviceAttachedImpl(device: UsbDevice?) {
     if (deviceSessions.isEmpty() && _connectionState.value is ConnectionState.Failed) {
         _connectionState.value = ConnectionState.Disconnected
     }
@@ -89,6 +103,48 @@ internal fun MainViewModel.onUsbDeviceAttachedImpl() {
     appendLog("USB device attached.", level = LogLevel.USB)
     appendLog("Tap Connect to open a session when ready.", level = LogLevel.USB)
     tryManualFirmwareFlashOnAttachImpl()
+
+    // USB hotplug can re-enumerate several times while a board is booting.
+    // Debounce each device independently and keep a per-device prompt stack.
+    val targetDeviceId = device?.deviceId
+    usbAttachPromptJobs[targetDeviceId ?: Int.MIN_VALUE]?.cancel()
+    usbAttachPromptJobs[targetDeviceId ?: Int.MIN_VALUE] = scope.launch {
+        kotlinx.coroutines.delay(700)
+        val entry = if (targetDeviceId != null) {
+            _devices.value.firstOrNull { it.device.deviceId == targetDeviceId }
+        } else {
+            _devices.value.firstOrNull()
+        } ?: return@launch
+        val now = System.currentTimeMillis()
+        val lastPromptAt = lastUsbAttachPromptAtByDevice[entry.device.deviceId] ?: 0L
+        if (now - lastPromptAt < USB_ATTACH_PROMPT_COOLDOWN_MS) return@launch
+        lastUsbAttachPromptAtByDevice[entry.device.deviceId] = now
+        _usbAttachPrompts.update { prompts ->
+            (prompts.filterNot { it.deviceId == entry.device.deviceId } + UsbAttachPrompt(
+                device = entry,
+                hasPermission = usbManager.hasPermission(entry.device),
+            )).takeLast(MAX_USB_ATTACH_PROMPTS)
+        }
+        kotlinx.coroutines.delay(USB_ATTACH_PROMPT_VISIBLE_MS)
+        _usbAttachPrompts.update { prompts ->
+            prompts.filterNot { it.deviceId == entry.device.deviceId }
+        }
+        usbAttachPromptJobs.remove(entry.device.deviceId)
+    }
+}
+
+internal fun MainViewModel.refreshActiveDeviceStatusImpl() {
+    val session = activeDeviceFingerprint?.let { deviceSessions[it]?.session } ?: return
+    scope.launch {
+        runCatching { session.refreshStatus() }
+            .onFailure { error ->
+                appendLog(
+                    "Device status refresh failed: ${error.message ?: error.javaClass.simpleName}",
+                    level = LogLevel.ERROR,
+                    tag = "USB",
+                )
+            }
+    }
 }
 
 internal fun MainViewModel.deviceFingerprintImpl(device: UsbDevice): String {
@@ -106,6 +162,11 @@ internal fun MainViewModel.deviceFingerprintImpl(device: UsbDevice): String {
 
 internal fun MainViewModel.onUsbDeviceDetachedImpl(device: UsbDevice) {
     clearPermissionRequestImpl(device.deviceId)
+    firmwareTargetChipHints.remove(device.deviceId)
+    usbAttachPromptJobs.remove(device.deviceId)?.cancel()
+    _usbAttachPrompts.update { prompts ->
+        prompts.filterNot { it.deviceId == device.deviceId }
+    }
     runCatching { deviceFingerprintImpl(device) }.getOrNull()?.let { fingerprint ->
         _badUsbArmedFingerprints.update { it - fingerprint }
     }
@@ -185,7 +246,31 @@ internal fun MainViewModel.onPermissionResultImpl(device: UsbDevice, granted: Bo
     }
 }
 
+internal fun MainViewModel.switchActiveDeviceImpl(device: UsbDevice): Boolean {
+    val fingerprint = deviceFingerprintImpl(device)
+    val entry = deviceSessions[fingerprint] ?: run {
+        appendLog("Device is not connected; connect it before switching.", tag = "USB")
+        return false
+    }
+    if (fingerprint == activeDeviceFingerprint) return false
+    val state = entry.session.state.value
+    if (state !is ConnectionState.Connected) {
+        appendLog("Device is not ready to become active yet.", tag = "USB")
+        return false
+    }
+    stopActiveOperations()
+    _primaryFingerprint.value = fingerprint
+    _connectionState.value = state
+    if (_firmwareTargetDevice.value == null) {
+        _firmwareTargetDevice.value = entry.device
+    }
+    appendLog("Active device switched to ${entry.device.displayName}.", tag = "USB")
+    updateForegroundService()
+    return true
+}
+
 internal fun MainViewModel.connectImpl(device: UsbDevice) {
+    dismissUsbAttachPrompt(device.deviceId)
     if (!usbManager.hasPermission(device)) {
         appendLog("USB permission is required before connecting.")
         return
@@ -360,7 +445,9 @@ internal fun MainViewModel.connectImpl(device: UsbDevice) {
                 runCatching { old.session.disconnect() }
                 kotlinx.coroutines.delay(250)
             }
-            newSession.connect()
+            newSession.connect(
+                permissionGranted = usbManager.hasPermission(entry.device),
+            )
         }
     }
 }
@@ -387,3 +474,8 @@ internal fun MainViewModel.disconnectDeviceImpl(device: UsbDevice) {
         stopOperations = fingerprint == activeDeviceFingerprint,
     )
 }
+
+
+private const val USB_ATTACH_PROMPT_COOLDOWN_MS = 8_000L
+private const val USB_ATTACH_PROMPT_VISIBLE_MS = 10_000L
+private const val MAX_USB_ATTACH_PROMPTS = 4

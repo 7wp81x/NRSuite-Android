@@ -10,6 +10,13 @@ Notable bundled/runtime components include:
 - libusb (where bundled for native USB support) — GNU LGPL 2.1
 - Other Gradle dependencies retain the licenses declared by their respective
   upstream projects and published Maven metadata.
+- Termux terminal-emulator and terminal-view — Apache License 2.0 for the
+  terminal emulation libraries — https://github.com/termux/termux-app —
+  vendored as native Android terminal rendering/input code. Termux itself is
+  not bundled; the app connects to a separately installed Termux SSH server.
+- JSch (mwiede fork) — BSD-style revised license —
+  https://github.com/mwiede/jsch — SSH client used for the local Termux
+  terminal connection.
 - Firmware PN532 support uses Adafruit PN532 — BSD 3-Clause —
   https://github.com/adafruit/Adafruit-PN532 — and Adafruit BusIO — MIT —
   https://github.com/adafruit/Adafruit_BusIO

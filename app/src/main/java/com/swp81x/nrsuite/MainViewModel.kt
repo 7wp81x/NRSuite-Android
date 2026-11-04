@@ -6,11 +6,18 @@ import android.content.Intent
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.util.Log
 import androidx.core.content.ContextCompat
-import androidx.documentfile.provider.DocumentFile
+import com.swp81x.nrsuite.core.terminal.SshTerminalManager
+import com.swp81x.nrsuite.core.terminal.TerminalConfig
+import com.swp81x.nrsuite.core.terminal.TerminalKeyInfo
+import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
+import com.swp81x.nrsuite.core.terminal.TerminalShortcut
+import com.swp81x.nrsuite.core.terminal.TerminalShortcutStore
+import com.swp81x.nrsuite.core.terminal.TerminalUiSettings
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.ble.BleDeviceObservation
 import com.swp81x.nrsuite.core.ble.BleScanOwner
@@ -121,6 +128,7 @@ import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
 import com.swp81x.nrsuite.core.usb.UsbSerialTransport
+import com.swp81x.nrsuite.ui.theme.NrThemeMode
 import com.swp81x.nrsuite.service.NrSuiteForegroundService
 import com.swp81x.nrsuite.service.WpaCrackerForegroundService
 import java.io.File
@@ -150,6 +158,13 @@ data class CapturedPassword(
     val value: String,
     val capturedAt: String,
 )
+
+data class UsbAttachPrompt(
+    val device: com.swp81x.nrsuite.core.usb.UsbSerialDevice,
+    val hasPermission: Boolean,
+) {
+    val deviceId: Int get() = device.device.deviceId
+}
 
 internal data class DeviceSession(
     val fingerprint: String,
@@ -191,6 +206,9 @@ class MainViewModel(internal val app: Application) {
     internal val preferences =
         app.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
+    internal val terminalManager = SshTerminalManager(app, scope)
+    internal val terminalShortcutStore = TerminalShortcutStore(app)
+
     internal val _exportDirectory = MutableStateFlow<Uri?>(null)
     val exportDirectory: StateFlow<Uri?> = _exportDirectory.asStateFlow()
 
@@ -217,8 +235,91 @@ class MainViewModel(internal val app: Application) {
     internal val _toastMessage = MutableStateFlow<String?>(null)
     val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
 
+    val terminalState: StateFlow<TerminalConnectionState> get() = terminalManager.state
+    val terminalSessions get() = terminalManager.sessions
+    val terminalSettings: StateFlow<TerminalUiSettings> get() = terminalManager.settings
+    val terminalHasPrivateKey: StateFlow<Boolean> get() = terminalManager.hasPrivateKey
+    val terminalKeyInfo: StateFlow<TerminalKeyInfo?> get() = terminalManager.keyInfo
+    fun savedTerminalHost(): String = terminalManager.savedHost()
+    fun savedTerminalPort(): Int = terminalManager.savedPort()
+    fun savedTerminalUsername(): String = terminalManager.termuxSshUsername()
+    fun savedTerminalConfig(): TerminalConfig? = terminalManager.savedConnectionConfig()
+    fun updateTerminalSettings(settings: TerminalUiSettings) = terminalManager.updateSettings(settings)
+    fun importTerminalPrivateKey(uri: Uri, passphrase: String) =
+        terminalManager.importPrivateKey(uri = uri, publicKeyUri = null, passphrase = passphrase)
+    fun importTerminalPrivateKeyFromRoot(onResult: (Boolean, String) -> Unit) {
+        val rootUri = _exportDirectory.value
+        if (rootUri == null) {
+            onResult(false, "Select the NRSuite root directory first in Settings.")
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            val file = runCatching {
+                val root = DocumentFile.fromTreeUri(app, rootUri)
+                root?.findFile("nrsuite_ssh_key")
+                    ?: root?.findFile("nrsuite_ssh_key.pem")
+                    ?: root?.findFile("nrsuite_ssh_key.txt")
+            }.getOrNull()
+            if (file == null) {
+                withContext(Dispatchers.Main) {
+                    onResult(false, "No nrsuite_ssh_key found in the NRSuite root.")
+                }
+                return@launch
+            }
+            val root = runCatching { DocumentFile.fromTreeUri(app, rootUri) }.getOrNull()
+            val publicFile = root?.findFile("nrsuite_ssh_key.pub")
+                ?: root?.findFile("nrsuite_ssh_key.pub.txt")
+            withContext(Dispatchers.Main) {
+                terminalManager.importPrivateKey(
+                    uri = file.uri,
+                    publicKeyUri = publicFile?.uri,
+                    passphrase = "",
+                    deleteAfterImport = true,
+                    onResult = onResult,
+                )
+            }
+        }
+    }
+    fun clearTerminalPrivateKey() = terminalManager.clearPrivateKey()
+    fun connectTerminal(config: TerminalConfig) = terminalManager.connect(config)
+    fun disconnectTerminal(message: String? = null) = terminalManager.disconnect(message)
+    fun forceReconnectTerminal() = terminalManager.forceReconnect()
+    fun newTerminalSession() = terminalManager.newSession()
+    fun closeTerminalSession(id: Int) = terminalManager.closeSession(id)
+    fun setActiveTerminalSession(id: Int) = terminalManager.setActiveSession(id)
+    fun isTermuxInstalled(): Boolean = terminalManager.isTermuxInstalled()
+    fun clearTerminalPinnedHostKey() = terminalManager.clearPinnedHostKey()
+    fun trustChangedTerminalHostKeyAndReconnect() = terminalManager.trustChangedHostKeyAndReconnect()
+    fun setTerminalViewUpdateListener(listener: (() -> Unit)?) =
+        terminalManager.setTerminalViewUpdateListener(listener)
+    fun setTerminalColorScheme(
+        palette: IntArray,
+        foreground: Int,
+        background: Int,
+        cursor: Int,
+    ) = terminalManager.applyColorScheme(palette, foreground, background, cursor)
+    val terminalShortcuts get() = terminalShortcutStore.shortcuts
+    val terminalShortcutCategories get() = terminalShortcutStore.categories
+    fun upsertTerminalShortcut(shortcut: TerminalShortcut) =
+        terminalShortcutStore.upsert(shortcut)
+    fun deleteTerminalShortcut(id: Long) = terminalShortcutStore.delete(id)
+    fun addTerminalShortcutCategory(name: String) = terminalShortcutStore.addCategory(name)
+    fun deleteTerminalShortcutCategory(name: String) = terminalShortcutStore.deleteCategory(name)
+    fun renameTerminalShortcutCategory(oldName: String, newName: String) =
+        terminalShortcutStore.renameCategory(oldName, newName)
+    fun runTerminalShortcutCommand(
+        command: String,
+        runMode: com.swp81x.nrsuite.core.terminal.TerminalShortcutRunMode,
+        execute: Boolean,
+    ) = terminalManager.runShortcutCommand(command, runMode, execute)
+
     internal val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()
+
+    internal val _usbAttachPrompts = MutableStateFlow<List<UsbAttachPrompt>>(emptyList())
+    val usbAttachPrompts: StateFlow<List<UsbAttachPrompt>> = _usbAttachPrompts.asStateFlow()
+    internal val usbAttachPromptJobs = mutableMapOf<Int, Job>()
+    internal val lastUsbAttachPromptAtByDevice = mutableMapOf<Int, Long>()
 
     internal val _serialMonitorSelected = MutableStateFlow<UsbSerialDevice?>(null)
     val serialMonitorSelected: StateFlow<UsbSerialDevice?> = _serialMonitorSelected.asStateFlow()
@@ -320,6 +421,15 @@ class MainViewModel(internal val app: Application) {
     internal val _firmwareTargetDevice = MutableStateFlow<UsbSerialDevice?>(null)
     val firmwareTargetDevice: StateFlow<UsbSerialDevice?> = _firmwareTargetDevice.asStateFlow()
 
+    internal val _firmwareTargetChip = MutableStateFlow<String?>(null)
+    val firmwareTargetChip: StateFlow<String?> = _firmwareTargetChip.asStateFlow()
+
+    internal val _firmwareTargetFirmwareVersion = MutableStateFlow<String?>(null)
+    val firmwareTargetFirmwareVersion: StateFlow<String?> =
+        _firmwareTargetFirmwareVersion.asStateFlow()
+
+    internal val firmwareTargetChipHints = mutableMapOf<Int, String>()
+
     internal val _badUsbTargetDevice = MutableStateFlow<UsbSerialDevice?>(null)
     val badUsbTargetDevice: StateFlow<UsbSerialDevice?> = _badUsbTargetDevice.asStateFlow()
 
@@ -341,6 +451,15 @@ class MainViewModel(internal val app: Application) {
         preferences.getBoolean(PREF_AUTO_UPDATE_CHECK, true),
     )
     val autoUpdateCheck: StateFlow<Boolean> = _autoUpdateCheck.asStateFlow()
+
+    private val _themeMode = MutableStateFlow(loadThemeMode())
+    val themeMode: StateFlow<NrThemeMode> = _themeMode.asStateFlow()
+
+    private val _firmwareOnboardingDismissed = MutableStateFlow(
+        preferences.getBoolean(PREF_FIRMWARE_ONBOARDING_DISMISSED, false),
+    )
+    val firmwareOnboardingDismissed: StateFlow<Boolean> =
+        _firmwareOnboardingDismissed.asStateFlow()
 
     internal val _appUpdate = MutableStateFlow<AppUpdateInfo?>(null)
     val appUpdate: StateFlow<AppUpdateInfo?> = _appUpdate.asStateFlow()
@@ -483,6 +602,7 @@ class MainViewModel(internal val app: Application) {
     internal var irTransmitJob: Job? = null
     internal var irSearchJob: Job? = null
     internal var irDatabaseJob: Job? = null
+    internal var irScanJob: Job? = null
     internal var irJammerJob: Job? = null
     internal var lastIrSearchNotificationState: IrSearchRunState = IrSearchRunState.IDLE
 
@@ -1531,7 +1651,22 @@ class MainViewModel(internal val app: Application) {
         preferences.edit().putString(PREF_HISTORY, array.toString()).apply()
     }
 
-    fun onUsbDeviceAttached() = this.onUsbDeviceAttachedImpl()
+    fun onUsbDeviceAttached(device: UsbDevice? = null) = this.onUsbDeviceAttachedImpl(device)
+    fun dismissUsbAttachPrompt(deviceId: Int? = null) {
+        if (deviceId == null) {
+            usbAttachPromptJobs.values.forEach { it.cancel() }
+            usbAttachPromptJobs.clear()
+            _usbAttachPrompts.value = emptyList()
+        } else {
+            usbAttachPromptJobs.remove(deviceId)?.cancel()
+            _usbAttachPrompts.value = _usbAttachPrompts.value.filterNot {
+                it.deviceId == deviceId
+            }
+        }
+    }
+
+    fun switchActiveDevice(device: UsbDevice): Boolean =
+        this.switchActiveDeviceImpl(device)
 
 
     fun onUsbDeviceDetached(device: UsbDevice) = this.onUsbDeviceDetachedImpl(device)
@@ -1541,6 +1676,7 @@ class MainViewModel(internal val app: Application) {
     fun onPermissionResult(device: UsbDevice, granted: Boolean) = this.onPermissionResultImpl(device, granted)
 
     fun connect(device: UsbDevice) = this.connectImpl(device)
+    fun refreshActiveDeviceStatus() = this.refreshActiveDeviceStatusImpl()
     fun markPermissionRequested(device: UsbDevice) = this.markPermissionRequestedImpl(device)
     fun clearPermissionRequest(deviceId: Int) = this.clearPermissionRequestImpl(deviceId)
     fun disconnectDevice(device: UsbDevice) = this.disconnectDeviceImpl(device)
@@ -1630,6 +1766,21 @@ class MainViewModel(internal val app: Application) {
     fun handleRfidDisconnected() = this.handleRfidDisconnectedImpl()
 
     fun setAutoUpdateCheck(enabled: Boolean) = this.setAutoUpdateCheckImpl(enabled)
+
+    fun setThemeMode(mode: NrThemeMode) {
+        _themeMode.value = mode
+        preferences.edit().putString(PREF_THEME_MODE, mode.name).apply()
+    }
+
+    fun dismissFirmwareOnboarding() {
+        _firmwareOnboardingDismissed.value = true
+        preferences.edit().putBoolean(PREF_FIRMWARE_ONBOARDING_DISMISSED, true).apply()
+    }
+
+    private fun loadThemeMode(): NrThemeMode {
+        val stored = preferences.getString(PREF_THEME_MODE, null) ?: return NrThemeMode.DARK
+        return runCatching { NrThemeMode.valueOf(stored) }.getOrDefault(NrThemeMode.DARK)
+    }
     fun checkForUpdates(force: Boolean = false) = this.checkForUpdatesImpl(force)
     fun clearUpdateError() {
         _updateError.value = null
@@ -1641,6 +1792,8 @@ class MainViewModel(internal val app: Application) {
         this.downloadFirmwareAssetImpl(releaseTag, assetName)
     fun downloadFirmwareUpdate() = this.downloadFirmwareUpdateForCurrentDeviceImpl()
     fun prepareFirmwareFlasherForUpdate() = this.prepareFirmwareFlasherForUpdateImpl()
+    fun prepareFirmwareFlasherForDiagnostic(chip: String?, deviceId: Int? = null) =
+        this.prepareFirmwareFlasherForDiagnosticImpl(chip, deviceId)
     fun armManualFirmwareRecovery(targetChip: String) =
         this.armManualFirmwareRecoveryImpl(targetChip)
     fun flashManualFirmwareNow() = this.flashManualFirmwareNowImpl()
@@ -1951,6 +2104,8 @@ class MainViewModel(internal val app: Application) {
     fun selectWpsTarget(target: NetworkTarget) = this.selectWpsTargetImpl(target)
 
     fun setWpsOnlyFilter(enabled: Boolean) = this.setWpsOnlyFilterImpl(enabled)
+    fun setWpsCandidatePin(value: String) = this.setWpsCandidatePinImpl(value)
+    fun useGeneratedWpsPin() = this.useGeneratedWpsPinImpl()
 
     fun startWpsPixieLiveAttempt(pin: String? = null, source: WpsPinSource? = null) =
         this.startWpsPixieLiveAttemptImpl(pin, source)
@@ -2346,6 +2501,7 @@ class MainViewModel(internal val app: Application) {
     internal fun observe(fingerprint: String, session: NrSession) {
         val observers = listOf(
             scope.launch {
+                var wasConnected = false
                 session.state.collect { state ->
                     // A replaced session's observer may still be cancelling.
                     // Never let a stale session overwrite its replacement.
@@ -2358,15 +2514,29 @@ class MainViewModel(internal val app: Application) {
                     }
 
                     when (state) {
-                        is ConnectionState.Connecting -> tracked?.opening = true
+                        is ConnectionState.Connecting -> {
+                            tracked?.opening = true
+                            wasConnected = false
+                        }
                         is ConnectionState.Connected -> {
                             tracked?.opening = false
                             tracked?.openedOnce = true
-                            this@MainViewModel.checkForUpdates()
+                            if (!wasConnected) {
+                                this@MainViewModel.checkForUpdates()
+                            }
+                            wasConnected = true
                         }
-                        is ConnectionState.Failed -> tracked?.opening = false
+                        is ConnectionState.Diagnosing -> {
+                            tracked?.opening = true
+                            wasConnected = false
+                        }
+                        is ConnectionState.Failed -> {
+                            tracked?.opening = false
+                            wasConnected = false
+                        }
                         is ConnectionState.Disconnected -> {
                             tracked?.opening = false
+                            wasConnected = false
                             if (fingerprint == activeDeviceFingerprint) {
                                 this@MainViewModel.handleRfidDisconnectedImpl()
                             }
@@ -2392,6 +2562,15 @@ class MainViewModel(internal val app: Application) {
             },
             scope.launch {
                 session.logs.collect { appendLog(it) }
+            },
+            scope.launch {
+                while (isActive) {
+                    delay(5_000)
+                    val tracked = deviceSessions[fingerprint]
+                    if (tracked?.session !== session) break
+                    if (session.state.value !is ConnectionState.Connected) continue
+                    runCatching { session.refreshStatus() }
+                }
             },
             scope.launch {
                 session.events.collect { event ->
@@ -2965,6 +3144,8 @@ class MainViewModel(internal val app: Application) {
         private const val PREF_WIFI_CAPTURE_DIRECTORY = "wifi_capture_directory_uri"
         private const val PREF_HISTORY = "session_history"
         private const val PREF_RECENT_MODULES = "recent_modules"
+        private const val PREF_THEME_MODE = "theme_mode"
+        private const val PREF_FIRMWARE_ONBOARDING_DISMISSED = "firmware_onboarding_dismissed"
         private const val DISCONNECT_TEARDOWN_WAIT_MS = 8_000L
         internal val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
     }

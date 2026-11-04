@@ -48,6 +48,7 @@ import com.swp81x.nrsuite.core.wps.WpsLockAccessPoint
 import com.swp81x.nrsuite.core.wps.WpsLockState
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.components.NrFilterChip
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -258,8 +259,7 @@ fun WpsLockDetectorScreen(
             ModuleActionFab(
                 onClick = { if (!scanning) onScan() },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = NrStatusAction.START,
             ) {
                 if (scanning) {
                     CircularProgressIndicator(

@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -70,6 +71,7 @@ import com.swp81x.nrsuite.ui.components.ModuleStatusCard
 import com.swp81x.nrsuite.ui.components.ModuleStatusState
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.util.copyWithToast
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -195,8 +197,7 @@ fun ClientPresenceScreen(
                     .align(Alignment.BottomEnd)
                     .padding(20.dp)
                     .alpha(if (!canStart && !running) 0.4f else 1f),
-                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 Icon(
                     imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
@@ -346,7 +347,7 @@ private fun ConfigZone(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Column {
                     Spacer(Modifier.height(10.dp))
                     Text("Mode", style = MaterialTheme.typography.labelLarge)

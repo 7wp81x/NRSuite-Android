@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
@@ -73,6 +74,7 @@ import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
 import com.swp81x.nrsuite.ui.components.WifiChannelSummaryPill
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
@@ -328,8 +330,7 @@ fun PortalScreen(
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
                 enabled = !starting && !stopping,
-                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 if (starting || stopping) {
                     CircularProgressIndicator(
@@ -443,7 +444,7 @@ private fun ConfigZone(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Column {
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(

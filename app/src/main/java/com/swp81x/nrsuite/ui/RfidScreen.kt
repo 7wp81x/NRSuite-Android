@@ -24,12 +24,10 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -43,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.rfid.RfidTagObservation
 import com.swp81x.nrsuite.core.rfid.RfidUiState
 import com.swp81x.nrsuite.ui.components.ModuleStatusCard
+import com.swp81x.nrsuite.ui.components.NrDangerButton
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.components.ModuleStatusState
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -175,17 +175,13 @@ fun RfidScreen(
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(
+                    NrDangerButton(
+                        text = "Clear",
                         onClick = onClearHistory,
                         enabled = state.tags.isNotEmpty(),
-                    ) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Text("Clear")
-                    }
+                        leadingIcon = Icons.Default.Delete,
+                        compact = true,
+                    )
                 }
             }
 
@@ -230,20 +226,15 @@ fun RfidScreen(
             }
         }
 
-        FloatingActionButton(
+        ModuleActionFab(
             onClick = {
-                if (connected) {
-                    if (state.running) onStop() else onStart()
-                }
+                if (state.running) onStop() else onStart()
             },
+            enabled = connected,
+            statusAction = if (state.running) NrStatusAction.STOP else NrStatusAction.START,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
-            containerColor = when {
-                !connected -> StatusNeutral.copy(alpha = 0.45f)
-                state.running -> StatusRed
-                else -> NrAccent
-            },
         ) {
             Icon(
                 imageVector = if (state.running) Icons.Default.Stop else Icons.Default.PlayArrow,

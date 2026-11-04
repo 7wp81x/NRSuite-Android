@@ -10,6 +10,7 @@ import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
 import com.swp81x.nrsuite.core.update.firmwareChipFromAssetName
+import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
 import java.io.File
 import kotlinx.coroutines.launch
 
@@ -134,6 +135,34 @@ internal fun MainViewModel.prepareFirmwareFlasherForUpdateImpl() {
     if (file != null && file.exists() && file.length() > 0L) {
         selectDownloadedFirmwareImpl(file)
     }
+}
+
+internal fun MainViewModel.prepareFirmwareFlasherForDiagnosticImpl(
+    chip: String?,
+    deviceId: Int? = null,
+) {
+    if (deviceId != null && !chip.isNullOrBlank()) {
+        firmwareTargetChipHints[deviceId] = chip
+        _firmwareTargetChip.value = chip
+    }
+    val file = downloadedFirmwarePath?.let(::File)
+    val matchesChip = file != null &&
+        file.exists() &&
+        file.length() > 0L &&
+        !chip.isNullOrBlank() &&
+        firmwareChipFromFirmwareName(file.name) == chip
+    if (matchesChip) {
+        selectDownloadedFirmwareImpl(file!!)
+        return
+    }
+    // Do not let a previously downloaded firmware for another board silently
+    // become the selected image when entering the flasher from a failed
+    // connection diagnostic.
+    _firmwareFlashUri.value = null
+    _firmwareFlashName.value = null
+    _firmwareFlashSize.value = 0
+    _firmwareFlashProgress.value = 0
+    _firmwareFlashStatus.value = null
 }
 
 internal fun MainViewModel.selectDownloadedFirmwareImpl(file: File) {
