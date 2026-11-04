@@ -15,9 +15,9 @@ data class TerminalUiSettings(
     val showLauncherOnHome: Boolean = true,
     val autoconnect: Boolean = true,
     val savePassword: Boolean = false,
-    val defaultFontSize: Int = 28,
-    val cursorStyle: Int = 1,
-    val cursorBlinkMs: Int = 280,
+    val defaultFontSize: Int = 34,
+    val cursorStyle: Int = 0,
+    val cursorBlinkMs: Int = 500,
 )
 
 internal class TerminalPreferences(context: Context) {
@@ -33,9 +33,9 @@ internal class TerminalPreferences(context: Context) {
             true
         },
         savePassword = preferences.getBoolean(KEY_SAVE_PASSWORD, false),
-        defaultFontSize = preferences.getInt(KEY_FONT_SIZE, 28).coerceIn(9, 34),
-        cursorStyle = preferences.getInt(KEY_CURSOR_STYLE, 1).coerceIn(0, 2),
-        cursorBlinkMs = preferences.getInt(KEY_BLINK_MS, 280).coerceIn(100, 2000),
+        defaultFontSize = preferences.getInt(KEY_FONT_SIZE, 34).coerceIn(9, 34),
+        cursorStyle = preferences.getInt(KEY_CURSOR_STYLE, 0).coerceIn(0, 2),
+        cursorBlinkMs = preferences.getInt(KEY_BLINK_MS, 500).coerceIn(100, 2000),
     )
 
     fun save(settings: TerminalUiSettings) {

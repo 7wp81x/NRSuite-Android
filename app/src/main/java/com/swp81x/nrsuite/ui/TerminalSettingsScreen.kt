@@ -190,7 +190,7 @@ internal fun TerminalSettingsScreen(
                 Column(Modifier.weight(1f)) {
                     Text("Cursor blink", fontWeight = FontWeight.Medium)
                     Text(
-                        "${settings.cursorBlinkMs} ms · underline cursor",
+                        "${settings.cursorBlinkMs} ms · ${cursorStyleLabel(settings.cursorStyle)} cursor",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
@@ -303,4 +303,10 @@ private fun SettingsToggleRow(
         Spacer(Modifier.width(10.dp))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
+}
+
+private fun cursorStyleLabel(style: Int): String = when (style) {
+    0 -> "block"
+    2 -> "bar"
+    else -> "underline"
 }
