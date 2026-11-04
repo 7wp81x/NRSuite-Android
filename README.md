@@ -182,6 +182,20 @@ Provision, monitor, and control the ESP-NOW mesh from its own module. The underl
 
 </details>
 
+<details open>
+<summary><strong>Terminal / Termux SSH</strong></summary>
+
+- [x] **Native SSH terminal** - local Termux OpenSSH connection at `127.0.0.1:8022`, forced `nrsuite` username for local connections, native terminal emulator, multiple shell tabs, PTY resize, scrollback, selection, and clipboard support
+- [x] **Ed25519 / RSA public-key authentication** - encrypted key import, JSch BouncyCastle Ed25519 support, key fingerprint display, public-key-only auth, and pinned host-key validation
+- [x] **Autoconnect and recovery** - one connection attempt per Terminal visit, setup/connecting status, manual disconnect behavior, and explicit force reconnect
+- [x] **Terminal settings** - 34 dp default font size, block cursor, 500 ms blink, pinch-to-zoom, keyboard toggle, and IME-aware extra-key rows
+- [x] **Terminal Shortcuts** - quick bottom sheet, search, category filters, run modes, Home pinning, confirmation, `{{parameter}}` forms with command previews, and built-in editable examples
+- [x] **Tab/session safety** - closing the last tab is disabled; Disconnect SSH is the explicit transport-close action
+- [x] **Terminal guide** - [Termux SSH setup, auth, shortcuts, and troubleshooting](docs/TERMINAL-GUIDE.md)
+- [ ] **Termux tools** - planned Nmap topology visualization, PCAP workflows, and optional Wireshark through Termux:X11
+
+</details>
+
 <details>
 <summary><strong>Storage</strong></summary>
 
@@ -293,8 +307,10 @@ See [docs/USAGE-GUIDE.md](docs/USAGE-GUIDE.md) for:
 - IR Config, IR Remotes, Receiver, Finder, and Jammer usage
 - Sensor Config and HLK-LD2450 UART wiring
 - BLE/USB essentials, troubleshooting, and safety notes
+- Termux SSH setup, key authentication, terminal defaults, shortcuts, and reconnect behavior
 
 The guide is intentionally general and is not tied to a single release version.
+See [docs/TERMINAL-GUIDE.md](docs/TERMINAL-GUIDE.md) for the dedicated terminal guide.
 
 ---
 

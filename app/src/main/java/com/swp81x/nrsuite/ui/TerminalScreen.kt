@@ -6,6 +6,7 @@ import android.net.Uri
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.inputmethod.InputMethodManager
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -37,6 +38,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Keyboard
@@ -46,6 +49,7 @@ import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -76,6 +80,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -86,6 +92,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.swp81x.nrsuite.core.terminal.DEFAULT_TERMINAL_PORT
 import com.swp81x.nrsuite.core.terminal.TERMUX_PACKAGE_NAME
 import com.swp81x.nrsuite.core.terminal.TerminalConfig
+import com.swp81x.nrsuite.core.terminal.TerminalHostKeyMismatch
 import com.swp81x.nrsuite.core.terminal.TerminalKeyInfo
 import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
 import com.swp81x.nrsuite.core.terminal.TerminalSessionEntry
@@ -99,6 +106,7 @@ import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusRed
 import com.termux.terminal.TerminalSession
+import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 import kotlinx.coroutines.launch
@@ -130,6 +138,7 @@ internal fun TerminalScreen(
     initialUsername: String,
     onConnect: (TerminalConfig) -> Unit,
     onDisconnect: () -> Unit,
+    onForceReconnect: () -> Unit,
     onNewSession: () -> Unit,
     onCloseSession: (Int) -> Unit,
     onOpenLauncher: () -> Unit,
@@ -139,6 +148,7 @@ internal fun TerminalScreen(
     onSetUpdateListener: ((() -> Unit)?) -> Unit,
     onSetColorScheme: (IntArray, Int, Int, Int) -> Unit,
     onClearPinnedHostKey: () -> Unit,
+    onTrustChangedHostKey: () -> Unit,
     onImportKeyFromRoot: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -154,6 +164,22 @@ internal fun TerminalScreen(
         }.isSuccess
     }
 
+    if (connectionState is TerminalConnectionState.Connecting &&
+        terminalSettings.autoconnect &&
+        hasPrivateKey
+    ) {
+        TerminalConnectingScreen(
+            host = host,
+            port = port,
+            username = username,
+            keyInfo = keyInfo,
+            terminalTextSize = terminalSettings.defaultFontSize,
+            onCancel = onDisconnect,
+            modifier = modifier,
+        )
+        return
+    }
+
     when (connectionState) {
         is TerminalConnectionState.Connected -> {
             if (terminalSessions.isNotEmpty()) {
@@ -163,6 +189,7 @@ internal fun TerminalScreen(
                     terminalSettings = terminalSettings,
                     initialSessionId = initialSessionId,
                     onDisconnect = onDisconnect,
+                    onForceReconnect = onForceReconnect,
                     onNewSession = onNewSession,
                     onCloseSession = onCloseSession,
                     onOpenLauncher = onOpenLauncher,
@@ -211,14 +238,131 @@ internal fun TerminalScreen(
                 onInstallTermux = { openBrowser(context, TERMUX_DOWNLOAD_URL) },
                 onCopySetup = {
                     clipboard.setText(AnnotatedString(terminalSetupCommands))
+                    Toast.makeText(
+                        context,
+                        "Setup commands copied",
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 },
                 onClearPinnedHostKey = onClearPinnedHostKey,
+                onTrustChangedHostKey = onTrustChangedHostKey,
                 onOpenSettings = onOpenSettings,
                 onImportKeyFromRoot = onImportKeyFromRoot,
                 modifier = modifier,
             )
         }
     }
+}
+
+@Composable
+private fun TerminalConnectingScreen(
+    host: String,
+    port: String,
+    username: String,
+    keyInfo: TerminalKeyInfo?,
+    terminalTextSize: Int,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val statusView = remember { mutableStateOf<TerminalView?>(null) }
+    val statusSessionClient = remember {
+        connectingTerminalSessionClient {
+            val view = statusView.value
+            view?.post { view.onScreenUpdated() }
+        }
+    }
+    val statusSession = remember(host, port, username, keyInfo?.fingerprint, statusSessionClient) {
+        TerminalSession(statusSessionClient)
+    }
+    val viewClient = remember {
+        NativeTerminalViewClient(
+            onSingleTap = {},
+            onZoom = {},
+            readControl = { false },
+            readAlt = { false },
+            onSwipe = {},
+        )
+    }
+    LaunchedEffect(statusSession, host, port, username, keyInfo) {
+        val statusText = buildString {
+            append("\r\n")
+            append("\u001b[1;36mTermux SSH\u001b[0m\r\n\r\n")
+            append("Host:   $host\r\n")
+            append("Port:   $port\r\n")
+            append("User:   $username\r\n")
+            keyInfo?.let { info ->
+                append("Key:    ${info.name}\r\n")
+                append("SHA256: ${info.fingerprint.removePrefix("SHA256:")}\r\n")
+            }
+            append("\r\n")
+            append("\u001b[33mConnecting...\u001b[0m\r\n")
+            append("The terminal will open automatically when the SSH connection is ready.\r\n")
+        }
+        val bytes = statusText.toByteArray(Charsets.UTF_8)
+        statusSession.feedOutput(bytes, 0, bytes.size)
+    }
+    DisposableEffect(statusSession) {
+        onDispose { statusSession.finishIfRunning() }
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { viewContext ->
+                TerminalView(viewContext, null).apply {
+                    statusView.value = this
+                    setTextSize(terminalTextSize)
+                    setTerminalViewClient(viewClient)
+                    attachSession(statusSession)
+                    setTerminalCursorBlinkerState(false, false)
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                    isClickable = false
+                    postInvalidate()
+                }
+            },
+            update = { view ->
+                statusView.value = view
+                view.setTextSize(terminalTextSize)
+                view.setTerminalViewClient(viewClient)
+                if (view.currentSession !== statusSession) {
+                    view.attachSession(statusSession)
+                }
+                view.setTerminalCursorBlinkerState(false, false)
+                view.postInvalidate()
+            },
+        )
+        TextButton(
+            onClick = onCancel,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp),
+        ) {
+            Text("Cancel")
+        }
+    }
+}
+
+private fun connectingTerminalSessionClient(
+    onTextChanged: () -> Unit,
+): TerminalSessionClient = object : TerminalSessionClient {
+    override fun onTextChanged(changedSession: TerminalSession) = onTextChanged()
+    override fun onTitleChanged(changedSession: TerminalSession) = Unit
+    override fun onSessionFinished(finishedSession: TerminalSession) = Unit
+    override fun onCopyTextToClipboard(session: TerminalSession, text: String) = Unit
+    override fun onPasteTextFromClipboard(session: TerminalSession?) = Unit
+    override fun onBell(session: TerminalSession) = Unit
+    override fun onColorsChanged(session: TerminalSession) = Unit
+    override fun onTerminalCursorStateChange(state: Boolean) = Unit
+    override fun setTerminalShellPid(session: TerminalSession, pid: Int) = Unit
+    override fun getTerminalCursorStyle(): Int? = 0
+    override fun logError(tag: String, message: String) = Unit
+    override fun logWarn(tag: String, message: String) = Unit
+    override fun logInfo(tag: String, message: String) = Unit
+    override fun logDebug(tag: String, message: String) = Unit
+    override fun logVerbose(tag: String, message: String) = Unit
+    override fun logStackTraceWithMessage(tag: String, message: String, e: Exception) = Unit
+    override fun logStackTrace(tag: String, e: Exception) = Unit
 }
 
 @Composable
@@ -239,10 +383,35 @@ private fun TerminalSetup(
     onInstallTermux: () -> Unit,
     onCopySetup: () -> Unit,
     onClearPinnedHostKey: () -> Unit,
+    onTrustChangedHostKey: () -> Unit,
     onOpenSettings: () -> Unit,
     onImportKeyFromRoot: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val focusManager = LocalFocusManager.current
+    val softwareKeyboardController = LocalSoftwareKeyboardController.current
+    var dismissedHostKeyFingerprint by rememberSaveable { mutableStateOf<String?>(null) }
+    val hostKeyMismatch = (state as? TerminalConnectionState.Failed)?.hostKeyMismatch
+    if (hostKeyMismatch != null &&
+        dismissedHostKeyFingerprint != hostKeyMismatch.newFingerprint
+    ) {
+        HostKeyMismatchDialog(
+            mismatch = hostKeyMismatch,
+            onDismiss = {
+                dismissedHostKeyFingerprint = hostKeyMismatch.newFingerprint
+            },
+            onTrust = {
+                dismissedHostKeyFingerprint = hostKeyMismatch.newFingerprint
+                onTrustChangedHostKey()
+            },
+        )
+    }
+    val openSettings = {
+        focusManager.clearFocus()
+        softwareKeyboardController?.hide()
+        onOpenSettings()
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -267,7 +436,7 @@ private fun TerminalSetup(
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            text = "Termux SSH terminal",
+                            text = "Termux SSH",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -278,7 +447,7 @@ private fun TerminalSetup(
                         leadingIcon = Icons.Default.Refresh,
                         compact = true,
                     )
-                    IconButton(onClick = onOpenSettings) {
+                    IconButton(onClick = openSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Terminal Settings")
                     }
                 }
@@ -430,6 +599,15 @@ private fun TerminalSetup(
                         style = MaterialTheme.typography.bodySmall,
                         color = StatusRed,
                     )
+                    if (state.hostKeyMismatch != null) {
+                        NrQuietButton(
+                            text = "Review changed SSH host key",
+                            onClick = {
+                                dismissedHostKeyFingerprint = null
+                            },
+                            compact = true,
+                        )
+                    }
                 }
                 if (state is TerminalConnectionState.Disconnected &&
                     !state.message.isNullOrBlank()
@@ -471,12 +649,71 @@ private fun TerminalSetup(
 }
 
 @Composable
+private fun HostKeyMismatchDialog(
+    mismatch: TerminalHostKeyMismatch,
+    onDismiss: () -> Unit,
+    onTrust: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("SSH host key changed") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "The SSH server presented a different host key than the one pinned " +
+                        "for this device. This can happen after reinstalling Termux, but " +
+                        "it can also indicate an interception attempt.",
+                )
+                Text(
+                    text = "${mismatch.host}:${mismatch.port}",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                )
+                mismatch.oldFingerprint?.let { oldFingerprint ->
+                    Text(
+                        text = "Pinned: $oldFingerprint",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    text = "New: ${mismatch.newFingerprint}",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                    color = StatusAmber,
+                )
+                Text(
+                    text = "Only trust the new key if you intentionally reinstalled Termux " +
+                        "or changed its SSH host key.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            NrPrimaryButton(
+                text = "Trust and reconnect",
+                onClick = onTrust,
+            )
+        },
+        dismissButton = {
+            NrQuietButton(text = "Cancel", onClick = onDismiss)
+        },
+    )
+}
+
+@Composable
 private fun ConnectedTerminal(
     state: TerminalConnectionState.Connected,
     terminalSessions: List<TerminalSessionEntry>,
     terminalSettings: TerminalUiSettings,
     initialSessionId: Int?,
     onDisconnect: () -> Unit,
+    onForceReconnect: () -> Unit,
     onNewSession: () -> Unit,
     onCloseSession: (Int) -> Unit,
     onOpenLauncher: () -> Unit,
@@ -507,8 +744,30 @@ private fun ConnectedTerminal(
         val index = terminalSessions.indexOfFirst { it.id == initialSessionId }
         if (index >= 0) pagerState.animateScrollToPage(index)
     }
-    LaunchedEffect(pagerState.currentPage, terminalSessions) {
+    val inputMethodManager = remember(context) {
+        context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+    }
+    fun focusActiveTerminal(showIme: Boolean) {
+        val activeView = terminalViews[activeSession.id] ?: return
+        terminalViews.values.forEach { view ->
+            if (view !== activeView) view.clearFocus()
+        }
+        activeView.requestFocusFromTouch()
+        activeView.post {
+            activeView.requestFocus()
+            activeView.onScreenUpdated()
+            inputMethodManager?.restartInput(activeView)
+            if (showIme) {
+                inputMethodManager?.showSoftInput(
+                    activeView,
+                    InputMethodManager.SHOW_IMPLICIT,
+                )
+            }
+        }
+    }
+    LaunchedEffect(pagerState.currentPage, terminalSessions, imeVisible) {
         activeSession?.let { onActiveSessionChanged(it.id) }
+        focusActiveTerminal(showIme = imeVisible)
     }
     LaunchedEffect(terminalSessions.size) {
         if (terminalSessions.size > previousSessionCount && terminalSessions.isNotEmpty()) {
@@ -560,27 +819,22 @@ private fun ConnectedTerminal(
     }
 
     val showKeyboard: () -> Unit = {
-        terminalViews[activeSession.id]?.let { view ->
-            view.requestFocus()
-            view.requestFocusFromTouch()
-            view.post {
-                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE)
-                    as? InputMethodManager
-                imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
-            }
-        }
+        focusActiveTerminal(showIme = true)
     }
     val hideKeyboard: () -> Unit = {
-        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE)
-            as? InputMethodManager
-        imm?.hideSoftInputFromWindow(
-            terminalViews[activeSession.id]?.windowToken,
-            0,
-        )
+        val activeView = terminalViews[activeSession.id]
+        activeView?.clearFocus()
+        inputMethodManager?.hideSoftInputFromWindow(activeView?.windowToken, 0)
+    }
+    val openSettings: () -> Unit = {
+        hideKeyboard()
+        onOpenSettings()
     }
 
     Column(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .imePadding(),
     ) {
         Row(
             modifier = Modifier
@@ -613,10 +867,18 @@ private fun ConnectedTerminal(
                     )
                     DropdownMenuItem(
                         text = { Text("Close current tab") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Close, contentDescription = null)
+                        },
                         enabled = terminalSessions.size > 1,
                         onClick = {
                             terminalMenuExpanded = false
                             onCloseSession(activeSession.id)
+                            Toast.makeText(
+                                context,
+                                "Closed ${activeSession.title}",
+                                Toast.LENGTH_SHORT,
+                            ).show()
                         },
                     )
                     DropdownMenuItem(
@@ -632,12 +894,21 @@ private fun ConnectedTerminal(
                         leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
                         onClick = {
                             terminalMenuExpanded = false
-                            onOpenSettings()
+                            openSettings()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Force reconnect") },
+                        leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
+                        onClick = {
+                            terminalMenuExpanded = false
+                            onForceReconnect()
                         },
                     )
                     HorizontalDivider()
                     DropdownMenuItem(
                         text = { Text("Disconnect SSH") },
+                        leadingIcon = { Icon(Icons.Default.LinkOff, contentDescription = null) },
                         onClick = {
                             terminalMenuExpanded = false
                             onDisconnect()
@@ -666,7 +937,7 @@ private fun ConnectedTerminal(
                     },
                 )
             }
-            IconButton(onClick = onOpenSettings) {
+            IconButton(onClick = openSettings) {
                 Icon(Icons.Default.Settings, contentDescription = "Terminal Settings")
             }
             IconButton(onClick = onNewSession) {
@@ -684,9 +955,18 @@ private fun ConnectedTerminal(
             val entry = terminalSessions[page]
             NativeTerminalPage(
                 entry = entry,
+                isActive = page == pagerState.currentPage,
                 terminalTextSize = terminalTextSize,
                 cursorBlinkMs = terminalSettings.cursorBlinkMs,
-                onViewReady = { view -> terminalViews[entry.id] = view },
+                onViewReady = { view ->
+                    terminalViews[entry.id] = view
+                    if (entry.id == activeSession.id) {
+                        view.post {
+                            view.requestFocus()
+                            view.requestFocusFromTouch()
+                        }
+                    }
+                },
                 onViewDisposed = { terminalViews.remove(entry.id) },
                 onShowKeyboard = showKeyboard,
                 onZoom = { increase ->
@@ -719,29 +999,32 @@ private fun ConnectedTerminal(
             )
         }
 
-        TerminalExtraKeys(
-            modifier = Modifier.imePadding(),
-            ctrlActive = ctrlActive,
-            altActive = altActive,
-            onToggleCtrl = {
-                ctrlActive = !ctrlActive
-                showKeyboard()
-            },
-            onToggleAlt = {
-                altActive = !altActive
-                showKeyboard()
-            },
-            onKey = { sequence ->
-                activeSession.session.write(sequence)
-                showKeyboard()
-            },
-        )
+        if (imeVisible) {
+            TerminalExtraKeys(
+                modifier = Modifier,
+                ctrlActive = ctrlActive,
+                altActive = altActive,
+                onToggleCtrl = {
+                    ctrlActive = !ctrlActive
+                    showKeyboard()
+                },
+                onToggleAlt = {
+                    altActive = !altActive
+                    showKeyboard()
+                },
+                onKey = { sequence ->
+                    activeSession.session.write(sequence)
+                    showKeyboard()
+                },
+            )
+        }
     }
 }
 
 @Composable
 private fun NativeTerminalPage(
     entry: TerminalSessionEntry,
+    isActive: Boolean,
     terminalTextSize: Int,
     cursorBlinkMs: Int,
     onViewReady: (TerminalView) -> Unit,
@@ -779,7 +1062,12 @@ private fun NativeTerminalPage(
                 setTerminalCursorBlinkerState(true, true)
                 isFocusable = true
                 isFocusableInTouchMode = true
-                requestFocus()
+                if (isActive) {
+                    post {
+                        requestFocus()
+                        requestFocusFromTouch()
+                    }
+                }
                 postInvalidate()
                 viewState.value = this
                 onViewReady(this)
@@ -792,6 +1080,12 @@ private fun NativeTerminalPage(
             view.setTerminalCursorBlinkerRate(cursorBlinkMs)
             if (view.currentSession !== entry.session) {
                 view.attachSession(entry.session)
+            }
+            if (isActive && !view.hasFocus()) {
+                view.post {
+                    view.requestFocus()
+                    view.requestFocusFromTouch()
+                }
             }
             view.setTerminalCursorBlinkerState(true, true)
             view.postInvalidate()

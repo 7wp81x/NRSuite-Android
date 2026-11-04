@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
 import com.jcraft.jsch.ChannelExec
@@ -26,6 +27,7 @@ import java.security.MessageDigest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,12 +51,23 @@ data class TerminalSessionEntry(
     val session: TerminalSession,
 )
 
+data class TerminalHostKeyMismatch(
+    val host: String,
+    val port: Int,
+    val username: String,
+    val oldFingerprint: String?,
+    val newFingerprint: String,
+)
+
 sealed interface TerminalConnectionState {
     data class Disconnected(val message: String? = null) : TerminalConnectionState
     data object Connecting : TerminalConnectionState
     data class Connected(val host: String, val port: Int, val username: String) :
         TerminalConnectionState
-    data class Failed(val message: String) : TerminalConnectionState
+    data class Failed(
+        val message: String,
+        val hostKeyMismatch: TerminalHostKeyMismatch? = null,
+    ) : TerminalConnectionState
 }
 
 const val TERMUX_PACKAGE_NAME = "com.termux"
@@ -99,6 +112,18 @@ internal class SshTerminalManager(
 
     @Volatile
     private var screenUpdateListener: (() -> Unit)? = null
+
+    @Volatile
+    private var lastConnectionConfig: TerminalConfig? = null
+
+    init {
+        // Warm the BouncyCastle signature classes off the UI thread so the first
+        // local SSH connection does not pay their class-loading cost.
+        scope.launch(Dispatchers.IO) {
+            configureJschEd25519()
+            runCatching { Class.forName("org.bouncycastle.crypto.signers.Ed25519Signer") }
+        }
+    }
 
     private val _state = MutableStateFlow<TerminalConnectionState>(
         TerminalConnectionState.Disconnected(),
@@ -153,6 +178,7 @@ internal class SshTerminalManager(
                     }
                     // Parse the key with JSch before persisting it so malformed or
                     // wrong-passphrase keys fail loudly instead of breaking autoconnect.
+                    configureJschEd25519()
                     JSch().addIdentity(
                         "nrsuite-key-validation",
                         bytes,
@@ -234,7 +260,15 @@ internal class SshTerminalManager(
     }.isSuccess
 
     fun clearPinnedHostKey() {
-        preferences.edit().remove(KEY_PINNED_HOST_KEY).apply()
+        pinnedHostKeys.clear()
+    }
+
+    fun trustChangedHostKeyAndReconnect() {
+        val config = lastConnectionConfig ?: return
+        if (!pinnedHostKeys.acceptPendingChangedKey()) {
+            return
+        }
+        connect(config)
     }
 
     fun connect(config: TerminalConfig) {
@@ -251,6 +285,8 @@ internal class SshTerminalManager(
             username = if (isLocalHost) termuxSshUsername() else config.username.trim(),
             password = config.password,
         )
+        lastConnectionConfig = normalized
+        pinnedHostKeys.beginConnection()
         saveConnectionPreferences(normalized)
         if (_settings.value.savePassword) {
             terminalPreferences.savePassword(normalized.password)
@@ -277,7 +313,8 @@ internal class SshTerminalManager(
             }.onFailure { error ->
                 closeTransport()
                 _state.value = TerminalConnectionState.Failed(
-                    terminalErrorMessage(error, normalized),
+                    message = terminalErrorMessage(error, normalized),
+                    hostKeyMismatch = pinnedHostKeys.pendingMismatch(normalized),
                 )
             }
         }
@@ -294,7 +331,11 @@ internal class SshTerminalManager(
                 publishSessions()
                 newSession.start()
                 if (!initialCommand.isNullOrBlank()) {
-                    val suffix = if (closeAfterCommand) "; exit\r" else "\r"
+                    val suffix = if (closeAfterCommand) {
+                        "; printf '\\n[Press Enter to close]\\n'; read -r _; exit\r"
+                    } else {
+                        "\r"
+                    }
                     newSession.terminalSession.write(initialCommand + suffix)
                 }
             }.onFailure { error ->
@@ -380,15 +421,38 @@ internal class SshTerminalManager(
     }
 
     fun closeSession(id: Int) {
-        val managed = managedSessions.remove(id) ?: return
-        managed.close("Session closed")
-        publishSessions()
-        if (managedSessions.isEmpty()) {
-            disconnect("Disconnected")
+        // A terminal destination must always retain one shell tab. Explicitly
+        // disconnecting SSH is handled by the separate Disconnect action.
+        Log.i(
+            "NRSuiteTerminal",
+            "Close tab requested: id=$id, openTabs=${managedSessions.size}",
+        )
+        if (managedSessions.size <= 1) {
+            Log.i("NRSuiteTerminal", "Close tab ignored: last tab must remain open")
+            return
         }
+        val managed = managedSessions[id] ?: return
+        // Ask the remote shell to exit and let the channel close naturally.
+        // Calling channel.disconnect() immediately after closing one channel
+        // caused the server to tear down the shared SSH transport in testing.
+        managed.requestGracefulClose()
+        Log.i(
+            "NRSuiteTerminal",
+            "Close tab requested gracefully: id=$id, remainingTabs=${managedSessions.size - 1}",
+        )
+    }
+
+    fun forceReconnect() {
+        val config = lastConnectionConfig ?: savedConnectionConfig() ?: return
+        disconnect("Reconnecting...")
+        connect(config)
     }
 
     fun disconnect(message: String? = null) {
+        Log.i(
+            "NRSuiteTerminal",
+            "Disconnect SSH requested: tabs=${managedSessions.size}, reason=$message",
+        )
         managedSessions.values.toList().forEach { it.close(message ?: "Disconnected") }
         managedSessions.clear()
         publishSessions()
@@ -414,6 +478,19 @@ internal class SshTerminalManager(
         screenUpdateListener?.invoke()
     }
 
+    private fun configureJschEd25519() {
+        // Android's JCE does not provide Ed25519 signatures. JSch ships a
+        // BouncyCastle lightweight-API implementation, but it is not the default.
+        JSch.setConfig(
+            "signature.ed25519",
+            "com.jcraft.jsch.bc.SignatureEd25519",
+        )
+        JSch.setConfig(
+            "signature.ed448",
+            "com.jcraft.jsch.bc.SignatureEd448",
+        )
+    }
+
     private fun openSshSession(config: TerminalConfig): Session {
         if (config.username.isBlank()) {
             throw IllegalArgumentException("Enter the Termux SSH username.")
@@ -421,6 +498,12 @@ internal class SshTerminalManager(
         if (config.password.isEmpty() && !terminalPreferences.hasPrivateKey()) {
             throw IllegalArgumentException("Enter the Termux SSH password or import an SSH key.")
         }
+        configureJschEd25519()
+        val connectStartedAt = SystemClock.elapsedRealtime()
+        Log.i(
+            "NRSuiteTerminal",
+            "SSH connect started: ${config.username}@${config.host}:${config.port}",
+        )
         val authJsch = JSch()
         JSch.setLogger(jschLogger)
         terminalPreferences.loadPrivateKey()?.let { key ->
@@ -435,6 +518,7 @@ internal class SshTerminalManager(
             if (config.password.isNotEmpty()) setPassword(config.password)
             setHostKeyRepository(pinnedHostKeys)
             setConfig("StrictHostKeyChecking", "yes")
+            setConfig("CheckHostIP", "no")
             setConfig("PreferredAuthentications", "publickey")
             setConfig("PubkeyAcceptedAlgorithms", "ssh-ed25519,rsa-sha2-512,rsa-sha2-256,ssh-rsa")
             setConfig("PubkeyAcceptedKeyTypes", "ssh-ed25519,rsa-sha2-512,rsa-sha2-256,ssh-rsa")
@@ -444,17 +528,26 @@ internal class SshTerminalManager(
             timeout = 15_000
             connect(15_000)
             sshSession = this
+            Log.i(
+                "NRSuiteTerminal",
+                "SSH authenticated in ${SystemClock.elapsedRealtime() - connectStartedAt} ms",
+            )
         }
     }
 
     private fun openShellSession(@Suppress("UNUSED_PARAMETER") config: TerminalConfig?): ManagedTerminalSession {
         val activeSsh = sshSession ?: throw IllegalStateException("SSH session is not connected.")
+        val shellStartedAt = SystemClock.elapsedRealtime()
         val channel = (activeSsh.openChannel("shell") as ChannelShell).apply {
             setPty(true)
             setPtyType("xterm-256color")
             setPtySize(80, 24, 0, 0)
             connect(15_000)
         }
+        Log.i(
+            "NRSuiteTerminal",
+            "SSH shell opened in ${SystemClock.elapsedRealtime() - shellStartedAt} ms",
+        )
         val id = nextSessionId++
         val terminal = TerminalSession(terminalSessionClient)
         return ManagedTerminalSession(
@@ -511,6 +604,26 @@ internal class SshTerminalManager(
     ) {
         private var readerJob: Job? = null
         private var output: OutputStream? = null
+        private var gracefulCloseRequested = false
+
+        fun requestGracefulClose() {
+            if (gracefulCloseRequested) return
+            gracefulCloseRequested = true
+            terminalSession.write("exit\r")
+            scope.launch {
+                delay(1_500)
+                if (managedSessions[id] === this@ManagedTerminalSession) {
+                    Log.w(
+                        "NRSuiteTerminal",
+                        "Graceful tab close timed out; forcing channel close for id=$id",
+                    )
+                    withContext(Dispatchers.IO) {
+                        runCatching { channel.disconnect() }
+                    }
+                    removeManagedSession(this@ManagedTerminalSession)
+                }
+            }
+        }
 
         fun start() {
             terminalSession.setExternalTransport(
@@ -664,6 +777,38 @@ internal class SshTerminalManager(
     private class PinnedHostKeyRepository(
         private val preferences: SharedPreferences,
     ) : HostKeyRepository {
+        private var pendingChangedKey: ByteArray? = null
+        private var pendingOldFingerprint: String? = null
+
+        fun beginConnection() {
+            pendingChangedKey = null
+            pendingOldFingerprint = null
+        }
+
+        fun pendingMismatch(config: TerminalConfig): TerminalHostKeyMismatch? {
+            val changedKey = pendingChangedKey ?: return null
+            return TerminalHostKeyMismatch(
+                host = config.host,
+                port = config.port,
+                username = config.username,
+                oldFingerprint = pendingOldFingerprint,
+                newFingerprint = fingerprint(changedKey),
+            )
+        }
+
+        fun acceptPendingChangedKey(): Boolean {
+            val changedKey = pendingChangedKey ?: return false
+            save(changedKey)
+            pendingChangedKey = null
+            pendingOldFingerprint = null
+            return true
+        }
+
+        fun clear() {
+            preferences.edit().remove(KEY_PINNED_HOST_KEY).apply()
+            beginConnection()
+        }
+
         override fun check(host: String?, key: ByteArray?): Int {
             if (key == null) return HostKeyRepository.NOT_INCLUDED
             val saved = preferences.getString(KEY_PINNED_HOST_KEY, null)
@@ -673,10 +818,17 @@ internal class SshTerminalManager(
             }
             val savedBytes = runCatching {
                 Base64.decode(saved, Base64.NO_WRAP)
-            }.getOrNull() ?: return HostKeyRepository.CHANGED
+            }.getOrNull()
+            if (savedBytes == null) {
+                pendingChangedKey = key.copyOf()
+                pendingOldFingerprint = null
+                return HostKeyRepository.CHANGED
+            }
             return if (savedBytes.contentEquals(key)) {
                 HostKeyRepository.OK
             } else {
+                pendingChangedKey = key.copyOf()
+                pendingOldFingerprint = fingerprint(savedBytes)
                 HostKeyRepository.CHANGED
             }
         }
@@ -703,6 +855,14 @@ internal class SshTerminalManager(
             preferences.edit()
                 .putString(KEY_PINNED_HOST_KEY, Base64.encodeToString(key, Base64.NO_WRAP))
                 .apply()
+        }
+
+        private fun fingerprint(key: ByteArray): String {
+            val digest = MessageDigest.getInstance("SHA-256").digest(key)
+            return "SHA256:" + Base64.encodeToString(
+                digest,
+                Base64.NO_WRAP or Base64.NO_PADDING,
+            )
         }
     }
 

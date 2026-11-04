@@ -283,11 +283,13 @@ class MainViewModel(internal val app: Application) {
     fun clearTerminalPrivateKey() = terminalManager.clearPrivateKey()
     fun connectTerminal(config: TerminalConfig) = terminalManager.connect(config)
     fun disconnectTerminal(message: String? = null) = terminalManager.disconnect(message)
+    fun forceReconnectTerminal() = terminalManager.forceReconnect()
     fun newTerminalSession() = terminalManager.newSession()
     fun closeTerminalSession(id: Int) = terminalManager.closeSession(id)
     fun setActiveTerminalSession(id: Int) = terminalManager.setActiveSession(id)
     fun isTermuxInstalled(): Boolean = terminalManager.isTermuxInstalled()
     fun clearTerminalPinnedHostKey() = terminalManager.clearPinnedHostKey()
+    fun trustChangedTerminalHostKeyAndReconnect() = terminalManager.trustChangedHostKeyAndReconnect()
     fun setTerminalViewUpdateListener(listener: (() -> Unit)?) =
         terminalManager.setTerminalViewUpdateListener(listener)
     fun setTerminalColorScheme(
