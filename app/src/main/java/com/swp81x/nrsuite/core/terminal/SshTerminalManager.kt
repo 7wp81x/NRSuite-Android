@@ -76,6 +76,20 @@ internal class SshTerminalManager(
     val keyInfo: StateFlow<TerminalKeyInfo?> = _keyInfo.asStateFlow()
     private val writeMutex = Mutex()
     private val pinnedHostKeys = PinnedHostKeyRepository(preferences)
+    private val jschLogger = object : com.jcraft.jsch.Logger {
+        override fun isEnabled(level: Int): Boolean = true
+
+        override fun log(level: Int, message: String) {
+            val priority = when (level) {
+                com.jcraft.jsch.Logger.ERROR -> Log.ERROR
+                com.jcraft.jsch.Logger.FATAL -> Log.ERROR
+                com.jcraft.jsch.Logger.WARN -> Log.WARN
+                com.jcraft.jsch.Logger.INFO -> Log.INFO
+                else -> Log.DEBUG
+            }
+            Log.println(priority, "NRSuiteTerminalJSch", message)
+        }
+    }
     private val managedSessions = linkedMapOf<Int, ManagedTerminalSession>()
     private var nextSessionId = 1
     private var activeSessionId: Int? = null
@@ -106,15 +120,7 @@ internal class SshTerminalManager(
 
     fun savedUsername(): String = preferences.getString(KEY_USERNAME, "").orEmpty()
 
-    fun termuxSshUsername(): String {
-        return runCatching {
-            val appInfo = context.packageManager.getApplicationInfo(TERMUX_PACKAGE_NAME, 0)
-            val uid = appInfo.uid
-            val userId = uid / 100_000
-            val appId = uid % 100_000
-            "u${userId}_a${appId - 10_000}"
-        }.getOrDefault("nrsuite")
-    }
+    fun termuxSshUsername(): String = "nrsuite"
 
     fun savedConnectionConfig(): TerminalConfig? {
         val username = termuxSshUsername()
@@ -409,6 +415,7 @@ internal class SshTerminalManager(
             throw IllegalArgumentException("Enter the Termux SSH password or import an SSH key.")
         }
         val authJsch = JSch()
+        JSch.setLogger(jschLogger)
         terminalPreferences.loadPrivateKey()?.let { key ->
             authJsch.addIdentity(
                 "nrsuite-terminal-key",
@@ -421,7 +428,9 @@ internal class SshTerminalManager(
             if (config.password.isNotEmpty()) setPassword(config.password)
             setHostKeyRepository(pinnedHostKeys)
             setConfig("StrictHostKeyChecking", "yes")
-            setConfig("PreferredAuthentications", "publickey,password,keyboard-interactive")
+            setConfig("PreferredAuthentications", "publickey")
+            setConfig("PubkeyAcceptedAlgorithms", "ssh-ed25519,rsa-sha2-512,rsa-sha2-256,ssh-rsa")
+            setConfig("PubkeyAcceptedKeyTypes", "ssh-ed25519,rsa-sha2-512,rsa-sha2-256,ssh-rsa")
             if (config.host == "127.0.0.1" || config.host.equals("localhost", ignoreCase = true)) {
                 setHostKeyAlias("nrsuite")
             }
@@ -472,7 +481,8 @@ internal class SshTerminalManager(
         if (raw.contains("Auth fail", ignoreCase = true) ||
             raw.contains("auth", ignoreCase = true) && raw.contains("fail", ignoreCase = true)
         ) {
-            return "Authentication failed. Check the Termux username and password."
+            return "SSH authentication failed. The SSH server rejected the imported key. " +
+                "Details: ${raw.ifBlank { "Auth fail" }}"
         }
         if (raw.contains("HostKey", ignoreCase = true) ||
             raw.contains("host key", ignoreCase = true)
