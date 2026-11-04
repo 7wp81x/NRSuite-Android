@@ -2,8 +2,12 @@ package com.swp81x.nrsuite.ui
 
 import android.widget.Toast
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.swp81x.nrsuite.MainViewModel
@@ -24,6 +28,16 @@ internal fun TerminalRoot(
     val hasPrivateKey by viewModel.terminalHasPrivateKey.collectAsState()
     val shortcuts by viewModel.terminalShortcuts.collectAsState()
     val categories by viewModel.terminalShortcutCategories.collectAsState()
+    var autoKeyCheckDone by remember { mutableStateOf(false) }
+
+    LaunchedEffect(hasPrivateKey, autoKeyCheckDone) {
+        if (!hasPrivateKey && !autoKeyCheckDone) {
+            autoKeyCheckDone = true
+            viewModel.importTerminalPrivateKeyFromRoot { success, message ->
+                if (success) Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     TerminalTabContent(
         connectionState = connectionState,
@@ -58,6 +72,11 @@ internal fun TerminalRoot(
                 "Pinned SSH host key cleared.",
                 Toast.LENGTH_SHORT,
             ).show()
+        },
+        onImportKeyFromRoot = {
+            viewModel.importTerminalPrivateKeyFromRoot { success, message ->
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
         },
         onRunShortcut = { shortcut ->
             viewModel.runTerminalShortcutCommand(

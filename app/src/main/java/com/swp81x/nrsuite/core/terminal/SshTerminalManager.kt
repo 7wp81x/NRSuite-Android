@@ -117,18 +117,36 @@ internal class SshTerminalManager(
         )
     }
 
-    fun importPrivateKey(uri: Uri, passphrase: String) {
+    fun importPrivateKey(
+        uri: Uri,
+        passphrase: String,
+        deleteAfterImport: Boolean = false,
+        onResult: (Boolean, String) -> Unit = { _, _ -> },
+    ) {
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
                     val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                         ?: error("Could not read the selected private key.")
+                    // Parse the key with JSch before persisting it so malformed or
+                    // wrong-passphrase keys fail loudly instead of breaking autoconnect.
+                    JSch().addIdentity(
+                        "nrsuite-key-validation",
+                        bytes,
+                        null,
+                        passphrase.toByteArray(Charsets.UTF_8),
+                    )
                     terminalPreferences.savePrivateKey("Termux SSH key", bytes, passphrase)
+                    if (deleteAfterImport) {
+                        runCatching { context.contentResolver.delete(uri, null, null) }
+                    }
                 }
             }.onSuccess {
                 _hasPrivateKey.value = true
+                onResult(true, "SSH key imported successfully.")
             }.onFailure { error ->
                 Log.e("NRSuiteTerminal", "Private key import failed", error)
+                onResult(false, "SSH key import failed: ${error.message ?: "unknown error"}")
             }
         }
     }
@@ -358,6 +376,9 @@ internal class SshTerminalManager(
             setHostKeyRepository(pinnedHostKeys)
             setConfig("StrictHostKeyChecking", "yes")
             setConfig("PreferredAuthentications", "publickey,password,keyboard-interactive")
+            if (config.host == "127.0.0.1" || config.host.equals("localhost", ignoreCase = true)) {
+                setHostKeyAlias("nrsuite")
+            }
             timeout = 15_000
             connect(15_000)
             sshSession = this

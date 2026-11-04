@@ -101,10 +101,18 @@ import kotlinx.coroutines.launch
 private const val TERMUX_FDROID_URL = "https://f-droid.org/packages/com.termux/"
 private const val TERMUX_GITHUB_URL = "https://github.com/termux/termux-app"
 private val terminalSetupCommands = """
-pkg install openssh
-passwd
-sshd
-whoami
+pkg update -y && pkg upgrade -y
+pkg install openssh termux-services -y
+termux-setup-storage
+mkdir -p ~/.ssh
+rm -f ~/.ssh/nrsuite ~/.ssh/nrsuite.pub
+ssh-keygen -t ed25519 -f ~/.ssh/nrsuite -N '' -C nrsuite
+cat ~/.ssh/nrsuite.pub >> ~/.ssh/authorized_keys
+chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys
+mkdir -p ~/storage/shared/NRSuite
+cp ~/.ssh/nrsuite ~/storage/shared/NRSuite/nrsuite_ssh_key
+sv-enable sshd
+sv up sshd
 """.trimIndent()
 
 @Composable
@@ -128,6 +136,7 @@ internal fun TerminalScreen(
     onSetUpdateListener: ((() -> Unit)?) -> Unit,
     onSetColorScheme: (IntArray, Int, Int, Int) -> Unit,
     onClearPinnedHostKey: () -> Unit,
+    onImportKeyFromRoot: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -205,6 +214,8 @@ internal fun TerminalScreen(
                 },
                 onOpenTermuxProject = { openBrowser(context, TERMUX_GITHUB_URL) },
                 onClearPinnedHostKey = onClearPinnedHostKey,
+                onOpenSettings = onOpenSettings,
+                onImportKeyFromRoot = onImportKeyFromRoot,
                 modifier = modifier,
             )
         }
@@ -231,6 +242,8 @@ private fun TerminalSetup(
     onCopySetup: () -> Unit,
     onOpenTermuxProject: () -> Unit,
     onClearPinnedHostKey: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onImportKeyFromRoot: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -321,10 +334,23 @@ private fun TerminalSetup(
                         .padding(10.dp),
                 )
                 Text(
-                    text = "Use whoami in Termux for the username. SSH listens on localhost:8022.",
+                    text = "Use the Termux setup block once. The app imports nrsuite_ssh_key " +
+                        "from the selected NRSuite root and removes it after import.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NrSecondaryButton(
+                        text = "Terminal Settings",
+                        onClick = onOpenSettings,
+                        compact = true,
+                    )
+                    NrQuietButton(
+                        text = "Import key from NRSuite root",
+                        onClick = onImportKeyFromRoot,
+                        compact = true,
+                    )
+                }
                 TextButton(onClick = onOpenTermuxProject) {
                     Text("Termux source / project")
                 }
@@ -343,6 +369,20 @@ private fun TerminalSetup(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
+                if (state is TerminalConnectionState.Disconnected && state.message.isNullOrBlank()) {
+                    Text(
+                        text = "Setup required. Configure Termux and connect below.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusAmber,
+                    )
+                }
+                if (state is TerminalConnectionState.Failed) {
+                    Text(
+                        text = "Connection failed. Check Termux setup and try again.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusRed,
+                    )
+                }
                 OutlinedTextField(
                     value = username,
                     onValueChange = onUsernameChange,
@@ -781,8 +821,8 @@ private fun NativeTerminalPage(
         factory = { viewContext ->
             TerminalView(viewContext, null).apply {
                 setTextSize(terminalTextSize)
-                setTerminalCursorBlinkerRate(cursorBlinkMs)
                 setTerminalViewClient(client)
+                setTerminalCursorBlinkerRate(cursorBlinkMs)
                 attachSession(entry.session)
                 setTerminalCursorBlinkerState(true, true)
                 isFocusable = true
@@ -796,6 +836,7 @@ private fun NativeTerminalPage(
         update = { view ->
             viewState.value = view
             view.setTextSize(terminalTextSize)
+            view.setTerminalViewClient(client)
             view.setTerminalCursorBlinkerRate(cursorBlinkMs)
             if (view.currentSession !== entry.session) {
                 view.attachSession(entry.session)

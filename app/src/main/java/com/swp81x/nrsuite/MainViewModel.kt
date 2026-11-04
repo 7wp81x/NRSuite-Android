@@ -6,11 +6,11 @@ import android.content.Intent
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.util.Log
 import androidx.core.content.ContextCompat
-import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.terminal.SshTerminalManager
 import com.swp81x.nrsuite.core.terminal.TerminalConfig
 import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
@@ -245,6 +245,35 @@ class MainViewModel(internal val app: Application) {
     fun updateTerminalSettings(settings: TerminalUiSettings) = terminalManager.updateSettings(settings)
     fun importTerminalPrivateKey(uri: Uri, passphrase: String) =
         terminalManager.importPrivateKey(uri, passphrase)
+    fun importTerminalPrivateKeyFromRoot(onResult: (Boolean, String) -> Unit) {
+        val rootUri = _exportDirectory.value
+        if (rootUri == null) {
+            onResult(false, "Select the NRSuite root directory first in Settings.")
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            val file = runCatching {
+                val root = DocumentFile.fromTreeUri(app, rootUri)
+                root?.findFile("nrsuite_ssh_key")
+                    ?: root?.findFile("nrsuite_ssh_key.pem")
+                    ?: root?.findFile("nrsuite_ssh_key.txt")
+            }.getOrNull()
+            if (file == null) {
+                withContext(Dispatchers.Main) {
+                    onResult(false, "No nrsuite_ssh_key found in the NRSuite root.")
+                }
+                return@launch
+            }
+            withContext(Dispatchers.Main) {
+                terminalManager.importPrivateKey(
+                    uri = file.uri,
+                    passphrase = "",
+                    deleteAfterImport = true,
+                    onResult = onResult,
+                )
+            }
+        }
+    }
     fun clearTerminalPrivateKey() = terminalManager.clearPrivateKey()
     fun connectTerminal(config: TerminalConfig) = terminalManager.connect(config)
     fun disconnectTerminal(message: String? = null) = terminalManager.disconnect(message)

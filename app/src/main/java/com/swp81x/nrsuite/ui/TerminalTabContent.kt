@@ -36,6 +36,7 @@ internal fun TerminalTabContent(
     onSetUpdateListener: ((() -> Unit)?) -> Unit,
     onSetColorScheme: (IntArray, Int, Int, Int) -> Unit,
     onClearPinnedHostKey: () -> Unit,
+    onImportKeyFromRoot: () -> Unit,
     onRunShortcut: (TerminalShortcut) -> Unit,
     onUpsertShortcut: (TerminalShortcut) -> Unit,
     onDeleteShortcut: (Long) -> Unit,
@@ -45,7 +46,8 @@ internal fun TerminalTabContent(
 ) {
     val context = LocalContext.current
 
-    if (showLauncher) {
+    val connected = connectionState is TerminalConnectionState.Connected
+    if (showLauncher && connected) {
         TerminalLauncherScreen(
             connectionState = connectionState,
             sessions = sessions,
@@ -102,6 +104,7 @@ internal fun TerminalTabContent(
                     Toast.LENGTH_LONG,
                 ).show()
             },
+            onImportKeyFromRoot = onImportKeyFromRoot,
             modifier = modifier,
         )
     }
