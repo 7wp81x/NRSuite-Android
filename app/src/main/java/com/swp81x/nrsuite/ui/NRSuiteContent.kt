@@ -2237,7 +2237,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onConnect = { device -> connectOrRequestPermission(device) },
                     onDisconnect = viewModel::disconnect,
                     onDisconnectDevice = viewModel::disconnectDevice,
-                    onRefreshStatus = viewModel::refreshActiveDeviceStatus,
+                    onRefreshStatus = viewModel::refreshDeviceStatus,
                     onSwitchDevice = { device ->
                         if (viewModel.switchActiveDevice(device)) {
                             Toast.makeText(
@@ -2570,7 +2570,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onConnect = { device -> connectOrRequestPermission(device) },
                 onDisconnect = viewModel::disconnect,
                 onDisconnectDevice = viewModel::disconnectDevice,
-                onRefreshStatus = viewModel::refreshActiveDeviceStatus,
+                onRefreshStatus = viewModel::refreshDeviceStatus,
                 onSwitchDevice = { device ->
                     if (viewModel.switchActiveDevice(device)) {
                         Toast.makeText(

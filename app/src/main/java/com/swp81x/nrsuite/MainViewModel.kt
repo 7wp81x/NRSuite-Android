@@ -1676,7 +1676,7 @@ class MainViewModel(internal val app: Application) {
     fun onPermissionResult(device: UsbDevice, granted: Boolean) = this.onPermissionResultImpl(device, granted)
 
     fun connect(device: UsbDevice) = this.connectImpl(device)
-    fun refreshActiveDeviceStatus() = this.refreshActiveDeviceStatusImpl()
+    fun refreshDeviceStatus(device: UsbDevice) = this.refreshDeviceStatusImpl(device)
     fun markPermissionRequested(device: UsbDevice) = this.markPermissionRequestedImpl(device)
     fun clearPermissionRequest(deviceId: Int) = this.clearPermissionRequestImpl(deviceId)
     fun disconnectDevice(device: UsbDevice) = this.disconnectDeviceImpl(device)

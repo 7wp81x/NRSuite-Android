@@ -176,7 +176,7 @@ internal fun DeviceScreen(
     onConnect: (UsbDevice) -> Unit,
     onDisconnect: () -> Unit,
     onDisconnectDevice: (UsbDevice) -> Unit,
-    onRefreshStatus: () -> Unit,
+    onRefreshStatus: (UsbDevice) -> Unit,
     onSwitchDevice: (UsbDevice) -> Unit,
     onOpenFirmwareFlasher: (UsbDevice?, String?) -> Unit,
     modifier: Modifier = Modifier,
@@ -274,7 +274,7 @@ internal fun DeviceConnectionCard(
     activeDevice: UsbSerialDevice?,
     disconnecting: Boolean,
     onDisconnect: () -> Unit,
-    onRefreshStatus: () -> Unit,
+    onRefreshStatus: (UsbDevice) -> Unit,
     onOpenFirmwareFlasher: (UsbDevice?, String?) -> Unit,
     firmwareUpdate: FirmwareUpdateInfo?,
     firmwareAssetDownload: FirmwareAssetDownloadState,
@@ -308,7 +308,7 @@ internal fun DeviceConnectionCard(
                 )
                 if (state is ConnectionState.Connected) {
                     IconButton(
-                        onClick = onRefreshStatus,
+                        onClick = { activeDevice?.device?.let { onRefreshStatus(it) } },
                         modifier = Modifier.size(30.dp),
                     ) {
                         Icon(
@@ -413,7 +413,7 @@ internal fun DeviceRow(
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onSwitch: () -> Unit,
-    onRefreshStatus: () -> Unit,
+    onRefreshStatus: (UsbDevice) -> Unit,
     onOpenFirmwareFlasher: (String?) -> Unit,
 ) {
     @Suppress("UNUSED_EXPRESSION")
@@ -581,11 +581,11 @@ private fun DeviceDetailsContent(
     hasPermission: Boolean,
     state: ConnectionState?,
     updateAvailableTag: String?,
-    onRefreshStatus: () -> Unit,
+    onRefreshStatus: (UsbDevice) -> Unit,
     onOpenFirmwareFlasher: (String?) -> Unit,
     onDisconnect: () -> Unit,
 ) {
-    DeviceInfoLine("Transport", entry.displayName)
+    DeviceInfoLine("USB port", entry.displayName)
     DeviceInfoLine("USB permission", if (hasPermission) "Granted" else "Required")
     DeviceInfoLine(
         "USB IDs",
@@ -606,7 +606,7 @@ private fun DeviceDetailsContent(
                 )
                 NrQuietButton(
                     text = "Refresh",
-                    onClick = onRefreshStatus,
+                    onClick = { onRefreshStatus(entry.device) },
                     leadingIcon = Icons.Default.Refresh,
                     compact = true,
                 )
@@ -720,6 +720,7 @@ private fun DeviceSpecsContent(state: ConnectionState.Connected) {
     )
     SpecRow("Flash", formatBytes(state.flashSize))
     if (!state.sdkVersion.isNullOrBlank()) SpecRow("SDK", state.sdkVersion)
+    SpecRow("Transport", transportLabel(state.transport))
     SpecRow("Features", "${state.features.size} advertised")
 }
 

@@ -133,10 +133,21 @@ internal fun MainViewModel.onUsbDeviceAttachedImpl(device: UsbDevice?) {
     }
 }
 
-internal fun MainViewModel.refreshActiveDeviceStatusImpl() {
-    val session = activeDeviceFingerprint?.let { deviceSessions[it]?.session } ?: return
+internal fun MainViewModel.refreshDeviceStatusImpl(device: UsbDevice) {
+    val fingerprint = deviceFingerprintImpl(device)
+    val session = deviceSessions[fingerprint]?.session
+        ?: activeDeviceFingerprint?.let { deviceSessions[it]?.session }
+        ?: return
     scope.launch {
+        appendLog("Refreshing device status for ${device.productName ?: device.deviceName}...", tag = "USB")
         runCatching { session.refreshStatus() }
+            .onSuccess { refreshed ->
+                if (refreshed) {
+                    appendLog("Device status refreshed.", tag = "USB")
+                } else {
+                    appendLog("Device status refresh returned no data.", level = LogLevel.INFO, tag = "USB")
+                }
+            }
             .onFailure { error ->
                 appendLog(
                     "Device status refresh failed: ${error.message ?: error.javaClass.simpleName}",
