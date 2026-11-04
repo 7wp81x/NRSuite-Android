@@ -407,7 +407,7 @@ internal class SshTerminalManager(
         _sessions.value = managedSessions.values.mapIndexed { index, managed ->
             TerminalSessionEntry(
                 id = managed.id,
-                title = "Session ${index + 1}",
+                title = "Tab ${index + 1}",
                 session = managed.terminalSession,
             )
         }

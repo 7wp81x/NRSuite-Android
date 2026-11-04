@@ -107,18 +107,10 @@ internal fun TerminalSettingsScreen(
         SettingsCard(title = "Connection") {
             SettingsToggleRow(
                 title = "Autoconnect",
-                description = "Connect automatically when the Terminal tab is opened, if a saved password exists.",
+                description = "Connect automatically when the Terminal tab is opened, if an SSH key is saved.",
                 checked = settings.autoconnect,
                 onCheckedChange = {
                     onUpdateSettings(settings.copy(autoconnect = it))
-                },
-            )
-            SettingsToggleRow(
-                title = "Save password securely",
-                description = "Stores the Termux password using Android Keystore. Disable to forget it.",
-                checked = settings.savePassword,
-                onCheckedChange = {
-                    onUpdateSettings(settings.copy(savePassword = it))
                 },
             )
             NrSecondaryButton(
@@ -184,7 +176,7 @@ internal fun TerminalSettingsScreen(
                     onClick = {
                         onUpdateSettings(
                             settings.copy(
-                                defaultFontSize = (settings.defaultFontSize + 1).coerceAtMost(28),
+                                defaultFontSize = (settings.defaultFontSize + 1).coerceAtMost(34),
                             ),
                         )
                     },

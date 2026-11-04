@@ -1076,6 +1076,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         activeModuleId == "terminal_settings" -> "Terminal Settings"
         selectedCategory != null -> selectedCategory!!
         selectedTab == AppTab.DEVICES -> "Devices"
+        selectedTab == AppTab.TERMINAL && showTerminalLauncher -> "Terminal Shortcuts"
         selectedTab == AppTab.TERMINAL -> "Terminal"
         selectedTab == AppTab.LOGS -> "Logs"
         else -> "NRSuite"

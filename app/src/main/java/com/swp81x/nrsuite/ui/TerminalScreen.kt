@@ -20,9 +20,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -63,6 +66,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -71,11 +75,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -99,21 +103,14 @@ import com.termux.view.TerminalViewClient
 import kotlinx.coroutines.launch
 
 private const val TERMUX_FDROID_URL = "https://f-droid.org/packages/com.termux/"
-private const val TERMUX_GITHUB_URL = "https://github.com/termux/termux-app"
-private val terminalSetupCommands = """
-pkg update -y && pkg upgrade -y
-pkg install openssh termux-services -y
-termux-setup-storage
-mkdir -p ~/.ssh
-rm -f ~/.ssh/nrsuite ~/.ssh/nrsuite.pub
-ssh-keygen -t ed25519 -f ~/.ssh/nrsuite -N '' -C nrsuite
-cat ~/.ssh/nrsuite.pub >> ~/.ssh/authorized_keys
-chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys
-mkdir -p ~/storage/shared/NRSuite
-cp ~/.ssh/nrsuite ~/storage/shared/NRSuite/nrsuite_ssh_key
-sv-enable sshd
-sv up sshd
-""".trimIndent()
+private val terminalSetupCommands =
+    "pkg update -y && pkg upgrade -y ; pkg install openssh termux-services -y ; " +
+        "termux-setup-storage ; mkdir -p ~/.ssh ; rm -f ~/.ssh/nrsuite ~/.ssh/nrsuite.pub ; " +
+        "ssh-keygen -t ed25519 -f ~/.ssh/nrsuite -N '' -C nrsuite ; " +
+        "cat ~/.ssh/nrsuite.pub >> ~/.ssh/authorized_keys ; chmod 700 ~/.ssh ; " +
+        "chmod 600 ~/.ssh/authorized_keys ; mkdir -p ~/storage/shared/NRSuite ; " +
+        "cp ~/.ssh/nrsuite ~/storage/shared/NRSuite/nrsuite_ssh_key ; " +
+        "sv-enable sshd ; sv up sshd"
 
 @Composable
 internal fun TerminalScreen(
@@ -144,7 +141,6 @@ internal fun TerminalScreen(
     var host by rememberSaveable { mutableStateOf(initialHost) }
     var port by rememberSaveable { mutableStateOf(initialPort.toString()) }
     var username by rememberSaveable { mutableStateOf(initialUsername) }
-    var password by remember { mutableStateOf("") }
     var refreshCount by remember { mutableIntStateOf(0) }
     val termuxInstalled = remember(refreshCount) {
         runCatching {
@@ -182,8 +178,6 @@ internal fun TerminalScreen(
                 onPortChange = { value -> port = value.filter(Char::isDigit).take(5) },
                 username = username,
                 onUsernameChange = { username = it },
-                password = password,
-                onPasswordChange = { password = it },
                 hasPrivateKey = hasPrivateKey,
                 termuxInstalled = termuxInstalled,
                 onRefreshTermux = { refreshCount++ },
@@ -193,7 +187,6 @@ internal fun TerminalScreen(
                             host = host,
                             port = port.toIntOrNull() ?: DEFAULT_TERMINAL_PORT,
                             username = username,
-                            password = password,
                         ),
                     )
                 },
@@ -212,7 +205,6 @@ internal fun TerminalScreen(
                 onCopySetup = {
                     clipboard.setText(AnnotatedString(terminalSetupCommands))
                 },
-                onOpenTermuxProject = { openBrowser(context, TERMUX_GITHUB_URL) },
                 onClearPinnedHostKey = onClearPinnedHostKey,
                 onOpenSettings = onOpenSettings,
                 onImportKeyFromRoot = onImportKeyFromRoot,
@@ -231,8 +223,6 @@ private fun TerminalSetup(
     onPortChange: (String) -> Unit,
     username: String,
     onUsernameChange: (String) -> Unit,
-    password: String,
-    onPasswordChange: (String) -> Unit,
     hasPrivateKey: Boolean,
     termuxInstalled: Boolean,
     onRefreshTermux: () -> Unit,
@@ -240,7 +230,6 @@ private fun TerminalSetup(
     onOpenTermux: () -> Unit,
     onInstallTermux: () -> Unit,
     onCopySetup: () -> Unit,
-    onOpenTermuxProject: () -> Unit,
     onClearPinnedHostKey: () -> Unit,
     onOpenSettings: () -> Unit,
     onImportKeyFromRoot: () -> Unit,
@@ -334,8 +323,7 @@ private fun TerminalSetup(
                         .padding(10.dp),
                 )
                 Text(
-                    text = "Use the Termux setup block once. The app imports nrsuite_ssh_key " +
-                        "from the selected NRSuite root and removes it after import.",
+                    text = "Run this once in Termux, approve storage access, then import the key.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -350,9 +338,6 @@ private fun TerminalSetup(
                         onClick = onImportKeyFromRoot,
                         compact = true,
                     )
-                }
-                TextButton(onClick = onOpenTermuxProject) {
-                    Text("Termux source / project")
                 }
             }
         }
@@ -391,24 +376,15 @@ private fun TerminalSetup(
                     label = { Text("Termux username") },
                     placeholder = { Text("Output of whoami") },
                 )
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = onPasswordChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = {
-                        Text(if (hasPrivateKey) "Termux password (optional)" else "Termux password")
+                Text(
+                    text = if (hasPrivateKey) {
+                        "SSH key loaded. Password authentication is not required."
+                    } else {
+                        "No SSH key loaded. Import the key generated by the Termux setup."
                     },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (hasPrivateKey) StatusGreen else StatusAmber,
                 )
-                if (hasPrivateKey) {
-                    Text(
-                        text = "An SSH private key is saved. It will be tried before the password.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = StatusGreen,
-                    )
-                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = host,
@@ -462,13 +438,12 @@ private fun TerminalSetup(
                     text = "Connect to Termux",
                     onClick = onConnect,
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = username.isNotBlank() &&
-                        (password.isNotEmpty() || hasPrivateKey) &&
+                    enabled = username.isNotBlank() && hasPrivateKey &&
                         host.isNotBlank() && port.isNotBlank() &&
                         state !is TerminalConnectionState.Connecting,
                 )
                 Text(
-                    text = "The password is kept in memory for this session only.",
+                    text = "Private key auth only. The key is stored encrypted on this device.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -500,6 +475,8 @@ private fun ConnectedTerminal(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val colorScheme = MaterialTheme.colorScheme
     val nrColors = NrTheme.colors
     val terminalViews = remember { mutableStateMapOf<Int, TerminalView>() }
@@ -614,7 +591,7 @@ private fun ConnectedTerminal(
                     onDismissRequest = { terminalMenuExpanded = false },
                 ) {
                     DropdownMenuItem(
-                        text = { Text("New session") },
+                        text = { Text("New tab") },
                         leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
                         onClick = {
                             terminalMenuExpanded = false
@@ -622,34 +599,11 @@ private fun ConnectedTerminal(
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text("Close current session") },
+                        text = { Text("Close current tab") },
                         enabled = terminalSessions.size > 1,
                         onClick = {
                             terminalMenuExpanded = false
                             onCloseSession(activeSession.id)
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Increase font size") },
-                        onClick = {
-                            terminalMenuExpanded = false
-                            onUpdateSettings(
-                                terminalSettings.copy(
-                                    defaultFontSize = (terminalTextSize + 1).coerceAtMost(28),
-                                ),
-                            )
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Decrease font size") },
-                        enabled = terminalTextSize > 9,
-                        onClick = {
-                            terminalMenuExpanded = false
-                            onUpdateSettings(
-                                terminalSettings.copy(
-                                    defaultFontSize = (terminalTextSize - 1).coerceAtLeast(9),
-                                ),
-                            )
                         },
                     )
                     DropdownMenuItem(
@@ -689,13 +643,8 @@ private fun ConnectedTerminal(
                     },
                     enabled = pagerState.currentPage > 0,
                 ) {
-                    Icon(Icons.Default.ChevronLeft, contentDescription = "Previous session")
+                    Icon(Icons.Default.ChevronLeft, contentDescription = "Previous tab")
                 }
-                Text(
-                    text = "${pagerState.currentPage + 1} / ${terminalSessions.size}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 IconButton(
                     onClick = {
                         coroutineScope.launch {
@@ -707,24 +656,32 @@ private fun ConnectedTerminal(
                     },
                     enabled = pagerState.currentPage < terminalSessions.lastIndex,
                 ) {
-                    Icon(Icons.Default.ChevronRight, contentDescription = "Next session")
+                    Icon(Icons.Default.ChevronRight, contentDescription = "Next tab")
                 }
             }
             Spacer(Modifier.weight(1f))
-            IconButton(onClick = showKeyboard) {
-                Icon(Icons.Default.Keyboard, contentDescription = "Show keyboard")
-            }
-            IconButton(onClick = hideKeyboard) {
-                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Hide keyboard")
-            }
-            IconButton(onClick = onOpenLauncher) {
-                Icon(Icons.Default.GridView, contentDescription = "Terminal Launcher")
+            IconButton(
+                onClick = { if (imeVisible) hideKeyboard() else showKeyboard() },
+            ) {
+                Icon(
+                    imageVector = if (imeVisible) {
+                        Icons.Default.KeyboardArrowDown
+                    } else {
+                        Icons.Default.Keyboard
+                    },
+                    contentDescription = if (imeVisible) "Hide keyboard" else "Show keyboard",
+                    tint = if (imeVisible) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, contentDescription = "Terminal Settings")
             }
             IconButton(onClick = onNewSession) {
-                Icon(Icons.Default.Add, contentDescription = "New terminal session")
+                Icon(Icons.Default.Add, contentDescription = "New tab")
             }
         }
 
@@ -747,7 +704,7 @@ private fun ConnectedTerminal(
                     onUpdateSettings(
                         terminalSettings.copy(
                             defaultFontSize = (terminalTextSize + if (increase) 1 else -1)
-                                .coerceIn(9, 28),
+                                .coerceIn(9, 34),
                         ),
                     )
                 },
@@ -774,6 +731,7 @@ private fun ConnectedTerminal(
         }
 
         TerminalExtraKeys(
+            modifier = Modifier.imePadding(),
             ctrlActive = ctrlActive,
             altActive = altActive,
             onToggleCtrl = {
@@ -807,13 +765,18 @@ private fun NativeTerminalPage(
     modifier: Modifier = Modifier,
 ) {
     val viewState = remember { mutableStateOf<TerminalView?>(null) }
+    val latestShowKeyboard by rememberUpdatedState(onShowKeyboard)
+    val latestZoom by rememberUpdatedState(onZoom)
+    val latestCtrlRead by rememberUpdatedState(onCtrlRead)
+    val latestAltRead by rememberUpdatedState(onAltRead)
+    val latestSwipe by rememberUpdatedState(onSwipe)
     val client = remember {
         NativeTerminalViewClient(
-            onSingleTap = onShowKeyboard,
-            onZoom = onZoom,
-            readControl = onCtrlRead,
-            readAlt = onAltRead,
-            onSwipe = onSwipe,
+            onSingleTap = { latestShowKeyboard() },
+            onZoom = { latestZoom(it) },
+            readControl = { latestCtrlRead() },
+            readAlt = { latestAltRead() },
+            onSwipe = { latestSwipe(it) },
         )
     }
     AndroidView(
@@ -857,6 +820,7 @@ private fun NativeTerminalPage(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TerminalExtraKeys(
+    modifier: Modifier = Modifier,
     ctrlActive: Boolean,
     altActive: Boolean,
     onToggleCtrl: () -> Unit,
@@ -864,7 +828,7 @@ private fun TerminalExtraKeys(
     onKey: (String) -> Unit,
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 4.dp, vertical = 3.dp),
@@ -943,7 +907,7 @@ private class NativeTerminalViewClient(
     private val onSwipe: (Int) -> Unit,
 ) : TerminalViewClient {
     override fun onScale(scale: Float): Float {
-        if (scale < 0.9f || scale > 1.1f) {
+        if (scale < 0.97f || scale > 1.03f) {
             onZoom(scale > 1f)
             return 1f
         }

@@ -15,7 +15,7 @@ data class TerminalUiSettings(
     val showLauncherOnHome: Boolean = true,
     val autoconnect: Boolean = false,
     val savePassword: Boolean = false,
-    val defaultFontSize: Int = 13,
+    val defaultFontSize: Int = 28,
     val cursorStyle: Int = 1,
     val cursorBlinkMs: Int = 280,
 )
@@ -29,7 +29,7 @@ internal class TerminalPreferences(context: Context) {
         showLauncherOnHome = preferences.getBoolean(KEY_SHOW_HOME, true),
         autoconnect = preferences.getBoolean(KEY_AUTOCONNECT, false),
         savePassword = preferences.getBoolean(KEY_SAVE_PASSWORD, false),
-        defaultFontSize = preferences.getInt(KEY_FONT_SIZE, 13).coerceIn(9, 28),
+        defaultFontSize = preferences.getInt(KEY_FONT_SIZE, 28).coerceIn(9, 34),
         cursorStyle = preferences.getInt(KEY_CURSOR_STYLE, 1).coerceIn(0, 2),
         cursorBlinkMs = preferences.getInt(KEY_BLINK_MS, 280).coerceIn(100, 2000),
     )
@@ -39,7 +39,7 @@ internal class TerminalPreferences(context: Context) {
             .putBoolean(KEY_SHOW_HOME, settings.showLauncherOnHome)
             .putBoolean(KEY_AUTOCONNECT, settings.autoconnect)
             .putBoolean(KEY_SAVE_PASSWORD, settings.savePassword)
-            .putInt(KEY_FONT_SIZE, settings.defaultFontSize.coerceIn(9, 28))
+            .putInt(KEY_FONT_SIZE, settings.defaultFontSize.coerceIn(9, 34))
             .putInt(KEY_CURSOR_STYLE, settings.cursorStyle.coerceIn(0, 2))
             .putInt(KEY_BLINK_MS, settings.cursorBlinkMs.coerceIn(100, 2000))
             .apply()
