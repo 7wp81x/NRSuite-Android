@@ -143,6 +143,7 @@ import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.ir.IrRemoteSource
 import com.swp81x.nrsuite.core.ir.IrTransmitBackend
+import com.swp81x.nrsuite.core.log.NrSuiteMemoryLogger
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
 import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
@@ -1106,6 +1107,17 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
     var terminalAutoconnectAttempted by rememberSaveable { mutableStateOf(false) }
     var showHomeShortcutSheet by rememberSaveable { mutableStateOf(false) }
+    var previousMemoryModuleId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(activeModuleId) {
+        val moduleId = activeModuleId
+        if (previousMemoryModuleId != null) {
+            NrSuiteMemoryLogger.endModule(connectionState)
+        }
+        if (moduleId != null) {
+            NrSuiteMemoryLogger.startModule(moduleId, connectionState)
+        }
+        previousMemoryModuleId = moduleId
+    }
     LaunchedEffect(selectedTab, terminalSettings.autoconnect, terminalState) {
         if (selectedTab != AppTab.TERMINAL) {
             // Autoconnect is a one-attempt-per-visit action. Leaving the

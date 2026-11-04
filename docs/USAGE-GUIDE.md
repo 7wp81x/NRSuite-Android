@@ -548,6 +548,17 @@ The Device screen shows the telemetry reported by current firmware in `STATUS`:
 Older firmware that does not report a field shows `Not reported`; it does not
 crash the app.
 
+For module memory testing, use:
+
+```bash
+adb logcat -s NRSuiteMem:I NRSuiteWire:I
+```
+
+`NRSuiteMem` emits one line when a module starts and one when it ends, including
+the module duration, Android Java/native heap, and the latest firmware heap
+snapshot. Firmware serial output prints a compact `[mem] cmd=...` line for
+non-noise commands.
+
 ### Device appears but commands time out
 
 - Confirm the firmware heartbeat is arriving.
