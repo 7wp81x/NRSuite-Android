@@ -15,6 +15,8 @@ import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
 import com.swp81x.nrsuite.core.wifi.deauthMultiCommandTimeoutMs
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
+import com.swp81x.nrsuite.core.wifi.shouldKeepPartialScanResults
+import com.swp81x.nrsuite.core.wifi.shouldRetryWifiScan
 import com.swp81x.nrsuite.core.wifi.shouldUseNativeDeauthMulti
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -152,10 +154,10 @@ private fun MainViewModel.scanWifiInternalImpl(
         _deauthDetectorTargets.value = previousDetectorTargets
     }
 
-    val previousResultCount = when (destination) {
+    fun currentResultCount(): Int = when (destination) {
         WifiScanDestination.WIFI,
-        WifiScanDestination.TARGETS -> previousNetworks.size
-        WifiScanDestination.CHANNEL_ANALYZER -> previousChannelAnalyzerNetworks.size
+        WifiScanDestination.TARGETS -> _networks.value.size
+        WifiScanDestination.CHANNEL_ANALYZER -> _channelAnalyzerNetworks.value.size
         WifiScanDestination.WPS,
         WifiScanDestination.WPS_ATTEMPT_TARGETS -> 0
     }
@@ -177,54 +179,88 @@ private fun MainViewModel.scanWifiInternalImpl(
                     timeoutMs = 45_000,
                     settleMs = if (attempts == 1) 1_000 else 1_200,
                 )
+
+                // Event delivery and command-response completion are separate
+                // coroutine paths. Give already-received scan_ap events a short
+                // drain window before deciding that events were lost.
+                if (count != null && count > 0) {
+                    val drainDeadlineMs = System.currentTimeMillis() + 750
+                    while (wifiScanEventsReceived.get() < count &&
+                        System.currentTimeMillis() < drainDeadlineMs
+                    ) {
+                        delay(25)
+                    }
+                }
                 eventsReceived = wifiScanEventsReceived.get()
-                val lowComparedWithPrevious = count != null && count > 0 &&
-                    previousResultCount >= 3 && count < maxOf(2, previousResultCount / 2)
-                val transportMismatch = count != null && count > eventsReceived
-                val shouldRetry = count == null || count <= 0 ||
-                    lowComparedWithPrevious || transportMismatch
+                val shouldRetry = shouldRetryWifiScan(eventsReceived)
                 if (!shouldRetry || attempts >= maxAttempts) break
 
                 appendLog(
                     "WiFi scan attempt $attempts returned " +
                         "${count?.toString() ?: "timeout"} result(s), received " +
                         "$eventsReceived event(s); retrying once after settle.",
-                    level = if (transportMismatch) LogLevel.ERROR else LogLevel.INFO,
+                    level = LogLevel.INFO,
                 )
                 delay(1_200)
             }
 
             val elapsedMs = System.currentTimeMillis() - startedAt
+            val visibleResultCount = currentResultCount()
+            val keepPartialResults = shouldKeepPartialScanResults(
+                eventsReceived = eventsReceived,
+                currentResultCount = visibleResultCount,
+            )
             when {
                 count == null -> {
-                    restorePreviousResults()
+                    if (!keepPartialResults) restorePreviousResults()
                     appendLog(
-                        "WiFi scan timed out after ${elapsedMs} ms; " +
-                            "kept ${previousNetworks.size} previous result(s).",
-                        level = LogLevel.ERROR,
+                        if (keepPartialResults) {
+                            "WiFi scan timed out after ${elapsedMs} ms, but kept " +
+                                "$visibleResultCount partial result(s) already received."
+                        } else {
+                            "WiFi scan timed out after ${elapsedMs} ms; " +
+                                "kept ${previousNetworks.size} previous result(s)."
+                        },
+                        level = if (keepPartialResults) LogLevel.INFO else LogLevel.ERROR,
                     )
                 }
                 count < 0 -> {
-                    restorePreviousResults()
+                    if (!keepPartialResults) restorePreviousResults()
                     appendLog(
-                        "WiFi scan failed after ${elapsedMs} ms; " +
-                            "kept ${previousNetworks.size} previous result(s).",
-                        level = LogLevel.ERROR,
+                        if (keepPartialResults) {
+                            "WiFi scan failed after ${elapsedMs} ms, but kept " +
+                                "$visibleResultCount partial result(s) already received."
+                        } else {
+                            "WiFi scan failed after ${elapsedMs} ms; " +
+                                "kept ${previousNetworks.size} previous result(s)."
+                        },
+                        level = if (keepPartialResults) LogLevel.INFO else LogLevel.ERROR,
                     )
                 }
                 count == 0 -> {
-                    restorePreviousResults()
+                    if (!keepPartialResults) restorePreviousResults()
                     appendLog(
-                        "WiFi scan completed with no results after ${elapsedMs} ms; " +
-                            "kept ${previousNetworks.size} previous result(s).",
+                        if (keepPartialResults) {
+                            "WiFi scan returned no count after ${elapsedMs} ms, but kept " +
+                                "$visibleResultCount partial result(s) already received."
+                        } else {
+                            "WiFi scan completed with no results after ${elapsedMs} ms; " +
+                                "kept ${previousNetworks.size} previous result(s)."
+                        },
                     )
                 }
                 count > eventsReceived -> {
-                    restorePreviousResults()
+                    if (!keepPartialResults) restorePreviousResults()
                     appendLog(
-                        "WiFi scan returned $count result(s), but only $eventsReceived " +
-                            "scan event(s) arrived over USB; kept the previous list. " +
-                            "This points to a transport/framing issue, not RF.",
+                        if (keepPartialResults) {
+                            "WiFi scan returned $count result(s) but only $eventsReceived " +
+                                "scan event(s) arrived; kept $visibleResultCount partial result(s). " +
+                                "This points to a transport/framing issue, not RF."
+                        } else {
+                            "WiFi scan returned $count result(s), but only $eventsReceived " +
+                                "scan event(s) arrived; kept the previous list. " +
+                                "This points to a transport/framing issue, not RF."
+                        },
                         level = LogLevel.ERROR,
                     )
                 }
