@@ -7,6 +7,7 @@ import com.swp81x.nrsuite.core.protocol.FrameType
 import com.swp81x.nrsuite.core.usb.NrTransport
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import com.swp81x.nrsuite.core.log.NrSuiteMemoryLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +43,7 @@ class NrSession(
     private val transport: NrTransport,
     private val scope: CoroutineScope,
     private val defaultTimeoutMs: Long = DEFAULT_TIMEOUT_MS,
+    private val deviceLabel: String = "unknown-device",
 ) {
     private val writeMutex = Mutex()
     private val decoder = FrameDecoder()
@@ -376,6 +378,7 @@ class NrSession(
         val id = allocateFrameId()
         val deferred = CompletableDeferred<JSONObject>()
         pendingResponses[id] = deferred
+        val startedAtMs = android.os.SystemClock.elapsedRealtime()
 
         val payload = JSONObject().apply {
             put("cmd", cmd)
@@ -387,8 +390,31 @@ class NrSession(
             withTimeoutOrNull(timeoutMs) { deferred.await() }
         } finally {
             pendingResponses.remove(id)
+            logLifecycleOperation(cmd, startedAtMs)
         }
     }
+
+    private fun logLifecycleOperation(command: String, startedAtMs: Long) {
+        if (!isLifecycleCommand(command)) return
+        NrSuiteMemoryLogger.logOperation(
+            deviceLabel = deviceLabel,
+            command = command,
+            startedAtMs = startedAtMs,
+            endedAtMs = android.os.SystemClock.elapsedRealtime(),
+            connectionState = state.value,
+        )
+    }
+
+    private fun isLifecycleCommand(command: String): Boolean =
+        command == "STOP_ALL" ||
+            command == "DEAUTH" ||
+            command == "DEAUTH_BURST" ||
+            command == "WPS_PIXIE_ATTEMPT" ||
+            command.startsWith("START_") ||
+            command.startsWith("STOP_") ||
+            command.endsWith("_START") ||
+            command.endsWith("_STOP") ||
+            command.startsWith("SCAN_")
 
     /**
      * Fire-and-forget command used for latency-sensitive realtime HID input.

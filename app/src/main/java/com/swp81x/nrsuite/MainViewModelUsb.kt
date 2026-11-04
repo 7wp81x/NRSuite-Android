@@ -424,6 +424,7 @@ internal fun MainViewModel.connectImpl(device: UsbDevice) {
     val newSession = NrSession(
         transport = UsbSerialTransport(usbManager, entry.driver),
         scope = scope,
+        deviceLabel = entry.displayName,
     )
     deviceSessions[fingerprint] = DeviceSession(
         fingerprint = fingerprint,

@@ -1108,13 +1108,18 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     var terminalAutoconnectAttempted by rememberSaveable { mutableStateOf(false) }
     var showHomeShortcutSheet by rememberSaveable { mutableStateOf(false) }
     var previousMemoryModuleId by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(activeModuleId) {
+    val memoryDeviceLabel = remember(devices, primaryFingerprint) {
+        devices.firstOrNull {
+            viewModel.deviceFingerprintImpl(it.device) == primaryFingerprint
+        }?.displayName ?: "no-device"
+    }
+    LaunchedEffect(activeModuleId, memoryDeviceLabel) {
         val moduleId = activeModuleId
         if (previousMemoryModuleId != null) {
-            NrSuiteMemoryLogger.endModule(connectionState)
+            NrSuiteMemoryLogger.endModule(connectionState, memoryDeviceLabel)
         }
         if (moduleId != null) {
-            NrSuiteMemoryLogger.startModule(moduleId, connectionState)
+            NrSuiteMemoryLogger.startModule(moduleId, connectionState, memoryDeviceLabel)
         }
         previousMemoryModuleId = moduleId
     }
