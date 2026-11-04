@@ -41,6 +41,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.height
@@ -97,6 +100,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -1074,11 +1078,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         activeModule != null -> activeModule.title
         activeModuleId == "settings" -> "Settings"
         activeModuleId == "terminal_settings" -> "Terminal Settings"
+        activeModuleId == "terminal_shortcuts" -> "Terminal Shortcuts"
         selectedCategory != null -> selectedCategory!!
         selectedTab == AppTab.DEVICES -> "Devices"
-        selectedTab == AppTab.TERMINAL &&
-            showTerminalLauncher &&
-            terminalState is TerminalConnectionState.Connected -> "Terminal Shortcuts"
         selectedTab == AppTab.TERMINAL -> "Terminal"
         selectedTab == AppTab.LOGS -> "Logs"
         else -> "NRSuite"
@@ -1104,7 +1106,17 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
     var terminalAutoconnectAttempted by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(selectedTab, terminalSettings.autoconnect, terminalState) {
-        if (selectedTab != AppTab.TERMINAL || !terminalSettings.autoconnect) return@LaunchedEffect
+        if (selectedTab != AppTab.TERMINAL) {
+            // Autoconnect is a one-attempt-per-visit action. Leaving the
+            // Terminal tab arms it again for the next visit, while a manual
+            // disconnect stays disconnected until the user returns.
+            terminalAutoconnectAttempted = false
+            return@LaunchedEffect
+        }
+        if (!terminalSettings.autoconnect) {
+            terminalAutoconnectAttempted = false
+            return@LaunchedEffect
+        }
         if (terminalState is TerminalConnectionState.Disconnected && !terminalAutoconnectAttempted) {
             val savedConfig = viewModel.savedTerminalConfig()
             if (savedConfig != null) {
@@ -1123,6 +1135,17 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = if (terminalImmersive) {
+            // Keep the status-bar and side insets while the keyboard is open,
+            // but drop bottom system-bar padding. The terminal root applies
+            // the IME inset exactly once, so extra keys sit directly above
+            // the keyboard without duplicating navigation-bar space.
+            WindowInsets.safeDrawing.only(
+                WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+            )
+        } else {
+            ScaffoldDefaults.contentWindowInsets
+        },
         topBar = {
             if (!terminalImmersive) NRSuiteTopBar(
                 title = activeTitle,
@@ -2319,6 +2342,18 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 )
             }
 
+            activeModuleId == "terminal_shortcuts" -> TerminalLauncherScreen(
+                shortcuts = terminalShortcuts,
+                categories = terminalShortcutCategories,
+                onClose = { activeModuleId = null },
+                onUpsertShortcut = viewModel::upsertTerminalShortcut,
+                onDeleteShortcut = viewModel::deleteTerminalShortcut,
+                onAddCategory = viewModel::addTerminalShortcutCategory,
+                onDeleteCategory = viewModel::deleteTerminalShortcutCategory,
+                onRenameCategory = viewModel::renameTerminalShortcutCategory,
+                modifier = Modifier,
+            )
+
             activeModuleId == "terminal_settings" -> TerminalSettingsRoot(
                 viewModel = viewModel,
                 onManageShortcuts = {
@@ -2448,9 +2483,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 firmwareAssetDownload = firmwareAssetDownload,
                 terminalShortcuts = terminalShortcuts,
                 showTerminalLauncherCard = terminalSettings.showLauncherOnHome,
-                onOpenTerminalLauncher = {
+                onOpenTerminal = {
                     selectedTab = AppTab.TERMINAL
-                    showTerminalLauncher = true
+                    showTerminalLauncher = false
+                },
+                onManageTerminalShortcuts = {
+                    activeModuleId = "terminal_shortcuts"
                 },
                 onRunTerminalShortcut = { shortcut ->
                     if (terminalState !is TerminalConnectionState.Connected) {

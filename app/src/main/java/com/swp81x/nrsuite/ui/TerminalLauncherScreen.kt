@@ -1,18 +1,15 @@
 package com.swp81x.nrsuite.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -22,9 +19,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -49,10 +44,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
-import com.swp81x.nrsuite.core.terminal.TerminalSessionEntry
 import com.swp81x.nrsuite.core.terminal.TerminalShortcut
 import com.swp81x.nrsuite.core.terminal.TerminalShortcutRunMode
+import com.swp81x.nrsuite.core.terminal.terminalShortcutParameterNames
 import com.swp81x.nrsuite.ui.components.NrDangerButton
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.NrPrimaryButton
@@ -60,65 +54,85 @@ import com.swp81x.nrsuite.ui.components.NrQuietButton
 import com.swp81x.nrsuite.ui.components.NrSecondaryButton
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
-import com.swp81x.nrsuite.ui.theme.StatusGreen
 
 private sealed interface ShortcutRoute {
-    data object Launcher : ShortcutRoute
     data object Manage : ShortcutRoute
     data object Categories : ShortcutRoute
     data class Editor(val shortcut: TerminalShortcut?) : ShortcutRoute
 }
 
+private enum class ShortcutRouteKey {
+    MANAGE,
+    CATEGORIES,
+    EDITOR,
+}
+
 @Composable
 internal fun TerminalLauncherScreen(
-    connectionState: TerminalConnectionState,
-    @Suppress("UNUSED_PARAMETER") sessions: List<TerminalSessionEntry>,
     shortcuts: List<TerminalShortcut>,
     categories: List<String>,
-    onOpenTerminal: () -> Unit,
-    @Suppress("UNUSED_PARAMETER") onOpenSession: (Int) -> Unit,
-    onOpenSettings: () -> Unit,
-    onRunShortcut: (TerminalShortcut) -> Unit,
+    onClose: () -> Unit,
     onUpsertShortcut: (TerminalShortcut) -> Unit,
     onDeleteShortcut: (Long) -> Unit,
     onAddCategory: (String) -> Unit,
     onDeleteCategory: (String) -> Unit,
     onRenameCategory: (String, String) -> Unit,
+    initialCreateShortcut: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    var route by rememberSaveable { mutableStateOf<ShortcutRoute>(ShortcutRoute.Launcher) }
-    var pendingRun by remember { mutableStateOf<TerminalShortcut?>(null) }
-    var pendingDelete by remember { mutableStateOf<TerminalShortcut?>(null) }
-
-    when (val current = route) {
-        ShortcutRoute.Launcher -> ShortcutLauncherContent(
-            connectionState = connectionState,
-            shortcuts = shortcuts,
-            categories = categories,
-            onOpenTerminal = onOpenTerminal,
-            onOpenSettings = onOpenSettings,
-            onManage = { route = ShortcutRoute.Manage },
-            onRunShortcut = { shortcut ->
-                if (shortcut.confirmation) pendingRun = shortcut else onRunShortcut(shortcut)
+    var routeKeyName by rememberSaveable {
+        mutableStateOf(
+            if (initialCreateShortcut) {
+                ShortcutRouteKey.EDITOR.name
+            } else {
+                ShortcutRouteKey.MANAGE.name
             },
-            modifier = modifier,
         )
+    }
+    var editorShortcutId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var pendingDelete by remember { mutableStateOf<TerminalShortcut?>(null) }
+    val routeKey = runCatching { ShortcutRouteKey.valueOf(routeKeyName) }
+        .getOrDefault(ShortcutRouteKey.MANAGE)
+    val editorShortcut = editorShortcutId?.let { id ->
+        shortcuts.firstOrNull { it.id == id }
+    }
+    val currentRoute = when (routeKey) {
+        ShortcutRouteKey.MANAGE -> ShortcutRoute.Manage
+        ShortcutRouteKey.CATEGORIES -> ShortcutRoute.Categories
+        ShortcutRouteKey.EDITOR -> ShortcutRoute.Editor(editorShortcut)
+    }
+
+    BackHandler {
+        when (routeKey) {
+            ShortcutRouteKey.MANAGE -> onClose()
+            ShortcutRouteKey.CATEGORIES,
+            ShortcutRouteKey.EDITOR -> routeKeyName = ShortcutRouteKey.MANAGE.name
+        }
+    }
+
+    when (val current = currentRoute) {
         ShortcutRoute.Manage -> ManageShortcutsContent(
             shortcuts = shortcuts,
-            onBack = { route = ShortcutRoute.Launcher },
-            onNew = { route = ShortcutRoute.Editor(null) },
-            onEdit = { route = ShortcutRoute.Editor(it) },
+            onBack = onClose,
+            onNew = {
+                editorShortcutId = null
+                routeKeyName = ShortcutRouteKey.EDITOR.name
+            },
+            onEdit = { shortcut ->
+                editorShortcutId = shortcut.id
+                routeKeyName = ShortcutRouteKey.EDITOR.name
+            },
             onDelete = { pendingDelete = it },
             onTogglePin = { shortcut ->
                 onUpsertShortcut(shortcut.copy(pinHome = !shortcut.pinHome))
             },
-            onManageCategories = { route = ShortcutRoute.Categories },
+            onManageCategories = { routeKeyName = ShortcutRouteKey.CATEGORIES.name },
             modifier = modifier,
         )
         ShortcutRoute.Categories -> ManageCategoriesContent(
             categories = categories,
             shortcuts = shortcuts,
-            onBack = { route = ShortcutRoute.Manage },
+            onBack = { routeKeyName = ShortcutRouteKey.MANAGE.name },
             onAdd = onAddCategory,
             onRename = onRenameCategory,
             onDelete = onDeleteCategory,
@@ -127,10 +141,10 @@ internal fun TerminalLauncherScreen(
         is ShortcutRoute.Editor -> ShortcutEditorContent(
             initial = current.shortcut,
             categories = categories,
-            onBack = { route = ShortcutRoute.Manage },
+            onBack = { routeKeyName = ShortcutRouteKey.MANAGE.name },
             onSave = { shortcut ->
                 onUpsertShortcut(shortcut)
-                route = ShortcutRoute.Manage
+                routeKeyName = ShortcutRouteKey.MANAGE.name
             },
             onDelete = current.shortcut?.let { shortcut ->
                 { pendingDelete = shortcut }
@@ -140,42 +154,6 @@ internal fun TerminalLauncherScreen(
         )
     }
 
-    pendingRun?.let { shortcut ->
-        AlertDialog(
-            onDismissRequest = { pendingRun = null },
-            title = { Text("Run shortcut?") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(shortcut.name, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        shortcut.command,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontFamily = FontFamily.Monospace,
-                        ),
-                    )
-                    if (shortcut.description.isNotBlank()) {
-                        Text(
-                            shortcut.description,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = NrOnSurfaceVariant,
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                NrPrimaryButton(
-                    text = "Run",
-                    onClick = {
-                        pendingRun = null
-                        onRunShortcut(shortcut)
-                    },
-                )
-            },
-            dismissButton = {
-                NrQuietButton(text = "Cancel", onClick = { pendingRun = null })
-            },
-        )
-    }
 
     pendingDelete?.let { shortcut ->
         AlertDialog(
@@ -188,7 +166,7 @@ internal fun TerminalLauncherScreen(
                     onClick = {
                         pendingDelete = null
                         onDeleteShortcut(shortcut.id)
-                        route = ShortcutRoute.Manage
+                        routeKeyName = ShortcutRouteKey.MANAGE.name
                     },
                     filled = true,
                 )
@@ -197,196 +175,6 @@ internal fun TerminalLauncherScreen(
                 NrQuietButton(text = "Cancel", onClick = { pendingDelete = null })
             },
         )
-    }
-}
-
-@Composable
-private fun ShortcutLauncherContent(
-    connectionState: TerminalConnectionState,
-    shortcuts: List<TerminalShortcut>,
-    categories: List<String>,
-    onOpenTerminal: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onManage: () -> Unit,
-    onRunShortcut: (TerminalShortcut) -> Unit,
-    modifier: Modifier,
-) {
-    var search by rememberSaveable { mutableStateOf("") }
-    var selectedCategory by rememberSaveable { mutableStateOf<String?>(null) }
-    val filteredShortcuts = shortcuts.filter { shortcut ->
-        (selectedCategory == null || shortcut.category == selectedCategory) &&
-            (search.isBlank() ||
-                shortcut.name.contains(search, ignoreCase = true) ||
-                shortcut.command.contains(search, ignoreCase = true) ||
-                shortcut.description.contains(search, ignoreCase = true))
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, NrOutline.copy(alpha = 0.55f)),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Terminal,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "Terminal Shortcuts",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = when (connectionState) {
-                                is TerminalConnectionState.Connected -> "Connected to local Termux"
-                                else -> "Terminal is not connected"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (connectionState is TerminalConnectionState.Connected) {
-                                StatusGreen
-                            } else {
-                                NrOnSurfaceVariant
-                            },
-                        )
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Terminal Settings")
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NrPrimaryButton(
-                        text = "Open Terminal",
-                        onClick = onOpenTerminal,
-                        compact = true,
-                    )
-                    NrSecondaryButton(
-                        text = "Manage",
-                        onClick = onManage,
-                        compact = true,
-                    )
-                }
-            }
-        }
-
-        OutlinedTextField(
-            value = search,
-            onValueChange = { search = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            placeholder = { Text("Search shortcuts") },
-        )
-
-        if (categories.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                NrFilterChip(
-                    selected = selectedCategory == null,
-                    onClick = { selectedCategory = null },
-                    label = "All",
-                )
-                categories.forEach { category ->
-                    NrFilterChip(
-                        selected = selectedCategory == category,
-                        onClick = {
-                            selectedCategory = if (selectedCategory == category) null else category
-                        },
-                        label = category,
-                    )
-                }
-            }
-        }
-
-        if (filteredShortcuts.isEmpty()) {
-            Text(
-                text = if (shortcuts.isEmpty()) {
-                    "No terminal shortcuts yet. Use Manage to create one."
-                } else {
-                    "No shortcuts match the current filter."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = NrOnSurfaceVariant,
-            )
-        } else {
-            filteredShortcuts.forEach { shortcut ->
-                LauncherShortcutRow(
-                    shortcut = shortcut,
-                    onRun = { onRunShortcut(shortcut) },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LauncherShortcutRow(
-    shortcut: TerminalShortcut,
-    onRun: () -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, NrOutline.copy(alpha = 0.45f)),
-        shape = RoundedCornerShape(10.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                Icons.Default.Terminal,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    shortcut.name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    shortcut.command,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = FontFamily.Monospace,
-                    ),
-                    color = NrOnSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (shortcut.category.isNotBlank()) {
-                    Text(
-                        shortcut.category,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                    )
-                }
-            }
-            IconButton(onClick = onRun) {
-                Icon(Icons.Default.PlayArrow, contentDescription = "Run ${shortcut.name}")
-            }
-        }
     }
 }
 
@@ -497,6 +285,7 @@ private fun ShortcutEditorContent(
 ) {
     var name by remember { mutableStateOf(initial?.name.orEmpty()) }
     var command by remember { mutableStateOf(initial?.command.orEmpty()) }
+    val detectedParameters = terminalShortcutParameterNames(command)
     var description by remember { mutableStateOf(initial?.description.orEmpty()) }
     var category by remember { mutableStateOf(initial?.category.orEmpty()) }
     var runMode by remember {
@@ -534,6 +323,20 @@ private fun ShortcutEditorContent(
             minLines = 4,
             maxLines = 12,
         )
+        Text(
+            text = "Use {{name}} for run-time parameters. Example: nmap -sV {{target}}",
+            style = MaterialTheme.typography.labelSmall,
+            color = NrOnSurfaceVariant,
+        )
+        if (detectedParameters.isNotEmpty()) {
+            Text(
+                text = "Detected parameters: ${detectedParameters.joinToString()}",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontFamily = FontFamily.Monospace,
+                ),
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
         OutlinedTextField(
             value = description,
             onValueChange = { description = it },

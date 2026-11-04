@@ -32,6 +32,7 @@ import com.swp81x.nrsuite.ui.theme.LogColorSuccess
 import com.swp81x.nrsuite.ui.theme.LogColorUsb
 import com.swp81x.nrsuite.ui.components.IrModuleConfigRow
 import com.swp81x.nrsuite.core.terminal.TerminalShortcut
+import com.swp81x.nrsuite.core.terminal.terminalShortcutParameterNames
 import com.swp81x.nrsuite.ui.components.NrCompactPrimaryButton
 import com.swp81x.nrsuite.ui.components.NrPrimaryButton
 import com.swp81x.nrsuite.ui.components.NrQuietButton
@@ -246,7 +247,8 @@ internal fun HomeTabContent(
     firmwareAssetDownload: FirmwareAssetDownloadState,
     terminalShortcuts: List<TerminalShortcut>,
     showTerminalLauncherCard: Boolean,
-    onOpenTerminalLauncher: () -> Unit,
+    onOpenTerminal: () -> Unit,
+    onManageTerminalShortcuts: () -> Unit,
     onRunTerminalShortcut: (TerminalShortcut) -> Unit,
     onDownloadOuiDatabase: () -> Unit,
     onDownloadAppUpdate: () -> Unit,
@@ -282,7 +284,8 @@ internal fun HomeTabContent(
         firmwareAssetDownload = firmwareAssetDownload,
         terminalShortcuts = terminalShortcuts,
         showTerminalLauncherCard = showTerminalLauncherCard,
-        onOpenTerminalLauncher = onOpenTerminalLauncher,
+        onOpenTerminal = onOpenTerminal,
+        onManageTerminalShortcuts = onManageTerminalShortcuts,
         onRunTerminalShortcut = onRunTerminalShortcut,
         onDownloadOuiDatabase = onDownloadOuiDatabase,
         onDownloadAppUpdate = onDownloadAppUpdate,
@@ -321,7 +324,8 @@ internal fun HomeScreen(
     firmwareAssetDownload: FirmwareAssetDownloadState,
     terminalShortcuts: List<TerminalShortcut> = emptyList(),
     showTerminalLauncherCard: Boolean = true,
-    onOpenTerminalLauncher: () -> Unit = {},
+    onOpenTerminal: () -> Unit = {},
+    onManageTerminalShortcuts: () -> Unit = {},
     onRunTerminalShortcut: (TerminalShortcut) -> Unit = {},
     onDownloadOuiDatabase: () -> Unit,
     onDownloadAppUpdate: () -> Unit,
@@ -411,7 +415,8 @@ internal fun HomeScreen(
             item {
                 HomeTerminalLauncherCard(
                     shortcuts = terminalShortcuts.filter { it.pinHome }.take(3),
-                    onOpenLauncher = onOpenTerminalLauncher,
+                    onOpenTerminal = onOpenTerminal,
+                    onManageShortcuts = onManageTerminalShortcuts,
                     onRunShortcut = onRunTerminalShortcut,
                 )
             }
@@ -1329,10 +1334,12 @@ private fun HomeDeviceRow(
 @Composable
 private fun HomeTerminalLauncherCard(
     shortcuts: List<TerminalShortcut>,
-    onOpenLauncher: () -> Unit,
+    onOpenTerminal: () -> Unit,
+    onManageShortcuts: () -> Unit,
     onRunShortcut: (TerminalShortcut) -> Unit,
 ) {
     var pendingShortcut by remember { mutableStateOf<TerminalShortcut?>(null) }
+    var pendingParameterShortcut by remember { mutableStateOf<TerminalShortcut?>(null) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1355,8 +1362,8 @@ private fun HomeTerminalLauncherCard(
                     modifier = Modifier.weight(1f),
                 )
                 NrQuietButton(
-                    text = "Open",
-                    onClick = onOpenLauncher,
+                    text = "Open Terminal",
+                    onClick = onOpenTerminal,
                     compact = true,
                 )
             }
@@ -1367,8 +1374,8 @@ private fun HomeTerminalLauncherCard(
                     color = NrOnSurfaceVariant,
                 )
                 NrSecondaryButton(
-                    text = "Open Terminal Launcher",
-                    onClick = onOpenLauncher,
+                    text = "Manage shortcuts",
+                    onClick = onManageShortcuts,
                     modifier = Modifier.fillMaxWidth(),
                     compact = true,
                 )
@@ -1378,7 +1385,9 @@ private fun HomeTerminalLauncherCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                if (shortcut.confirmation) {
+                                if (terminalShortcutParameterNames(shortcut.command).isNotEmpty()) {
+                                    pendingParameterShortcut = shortcut
+                                } else if (shortcut.confirmation) {
                                     pendingShortcut = shortcut
                                 } else {
                                     onRunShortcut(shortcut)
@@ -1423,7 +1432,7 @@ private fun HomeTerminalLauncherCard(
                 }
                 NrQuietButton(
                     text = "Manage shortcuts",
-                    onClick = onOpenLauncher,
+                    onClick = onManageShortcuts,
                     compact = true,
                 )
             }
@@ -1466,6 +1475,17 @@ private fun HomeTerminalLauncherCard(
                     text = "Cancel",
                     onClick = { pendingShortcut = null },
                 )
+            },
+        )
+    }
+
+    pendingParameterShortcut?.let { shortcut ->
+        TerminalShortcutParameterDialog(
+            shortcut = shortcut,
+            onDismiss = { pendingParameterShortcut = null },
+            onRun = { resolved ->
+                pendingParameterShortcut = null
+                onRunShortcut(resolved)
             },
         )
     }

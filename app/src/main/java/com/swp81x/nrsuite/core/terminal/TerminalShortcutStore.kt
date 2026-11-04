@@ -26,6 +26,75 @@ data class TerminalShortcut(
     val pinHome: Boolean = false,
 )
 
+private val DEFAULT_TERMINAL_SHORTCUTS = listOf(
+    TerminalShortcut(
+        id = -1L,
+        name = "List files",
+        command = "ls -lah",
+        description = "Basic directory listing.",
+        category = "Basics",
+        confirmation = false,
+    ),
+    TerminalShortcut(
+        id = -2L,
+        name = "Show disk usage",
+        command = "df -h",
+        description = "Show filesystem usage.",
+        category = "Basics",
+        confirmation = false,
+    ),
+    TerminalShortcut(
+        id = -3L,
+        name = "Show network interfaces",
+        command = "ip addr",
+        description = "Show IP addresses and interfaces.",
+        category = "Basics",
+        confirmation = false,
+    ),
+    TerminalShortcut(
+        id = -4L,
+        name = "Ping host",
+        command = "ping -c 4 {{host}}",
+        description = "Ping a host. Demonstrates one parameter.",
+        category = "Network",
+        confirmation = true,
+    ),
+    TerminalShortcut(
+        id = -5L,
+        name = "Nmap service scan",
+        command = "nmap -sV {{target}}",
+        description = "Scan a target for open services.",
+        category = "Network",
+        confirmation = true,
+    ),
+    TerminalShortcut(
+        id = -6L,
+        name = "Curl headers",
+        command = "curl -I {{url}}",
+        description = "Fetch HTTP response headers.",
+        category = "Network",
+        confirmation = true,
+    ),
+    TerminalShortcut(
+        id = -7L,
+        name = "Find files by name",
+        command = "find . -type f -iname '{{pattern}}'",
+        description = "Search the current directory tree.",
+        category = "Files",
+        confirmation = true,
+    ),
+    TerminalShortcut(
+        id = -8L,
+        name = "Tail file",
+        command = "tail -n {{lines}} {{file}}",
+        description = "Show the end of a file. Demonstrates multiple parameters.",
+        category = "Files",
+        confirmation = true,
+    ),
+)
+
+private val DEFAULT_TERMINAL_SHORTCUT_CATEGORIES = listOf("Basics", "Network", "Files")
+
 class TerminalShortcutStore(context: Context) {
     private val preferences = context.getSharedPreferences(
         "nrsuite_terminal_shortcuts",
@@ -36,6 +105,17 @@ class TerminalShortcutStore(context: Context) {
 
     private val _categories = MutableStateFlow(loadCategories())
     val categories: StateFlow<List<String>> = _categories.asStateFlow()
+
+    init {
+        if (!preferences.getBoolean(KEY_EXAMPLES_SEEDED, false)) {
+            _shortcuts.value = (DEFAULT_TERMINAL_SHORTCUTS + _shortcuts.value)
+                .distinctBy { it.id }
+            _categories.value = (DEFAULT_TERMINAL_SHORTCUT_CATEGORIES + _categories.value)
+                .distinct()
+            preferences.edit().putBoolean(KEY_EXAMPLES_SEEDED, true).apply()
+            persist()
+        }
+    }
 
     fun upsert(shortcut: TerminalShortcut) {
         val current = _shortcuts.value.toMutableList()
@@ -146,5 +226,6 @@ class TerminalShortcutStore(context: Context) {
     private companion object {
         const val KEY_SHORTCUTS = "shortcuts"
         const val KEY_CATEGORIES = "categories"
+        const val KEY_EXAMPLES_SEEDED = "examples_seeded_v1"
     }
 }

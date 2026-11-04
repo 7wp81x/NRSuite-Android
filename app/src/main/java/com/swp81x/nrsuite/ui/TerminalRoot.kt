@@ -64,6 +64,7 @@ internal fun TerminalRoot(
         },
         onConnect = viewModel::connectTerminal,
         onDisconnect = { viewModel.disconnectTerminal() },
+        onForceReconnect = viewModel::forceReconnectTerminal,
         onNewSession = viewModel::newTerminalSession,
         onCloseSession = viewModel::closeTerminalSession,
         onOpenSettings = onOpenSettings,
@@ -79,6 +80,7 @@ internal fun TerminalRoot(
                 Toast.LENGTH_SHORT,
             ).show()
         },
+        onTrustChangedHostKey = viewModel::trustChangedTerminalHostKeyAndReconnect,
         onImportKeyFromRoot = {
             viewModel.importTerminalPrivateKeyFromRoot { success, message ->
                 Toast.makeText(context, message, Toast.LENGTH_LONG).show()
