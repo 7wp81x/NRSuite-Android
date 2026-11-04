@@ -76,6 +76,7 @@ sealed interface ConnectionState {
         val sdkVersion: String? = null,
         val protocolVersion: Int? = null,
         val protocolMinor: Int? = null,
+        val transport: String? = null,
     ) : ConnectionState
 
     data class Failed(

@@ -723,6 +723,13 @@ private fun DeviceSpecsContent(state: ConnectionState.Connected) {
     SpecRow("Features", "${state.features.size} advertised")
 }
 
+private fun transportLabel(transport: String?): String = when (transport) {
+    "usb_cdc" -> "Native USB CDC/JTAG"
+    "uart0" -> "UART"
+    null -> "Not reported"
+    else -> transport
+}
+
 private fun availableFirmwareUpdateTag(
     state: ConnectionState?,
     releases: List<ReleaseInfo>,
@@ -811,7 +818,7 @@ internal fun HardwareInfoCard(
                 SpecRow("SDK", state.sdkVersion)
             }
             SpecRow("Features", "${state.features.size} advertised")
-            SpecRow("Transport", "USB serial / CDC")
+            SpecRow("Transport", transportLabel(state.transport))
         }
     }
 }

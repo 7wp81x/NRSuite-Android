@@ -535,6 +535,10 @@ behavior as part of a non-mesh release validation.
 ### Device appears but commands time out
 
 - Confirm the firmware heartbeat is arriving.
+- On devkits with two USB-C ports, try the other port. Modern S3/C5 boards
+  often expose a USB-to-UART bridge and a native USB CDC/JTAG port.
+- Check the reported `transport` field in the connection log or device specs:
+  `usb_cdc` means native USB and `uart0` means the UART bridge.
 - Verify phone-to-ESP32 TX/RX wiring, especially with CP2102/CH340 boards.
 - Do not share UART0 with sensor or IR wiring.
 - Try another USB-OTG cable/adapter.

@@ -129,6 +129,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **Multi-device USB sessions** - Multiple simultaneous USB serial sessions with per-device permission, connect/disconnect, and reconnect state. User-initiated disconnect uses idle-session reuse for S2 CDC stability.
 - [x] **BadUSB device picker** - Select which connected device receives BadUSB independent of the primary Wireless/Flasher session.
 - [x] **Persistent firmware device ID** - Firmware generates/stores `NRxxxxxxx` in NVS and exposes it via `STATUS.device_id`; Android shows it on Home and Device manager.
+- [x] **Dual USB/UART transport reporting** - Firmware reports whether the active protocol path is `usb_cdc` or `uart0`; the app displays the reported transport in device specs and connection logs. Native-USB-capable firmware can answer on either exposed devkit port.
 
 ## Experimental Concepts
 

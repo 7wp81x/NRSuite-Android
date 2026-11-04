@@ -148,6 +148,7 @@ class NrSession(
                         log(
                             "Connected to ${connected.chip ?: "NRSuite device"}" +
                                 (connected.deviceId?.let { " ($it)" } ?: "") +
+                                (connected.transport?.let { " · $it" } ?: "") +
                                 (connected.country?.let { " · regulatory $it" } ?: "")
                         )
                         return
@@ -290,6 +291,7 @@ class NrSession(
             sdkVersion = status.optString("sdk").takeIf { it.isNotBlank() },
             protocolVersion = optionalInt(status, "proto"),
             protocolMinor = optionalInt(status, "proto_minor"),
+            transport = status.optString("transport").takeIf { it.isNotBlank() },
         )
     }
 
