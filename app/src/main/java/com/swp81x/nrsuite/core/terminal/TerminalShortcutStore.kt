@@ -60,6 +60,17 @@ class TerminalShortcutStore(context: Context) {
         persist()
     }
 
+    fun renameCategory(oldName: String, newName: String) {
+        val normalized = newName.trim()
+        if (normalized.isBlank() || normalized == oldName) return
+        if (_categories.value.any { it.equals(normalized, ignoreCase = true) }) return
+        _categories.value = _categories.value.map { if (it == oldName) normalized else it }
+        _shortcuts.value = _shortcuts.value.map {
+            if (it.category == oldName) it.copy(category = normalized) else it
+        }
+        persist()
+    }
+
     fun deleteCategory(name: String) {
         _categories.value = _categories.value.filterNot { it == name }
         _shortcuts.value = _shortcuts.value.map {

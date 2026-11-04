@@ -86,6 +86,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.swp81x.nrsuite.core.terminal.DEFAULT_TERMINAL_PORT
 import com.swp81x.nrsuite.core.terminal.TERMUX_PACKAGE_NAME
 import com.swp81x.nrsuite.core.terminal.TerminalConfig
+import com.swp81x.nrsuite.core.terminal.TerminalKeyInfo
 import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
 import com.swp81x.nrsuite.core.terminal.TerminalSessionEntry
 import com.swp81x.nrsuite.core.terminal.TerminalUiSettings
@@ -102,14 +103,18 @@ import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 import kotlinx.coroutines.launch
 
-private const val TERMUX_FDROID_URL = "https://f-droid.org/packages/com.termux/"
+private const val TERMUX_DOWNLOAD_URL = "https://github.com/termux/termux-app/releases/tag/v0.118.2"
 private val terminalSetupCommands =
     "pkg update -y && pkg upgrade -y ; pkg install openssh termux-services -y ; " +
         "termux-setup-storage ; mkdir -p ~/.ssh ; rm -f ~/.ssh/nrsuite ~/.ssh/nrsuite.pub ; " +
-        "ssh-keygen -t ed25519 -f ~/.ssh/nrsuite -N '' -C nrsuite ; " +
-        "cat ~/.ssh/nrsuite.pub >> ~/.ssh/authorized_keys ; chmod 700 ~/.ssh ; " +
-        "chmod 600 ~/.ssh/authorized_keys ; mkdir -p ~/storage/shared/NRSuite ; " +
+        "ssh-keygen -t ed25519 -f ~/.ssh/nrsuite -N '' -C nrsuite-app ; " +
+        "touch ~/.ssh/authorized_keys ; sed -i '/nrsuite-app/d' ~/.ssh/authorized_keys ; " +
+        "printf 'from=\"127.0.0.1,::1\",no-port-forwarding,no-agent-forwarding," +
+        "no-X11-forwarding %s\\n' \"$(cat ~/.ssh/nrsuite.pub)\" >> ~/.ssh/authorized_keys ; " +
+        "chmod 700 ~/.ssh ; chmod 600 ~/.ssh/authorized_keys ; " +
+        "mkdir -p ~/storage/shared/NRSuite ; " +
         "cp ~/.ssh/nrsuite ~/storage/shared/NRSuite/nrsuite_ssh_key ; " +
+        "cp ~/.ssh/nrsuite.pub ~/storage/shared/NRSuite/nrsuite_ssh_key.pub ; " +
         "sv-enable sshd ; sv up sshd"
 
 @Composable
@@ -118,6 +123,7 @@ internal fun TerminalScreen(
     terminalSessions: List<TerminalSessionEntry>,
     terminalSettings: TerminalUiSettings,
     hasPrivateKey: Boolean,
+    keyInfo: TerminalKeyInfo?,
     initialSessionId: Int? = null,
     initialHost: String,
     initialPort: Int,
@@ -179,6 +185,7 @@ internal fun TerminalScreen(
                 username = username,
                 onUsernameChange = { username = it },
                 hasPrivateKey = hasPrivateKey,
+                keyInfo = keyInfo,
                 termuxInstalled = termuxInstalled,
                 onRefreshTermux = { refreshCount++ },
                 onConnect = {
@@ -198,10 +205,10 @@ internal fun TerminalScreen(
                             Intent.createChooser(intent, "Open Termux"),
                         )
                     } else {
-                        openBrowser(context, TERMUX_FDROID_URL)
+                        openBrowser(context, TERMUX_DOWNLOAD_URL)
                     }
                 },
-                onInstallTermux = { openBrowser(context, TERMUX_FDROID_URL) },
+                onInstallTermux = { openBrowser(context, TERMUX_DOWNLOAD_URL) },
                 onCopySetup = {
                     clipboard.setText(AnnotatedString(terminalSetupCommands))
                 },
@@ -224,6 +231,7 @@ private fun TerminalSetup(
     username: String,
     onUsernameChange: (String) -> Unit,
     hasPrivateKey: Boolean,
+    keyInfo: TerminalKeyInfo?,
     termuxInstalled: Boolean,
     onRefreshTermux: () -> Unit,
     onConnect: () -> Unit,
@@ -263,15 +271,6 @@ private fun TerminalSetup(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        Text(
-                            text = if (termuxInstalled) {
-                                "Termux is installed on this device."
-                            } else {
-                                "Termux is required as the local Linux runtime."
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                     }
                     NrQuietButton(
                         text = "Recheck",
@@ -279,8 +278,16 @@ private fun TerminalSetup(
                         leadingIcon = Icons.Default.Refresh,
                         compact = true,
                     )
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Terminal Settings")
+                    }
                 }
 
+                Text(
+                    text = if (termuxInstalled) "Termux installed" else "Termux not installed",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (termuxInstalled) StatusGreen else StatusAmber,
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (termuxInstalled) {
                         NrSecondaryButton(
@@ -291,7 +298,7 @@ private fun TerminalSetup(
                         )
                     } else {
                         NrPrimaryButton(
-                            text = "Get Termux",
+                            text = "Download Termux",
                             onClick = onInstallTermux,
                             leadingIcon = Icons.Default.Link,
                             compact = true,
@@ -327,18 +334,6 @@ private fun TerminalSetup(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NrSecondaryButton(
-                        text = "Terminal Settings",
-                        onClick = onOpenSettings,
-                        compact = true,
-                    )
-                    NrQuietButton(
-                        text = "Import key from NRSuite root",
-                        onClick = onImportKeyFromRoot,
-                        compact = true,
-                    )
-                }
             }
         }
 
@@ -368,23 +363,35 @@ private fun TerminalSetup(
                         color = StatusRed,
                     )
                 }
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = onUsernameChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text("Termux username") },
-                    placeholder = { Text("Output of whoami") },
-                )
                 Text(
-                    text = if (hasPrivateKey) {
-                        "SSH key loaded. Password authentication is not required."
-                    } else {
-                        "No SSH key loaded. Import the key generated by the Termux setup."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (hasPrivateKey) StatusGreen else StatusAmber,
+                    text = "SSH user: $username",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (hasPrivateKey && keyInfo != null) {
+                    Text(
+                        text = "SSH key: ${keyInfo.name}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = StatusGreen,
+                    )
+                    Text(
+                        text = keyInfo.fingerprint,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                } else {
+                    Text(
+                        text = "No SSH key loaded. The app checks the NRSuite root automatically.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusAmber,
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = host,
@@ -434,6 +441,12 @@ private fun TerminalSetup(
                     )
                 }
 
+                NrQuietButton(
+                    text = "Check for SSH key again",
+                    onClick = onImportKeyFromRoot,
+                    leadingIcon = Icons.Default.Refresh,
+                    compact = true,
+                )
                 NrPrimaryButton(
                     text = "Connect to Termux",
                     onClick = onConnect,
@@ -632,34 +645,10 @@ private fun ConnectedTerminal(
                     )
                 }
             }
-            if (terminalSessions.size > 1) {
-                IconButton(
-                    onClick = {
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(
-                                (pagerState.currentPage - 1).coerceAtLeast(0),
-                            )
-                        }
-                    },
-                    enabled = pagerState.currentPage > 0,
-                ) {
-                    Icon(Icons.Default.ChevronLeft, contentDescription = "Previous tab")
-                }
-                IconButton(
-                    onClick = {
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(
-                                (pagerState.currentPage + 1)
-                                    .coerceAtMost(terminalSessions.lastIndex),
-                            )
-                        }
-                    },
-                    enabled = pagerState.currentPage < terminalSessions.lastIndex,
-                ) {
-                    Icon(Icons.Default.ChevronRight, contentDescription = "Next tab")
-                }
-            }
             Spacer(Modifier.weight(1f))
+            IconButton(onClick = onOpenLauncher) {
+                Icon(Icons.Default.GridView, contentDescription = "Terminal Launcher")
+            }
             IconButton(
                 onClick = { if (imeVisible) hideKeyboard() else showKeyboard() },
             ) {

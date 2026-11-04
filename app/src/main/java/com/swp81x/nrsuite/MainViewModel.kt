@@ -13,6 +13,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import com.swp81x.nrsuite.core.terminal.SshTerminalManager
 import com.swp81x.nrsuite.core.terminal.TerminalConfig
+import com.swp81x.nrsuite.core.terminal.TerminalKeyInfo
 import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
 import com.swp81x.nrsuite.core.terminal.TerminalShortcut
 import com.swp81x.nrsuite.core.terminal.TerminalShortcutStore
@@ -238,13 +239,14 @@ class MainViewModel(internal val app: Application) {
     val terminalSessions get() = terminalManager.sessions
     val terminalSettings: StateFlow<TerminalUiSettings> get() = terminalManager.settings
     val terminalHasPrivateKey: StateFlow<Boolean> get() = terminalManager.hasPrivateKey
+    val terminalKeyInfo: StateFlow<TerminalKeyInfo?> get() = terminalManager.keyInfo
     fun savedTerminalHost(): String = terminalManager.savedHost()
     fun savedTerminalPort(): Int = terminalManager.savedPort()
-    fun savedTerminalUsername(): String = terminalManager.savedUsername()
+    fun savedTerminalUsername(): String = terminalManager.termuxSshUsername()
     fun savedTerminalConfig(): TerminalConfig? = terminalManager.savedConnectionConfig()
     fun updateTerminalSettings(settings: TerminalUiSettings) = terminalManager.updateSettings(settings)
     fun importTerminalPrivateKey(uri: Uri, passphrase: String) =
-        terminalManager.importPrivateKey(uri, passphrase)
+        terminalManager.importPrivateKey(uri = uri, publicKeyUri = null, passphrase = passphrase)
     fun importTerminalPrivateKeyFromRoot(onResult: (Boolean, String) -> Unit) {
         val rootUri = _exportDirectory.value
         if (rootUri == null) {
@@ -264,9 +266,13 @@ class MainViewModel(internal val app: Application) {
                 }
                 return@launch
             }
+            val root = runCatching { DocumentFile.fromTreeUri(app, rootUri) }.getOrNull()
+            val publicFile = root?.findFile("nrsuite_ssh_key.pub")
+                ?: root?.findFile("nrsuite_ssh_key.pub.txt")
             withContext(Dispatchers.Main) {
                 terminalManager.importPrivateKey(
                     uri = file.uri,
+                    publicKeyUri = publicFile?.uri,
                     passphrase = "",
                     deleteAfterImport = true,
                     onResult = onResult,
@@ -297,6 +303,8 @@ class MainViewModel(internal val app: Application) {
     fun deleteTerminalShortcut(id: Long) = terminalShortcutStore.delete(id)
     fun addTerminalShortcutCategory(name: String) = terminalShortcutStore.addCategory(name)
     fun deleteTerminalShortcutCategory(name: String) = terminalShortcutStore.deleteCategory(name)
+    fun renameTerminalShortcutCategory(oldName: String, newName: String) =
+        terminalShortcutStore.renameCategory(oldName, newName)
     fun runTerminalShortcutCommand(
         command: String,
         runMode: com.swp81x.nrsuite.core.terminal.TerminalShortcutRunMode,

@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.swp81x.nrsuite.core.terminal.TerminalConfig
 import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
+import com.swp81x.nrsuite.core.terminal.TerminalKeyInfo
 import com.swp81x.nrsuite.core.terminal.TerminalSessionEntry
 import com.swp81x.nrsuite.core.terminal.TerminalShortcut
 import com.swp81x.nrsuite.core.terminal.TerminalShortcutRunMode
@@ -17,6 +18,7 @@ internal fun TerminalTabContent(
     sessions: List<TerminalSessionEntry>,
     settings: TerminalUiSettings,
     hasPrivateKey: Boolean,
+    keyInfo: TerminalKeyInfo?,
     shortcuts: List<TerminalShortcut>,
     categories: List<String>,
     showLauncher: Boolean,
@@ -42,6 +44,7 @@ internal fun TerminalTabContent(
     onDeleteShortcut: (Long) -> Unit,
     onAddCategory: (String) -> Unit,
     onDeleteCategory: (String) -> Unit,
+    onRenameCategory: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -74,6 +77,7 @@ internal fun TerminalTabContent(
             onDeleteShortcut = onDeleteShortcut,
             onAddCategory = onAddCategory,
             onDeleteCategory = onDeleteCategory,
+            onRenameCategory = onRenameCategory,
             modifier = modifier,
         )
     } else {
@@ -82,6 +86,7 @@ internal fun TerminalTabContent(
             terminalSessions = sessions,
             terminalSettings = settings,
             hasPrivateKey = hasPrivateKey,
+            keyInfo = keyInfo,
             initialSessionId = sessionToOpen,
             initialHost = initialHost,
             initialPort = initialPort,

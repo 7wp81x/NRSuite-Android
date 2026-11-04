@@ -63,13 +63,22 @@ internal class TerminalPreferences(context: Context) {
 
     fun hasPrivateKey(): Boolean = preferences.contains(KEY_PRIVATE_KEY)
 
-    fun savePrivateKey(name: String, bytes: ByteArray, passphrase: String) {
+    fun savePrivateKey(
+        name: String,
+        bytes: ByteArray,
+        publicBytes: ByteArray?,
+        passphrase: String,
+    ) {
         val encodedKey = Base64.encodeToString(bytes, Base64.NO_WRAP)
         val encryptedKey = secretStore.encrypt(encodedKey)
+        val encryptedPublicKey = publicBytes?.let {
+            secretStore.encrypt(Base64.encodeToString(it, Base64.NO_WRAP))
+        }
         val encryptedPassphrase = secretStore.encrypt(passphrase)
         preferences.edit()
             .putString(KEY_PRIVATE_KEY_NAME, name)
             .putString(KEY_PRIVATE_KEY, encryptedKey)
+            .putString(KEY_PRIVATE_KEY_PUBLIC, encryptedPublicKey)
             .putString(KEY_PRIVATE_KEY_PASSPHRASE, encryptedPassphrase)
             .apply()
     }
@@ -80,12 +89,16 @@ internal class TerminalPreferences(context: Context) {
         val bytes = runCatching {
             Base64.decode(keyBase64, Base64.NO_WRAP)
         }.getOrNull() ?: return null
+        val publicBytes = preferences.getString(KEY_PRIVATE_KEY_PUBLIC, null)
+            ?.let { runCatching { secretStore.decrypt(it) }.getOrNull() }
+            ?.let { runCatching { Base64.decode(it, Base64.NO_WRAP) }.getOrNull() }
         val passphrase = preferences.getString(KEY_PRIVATE_KEY_PASSPHRASE, null)
             ?.let { runCatching { secretStore.decrypt(it) }.getOrNull() }
             .orEmpty()
         return StoredPrivateKey(
             name = preferences.getString(KEY_PRIVATE_KEY_NAME, "Terminal key").orEmpty(),
             bytes = bytes,
+            publicBytes = publicBytes,
             passphrase = passphrase,
         )
     }
@@ -94,6 +107,7 @@ internal class TerminalPreferences(context: Context) {
         preferences.edit()
             .remove(KEY_PRIVATE_KEY)
             .remove(KEY_PRIVATE_KEY_NAME)
+            .remove(KEY_PRIVATE_KEY_PUBLIC)
             .remove(KEY_PRIVATE_KEY_PASSPHRASE)
             .apply()
     }
@@ -108,6 +122,7 @@ internal class TerminalPreferences(context: Context) {
         const val KEY_SAVED_PASSWORD = "saved_password"
         const val KEY_PRIVATE_KEY = "private_key"
         const val KEY_PRIVATE_KEY_NAME = "private_key_name"
+        const val KEY_PRIVATE_KEY_PUBLIC = "private_key_public"
         const val KEY_PRIVATE_KEY_PASSPHRASE = "private_key_passphrase"
     }
 }
@@ -115,7 +130,14 @@ internal class TerminalPreferences(context: Context) {
 data class StoredPrivateKey(
     val name: String,
     val bytes: ByteArray,
+    val publicBytes: ByteArray?,
     val passphrase: String,
+)
+
+data class TerminalKeyInfo(
+    val name: String,
+    val fingerprint: String,
+    val publicKeyText: String?,
 )
 
 private class TerminalSecretStore {

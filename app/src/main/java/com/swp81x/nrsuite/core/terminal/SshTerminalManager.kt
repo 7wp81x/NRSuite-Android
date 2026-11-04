@@ -22,6 +22,7 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.security.MessageDigest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -71,6 +72,8 @@ internal class SshTerminalManager(
     val settings: StateFlow<TerminalUiSettings> = _settings.asStateFlow()
     private val _hasPrivateKey = MutableStateFlow(terminalPreferences.hasPrivateKey())
     val hasPrivateKey: StateFlow<Boolean> = _hasPrivateKey.asStateFlow()
+    private val _keyInfo = MutableStateFlow(buildKeyInfo())
+    val keyInfo: StateFlow<TerminalKeyInfo?> = _keyInfo.asStateFlow()
     private val writeMutex = Mutex()
     private val pinnedHostKeys = PinnedHostKeyRepository(preferences)
     private val managedSessions = linkedMapOf<Int, ManagedTerminalSession>()
@@ -103,8 +106,18 @@ internal class SshTerminalManager(
 
     fun savedUsername(): String = preferences.getString(KEY_USERNAME, "").orEmpty()
 
+    fun termuxSshUsername(): String {
+        return runCatching {
+            val appInfo = context.packageManager.getApplicationInfo(TERMUX_PACKAGE_NAME, 0)
+            val uid = appInfo.uid
+            val userId = uid / 100_000
+            val appId = uid % 100_000
+            "u${userId}_a${appId - 10_000}"
+        }.getOrDefault("nrsuite")
+    }
+
     fun savedConnectionConfig(): TerminalConfig? {
-        val username = savedUsername()
+        val username = termuxSshUsername()
         val password = terminalPreferences.loadPassword().orEmpty()
         if (username.isBlank() || (password.isBlank() && !terminalPreferences.hasPrivateKey())) {
             return null
@@ -119,6 +132,7 @@ internal class SshTerminalManager(
 
     fun importPrivateKey(
         uri: Uri,
+        publicKeyUri: Uri? = null,
         passphrase: String,
         deleteAfterImport: Boolean = false,
         onResult: (Boolean, String) -> Unit = { _, _ -> },
@@ -128,22 +142,34 @@ internal class SshTerminalManager(
                 withContext(Dispatchers.IO) {
                     val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                         ?: error("Could not read the selected private key.")
+                    val publicBytes = publicKeyUri?.let { keyUri ->
+                        context.contentResolver.openInputStream(keyUri)?.use { it.readBytes() }
+                    }
                     // Parse the key with JSch before persisting it so malformed or
                     // wrong-passphrase keys fail loudly instead of breaking autoconnect.
                     JSch().addIdentity(
                         "nrsuite-key-validation",
                         bytes,
-                        null,
+                        publicBytes,
                         passphrase.toByteArray(Charsets.UTF_8),
                     )
-                    terminalPreferences.savePrivateKey("Termux SSH key", bytes, passphrase)
+                    terminalPreferences.savePrivateKey(
+                        "Termux SSH key",
+                        bytes,
+                        publicBytes,
+                        passphrase,
+                    )
                     if (deleteAfterImport) {
                         runCatching { context.contentResolver.delete(uri, null, null) }
+                        publicKeyUri?.let { keyUri ->
+                            runCatching { context.contentResolver.delete(keyUri, null, null) }
+                        }
                     }
                 }
             }.onSuccess {
                 _hasPrivateKey.value = true
-                onResult(true, "SSH key imported successfully.")
+                _keyInfo.value = buildKeyInfo()
+                onResult(true, "SSH key imported and validated.")
             }.onFailure { error ->
                 Log.e("NRSuiteTerminal", "Private key import failed", error)
                 onResult(false, "SSH key import failed: ${error.message ?: "unknown error"}")
@@ -151,9 +177,26 @@ internal class SshTerminalManager(
         }
     }
 
+    private fun buildKeyInfo(): TerminalKeyInfo? {
+        val key = terminalPreferences.loadPrivateKey() ?: return null
+        val material = key.publicBytes ?: key.bytes
+        val digest = MessageDigest.getInstance("SHA-256").digest(material)
+        val fingerprint = "SHA256:" + Base64.encodeToString(
+            digest,
+            Base64.NO_WRAP or Base64.NO_PADDING,
+        )
+        val publicText = key.publicBytes?.toString(Charsets.UTF_8)?.trim()
+        return TerminalKeyInfo(
+            name = key.name,
+            fingerprint = fingerprint,
+            publicKeyText = publicText,
+        )
+    }
+
     fun clearPrivateKey() {
         terminalPreferences.clearPrivateKey()
         _hasPrivateKey.value = false
+        _keyInfo.value = null
     }
 
     fun updateSettings(settings: TerminalUiSettings) {
@@ -187,9 +230,12 @@ internal class SshTerminalManager(
         ) {
             return
         }
+        val requestedHost = config.host.trim().ifBlank { DEFAULT_TERMINAL_HOST }
+        val isLocalHost = requestedHost == "127.0.0.1" ||
+            requestedHost.equals("localhost", ignoreCase = true)
         val normalized = config.copy(
-            host = config.host.trim().ifBlank { DEFAULT_TERMINAL_HOST },
-            username = config.username.trim(),
+            host = requestedHost,
+            username = if (isLocalHost) termuxSshUsername() else config.username.trim(),
             password = config.password,
         )
         saveConnectionPreferences(normalized)
@@ -367,7 +413,7 @@ internal class SshTerminalManager(
             authJsch.addIdentity(
                 "nrsuite-terminal-key",
                 key.bytes,
-                null,
+                key.publicBytes,
                 key.passphrase.toByteArray(Charsets.UTF_8),
             )
         }

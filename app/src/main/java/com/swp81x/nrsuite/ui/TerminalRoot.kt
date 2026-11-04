@@ -8,6 +8,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.swp81x.nrsuite.MainViewModel
@@ -26,15 +28,18 @@ internal fun TerminalRoot(
     val sessions by viewModel.terminalSessions.collectAsState()
     val settings by viewModel.terminalSettings.collectAsState()
     val hasPrivateKey by viewModel.terminalHasPrivateKey.collectAsState()
+    val keyInfo by viewModel.terminalKeyInfo.collectAsState()
     val shortcuts by viewModel.terminalShortcuts.collectAsState()
     val categories by viewModel.terminalShortcutCategories.collectAsState()
-    var autoKeyCheckDone by remember { mutableStateOf(false) }
-
-    LaunchedEffect(hasPrivateKey, autoKeyCheckDone) {
-        if (!hasPrivateKey && !autoKeyCheckDone) {
-            autoKeyCheckDone = true
-            viewModel.importTerminalPrivateKeyFromRoot { success, message ->
-                if (success) Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+    LaunchedEffect(connectionState, hasPrivateKey) {
+        if (connectionState !is com.swp81x.nrsuite.core.terminal.TerminalConnectionState.Connected &&
+            !hasPrivateKey
+        ) {
+            while (isActive) {
+                viewModel.importTerminalPrivateKeyFromRoot { success, message ->
+                    if (success) Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                }
+                delay(2_500)
             }
         }
     }
@@ -44,6 +49,7 @@ internal fun TerminalRoot(
         sessions = sessions,
         settings = settings,
         hasPrivateKey = hasPrivateKey,
+        keyInfo = keyInfo,
         shortcuts = shortcuts,
         categories = categories,
         showLauncher = showLauncher,
@@ -89,6 +95,7 @@ internal fun TerminalRoot(
         onDeleteShortcut = viewModel::deleteTerminalShortcut,
         onAddCategory = viewModel::addTerminalShortcutCategory,
         onDeleteCategory = viewModel::deleteTerminalShortcutCategory,
+        onRenameCategory = viewModel::renameTerminalShortcutCategory,
         modifier = modifier,
     )
 }
