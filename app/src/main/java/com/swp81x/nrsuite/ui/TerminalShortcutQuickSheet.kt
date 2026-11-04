@@ -217,11 +217,6 @@ private fun ShortcutQuickList(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
-                Text(
-                    "Tap a shortcut to run it. Use {{name}} in commands for parameters.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
             }
             IconButton(onClick = onAdd) {
                 Icon(Icons.Default.Add, contentDescription = "New shortcut")
@@ -351,9 +346,13 @@ private fun QuickShortcutRow(
                 )
                 Text(
                     buildString {
-                        if (shortcut.category.isNotBlank()) append(shortcut.category)
+                        append(shortcut.runMode.label)
+                        if (shortcut.category.isNotBlank()) {
+                            append(" · ")
+                            append(shortcut.category)
+                        }
                         if (parameterCount > 0) {
-                            if (isNotEmpty()) append(" · ")
+                            append(" · ")
                             append("$parameterCount parameter")
                             if (parameterCount != 1) append("s")
                         }

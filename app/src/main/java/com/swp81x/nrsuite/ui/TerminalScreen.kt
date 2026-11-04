@@ -6,6 +6,7 @@ import android.net.Uri
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.inputmethod.InputMethodManager
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -237,6 +238,11 @@ internal fun TerminalScreen(
                 onInstallTermux = { openBrowser(context, TERMUX_DOWNLOAD_URL) },
                 onCopySetup = {
                     clipboard.setText(AnnotatedString(terminalSetupCommands))
+                    Toast.makeText(
+                        context,
+                        "Setup commands copied",
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 },
                 onClearPinnedHostKey = onClearPinnedHostKey,
                 onTrustChangedHostKey = onTrustChangedHostKey,
@@ -868,6 +874,11 @@ private fun ConnectedTerminal(
                         onClick = {
                             terminalMenuExpanded = false
                             onCloseSession(activeSession.id)
+                            Toast.makeText(
+                                context,
+                                "Closed ${activeSession.title}",
+                                Toast.LENGTH_SHORT,
+                            ).show()
                         },
                     )
                     DropdownMenuItem(

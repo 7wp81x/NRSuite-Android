@@ -1105,6 +1105,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     }
 
     var terminalAutoconnectAttempted by rememberSaveable { mutableStateOf(false) }
+    var showHomeShortcutSheet by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(selectedTab, terminalSettings.autoconnect, terminalState) {
         if (selectedTab != AppTab.TERMINAL) {
             // Autoconnect is a one-attempt-per-visit action. Leaving the
@@ -1130,8 +1131,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     }
 
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    val terminalImmersive = selectedTab == AppTab.TERMINAL &&
-        activeModuleId == null && selectedCategory == null && imeVisible
+    val terminalReady = selectedTab == AppTab.TERMINAL &&
+        activeModuleId == null &&
+        selectedCategory == null &&
+        terminalState is TerminalConnectionState.Connected &&
+        terminalSessions.isNotEmpty()
+    val terminalImmersive = terminalReady && imeVisible
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -1147,7 +1152,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             ScaffoldDefaults.contentWindowInsets
         },
         topBar = {
-            if (!terminalImmersive) NRSuiteTopBar(
+            if (!terminalReady) NRSuiteTopBar(
                 title = activeTitle,
                 showBack = showBack,
                 backDescription = when {
@@ -2483,9 +2488,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 firmwareAssetDownload = firmwareAssetDownload,
                 terminalShortcuts = terminalShortcuts,
                 showTerminalLauncherCard = terminalSettings.showLauncherOnHome,
-                onOpenTerminal = {
-                    selectedTab = AppTab.TERMINAL
-                    showTerminalLauncher = false
+                onOpenShortcuts = {
+                    showHomeShortcutSheet = true
                 },
                 onManageTerminalShortcuts = {
                     activeModuleId = "terminal_shortcuts"
@@ -2611,6 +2615,48 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
             }
         }
+    }
+
+    if (showHomeShortcutSheet) {
+        TerminalShortcutQuickSheet(
+            shortcuts = terminalShortcuts,
+            categories = terminalShortcutCategories,
+            onDismiss = { showHomeShortcutSheet = false },
+            onRunShortcut = { shortcut ->
+                if (terminalState !is TerminalConnectionState.Connected) {
+                    Toast.makeText(
+                        context,
+                        "Connect to Termux before running terminal shortcuts.",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                } else {
+                    viewModel.runTerminalShortcutCommand(
+                        command = shortcut.command,
+                        runMode = shortcut.runMode,
+                        execute = true,
+                    )
+                    if (shortcut.runMode !=
+                        com.swp81x.nrsuite.core.terminal.TerminalShortcutRunMode.BACKGROUND
+                    ) {
+                        showHomeShortcutSheet = false
+                        selectedTab = AppTab.TERMINAL
+                        showTerminalLauncher = false
+                    }
+                }
+            },
+            onAdd = {
+                showHomeShortcutSheet = false
+                activeModuleId = "terminal_shortcuts"
+            },
+            onManage = {
+                showHomeShortcutSheet = false
+                activeModuleId = "terminal_shortcuts"
+            },
+            onOpenSettings = {
+                showHomeShortcutSheet = false
+                activeModuleId = "terminal_settings"
+            },
+        )
     }
 }
 

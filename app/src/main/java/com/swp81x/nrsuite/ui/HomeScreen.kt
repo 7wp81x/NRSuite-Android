@@ -247,7 +247,7 @@ internal fun HomeTabContent(
     firmwareAssetDownload: FirmwareAssetDownloadState,
     terminalShortcuts: List<TerminalShortcut>,
     showTerminalLauncherCard: Boolean,
-    onOpenTerminal: () -> Unit,
+    onOpenShortcuts: () -> Unit,
     onManageTerminalShortcuts: () -> Unit,
     onRunTerminalShortcut: (TerminalShortcut) -> Unit,
     onDownloadOuiDatabase: () -> Unit,
@@ -284,7 +284,7 @@ internal fun HomeTabContent(
         firmwareAssetDownload = firmwareAssetDownload,
         terminalShortcuts = terminalShortcuts,
         showTerminalLauncherCard = showTerminalLauncherCard,
-        onOpenTerminal = onOpenTerminal,
+        onOpenShortcuts = onOpenShortcuts,
         onManageTerminalShortcuts = onManageTerminalShortcuts,
         onRunTerminalShortcut = onRunTerminalShortcut,
         onDownloadOuiDatabase = onDownloadOuiDatabase,
@@ -324,7 +324,7 @@ internal fun HomeScreen(
     firmwareAssetDownload: FirmwareAssetDownloadState,
     terminalShortcuts: List<TerminalShortcut> = emptyList(),
     showTerminalLauncherCard: Boolean = true,
-    onOpenTerminal: () -> Unit = {},
+    onOpenShortcuts: () -> Unit = {},
     onManageTerminalShortcuts: () -> Unit = {},
     onRunTerminalShortcut: (TerminalShortcut) -> Unit = {},
     onDownloadOuiDatabase: () -> Unit,
@@ -415,7 +415,7 @@ internal fun HomeScreen(
             item {
                 HomeTerminalLauncherCard(
                     shortcuts = terminalShortcuts.filter { it.pinHome }.take(3),
-                    onOpenTerminal = onOpenTerminal,
+                    onOpenShortcuts = onOpenShortcuts,
                     onManageShortcuts = onManageTerminalShortcuts,
                     onRunShortcut = onRunTerminalShortcut,
                 )
@@ -1334,7 +1334,7 @@ private fun HomeDeviceRow(
 @Composable
 private fun HomeTerminalLauncherCard(
     shortcuts: List<TerminalShortcut>,
-    onOpenTerminal: () -> Unit,
+    onOpenShortcuts: () -> Unit,
     onManageShortcuts: () -> Unit,
     onRunShortcut: (TerminalShortcut) -> Unit,
 ) {
@@ -1362,8 +1362,8 @@ private fun HomeTerminalLauncherCard(
                     modifier = Modifier.weight(1f),
                 )
                 NrQuietButton(
-                    text = "Open Terminal",
-                    onClick = onOpenTerminal,
+                    text = "Open shortcuts",
+                    onClick = onOpenShortcuts,
                     compact = true,
                 )
             }

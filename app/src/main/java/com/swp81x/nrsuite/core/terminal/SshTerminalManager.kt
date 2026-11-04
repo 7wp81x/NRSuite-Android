@@ -331,7 +331,11 @@ internal class SshTerminalManager(
                 publishSessions()
                 newSession.start()
                 if (!initialCommand.isNullOrBlank()) {
-                    val suffix = if (closeAfterCommand) "; exit\r" else "\r"
+                    val suffix = if (closeAfterCommand) {
+                        "; printf '\\n[Press Enter to close]\\n'; read -r _; exit\r"
+                    } else {
+                        "\r"
+                    }
                     newSession.terminalSession.write(initialCommand + suffix)
                 }
             }.onFailure { error ->

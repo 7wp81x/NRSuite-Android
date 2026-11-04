@@ -177,6 +177,10 @@ When autoconnect is enabled:
 - Pinch to zoom changes the terminal font size.
 - The terminal keeps the Android status-bar area clear while the keyboard is open.
 - Landscape and portrait layouts preserve the same IME spacing behavior.
+- The global NRSuite title bar is hidden only while a connected terminal is shown.
+  Setup, connecting, error, and host-key views keep the normal app title bar.
+- The bottom navigation remains available when the keyboard is closed and is hidden
+  with the global title bar while the keyboard is open.
 
 If the keyboard overlays the terminal on a specific Android build, include the
 device model and Android version in a bug report.
@@ -201,8 +205,15 @@ Shortcuts can use the following run modes:
 - **Insert only**
 - **Background task**
 
+Temporary sessions remain open after their command completes. The terminal shows
+`[Press Enter to close]`; pressing Enter closes the temporary tab. The quick
+shortcut list shows each shortcut's run mode alongside its category and parameter
+count.
+
 A shortcut can be pinned to the Home screen and can optionally ask for
-confirmation before running.
+confirmation before running. The Home shortcut card provides **Open shortcuts**,
+which opens the quick sheet over Home, and **Manage shortcuts**, which opens the
+full CRUD screen without switching to the Terminal tab.
 
 ### Parameterized shortcuts
 
@@ -222,7 +233,8 @@ When the shortcut is run:
 4. **Run** is enabled only when all parameters are filled.
 5. The parameter form acts as the confirmation step.
 
-Parameter names should use letters, numbers, `_`, `-`, or `.`.
+Parameter names should use letters, numbers, `_`, `-`, or `.`. The quick shortcut
+list displays the shortcut's run mode, category, and parameter count.
 
 ### Built-in examples
 
