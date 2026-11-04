@@ -695,7 +695,7 @@ private fun DeviceSpecsContent(state: ConnectionState.Connected) {
         },
     )
     SpecRow("Uptime", formatUptime(state.uptimeMs))
-    SpecRow("RAM / heap", formatPair(state.heapFree, state.heapTotal, "free"))
+    SpecRow("Heap usage", formatHeapUsage(state.heapFree, state.heapTotal, state.heapUsed))
     SpecRow("Min free heap", formatBytes(state.heapMinFree))
     SpecRow("Largest block", formatBytes(state.heapMaxAlloc))
     SpecRow(
@@ -788,8 +788,8 @@ internal fun HardwareInfoCard(
             )
             SpecRow("Uptime", formatUptime(state.uptimeMs))
             SpecRow(
-                "RAM / heap",
-                formatPair(state.heapFree, state.heapTotal, "free"),
+                "Heap usage",
+                formatHeapUsage(state.heapFree, state.heapTotal, state.heapUsed),
             )
             SpecRow("Min free heap", formatBytes(state.heapMinFree))
             SpecRow("Largest block", formatBytes(state.heapMaxAlloc))
@@ -862,6 +862,20 @@ private fun formatPair(free: Long?, total: Long?, suffix: String): String {
     if (free == null) return formatBytes(total)
     if (total == null) return formatBytes(free)
     return "${formatBytes(free)} $suffix / ${formatBytes(total)}"
+}
+
+private fun formatHeapUsage(free: Long?, total: Long?, used: Long?): String {
+    if (total == null || total <= 0L) return "Not reported"
+    val actualUsed = (used ?: free?.let { total - it }) ?: return formatBytes(total)
+    val percent = ((actualUsed * 100.0) / total).coerceIn(0.0, 100.0)
+    return String.format(
+        Locale.US,
+        "%s used / %s · %s free · %.1f%%",
+        formatBytes(actualUsed),
+        formatBytes(total),
+        free?.let(::formatBytes) ?: "unknown",
+        percent,
+    )
 }
 
 private fun formatUptime(uptimeMs: Long?): String {

@@ -281,6 +281,7 @@ class NrSession(
             uptimeMs = optionalLong(status, "uptime"),
             heapFree = optionalLong(status, "heap"),
             heapTotal = optionalLong(status, "heap_total"),
+            heapUsed = optionalLong(status, "heap_used"),
             heapMinFree = optionalLong(status, "heap_min_free"),
             heapMaxAlloc = optionalLong(status, "heap_max_alloc"),
             psramFree = optionalLong(status, "psram_free"),

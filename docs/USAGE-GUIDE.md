@@ -532,6 +532,22 @@ behavior as part of a non-mesh release validation.
 
 ## 9. Common troubleshooting
 
+### Device specs
+
+The Device screen shows the telemetry reported by current firmware in `STATUS`:
+
+- Heap usage: used / total, free bytes, and percentage
+- Minimum free heap
+- Largest allocatable block
+- PSRAM total/free, or `Not present` when unavailable
+- CPU frequency and core count
+- Flash size
+- SDK version
+- Active transport (`usb_cdc` or `uart0`)
+
+Older firmware that does not report a field shows `Not reported`; it does not
+crash the app.
+
 ### Device appears but commands time out
 
 - Confirm the firmware heartbeat is arriving.

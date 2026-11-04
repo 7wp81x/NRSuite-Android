@@ -66,6 +66,7 @@ sealed interface ConnectionState {
         val uptimeMs: Long? = null,
         val heapFree: Long? = null,
         val heapTotal: Long? = null,
+        val heapUsed: Long? = null,
         val heapMinFree: Long? = null,
         val heapMaxAlloc: Long? = null,
         val psramFree: Long? = null,
