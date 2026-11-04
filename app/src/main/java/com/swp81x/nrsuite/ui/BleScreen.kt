@@ -51,6 +51,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
+import com.swp81x.nrsuite.core.session.BleHidHeapFailure
+import com.swp81x.nrsuite.ui.components.BleHidLowHeapDialog
 import com.swp81x.nrsuite.ui.components.SavedScriptPicker
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
@@ -81,6 +83,11 @@ fun BleScreen(
     modifiers: Set<String>,
     modifierHold: Boolean,
     bleScriptRunning: Boolean,
+    lowHeapWarning: BleHidHeapFailure?,
+    canRestartEsp32: Boolean,
+    restartInProgress: Boolean,
+    onDismissLowHeapWarning: () -> Unit,
+    onRestartEsp32: () -> Unit,
     onUseSavedScript: (String) -> Unit,
     onChoosePayload: () -> Unit,
     onClearPayload: () -> Unit,
@@ -195,6 +202,19 @@ fun BleScreen(
                 Icon(Icons.Default.PlayArrow, contentDescription = "Start BLE")
             }
         }
+    }
+
+    lowHeapWarning?.let { failure ->
+        BleHidLowHeapDialog(
+            failure = failure,
+            canRestart = canRestartEsp32,
+            restartInProgress = restartInProgress,
+            onRestartEsp32 = {
+                onDismissLowHeapWarning()
+                onRestartEsp32()
+            },
+            onDismiss = onDismissLowHeapWarning,
+        )
     }
 }
 

@@ -4,7 +4,10 @@ import android.net.Uri
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
+import com.swp81x.nrsuite.core.session.BleHidHeapFailure
+import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
+import com.swp81x.nrsuite.core.session.parseBleHidHeapFailure
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -53,6 +56,7 @@ internal fun MainViewModel.startBleImpl(advertiseName: String) {
             timeoutMs = 8_000,
         )
         if (response?.optBoolean("ok") == true) {
+            _bleLowHeapWarning.value = null
             _bleAdvertising.value = true
             _bleConnected.value = false
             _blePeer.value = ""
@@ -62,7 +66,31 @@ internal fun MainViewModel.startBleImpl(advertiseName: String) {
             appendLog("BLE HID advertising started.")
             addHistory("ble", "BLE HID advertising started as '$name'", HistoryLevel.SUCCESS)
         } else {
-            appendLog("Failed to start BLE HID: ${response?.optString("msg") ?: "timeout or unsupported"}")
+            val message = response?.optString("msg").orEmpty().ifBlank { "timeout or unsupported" }
+            val structuredHeapFailure =
+                response?.optString("error") == "insufficient_heap_for_ble_hid"
+            val parsedHeapFailure = parseBleHidHeapFailure(message)
+            if (structuredHeapFailure || parsedHeapFailure != null) {
+                val connected = _connectionState.value as? ConnectionState.Connected
+                val failure = BleHidHeapFailure(
+                    freeHeap = response?.optionalLong("heap")
+                        ?: parsedHeapFailure?.freeHeap
+                        ?: connected?.heapFree,
+                    largestBlock = response?.optionalLong("heap_max_alloc")
+                        ?: parsedHeapFailure?.largestBlock
+                        ?: connected?.heapMaxAlloc,
+                    message = message,
+                )
+                _bleLowHeapWarning.value = failure
+                appendLog(
+                    "BLE HID refused: insufficient heap " +
+                        "(free=${failure.freeHeap ?: "unknown"}, " +
+                        "largest=${failure.largestBlock ?: "unknown"}).",
+                    level = LogLevel.ERROR,
+                )
+            } else {
+                appendLog("Failed to start BLE HID: $message", level = LogLevel.ERROR)
+            }
         }
     }
 }
@@ -334,3 +362,6 @@ internal fun MainViewModel.startBleStatusPollingImpl(activeSession: NrSession) {
         }
     }
 }
+
+private fun JSONObject.optionalLong(key: String): Long? =
+    if (has(key) && !isNull(key)) optLong(key) else null

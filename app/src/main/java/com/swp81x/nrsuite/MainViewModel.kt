@@ -99,6 +99,7 @@ import com.swp81x.nrsuite.core.portal.PortalSessionMetrics
 import com.swp81x.nrsuite.core.portal.PortalVisitor
 import com.swp81x.nrsuite.core.portal.mergePortalVisitor
 import com.swp81x.nrsuite.core.pcap.PcapWriter
+import com.swp81x.nrsuite.core.session.BleHidHeapFailure
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
 import com.swp81x.nrsuite.core.wifi.DetectedSsid
@@ -1078,6 +1079,12 @@ class MainViewModel(internal val app: Application) {
     internal val _bleAdvertising = MutableStateFlow(false)
     val bleAdvertising: StateFlow<Boolean> = _bleAdvertising.asStateFlow()
 
+    internal val _bleLowHeapWarning = MutableStateFlow<BleHidHeapFailure?>(null)
+    val bleLowHeapWarning: StateFlow<BleHidHeapFailure?> = _bleLowHeapWarning.asStateFlow()
+
+    internal val _deviceRestarting = MutableStateFlow(false)
+    val deviceRestarting: StateFlow<Boolean> = _deviceRestarting.asStateFlow()
+
     internal val _bleConnected = MutableStateFlow(false)
     val bleConnected: StateFlow<Boolean> = _bleConnected.asStateFlow()
 
@@ -1680,6 +1687,11 @@ class MainViewModel(internal val app: Application) {
     fun markPermissionRequested(device: UsbDevice) = this.markPermissionRequestedImpl(device)
     fun clearPermissionRequest(deviceId: Int) = this.clearPermissionRequestImpl(deviceId)
     fun disconnectDevice(device: UsbDevice) = this.disconnectDeviceImpl(device)
+    fun stopModulesForMemory() = this.stopModulesForMemoryImpl()
+    fun restartEsp32() = this.restartEsp32Impl()
+    fun dismissBleLowHeapWarning() {
+        _bleLowHeapWarning.value = null
+    }
 
     fun scanWifi() = this.scanWifiImpl()
     fun scanWifiForTargets() = this.scanWifiForTargetsImpl()

@@ -441,6 +441,10 @@ Depending on the board:
 - Tracker Detector flags Find My/AirTag-style behavior.
 - BLE GATT Profile enumerates read-only services/characteristics.
 - BLE HID supports keyboard, mouse, and scripts.
+- BLE HID start requires at least 90 KiB free heap and a 48 KiB largest block.
+  If firmware rejects startup for insufficient heap, the app shows the live
+  values, the required thresholds, stop-module guidance, and an explicit ESP32
+  restart action.
 - FastPair Model ID is parked until suitable test hardware is available.
 
 ESP32-S2 has no BLE radio.
@@ -547,6 +551,21 @@ The Device screen shows the telemetry reported by current firmware in `STATUS`:
 
 Older firmware that does not report a field shows `Not reported`; it does not
 crash the app.
+
+### Device memory banner and explicit restart
+
+The Devices screen always shows the active device's current free heap and
+largest allocatable block for debugging and field diagnostics. The banner uses
+the current values only; it does not use the historical minimum-free value.
+
+- Warning: free heap below 48 KiB or largest block below 28 KiB.
+- Critical: free heap below 20 KiB or largest block below 12 KiB.
+
+**Stop modules** sends `STOP_ALL` and refreshes telemetry. **Restart ESP32**
+requires explicit confirmation, sends `REBOOT`, and expects the USB device to
+disconnect and re-enumerate. Reconnect from Devices after it appears again.
+Restart is never automatic and requires firmware that advertises the `reboot`
+feature.
 
 For module memory testing, use:
 

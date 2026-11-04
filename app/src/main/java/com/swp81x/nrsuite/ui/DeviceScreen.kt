@@ -120,12 +120,14 @@ import androidx.core.content.ContextCompat
 import com.swp81x.nrsuite.MainViewModel
 import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.session.ConnectionState
+import com.swp81x.nrsuite.core.session.DeviceMemoryHealth
 import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
 import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
 import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
 import com.swp81x.nrsuite.core.update.VersionComparator
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.ui.components.ConnectionDiagnosticSummary
+import com.swp81x.nrsuite.ui.components.DeviceMemoryBanner
 import com.swp81x.nrsuite.ui.components.FirmwareUpdateInlineNotice
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
@@ -133,6 +135,7 @@ import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrCompactPrimaryButton
 import com.swp81x.nrsuite.ui.components.NrCompactSecondaryButton
 import com.swp81x.nrsuite.ui.components.NrCompactStatusButton
+import com.swp81x.nrsuite.ui.components.NrDangerButton
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.NrPrimaryButton
 import com.swp81x.nrsuite.ui.components.NrQuietButton
@@ -179,6 +182,9 @@ internal fun DeviceScreen(
     onRefreshStatus: (UsbDevice) -> Unit,
     onSwitchDevice: (UsbDevice) -> Unit,
     onOpenFirmwareFlasher: (UsbDevice?, String?) -> Unit,
+    onStopModulesForMemory: () -> Unit,
+    onRestartEsp32: () -> Unit,
+    restartInProgress: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val usbConnectBusy = deviceConnectionStates.values.any {
@@ -208,6 +214,9 @@ internal fun DeviceScreen(
                 firmwareAssetDownload = firmwareAssetDownload,
                 onDownloadFirmwareUpdate = onDownloadFirmwareUpdate,
                 onOpenFirmwareFlasherForUpdate = onOpenFirmwareFlasherForUpdate,
+                onStopModulesForMemory = onStopModulesForMemory,
+                onRestartEsp32 = onRestartEsp32,
+                restartInProgress = restartInProgress,
             )
         }
 
@@ -280,8 +289,12 @@ internal fun DeviceConnectionCard(
     firmwareAssetDownload: FirmwareAssetDownloadState,
     onDownloadFirmwareUpdate: () -> Unit,
     onOpenFirmwareFlasherForUpdate: () -> Unit,
+    onStopModulesForMemory: () -> Unit,
+    onRestartEsp32: () -> Unit,
+    restartInProgress: Boolean,
 ) {
     var detailsExpanded by rememberSaveable { mutableStateOf(false) }
+    var showRestartDialog by rememberSaveable { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -350,6 +363,21 @@ internal fun DeviceConnectionCard(
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
                 )
+                val memoryHealth = DeviceMemoryHealth.evaluate(
+                    freeHeap = state.heapFree,
+                    largestBlock = state.heapMaxAlloc,
+                )
+                // Debug/testing visibility: keep live heap telemetry on screen
+                // for every connected device, regardless of current pressure.
+                Spacer(Modifier.height(8.dp))
+                DeviceMemoryBanner(
+                    health = memoryHealth,
+                    canRestart = "reboot" in state.features,
+                    restartInProgress = restartInProgress,
+                    onStopModules = onStopModulesForMemory,
+                    onRestartEsp32 = { showRestartDialog = true },
+                    onViewDetails = { detailsExpanded = true },
+                )
                 NrQuietButton(
                     text = if (detailsExpanded) "Hide details" else "Show details",
                     onClick = { detailsExpanded = !detailsExpanded },
@@ -397,6 +425,36 @@ internal fun DeviceConnectionCard(
                 }
             }
         }
+    }
+    if (showRestartDialog) {
+        AlertDialog(
+            onDismissRequest = { showRestartDialog = false },
+            title = { Text("Restart ESP32?") },
+            text = {
+                Text(
+                    "The active module will stop and the ESP32 will reboot. " +
+                        "The USB device will disconnect and re-enumerate; reconnect after it appears again.",
+                )
+            },
+            confirmButton = {
+                NrDangerButton(
+                    text = "Restart ESP32",
+                    onClick = {
+                        showRestartDialog = false
+                        onRestartEsp32()
+                    },
+                    filled = true,
+                    compact = true,
+                )
+            },
+            dismissButton = {
+                NrQuietButton(
+                    text = "Cancel",
+                    onClick = { showRestartDialog = false },
+                    compact = true,
+                )
+            },
+        )
     }
 }
 

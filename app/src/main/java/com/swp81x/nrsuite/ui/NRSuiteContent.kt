@@ -378,6 +378,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val bleModifiers by viewModel.bleModifiers.collectAsState()
     val bleModifierHold by viewModel.bleModifierHold.collectAsState()
     val bleScriptRunning by viewModel.bleScriptRunning.collectAsState()
+    val bleLowHeapWarning by viewModel.bleLowHeapWarning.collectAsState()
+    val deviceRestarting by viewModel.deviceRestarting.collectAsState()
     val bleScanStarting by viewModel.bleScanStarting.collectAsState()
     val bleScanRunning by viewModel.bleScanRunning.collectAsState()
     val bleScanOwner by viewModel.bleScanOwner.collectAsState()
@@ -971,6 +973,35 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             viewModel.connect(device)
         } else {
             requestPermission(device)
+        }
+    }
+
+    fun openFirmwareFlasherForUpdate() {
+        viewModel.prepareFirmwareFlasherForUpdate()
+        viewModel.onModuleOpened("firmware")
+        activeModuleId = "firmware"
+    }
+
+    fun openFirmwareFlasherForDevice(device: UsbDevice?, chip: String?) {
+        viewModel.prepareFirmwareFlasherForDiagnostic(chip, device?.deviceId)
+        if (device != null) {
+            if (usbManager.hasPermission(device)) {
+                viewModel.selectFirmwareTarget(device)
+            } else {
+                requestFirmwarePermission(device)
+            }
+        }
+        viewModel.onModuleOpened("firmware")
+        activeModuleId = "firmware"
+    }
+
+    fun switchActiveDeviceWithToast(device: UsbDevice) {
+        if (viewModel.switchActiveDevice(device)) {
+            Toast.makeText(
+                context,
+                "Active device: ${device.productName ?: "USB device"}",
+                Toast.LENGTH_SHORT,
+            ).show()
         }
     }
 
@@ -2214,6 +2245,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     modifiers = bleModifiers,
                     modifierHold = bleModifierHold,
                     bleScriptRunning = bleScriptRunning,
+                    lowHeapWarning = bleLowHeapWarning,
+                    canRestartEsp32 = "reboot" in deviceFeatures,
+                    restartInProgress = deviceRestarting,
+                    onDismissLowHeapWarning = viewModel::dismissBleLowHeapWarning,
+                    onRestartEsp32 = viewModel::restartEsp32,
                     onUseSavedScript = viewModel::useBleSavedScript,
                     onChoosePayload = { blePicker.launch(arrayOf("text/plain", "*/*")) },
                     onClearPayload = viewModel::clearBlePayload,
@@ -2232,50 +2268,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
 
             activeModuleId == "devices" -> {
-                DeviceScreen(
-                    connectionState = connectionState,
-                    activeFingerprint = primaryFingerprint,
-                    devices = devices,
-                    deviceConnectionStates = deviceConnectionStates,
-                    deviceFingerprint = { viewModel.deviceFingerprintImpl(it) },
-                    pendingPermissionRequests = pendingPermissionRequests,
-                    disconnectingFingerprints = disconnectingFingerprints,
+                DeviceScreenRoute(
+                    viewModel = viewModel,
                     usbManager = usbManager,
-                    firmwareUpdate = firmwareUpdate,
-                    firmwareReleases = firmwareReleases,
-                    firmwareAssetDownload = firmwareAssetDownload,
-                    onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
-                    onOpenFirmwareFlasherForUpdate = {
-                        viewModel.prepareFirmwareFlasherForUpdate()
-                        viewModel.onModuleOpened("firmware")
-                        activeModuleId = "firmware"
-                    },
-                    onRefresh = viewModel::refreshDevices,
-                    onConnect = { device -> connectOrRequestPermission(device) },
-                    onDisconnect = viewModel::disconnect,
-                    onDisconnectDevice = viewModel::disconnectDevice,
-                    onRefreshStatus = viewModel::refreshDeviceStatus,
-                    onSwitchDevice = { device ->
-                        if (viewModel.switchActiveDevice(device)) {
-                            Toast.makeText(
-                                context,
-                                "Active device: ${device.productName ?: "USB device"}",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        }
-                    },
-                    onOpenFirmwareFlasher = { device, chip ->
-                        viewModel.prepareFirmwareFlasherForDiagnostic(chip, device?.deviceId)
-                        if (device != null) {
-                            if (usbManager.hasPermission(device)) {
-                                viewModel.selectFirmwareTarget(device)
-                            } else {
-                                requestFirmwarePermission(device)
-                            }
-                        }
-                        viewModel.onModuleOpened("firmware")
-                        activeModuleId = "firmware"
-                    },
+                    onConnectRequest = ::connectOrRequestPermission,
+                    onOpenFirmwareFlasher = ::openFirmwareFlasherForDevice,
+                    onOpenFirmwareFlasherForUpdate = ::openFirmwareFlasherForUpdate,
                     modifier = Modifier,
                 )
             }
@@ -2565,50 +2563,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 modifier = Modifier,
             )
 
-            selectedTab == AppTab.DEVICES -> DeviceScreen(
-                connectionState = connectionState,
-                activeFingerprint = primaryFingerprint,
-                devices = devices,
-                deviceConnectionStates = deviceConnectionStates,
-                deviceFingerprint = { viewModel.deviceFingerprintImpl(it) },
-                pendingPermissionRequests = pendingPermissionRequests,
-                disconnectingFingerprints = disconnectingFingerprints,
+            selectedTab == AppTab.DEVICES -> DeviceScreenRoute(
+                viewModel = viewModel,
                 usbManager = usbManager,
-                firmwareUpdate = firmwareUpdate,
-                firmwareReleases = firmwareReleases,
-                firmwareAssetDownload = firmwareAssetDownload,
-                onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
-                onOpenFirmwareFlasherForUpdate = {
-                    viewModel.prepareFirmwareFlasherForUpdate()
-                    viewModel.onModuleOpened("firmware")
-                    activeModuleId = "firmware"
-                },
-                onRefresh = viewModel::refreshDevices,
-                onConnect = { device -> connectOrRequestPermission(device) },
-                onDisconnect = viewModel::disconnect,
-                onDisconnectDevice = viewModel::disconnectDevice,
-                onRefreshStatus = viewModel::refreshDeviceStatus,
-                onSwitchDevice = { device ->
-                    if (viewModel.switchActiveDevice(device)) {
-                        Toast.makeText(
-                            context,
-                            "Active device: ${device.productName ?: "USB device"}",
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                    }
-                },
-                onOpenFirmwareFlasher = { device, chip ->
-                    viewModel.prepareFirmwareFlasherForDiagnostic(chip, device?.deviceId)
-                    if (device != null) {
-                        if (usbManager.hasPermission(device)) {
-                            viewModel.selectFirmwareTarget(device)
-                        } else {
-                            requestFirmwarePermission(device)
-                        }
-                    }
-                    viewModel.onModuleOpened("firmware")
-                    activeModuleId = "firmware"
-                },
+                onConnectRequest = ::connectOrRequestPermission,
+                onOpenFirmwareFlasher = ::openFirmwareFlasherForDevice,
+                onOpenFirmwareFlasherForUpdate = ::openFirmwareFlasherForUpdate,
                 modifier = Modifier,
             )
 
