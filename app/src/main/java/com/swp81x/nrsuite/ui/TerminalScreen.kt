@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,6 +35,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Link
@@ -84,6 +84,7 @@ import com.swp81x.nrsuite.core.terminal.TERMUX_PACKAGE_NAME
 import com.swp81x.nrsuite.core.terminal.TerminalConfig
 import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
 import com.swp81x.nrsuite.core.terminal.TerminalSessionEntry
+import com.swp81x.nrsuite.core.terminal.TerminalUiSettings
 import com.swp81x.nrsuite.ui.components.NrDangerButton
 import com.swp81x.nrsuite.ui.components.NrPrimaryButton
 import com.swp81x.nrsuite.ui.components.NrQuietButton
@@ -99,8 +100,6 @@ import kotlinx.coroutines.launch
 
 private const val TERMUX_FDROID_URL = "https://f-droid.org/packages/com.termux/"
 private const val TERMUX_GITHUB_URL = "https://github.com/termux/termux-app"
-private const val DEFAULT_TERMINAL_TEXT_SIZE = 13
-
 private val terminalSetupCommands = """
 pkg install openssh
 passwd
@@ -112,6 +111,9 @@ whoami
 internal fun TerminalScreen(
     connectionState: TerminalConnectionState,
     terminalSessions: List<TerminalSessionEntry>,
+    terminalSettings: TerminalUiSettings,
+    hasPrivateKey: Boolean,
+    initialSessionId: Int? = null,
     initialHost: String,
     initialPort: Int,
     initialUsername: String,
@@ -119,6 +121,10 @@ internal fun TerminalScreen(
     onDisconnect: () -> Unit,
     onNewSession: () -> Unit,
     onCloseSession: (Int) -> Unit,
+    onOpenLauncher: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onActiveSessionChanged: (Int) -> Unit,
+    onUpdateSettings: (TerminalUiSettings) -> Unit,
     onSetUpdateListener: ((() -> Unit)?) -> Unit,
     onSetColorScheme: (IntArray, Int, Int, Int) -> Unit,
     onClearPinnedHostKey: () -> Unit,
@@ -143,9 +149,15 @@ internal fun TerminalScreen(
                 ConnectedTerminal(
                     state = connectionState,
                     terminalSessions = terminalSessions,
+                    terminalSettings = terminalSettings,
+                    initialSessionId = initialSessionId,
                     onDisconnect = onDisconnect,
                     onNewSession = onNewSession,
                     onCloseSession = onCloseSession,
+                    onOpenLauncher = onOpenLauncher,
+                    onOpenSettings = onOpenSettings,
+                    onActiveSessionChanged = onActiveSessionChanged,
+                    onUpdateSettings = onUpdateSettings,
                     onSetUpdateListener = onSetUpdateListener,
                     onSetColorScheme = onSetColorScheme,
                     modifier = modifier,
@@ -163,6 +175,7 @@ internal fun TerminalScreen(
                 onUsernameChange = { username = it },
                 password = password,
                 onPasswordChange = { password = it },
+                hasPrivateKey = hasPrivateKey,
                 termuxInstalled = termuxInstalled,
                 onRefreshTermux = { refreshCount++ },
                 onConnect = {
@@ -209,6 +222,7 @@ private fun TerminalSetup(
     onUsernameChange: (String) -> Unit,
     password: String,
     onPasswordChange: (String) -> Unit,
+    hasPrivateKey: Boolean,
     termuxInstalled: Boolean,
     onRefreshTermux: () -> Unit,
     onConnect: () -> Unit,
@@ -342,10 +356,19 @@ private fun TerminalSetup(
                     onValueChange = onPasswordChange,
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    label = { Text("Termux password") },
+                    label = {
+                        Text(if (hasPrivateKey) "Termux password (optional)" else "Termux password")
+                    },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 )
+                if (hasPrivateKey) {
+                    Text(
+                        text = "An SSH private key is saved. It will be tried before the password.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = StatusGreen,
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = host,
@@ -399,7 +422,8 @@ private fun TerminalSetup(
                     text = "Connect to Termux",
                     onClick = onConnect,
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = username.isNotBlank() && password.isNotEmpty() &&
+                    enabled = username.isNotBlank() &&
+                        (password.isNotEmpty() || hasPrivateKey) &&
                         host.isNotBlank() && port.isNotBlank() &&
                         state !is TerminalConnectionState.Connecting,
                 )
@@ -422,9 +446,15 @@ private fun TerminalSetup(
 private fun ConnectedTerminal(
     state: TerminalConnectionState.Connected,
     terminalSessions: List<TerminalSessionEntry>,
+    terminalSettings: TerminalUiSettings,
+    initialSessionId: Int?,
     onDisconnect: () -> Unit,
     onNewSession: () -> Unit,
     onCloseSession: (Int) -> Unit,
+    onOpenLauncher: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onActiveSessionChanged: (Int) -> Unit,
+    onUpdateSettings: (TerminalUiSettings) -> Unit,
     onSetUpdateListener: ((() -> Unit)?) -> Unit,
     onSetColorScheme: (IntArray, Int, Int, Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -438,10 +468,24 @@ private fun ConnectedTerminal(
     var terminalMenuExpanded by remember { mutableStateOf(false) }
     var ctrlActive by remember { mutableStateOf(false) }
     var altActive by remember { mutableStateOf(false) }
-    var terminalTextSize by rememberSaveable { mutableIntStateOf(DEFAULT_TERMINAL_TEXT_SIZE) }
+    val terminalTextSize = terminalSettings.defaultFontSize
     val activeSession = terminalSessions.getOrNull(
         pagerState.currentPage.coerceIn(0, terminalSessions.lastIndex),
     ) ?: terminalSessions.first()
+    var previousSessionCount by remember { mutableIntStateOf(terminalSessions.size) }
+    LaunchedEffect(initialSessionId, terminalSessions.size) {
+        val index = terminalSessions.indexOfFirst { it.id == initialSessionId }
+        if (index >= 0) pagerState.animateScrollToPage(index)
+    }
+    LaunchedEffect(pagerState.currentPage, terminalSessions) {
+        activeSession?.let { onActiveSessionChanged(it.id) }
+    }
+    LaunchedEffect(terminalSessions.size) {
+        if (terminalSessions.size > previousSessionCount && terminalSessions.isNotEmpty()) {
+            pagerState.animateScrollToPage(terminalSessions.lastIndex)
+        }
+        previousSessionCount = terminalSessions.size
+    }
 
     val palette = remember(colorScheme, nrColors) {
         intArrayOf(
@@ -506,9 +550,7 @@ private fun ConnectedTerminal(
     }
 
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .imePadding(),
+        modifier = modifier.fillMaxSize(),
     ) {
         Row(
             modifier = Modifier
@@ -551,8 +593,11 @@ private fun ConnectedTerminal(
                         text = { Text("Increase font size") },
                         onClick = {
                             terminalMenuExpanded = false
-                            terminalTextSize = (terminalTextSize + 1).coerceAtMost(28)
-                            terminalViews[activeSession.id]?.setTextSize(terminalTextSize)
+                            onUpdateSettings(
+                                terminalSettings.copy(
+                                    defaultFontSize = (terminalTextSize + 1).coerceAtMost(28),
+                                ),
+                            )
                         },
                     )
                     DropdownMenuItem(
@@ -560,8 +605,27 @@ private fun ConnectedTerminal(
                         enabled = terminalTextSize > 9,
                         onClick = {
                             terminalMenuExpanded = false
-                            terminalTextSize = (terminalTextSize - 1).coerceAtLeast(9)
-                            terminalViews[activeSession.id]?.setTextSize(terminalTextSize)
+                            onUpdateSettings(
+                                terminalSettings.copy(
+                                    defaultFontSize = (terminalTextSize - 1).coerceAtLeast(9),
+                                ),
+                            )
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Terminal Launcher") },
+                        leadingIcon = { Icon(Icons.Default.GridView, contentDescription = null) },
+                        onClick = {
+                            terminalMenuExpanded = false
+                            onOpenLauncher()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Terminal Settings") },
+                        leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                        onClick = {
+                            terminalMenuExpanded = false
+                            onOpenSettings()
                         },
                     )
                     HorizontalDivider()
@@ -613,6 +677,12 @@ private fun ConnectedTerminal(
             IconButton(onClick = hideKeyboard) {
                 Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Hide keyboard")
             }
+            IconButton(onClick = onOpenLauncher) {
+                Icon(Icons.Default.GridView, contentDescription = "Terminal Launcher")
+            }
+            IconButton(onClick = onOpenSettings) {
+                Icon(Icons.Default.Settings, contentDescription = "Terminal Settings")
+            }
             IconButton(onClick = onNewSession) {
                 Icon(Icons.Default.Add, contentDescription = "New terminal session")
             }
@@ -620,6 +690,7 @@ private fun ConnectedTerminal(
 
         HorizontalPager(
             state = pagerState,
+            userScrollEnabled = false,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
@@ -628,13 +699,17 @@ private fun ConnectedTerminal(
             NativeTerminalPage(
                 entry = entry,
                 terminalTextSize = terminalTextSize,
+                cursorBlinkMs = terminalSettings.cursorBlinkMs,
                 onViewReady = { view -> terminalViews[entry.id] = view },
                 onViewDisposed = { terminalViews.remove(entry.id) },
                 onShowKeyboard = showKeyboard,
                 onZoom = { increase ->
-                    terminalTextSize = (terminalTextSize + if (increase) 1 else -1)
-                        .coerceIn(9, 28)
-                    terminalViews[entry.id]?.setTextSize(terminalTextSize)
+                    onUpdateSettings(
+                        terminalSettings.copy(
+                            defaultFontSize = (terminalTextSize + if (increase) 1 else -1)
+                                .coerceIn(9, 28),
+                        ),
+                    )
                 },
                 onCtrlRead = {
                     val value = ctrlActive
@@ -681,6 +756,7 @@ private fun ConnectedTerminal(
 private fun NativeTerminalPage(
     entry: TerminalSessionEntry,
     terminalTextSize: Int,
+    cursorBlinkMs: Int,
     onViewReady: (TerminalView) -> Unit,
     onViewDisposed: () -> Unit,
     onShowKeyboard: () -> Unit,
@@ -705,8 +781,10 @@ private fun NativeTerminalPage(
         factory = { viewContext ->
             TerminalView(viewContext, null).apply {
                 setTextSize(terminalTextSize)
+                setTerminalCursorBlinkerRate(cursorBlinkMs)
                 setTerminalViewClient(client)
                 attachSession(entry.session)
+                setTerminalCursorBlinkerState(true, true)
                 isFocusable = true
                 isFocusableInTouchMode = true
                 requestFocus()
@@ -718,14 +796,17 @@ private fun NativeTerminalPage(
         update = { view ->
             viewState.value = view
             view.setTextSize(terminalTextSize)
+            view.setTerminalCursorBlinkerRate(cursorBlinkMs)
             if (view.currentSession !== entry.session) {
                 view.attachSession(entry.session)
             }
+            view.setTerminalCursorBlinkerState(true, true)
             view.postInvalidate()
         },
     )
     DisposableEffect(entry.id) {
         onDispose {
+            viewState.value?.setTerminalCursorBlinkerState(false, false)
             viewState.value = null
             onViewDisposed()
         }
@@ -757,7 +838,7 @@ private fun TerminalExtraKeys(
                 onLongClick = { onKey("|") },
             )
             TerminalExtraKey("HOME", onClick = { onKey("\u001b[H") })
-            TerminalExtraKey("UP", onClick = { onKey("\u001b[A") })
+            TerminalExtraKey("↑", onClick = { onKey("\u001b[A") })
             TerminalExtraKey("END", onClick = { onKey("\u001b[F") })
             TerminalExtraKey("PGUP", onClick = { onKey("\u001b[5~") })
         }
@@ -765,9 +846,9 @@ private fun TerminalExtraKeys(
             TerminalExtraKey("TAB", onClick = { onKey("\t") })
             TerminalExtraKey("CTRL", selected = ctrlActive, onClick = onToggleCtrl)
             TerminalExtraKey("ALT", selected = altActive, onClick = onToggleAlt)
-            TerminalExtraKey("LEFT", onClick = { onKey("\u001b[D") })
-            TerminalExtraKey("DOWN", onClick = { onKey("\u001b[B") })
-            TerminalExtraKey("RIGHT", onClick = { onKey("\u001b[C") })
+            TerminalExtraKey("←", onClick = { onKey("\u001b[D") })
+            TerminalExtraKey("↓", onClick = { onKey("\u001b[B") })
+            TerminalExtraKey("→", onClick = { onKey("\u001b[C") })
             TerminalExtraKey("PGDN", onClick = { onKey("\u001b[6~") })
         }
     }
@@ -850,6 +931,11 @@ private class NativeTerminalViewClient(
 
     override fun onSessionSwipe(direction: Int) {
         onSwipe(direction)
+    }
+
+    override fun onDoubleTap(): Boolean {
+        onSingleTap()
+        return true
     }
 
     override fun readControlKey(): Boolean = readControl()

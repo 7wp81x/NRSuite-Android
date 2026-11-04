@@ -31,6 +31,7 @@ import com.swp81x.nrsuite.ui.theme.LogColorInfo
 import com.swp81x.nrsuite.ui.theme.LogColorSuccess
 import com.swp81x.nrsuite.ui.theme.LogColorUsb
 import com.swp81x.nrsuite.ui.components.IrModuleConfigRow
+import com.swp81x.nrsuite.core.terminal.TerminalShortcut
 import com.swp81x.nrsuite.ui.components.NrCompactPrimaryButton
 import com.swp81x.nrsuite.ui.components.NrPrimaryButton
 import com.swp81x.nrsuite.ui.components.NrQuietButton
@@ -76,6 +77,7 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Radar
@@ -224,6 +226,81 @@ internal fun ConnectionStatusIndicator(
 }
 
 @Composable
+internal fun HomeTabContent(
+    connectionState: ConnectionState,
+    permissionRevision: Int,
+    devices: List<UsbSerialDevice>,
+    deviceConnectionStates: Map<String, ConnectionState>,
+    deviceFingerprint: (UsbDevice) -> String,
+    pendingPermissionRequests: Set<Int>,
+    disconnectingFingerprints: Set<String>,
+    usbManager: UsbManager,
+    modules: List<ModuleCardSpec>,
+    listState: LazyListState,
+    recentModuleIds: List<String>,
+    ouiDatabaseStatus: OuiDatabaseStatus,
+    ouiDatabaseProgress: Float?,
+    appUpdate: AppUpdateInfo?,
+    appUpdateDownload: AppUpdateDownloadState,
+    firmwareUpdate: FirmwareUpdateInfo?,
+    firmwareAssetDownload: FirmwareAssetDownloadState,
+    terminalShortcuts: List<TerminalShortcut>,
+    showTerminalLauncherCard: Boolean,
+    onOpenTerminalLauncher: () -> Unit,
+    onRunTerminalShortcut: (TerminalShortcut) -> Unit,
+    onDownloadOuiDatabase: () -> Unit,
+    onDownloadAppUpdate: () -> Unit,
+    onInstallAppUpdate: () -> Unit,
+    onDownloadFirmwareUpdate: () -> Unit,
+    onOpenFirmwareFlasher: () -> Unit,
+    onOpenFirmwareFlasherForDiagnostic: (String?) -> Unit,
+    onOpenModule: (String) -> Unit,
+    onOpenCategory: (String) -> Unit,
+    onBrowseAllModules: () -> Unit,
+    onRefreshDevices: () -> Unit,
+    onConnect: (UsbDevice) -> Unit,
+    onDisconnect: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    HomeScreen(
+        connectionState = connectionState,
+        permissionRevision = permissionRevision,
+        devices = devices,
+        deviceConnectionStates = deviceConnectionStates,
+        deviceFingerprint = deviceFingerprint,
+        pendingPermissionRequests = pendingPermissionRequests,
+        disconnectingFingerprints = disconnectingFingerprints,
+        usbManager = usbManager,
+        modules = modules,
+        listState = listState,
+        recentModuleIds = recentModuleIds,
+        ouiDatabaseStatus = ouiDatabaseStatus,
+        ouiDatabaseProgress = ouiDatabaseProgress,
+        appUpdate = appUpdate,
+        appUpdateDownload = appUpdateDownload,
+        firmwareUpdate = firmwareUpdate,
+        firmwareAssetDownload = firmwareAssetDownload,
+        terminalShortcuts = terminalShortcuts,
+        showTerminalLauncherCard = showTerminalLauncherCard,
+        onOpenTerminalLauncher = onOpenTerminalLauncher,
+        onRunTerminalShortcut = onRunTerminalShortcut,
+        onDownloadOuiDatabase = onDownloadOuiDatabase,
+        onDownloadAppUpdate = onDownloadAppUpdate,
+        onInstallAppUpdate = onInstallAppUpdate,
+        onDownloadFirmwareUpdate = onDownloadFirmwareUpdate,
+        onOpenFirmwareFlasher = onOpenFirmwareFlasher,
+        onOpenFirmwareFlasherForDiagnostic = onOpenFirmwareFlasherForDiagnostic,
+        onOpenModule = onOpenModule,
+        onOpenCategory = onOpenCategory,
+        onBrowseAllModules = onBrowseAllModules,
+        onRefreshDevices = onRefreshDevices,
+        onConnect = onConnect,
+        onDisconnect = onDisconnect,
+        modifier = modifier,
+    )
+}
+
+@Composable
 internal fun HomeScreen(
     connectionState: ConnectionState,
     permissionRevision: Int,
@@ -242,6 +319,10 @@ internal fun HomeScreen(
     appUpdateDownload: AppUpdateDownloadState,
     firmwareUpdate: FirmwareUpdateInfo?,
     firmwareAssetDownload: FirmwareAssetDownloadState,
+    terminalShortcuts: List<TerminalShortcut> = emptyList(),
+    showTerminalLauncherCard: Boolean = true,
+    onOpenTerminalLauncher: () -> Unit = {},
+    onRunTerminalShortcut: (TerminalShortcut) -> Unit = {},
     onDownloadOuiDatabase: () -> Unit,
     onDownloadAppUpdate: () -> Unit,
     onInstallAppUpdate: () -> Unit,
@@ -324,6 +405,16 @@ internal fun HomeScreen(
                 onOpenFirmwareFlasher = onOpenFirmwareFlasher,
                 onOpenFirmwareFlasherForDiagnostic = onOpenFirmwareFlasherForDiagnostic,
             )
+        }
+
+        if (showTerminalLauncherCard) {
+            item {
+                HomeTerminalLauncherCard(
+                    shortcuts = terminalShortcuts.filter { it.pinHome }.take(3),
+                    onOpenLauncher = onOpenTerminalLauncher,
+                    onRunShortcut = onRunTerminalShortcut,
+                )
+            }
         }
 
         item {
@@ -1231,6 +1322,151 @@ private fun HomeDeviceRow(
             onClick = onConnect,
             enabled = buttonEnabled,
             modifier = Modifier.width(100.dp),
+        )
+    }
+}
+
+@Composable
+private fun HomeTerminalLauncherCard(
+    shortcuts: List<TerminalShortcut>,
+    onOpenLauncher: () -> Unit,
+    onRunShortcut: (TerminalShortcut) -> Unit,
+) {
+    var pendingShortcut by remember { mutableStateOf<TerminalShortcut?>(null) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Terminal,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Terminal Shortcuts",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                NrQuietButton(
+                    text = "Open",
+                    onClick = onOpenLauncher,
+                    compact = true,
+                )
+            }
+            if (shortcuts.isEmpty()) {
+                Text(
+                    text = "Run saved Termux commands from one place.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
+                )
+                NrSecondaryButton(
+                    text = "Open Terminal Launcher",
+                    onClick = onOpenLauncher,
+                    modifier = Modifier.fillMaxWidth(),
+                    compact = true,
+                )
+            } else {
+                shortcuts.forEach { shortcut ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (shortcut.confirmation) {
+                                    pendingShortcut = shortcut
+                                } else {
+                                    onRunShortcut(shortcut)
+                                }
+                            }
+                            .padding(vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = ">_",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                            ),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = shortcut.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = shortcut.command,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                ),
+                                color = NrOnSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Run ${shortcut.name}",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                NrQuietButton(
+                    text = "Manage shortcuts",
+                    onClick = onOpenLauncher,
+                    compact = true,
+                )
+            }
+        }
+    }
+
+    pendingShortcut?.let { shortcut ->
+        AlertDialog(
+            onDismissRequest = { pendingShortcut = null },
+            title = { Text("Run shortcut?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(shortcut.name, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        shortcut.command,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                        ),
+                    )
+                    if (shortcut.description.isNotBlank()) {
+                        Text(
+                            shortcut.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                NrPrimaryButton(
+                    text = "Run",
+                    onClick = {
+                        pendingShortcut = null
+                        onRunShortcut(shortcut)
+                    },
+                )
+            },
+            dismissButton = {
+                NrQuietButton(
+                    text = "Cancel",
+                    onClick = { pendingShortcut = null },
+                )
+            },
         )
     }
 }

@@ -191,6 +191,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val connectionState by viewModel.connectionState.collectAsState()
     val terminalState by viewModel.terminalState.collectAsState()
     val terminalSessions by viewModel.terminalSessions.collectAsState()
+    val terminalSettings by viewModel.terminalSettings.collectAsState()
+    val terminalShortcuts by viewModel.terminalShortcuts.collectAsState()
+    val terminalShortcutCategories by viewModel.terminalShortcutCategories.collectAsState()
     val primaryFingerprint by viewModel.primaryFingerprint.collectAsState()
     val wifiDeviceRevision by viewModel.wifiDeviceRevision.collectAsState()
     val deviceConnectionStates by viewModel.deviceConnectionStates.collectAsState()
@@ -633,6 +636,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     }
 
     var selectedTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
+    var showTerminalLauncher by rememberSaveable { mutableStateOf(false) }
+    var terminalSessionToOpen by rememberSaveable { mutableStateOf<Int?>(null) }
     var permissionRevision by remember { mutableIntStateOf(0) }
     var activeModuleId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedCategory by rememberSaveable { mutableStateOf<String?>(null) }
@@ -1068,6 +1073,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         activeModuleId == "module_catalog" -> "All Modules"
         activeModule != null -> activeModule.title
         activeModuleId == "settings" -> "Settings"
+        activeModuleId == "terminal_settings" -> "Terminal Settings"
         selectedCategory != null -> selectedCategory!!
         selectedTab == AppTab.DEVICES -> "Devices"
         selectedTab == AppTab.TERMINAL -> "Terminal"
@@ -1091,6 +1097,21 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             selectedTab in setOf(AppTab.HOME, AppTab.DEVICES, AppTab.TERMINAL))
     LaunchedEffect(suppressUsbAttachPrompt) {
         if (suppressUsbAttachPrompt) viewModel.dismissUsbAttachPrompt()
+    }
+
+    var terminalAutoconnectAttempted by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(selectedTab, terminalSettings.autoconnect, terminalState) {
+        if (selectedTab != AppTab.TERMINAL || !terminalSettings.autoconnect) return@LaunchedEffect
+        if (terminalState is TerminalConnectionState.Disconnected && !terminalAutoconnectAttempted) {
+            val savedConfig = viewModel.savedTerminalConfig()
+            if (savedConfig != null) {
+                terminalAutoconnectAttempted = true
+                viewModel.connectTerminal(savedConfig)
+            }
+        }
+        if (terminalState is TerminalConnectionState.Failed) {
+            terminalAutoconnectAttempted = true
+        }
     }
 
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
@@ -1133,7 +1154,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             if (!terminalImmersive && activeModuleId == null && selectedCategory == null) {
                 NRSuiteBottomBar(
                     selectedTab = selectedTab,
-                    terminalConnected = terminalState is TerminalConnectionState.Connected,
                     onSelectTab = { tab ->
                         selectedTab = tab
                         activeModuleId = null
@@ -2296,6 +2316,24 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 )
             }
 
+            activeModuleId == "terminal_settings" -> TerminalSettingsRoot(
+                viewModel = viewModel,
+                onManageShortcuts = {
+                    activeModuleId = null
+                    selectedTab = AppTab.TERMINAL
+                    showTerminalLauncher = true
+                },
+                onClearPinnedHostKey = {
+                    viewModel.clearTerminalPinnedHostKey()
+                    Toast.makeText(
+                        context,
+                        "Pinned SSH host key cleared.",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                },
+                modifier = Modifier,
+            )
+
             activeModuleId == "firmware" || activeModuleId == "settings" -> {
                 NRSuiteSettingsRoute(
                     connectionState = connectionState,
@@ -2388,7 +2426,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 )
             }
 
-            selectedTab == AppTab.HOME -> HomeScreen(
+            selectedTab == AppTab.HOME -> HomeTabContent(
                 connectionState = connectionState,
                 permissionRevision = permissionRevision,
                 devices = devices,
@@ -2405,6 +2443,33 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 appUpdateDownload = appUpdateDownload,
                 firmwareUpdate = firmwareUpdate,
                 firmwareAssetDownload = firmwareAssetDownload,
+                terminalShortcuts = terminalShortcuts,
+                showTerminalLauncherCard = terminalSettings.showLauncherOnHome,
+                onOpenTerminalLauncher = {
+                    selectedTab = AppTab.TERMINAL
+                    showTerminalLauncher = true
+                },
+                onRunTerminalShortcut = { shortcut ->
+                    if (terminalState !is TerminalConnectionState.Connected) {
+                        Toast.makeText(
+                            context,
+                            "Connect to Termux before running terminal shortcuts.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    } else {
+                        viewModel.runTerminalShortcutCommand(
+                            command = shortcut.command,
+                            runMode = shortcut.runMode,
+                            execute = true,
+                        )
+                        if (shortcut.runMode !=
+                            com.swp81x.nrsuite.core.terminal.TerminalShortcutRunMode.BACKGROUND
+                        ) {
+                            selectedTab = AppTab.TERMINAL
+                            showTerminalLauncher = false
+                        }
+                    }
+                },
                 onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
                 onDownloadAppUpdate = viewModel::downloadAppUpdate,
                 onInstallAppUpdate = viewModel::installAppUpdate,
@@ -2485,26 +2550,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 modifier = Modifier,
             )
 
-            selectedTab == AppTab.TERMINAL -> TerminalScreen(
-                connectionState = terminalState,
-                terminalSessions = terminalSessions,
-                initialHost = viewModel.savedTerminalHost(),
-                initialPort = viewModel.savedTerminalPort(),
-                initialUsername = viewModel.savedTerminalUsername(),
-                onConnect = viewModel::connectTerminal,
-                onDisconnect = { viewModel.disconnectTerminal() },
-                onNewSession = viewModel::newTerminalSession,
-                onCloseSession = viewModel::closeTerminalSession,
-                onSetUpdateListener = viewModel::setTerminalViewUpdateListener,
-                onSetColorScheme = viewModel::setTerminalColorScheme,
-                onClearPinnedHostKey = {
-                    viewModel.clearTerminalPinnedHostKey()
-                    Toast.makeText(
-                        context,
-                        "Pinned SSH host key cleared. Connect again to trust the new key.",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                },
+            selectedTab == AppTab.TERMINAL -> TerminalRoot(
+                viewModel = viewModel,
+                showLauncher = showTerminalLauncher,
+                sessionToOpen = terminalSessionToOpen,
+                onShowLauncher = { showTerminalLauncher = it },
+                onOpenSettings = { activeModuleId = "terminal_settings" },
                 modifier = Modifier,
             )
 
@@ -2603,7 +2654,6 @@ private fun NRSuiteTopBar(
 @Composable
 private fun NRSuiteBottomBar(
     selectedTab: AppTab,
-    terminalConnected: Boolean,
     onSelectTab: (AppTab) -> Unit,
 ) {
     Surface(
@@ -2644,14 +2694,6 @@ private fun NRSuiteBottomBar(
                                     },
                                     contentDescription = tab.label,
                                 )
-                                if (tab == AppTab.TERMINAL && terminalConnected) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .size(6.dp)
-                                            .background(StatusGreen, CircleShape),
-                                    )
-                                }
                             }
                             Spacer(Modifier.size(2.dp))
                             Box(

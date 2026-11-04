@@ -1,0 +1,96 @@
+package com.swp81x.nrsuite.ui
+
+import android.widget.Toast
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import com.swp81x.nrsuite.MainViewModel
+
+@Composable
+internal fun TerminalRoot(
+    viewModel: MainViewModel,
+    showLauncher: Boolean,
+    sessionToOpen: Int?,
+    onShowLauncher: (Boolean) -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val connectionState by viewModel.terminalState.collectAsState()
+    val sessions by viewModel.terminalSessions.collectAsState()
+    val settings by viewModel.terminalSettings.collectAsState()
+    val hasPrivateKey by viewModel.terminalHasPrivateKey.collectAsState()
+    val shortcuts by viewModel.terminalShortcuts.collectAsState()
+    val categories by viewModel.terminalShortcutCategories.collectAsState()
+
+    TerminalTabContent(
+        connectionState = connectionState,
+        sessions = sessions,
+        settings = settings,
+        hasPrivateKey = hasPrivateKey,
+        shortcuts = shortcuts,
+        categories = categories,
+        showLauncher = showLauncher,
+        sessionToOpen = sessionToOpen,
+        initialHost = viewModel.savedTerminalHost(),
+        initialPort = viewModel.savedTerminalPort(),
+        initialUsername = viewModel.savedTerminalUsername(),
+        onShowLauncher = onShowLauncher,
+        onOpenSession = { id ->
+            onShowLauncher(false)
+            viewModel.setActiveTerminalSession(id)
+        },
+        onConnect = viewModel::connectTerminal,
+        onDisconnect = { viewModel.disconnectTerminal() },
+        onNewSession = viewModel::newTerminalSession,
+        onCloseSession = viewModel::closeTerminalSession,
+        onOpenSettings = onOpenSettings,
+        onActiveSessionChanged = viewModel::setActiveTerminalSession,
+        onUpdateSettings = viewModel::updateTerminalSettings,
+        onSetUpdateListener = viewModel::setTerminalViewUpdateListener,
+        onSetColorScheme = viewModel::setTerminalColorScheme,
+        onClearPinnedHostKey = {
+            viewModel.clearTerminalPinnedHostKey()
+            Toast.makeText(
+                context,
+                "Pinned SSH host key cleared.",
+                Toast.LENGTH_SHORT,
+            ).show()
+        },
+        onRunShortcut = { shortcut ->
+            viewModel.runTerminalShortcutCommand(
+                command = shortcut.command,
+                runMode = shortcut.runMode,
+                execute = true,
+            )
+        },
+        onUpsertShortcut = viewModel::upsertTerminalShortcut,
+        onDeleteShortcut = viewModel::deleteTerminalShortcut,
+        onAddCategory = viewModel::addTerminalShortcutCategory,
+        onDeleteCategory = viewModel::deleteTerminalShortcutCategory,
+        modifier = modifier,
+    )
+}
+
+@Composable
+internal fun TerminalSettingsRoot(
+    viewModel: MainViewModel,
+    onManageShortcuts: () -> Unit,
+    onClearPinnedHostKey: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val settings by viewModel.terminalSettings.collectAsState()
+    val hasPrivateKey by viewModel.terminalHasPrivateKey.collectAsState()
+    TerminalSettingsRoute(
+        settings = settings,
+        hasPrivateKey = hasPrivateKey,
+        onUpdateSettings = viewModel::updateTerminalSettings,
+        onManageShortcuts = onManageShortcuts,
+        onImportPrivateKey = viewModel::importTerminalPrivateKey,
+        onClearPrivateKey = viewModel::clearTerminalPrivateKey,
+        onClearPinnedHostKey = onClearPinnedHostKey,
+        modifier = modifier,
+    )
+}

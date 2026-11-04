@@ -4,8 +4,10 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
 import android.util.Base64
 import android.util.Log
+import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.ChannelShell
 import com.jcraft.jsch.HostKey
 import com.jcraft.jsch.HostKeyRepository
@@ -16,6 +18,7 @@ import com.termux.terminal.TerminalColors
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.terminal.TextStyle
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -30,6 +33,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
 
 data class TerminalConfig(
     val host: String = DEFAULT_TERMINAL_HOST,
@@ -62,11 +66,16 @@ internal class SshTerminalManager(
 ) {
     private val preferences: SharedPreferences =
         context.getSharedPreferences("nrsuite_terminal", Context.MODE_PRIVATE)
-    private val jsch = JSch()
+    private val terminalPreferences = TerminalPreferences(context)
+    private val _settings = MutableStateFlow(terminalPreferences.load())
+    val settings: StateFlow<TerminalUiSettings> = _settings.asStateFlow()
+    private val _hasPrivateKey = MutableStateFlow(terminalPreferences.hasPrivateKey())
+    val hasPrivateKey: StateFlow<Boolean> = _hasPrivateKey.asStateFlow()
     private val writeMutex = Mutex()
     private val pinnedHostKeys = PinnedHostKeyRepository(preferences)
     private val managedSessions = linkedMapOf<Int, ManagedTerminalSession>()
     private var nextSessionId = 1
+    private var activeSessionId: Int? = null
 
     @Volatile
     private var sshSession: Session? = null
@@ -93,6 +102,50 @@ internal class SshTerminalManager(
         .coerceIn(1, 65535)
 
     fun savedUsername(): String = preferences.getString(KEY_USERNAME, "").orEmpty()
+
+    fun savedConnectionConfig(): TerminalConfig? {
+        val username = savedUsername()
+        val password = terminalPreferences.loadPassword().orEmpty()
+        if (username.isBlank() || (password.isBlank() && !terminalPreferences.hasPrivateKey())) {
+            return null
+        }
+        return TerminalConfig(
+            host = savedHost(),
+            port = savedPort(),
+            username = username,
+            password = password,
+        )
+    }
+
+    fun importPrivateKey(uri: Uri, passphrase: String) {
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: error("Could not read the selected private key.")
+                    terminalPreferences.savePrivateKey("Termux SSH key", bytes, passphrase)
+                }
+            }.onSuccess {
+                _hasPrivateKey.value = true
+            }.onFailure { error ->
+                Log.e("NRSuiteTerminal", "Private key import failed", error)
+            }
+        }
+    }
+
+    fun clearPrivateKey() {
+        terminalPreferences.clearPrivateKey()
+        _hasPrivateKey.value = false
+    }
+
+    fun updateSettings(settings: TerminalUiSettings) {
+        terminalPreferences.save(settings)
+        _settings.value = settings
+        managedSessions.values.forEach { managed ->
+            managed.terminalSession.getEmulator()?.setCursorStyle()
+        }
+        screenUpdateListener?.invoke()
+    }
 
     fun saveConnectionPreferences(config: TerminalConfig) {
         preferences.edit()
@@ -122,6 +175,11 @@ internal class SshTerminalManager(
             password = config.password,
         )
         saveConnectionPreferences(normalized)
+        if (_settings.value.savePassword) {
+            terminalPreferences.savePassword(normalized.password)
+        } else {
+            terminalPreferences.clearPassword()
+        }
         _state.value = TerminalConnectionState.Connecting
         scope.launch {
             val result = runCatching {
@@ -148,18 +206,99 @@ internal class SshTerminalManager(
         }
     }
 
-    fun newSession() {
+    fun newSession(initialCommand: String? = null, closeAfterCommand: Boolean = false) {
         if (_state.value !is TerminalConnectionState.Connected) return
         scope.launch {
             runCatching {
                 withContext(Dispatchers.IO) { openShellSession(null) }
             }.onSuccess { newSession ->
                 managedSessions[newSession.id] = newSession
+                activeSessionId = newSession.id
                 publishSessions()
                 newSession.start()
+                if (!initialCommand.isNullOrBlank()) {
+                    val suffix = if (closeAfterCommand) "; exit\r" else "\r"
+                    newSession.terminalSession.write(initialCommand + suffix)
+                }
             }.onFailure { error ->
                 Log.w("NRSuiteTerminal", "Could not open new shell session", error)
             }
+        }
+    }
+
+    fun setActiveSession(id: Int) {
+        activeSessionId = id
+    }
+
+    fun runShortcutCommand(
+        command: String,
+        runMode: TerminalShortcutRunMode,
+        execute: Boolean,
+    ) {
+        if (command.isBlank()) return
+        when (runMode) {
+            TerminalShortcutRunMode.CURRENT_SESSION -> {
+                val session = managedSessions[activeSessionId]?.terminalSession
+                    ?: managedSessions.values.lastOrNull()?.terminalSession
+                session?.write(if (execute) command + "\r" else command)
+            }
+            TerminalShortcutRunMode.INSERT_ONLY -> {
+                val session = managedSessions[activeSessionId]?.terminalSession
+                    ?: managedSessions.values.lastOrNull()?.terminalSession
+                session?.write(command)
+            }
+            TerminalShortcutRunMode.NEW_SESSION -> newSession(command, false)
+            TerminalShortcutRunMode.NEW_TEMPORARY_SESSION -> newSession(command, true)
+            TerminalShortcutRunMode.BACKGROUND -> runBackgroundCommand(command)
+        }
+    }
+
+    private fun runBackgroundCommand(command: String) {
+        val activeSsh = sshSession
+        if (activeSsh == null || !activeSsh.isConnected) {
+            NrSuiteNotifications.notifyTaskAlert(
+                context,
+                "Terminal shortcut failed",
+                "Termux SSH is not connected.",
+            )
+            return
+        }
+        scope.launch {
+            val output = ByteArrayOutputStream()
+            val exitCode = runCatching {
+                withContext(Dispatchers.IO) {
+                    val channel = activeSsh.openChannel("exec") as ChannelExec
+                    channel.setCommand(command)
+                    val input = channel.inputStream
+                    channel.connect(15_000)
+                    val buffer = ByteArray(4096)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        if (read > 0) output.write(buffer, 0, read)
+                    }
+                    val code = channel.exitStatus
+                    channel.disconnect()
+                    code
+                }
+            }.getOrElse { -1 }
+            val text = output.toString(Charsets.UTF_8.name()).trim()
+            val summary = if (exitCode == 0) {
+                "Completed successfully."
+            } else {
+                "Exited with code $exitCode."
+            }
+            NrSuiteNotifications.notifyTaskAlert(
+                context,
+                "Terminal shortcut finished",
+                buildString {
+                    append(summary)
+                    if (text.isNotEmpty()) {
+                        append("\n")
+                        append(text.take(500))
+                    }
+                },
+            )
         }
     }
 
@@ -202,14 +341,23 @@ internal class SshTerminalManager(
         if (config.username.isBlank()) {
             throw IllegalArgumentException("Enter the Termux SSH username.")
         }
-        if (config.password.isEmpty()) {
-            throw IllegalArgumentException("Enter the Termux SSH password.")
+        if (config.password.isEmpty() && !terminalPreferences.hasPrivateKey()) {
+            throw IllegalArgumentException("Enter the Termux SSH password or import an SSH key.")
         }
-        return jsch.getSession(config.username, config.host, config.port).apply {
-            setPassword(config.password)
+        val authJsch = JSch()
+        terminalPreferences.loadPrivateKey()?.let { key ->
+            authJsch.addIdentity(
+                "nrsuite-terminal-key",
+                key.bytes,
+                null,
+                key.passphrase.toByteArray(Charsets.UTF_8),
+            )
+        }
+        return authJsch.getSession(config.username, config.host, config.port).apply {
+            if (config.password.isNotEmpty()) setPassword(config.password)
             setHostKeyRepository(pinnedHostKeys)
             setConfig("StrictHostKeyChecking", "yes")
-            setConfig("PreferredAuthentications", "password,keyboard-interactive")
+            setConfig("PreferredAuthentications", "publickey,password,keyboard-interactive")
             timeout = 15_000
             connect(15_000)
             sshSession = this
@@ -235,12 +383,15 @@ internal class SshTerminalManager(
     }
 
     private fun publishSessions() {
-        _sessions.value = managedSessions.values.map {
+        _sessions.value = managedSessions.values.mapIndexed { index, managed ->
             TerminalSessionEntry(
-                id = it.id,
-                title = it.title,
-                session = it.terminalSession,
+                id = managed.id,
+                title = "Session ${index + 1}",
+                session = managed.terminalSession,
             )
+        }
+        if (activeSessionId !in managedSessions) {
+            activeSessionId = managedSessions.values.lastOrNull()?.id
         }
     }
 
@@ -395,7 +546,7 @@ internal class SshTerminalManager(
 
         override fun setTerminalShellPid(session: TerminalSession, pid: Int) = Unit
 
-        override fun getTerminalCursorStyle(): Int? = null
+        override fun getTerminalCursorStyle(): Int? = _settings.value.cursorStyle
 
         override fun logError(tag: String, message: String) {
             Log.e(tag, message)

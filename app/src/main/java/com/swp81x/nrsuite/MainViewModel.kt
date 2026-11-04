@@ -14,6 +14,9 @@ import androidx.documentfile.provider.DocumentFile
 import com.swp81x.nrsuite.core.terminal.SshTerminalManager
 import com.swp81x.nrsuite.core.terminal.TerminalConfig
 import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
+import com.swp81x.nrsuite.core.terminal.TerminalShortcut
+import com.swp81x.nrsuite.core.terminal.TerminalShortcutStore
+import com.swp81x.nrsuite.core.terminal.TerminalUiSettings
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.ble.BleDeviceObservation
 import com.swp81x.nrsuite.core.ble.BleScanOwner
@@ -203,6 +206,7 @@ class MainViewModel(internal val app: Application) {
         app.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     internal val terminalManager = SshTerminalManager(app, scope)
+    internal val terminalShortcutStore = TerminalShortcutStore(app)
 
     internal val _exportDirectory = MutableStateFlow<Uri?>(null)
     val exportDirectory: StateFlow<Uri?> = _exportDirectory.asStateFlow()
@@ -232,13 +236,21 @@ class MainViewModel(internal val app: Application) {
 
     val terminalState: StateFlow<TerminalConnectionState> get() = terminalManager.state
     val terminalSessions get() = terminalManager.sessions
+    val terminalSettings: StateFlow<TerminalUiSettings> get() = terminalManager.settings
+    val terminalHasPrivateKey: StateFlow<Boolean> get() = terminalManager.hasPrivateKey
     fun savedTerminalHost(): String = terminalManager.savedHost()
     fun savedTerminalPort(): Int = terminalManager.savedPort()
     fun savedTerminalUsername(): String = terminalManager.savedUsername()
+    fun savedTerminalConfig(): TerminalConfig? = terminalManager.savedConnectionConfig()
+    fun updateTerminalSettings(settings: TerminalUiSettings) = terminalManager.updateSettings(settings)
+    fun importTerminalPrivateKey(uri: Uri, passphrase: String) =
+        terminalManager.importPrivateKey(uri, passphrase)
+    fun clearTerminalPrivateKey() = terminalManager.clearPrivateKey()
     fun connectTerminal(config: TerminalConfig) = terminalManager.connect(config)
     fun disconnectTerminal(message: String? = null) = terminalManager.disconnect(message)
     fun newTerminalSession() = terminalManager.newSession()
     fun closeTerminalSession(id: Int) = terminalManager.closeSession(id)
+    fun setActiveTerminalSession(id: Int) = terminalManager.setActiveSession(id)
     fun isTermuxInstalled(): Boolean = terminalManager.isTermuxInstalled()
     fun clearTerminalPinnedHostKey() = terminalManager.clearPinnedHostKey()
     fun setTerminalViewUpdateListener(listener: (() -> Unit)?) =
@@ -249,6 +261,18 @@ class MainViewModel(internal val app: Application) {
         background: Int,
         cursor: Int,
     ) = terminalManager.applyColorScheme(palette, foreground, background, cursor)
+    val terminalShortcuts get() = terminalShortcutStore.shortcuts
+    val terminalShortcutCategories get() = terminalShortcutStore.categories
+    fun upsertTerminalShortcut(shortcut: TerminalShortcut) =
+        terminalShortcutStore.upsert(shortcut)
+    fun deleteTerminalShortcut(id: Long) = terminalShortcutStore.delete(id)
+    fun addTerminalShortcutCategory(name: String) = terminalShortcutStore.addCategory(name)
+    fun deleteTerminalShortcutCategory(name: String) = terminalShortcutStore.deleteCategory(name)
+    fun runTerminalShortcutCommand(
+        command: String,
+        runMode: com.swp81x.nrsuite.core.terminal.TerminalShortcutRunMode,
+        execute: Boolean,
+    ) = terminalManager.runShortcutCommand(command, runMode, execute)
 
     internal val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()
