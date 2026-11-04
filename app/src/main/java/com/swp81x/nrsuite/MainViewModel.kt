@@ -2865,6 +2865,12 @@ class MainViewModel(internal val app: Application) {
                                 ?: "ESP32 IR error."
                         }
                         "ir_tx_done" -> Unit
+                        "mem" -> {
+                            android.util.Log.i(
+                                "NRSuiteFirmwareMem",
+                                "device=$fingerprint $event",
+                            )
+                        }
                         "heartbeat" -> Unit
                     }
                 }

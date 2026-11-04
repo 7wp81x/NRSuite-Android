@@ -551,13 +551,13 @@ crash the app.
 For module memory testing, use:
 
 ```bash
-adb logcat -s NRSuiteMem:I NRSuiteWire:I
+adb logcat -s NRSuiteMem:I NRSuiteFirmwareMem:I NRSuiteWire:I
 ```
 
-`NRSuiteMem` emits one line when a module starts and one when it ends, including
-the module duration, Android Java/native heap, and the latest firmware heap
-snapshot. Firmware serial output prints a compact `[mem] cmd=...` line for
-non-noise commands.
+`NRSuiteMem` emits one line when a module starts/ends and one line for lifecycle
+operations such as START/STOP commands. `NRSuiteFirmwareMem` forwards the
+firmware command memory snapshots as protocol events, so they work on UART-only
+boards without corrupting the protocol stream.
 
 ### Device appears but commands time out
 
