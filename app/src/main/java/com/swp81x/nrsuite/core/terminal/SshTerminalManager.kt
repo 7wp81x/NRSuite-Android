@@ -185,13 +185,20 @@ internal class SshTerminalManager(
 
     private fun buildKeyInfo(): TerminalKeyInfo? {
         val key = terminalPreferences.loadPrivateKey() ?: return null
-        val material = key.publicBytes ?: key.bytes
-        val digest = MessageDigest.getInstance("SHA-256").digest(material)
+        val publicText = key.publicBytes?.toString(Charsets.UTF_8)?.trim()
+        val fingerprintMaterial = publicText
+            ?.split(Regex("\\s+"))
+            ?.getOrNull(1)
+            ?.let { encoded ->
+                runCatching { Base64.decode(encoded, Base64.NO_WRAP) }.getOrNull()
+            }
+            ?: key.publicBytes
+            ?: key.bytes
+        val digest = MessageDigest.getInstance("SHA-256").digest(fingerprintMaterial)
         val fingerprint = "SHA256:" + Base64.encodeToString(
             digest,
             Base64.NO_WRAP or Base64.NO_PADDING,
         )
-        val publicText = key.publicBytes?.toString(Charsets.UTF_8)?.trim()
         return TerminalKeyInfo(
             name = key.name,
             fingerprint = fingerprint,
