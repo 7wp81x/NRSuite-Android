@@ -376,7 +376,6 @@ internal fun DeviceConnectionCard(
                     restartInProgress = restartInProgress,
                     onStopModules = onStopModulesForMemory,
                     onRestartEsp32 = { showRestartDialog = true },
-                    onViewDetails = { detailsExpanded = true },
                 )
                 NrQuietButton(
                     text = if (detailsExpanded) "Hide details" else "Show details",

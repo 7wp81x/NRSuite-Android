@@ -58,7 +58,6 @@ fun DeviceMemoryBanner(
     restartInProgress: Boolean,
     onStopModules: () -> Unit,
     onRestartEsp32: () -> Unit,
-    onViewDetails: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val critical = health.pressure == DeviceMemoryPressure.CRITICAL
@@ -152,10 +151,6 @@ fun DeviceMemoryBanner(
                     enabled = canRestart && !restartInProgress,
                 )
             }
-            NrCompactQuietButton(
-                text = "View device details",
-                onClick = onViewDetails,
-            )
         }
     }
 }
