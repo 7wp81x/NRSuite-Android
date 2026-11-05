@@ -510,7 +510,7 @@ private fun TargetConfigCard(
                                 vendor = target.vendor,
                                 ouiWhitelisted = target.ouiWhitelisted,
                                 ouiBlacklisted = target.ouiBlacklisted,
-                                enabled = !running && target.wps,
+                                enabled = !running && !scanning && target.wps,
                                 onClick = { onSelectTarget(target) },
                                 modifier = Modifier.padding(vertical = 3.dp),
                             )

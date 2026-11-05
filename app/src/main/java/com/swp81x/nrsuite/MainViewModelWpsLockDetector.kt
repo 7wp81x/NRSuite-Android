@@ -6,6 +6,7 @@ import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.wps.BssidLockSnapshot
 import com.swp81x.nrsuite.core.wps.WpsLockAccessPoint
 import com.swp81x.nrsuite.core.wps.WpsLockObservationSource
+import com.swp81x.nrsuite.core.wps.shouldRetryWpsTargetScan
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -37,22 +38,22 @@ internal fun MainViewModel.startWpsLockScanImpl() {
     wpsLockScanJob = scope.launch(Dispatchers.IO) {
         var success = false
         try {
-            val args = JSONObject().apply {
-                put("band", "auto")
-                put("dwell_ms", 120)
-            }
-            val response = activeSession.sendCommand(
-                "WPS_LOCK_SCAN",
-                args,
-                timeoutMs = 45_000,
-            )
-            if (response?.optBoolean("ok") == true) {
+            val scan = runWpsLockScanWithRecovery(activeSession)
+            val visibleCount = _wpsLockDetector.value.accessPoints.size
+            if (scan.response?.optBoolean("ok") == true) {
                 success = true
-                val count = response.optInt("count", _wpsLockDetector.value.accessPoints.size)
-                appendLog("WPS Lock Detector: scan complete ($count WPS AP(s)).")
+                if (shouldRetryWpsTargetScan(scan.reportedCount, scan.receivedCount)) {
+                    appendLog(
+                        "WPS Lock Detector: scan returned ${scan.reportedCount} WPS AP(s) but only " +
+                            "${scan.receivedCount} event(s) arrived; kept $visibleCount partial AP(s).",
+                        level = LogLevel.ERROR,
+                    )
+                } else {
+                    appendLog("WPS Lock Detector: scan complete (${scan.reportedCount} WPS AP(s)).")
+                }
             } else {
-                val message = response?.optString("msg")?.takeIf { it.isNotBlank() }
-                    ?: response?.optString("error")?.takeIf { it.isNotBlank() }
+                val message = scan.response?.optString("msg")?.takeIf { it.isNotBlank() }
+                    ?: scan.response?.optString("error")?.takeIf { it.isNotBlank() }
                     ?: "scan timed out"
                 _wpsLockDetector.update { it.copy(error = message) }
                 appendLog("WPS Lock Detector: scan failed: $message", level = LogLevel.ERROR)

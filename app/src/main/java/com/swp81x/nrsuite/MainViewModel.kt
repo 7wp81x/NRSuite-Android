@@ -700,6 +700,7 @@ class MainViewModel(internal val app: Application) {
     internal val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
     internal val wifiScanEventsReceived = java.util.concurrent.atomic.AtomicInteger(0)
+    internal val wpsLockEventsReceived = java.util.concurrent.atomic.AtomicInteger(0)
 
     internal val _sniffing = MutableStateFlow(false)
     val sniffing: StateFlow<Boolean> = _sniffing.asStateFlow()
@@ -2608,6 +2609,7 @@ class MainViewModel(internal val app: Application) {
                         }
 
                         "wps_lock_ap" -> {
+                            wpsLockEventsReceived.incrementAndGet()
                             this@MainViewModel.handleWpsLockApEventImpl(event)
                         }
 
