@@ -11,6 +11,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -77,6 +80,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -98,6 +102,9 @@ import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
 import com.swp81x.nrsuite.core.terminal.TerminalSessionEntry
 import com.swp81x.nrsuite.core.terminal.TerminalUiSettings
 import com.swp81x.nrsuite.ui.components.NrDangerButton
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import com.swp81x.nrsuite.ui.components.NrPrimaryButton
 import com.swp81x.nrsuite.ui.components.NrQuietButton
 import com.swp81x.nrsuite.ui.components.NrSecondaryButton
@@ -1125,19 +1132,19 @@ private fun TerminalExtraKeys(
                 onClick = { onKey("-") },
                 onLongClick = { onKey("|") },
             )
-            TerminalExtraKey("HOME", onClick = { onKey("\u001b[H") })
-            TerminalExtraKey("↑", onClick = { onKey("\u001b[A") })
-            TerminalExtraKey("END", onClick = { onKey("\u001b[F") })
-            TerminalExtraKey("PGUP", onClick = { onKey("\u001b[5~") })
+            TerminalExtraKey("HOME", onClick = { onKey("\u001b[H") }, repeatOnHold = true)
+            TerminalExtraKey("↑", onClick = { onKey("\u001b[A") }, repeatOnHold = true)
+            TerminalExtraKey("END", onClick = { onKey("\u001b[F") }, repeatOnHold = true)
+            TerminalExtraKey("PGUP", onClick = { onKey("\u001b[5~") }, repeatOnHold = true)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             TerminalExtraKey("TAB", onClick = { onKey("\t") })
             TerminalExtraKey("CTRL", selected = ctrlActive, onClick = onToggleCtrl)
             TerminalExtraKey("ALT", selected = altActive, onClick = onToggleAlt)
-            TerminalExtraKey("←", onClick = { onKey("\u001b[D") })
-            TerminalExtraKey("↓", onClick = { onKey("\u001b[B") })
-            TerminalExtraKey("→", onClick = { onKey("\u001b[C") })
-            TerminalExtraKey("PGDN", onClick = { onKey("\u001b[6~") })
+            TerminalExtraKey("←", onClick = { onKey("\u001b[D") }, repeatOnHold = true)
+            TerminalExtraKey("↓", onClick = { onKey("\u001b[B") }, repeatOnHold = true)
+            TerminalExtraKey("→", onClick = { onKey("\u001b[C") }, repeatOnHold = true)
+            TerminalExtraKey("PGDN", onClick = { onKey("\u001b[6~") }, repeatOnHold = true)
         }
     }
 }
@@ -1149,7 +1156,36 @@ private fun RowScope.TerminalExtraKey(
     onClick: () -> Unit,
     selected: Boolean = false,
     onLongClick: (() -> Unit)? = null,
+    repeatOnHold: Boolean = false,
 ) {
+    val latestOnClick by rememberUpdatedState(onClick)
+    val interactionScope = rememberCoroutineScope()
+    val interactionModifier = if (repeatOnHold) {
+        Modifier.pointerInput(Unit) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                down.consume()
+                latestOnClick()
+                val repeatJob = interactionScope.launch {
+                    delay(TERMINAL_KEY_REPEAT_START_DELAY_MS)
+                    while (isActive) {
+                        latestOnClick()
+                        delay(TERMINAL_KEY_REPEAT_INTERVAL_MS)
+                    }
+                }
+                try {
+                    waitForUpOrCancellation()
+                } finally {
+                    repeatJob.cancel()
+                }
+            }
+        }
+    } else {
+        Modifier.combinedClickable(
+            onClick = latestOnClick,
+            onLongClick = onLongClick,
+        )
+    }
     val background = if (selected) {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
     } else {
@@ -1160,10 +1196,7 @@ private fun RowScope.TerminalExtraKey(
             .weight(1f)
             .height(34.dp)
             .background(background, RoundedCornerShape(5.dp))
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick,
-            ),
+            .then(interactionModifier),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -1181,6 +1214,9 @@ private fun RowScope.TerminalExtraKey(
         )
     }
 }
+
+private const val TERMINAL_KEY_REPEAT_START_DELAY_MS = 420L
+private const val TERMINAL_KEY_REPEAT_INTERVAL_MS = 70L
 
 private class NativeTerminalViewClient(
     private val onSingleTap: () -> Unit,
