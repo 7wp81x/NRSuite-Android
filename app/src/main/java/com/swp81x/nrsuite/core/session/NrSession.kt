@@ -318,11 +318,13 @@ class NrSession(
     suspend fun scanWpsLockSnapshot(
         timeoutMs: Long = 45_000,
         dwellMs: Int = 120,
+        includeNonWps: Boolean = false,
     ): ScanSnapshotResult = withScanOperation {
         val pullSupported = supportsFeature(FEATURE_SCAN_RESULTS_PULL)
         val args = JSONObject().apply {
             put("band", "auto")
             put("dwell_ms", dwellMs.coerceIn(60, 1_000))
+            if (includeNonWps) put("include_non_wps", true)
             if (pullSupported) put("pull_results", true)
         }
         val response = sendCommand("WPS_LOCK_SCAN", args, timeoutMs = timeoutMs)

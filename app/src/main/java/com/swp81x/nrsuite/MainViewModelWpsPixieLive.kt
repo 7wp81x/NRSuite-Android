@@ -100,8 +100,13 @@ internal fun MainViewModel.scanWpsTargetsImpl() {
     logWpsPixieLive("Scanning for WPS-enabled access points...")
     wpsTargetScanJob = scope.launch {
         try {
-            val scan = runWpsLockScanWithRecovery(activeSession, destination = WifiScanDestination.WPS)
+            val scan = runWpsLockScanWithRecovery(
+                activeSession,
+                destination = WifiScanDestination.WPS,
+                includeNonWps = true,
+            )
             val visibleTargetCount = _wpsPixieLive.value.targets.size
+            val wpsTargetCount = _wpsPixieLive.value.targets.count { it.wps }
             val keepPartial = shouldKeepWpsScanResults(scan.receivedCount, visibleTargetCount)
             if (scan.response?.optBoolean("ok") == true) {
                 if (shouldRetryWpsTargetScan(scan.reportedCount, scan.receivedCount)) {
@@ -113,11 +118,18 @@ internal fun MainViewModel.scanWpsTargetsImpl() {
                         level = LogLevel.ERROR,
                     )
                     logWpsPixieLive(
-                        "Scan incomplete: ${scan.receivedCount} of ${scan.reportedCount} WPS target(s) received.",
+                        "Scan incomplete: ${scan.receivedCount} of ${scan.reportedCount} " +
+                            "result(s) received; $wpsTargetCount WPS target(s) visible.",
                     )
                 } else {
-                    logWpsPixieLive("Scan complete: ${scan.reportedCount} WPS target(s).")
-                    appendLog("WPS Pixie: WPS scan complete (${scan.reportedCount} targets).")
+                    logWpsPixieLive(
+                        "Scan complete: $wpsTargetCount WPS target(s) " +
+                            "from $visibleTargetCount result(s).",
+                    )
+                    appendLog(
+                        "WPS Pixie: WPS scan complete ($wpsTargetCount WPS target(s) " +
+                            "from $visibleTargetCount result(s)).",
+                    )
                 }
             } else if (keepPartial) {
                 appendLog(

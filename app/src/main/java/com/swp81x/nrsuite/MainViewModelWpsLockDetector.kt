@@ -83,15 +83,41 @@ internal fun MainViewModel.startWpsLockScanImpl() {
 internal fun MainViewModel.handleWpsLockApEventImpl(
     event: JSONObject,
     destination: WifiScanDestination? = wifiScanDestination,
+    allowNonWps: Boolean = false,
 ) {
-    // WPS_LOCK_SCAN is a WPS-only contract. Drop malformed/legacy records
-    // rather than allowing a non-WPS AP into module target lists.
-    if (!event.optBoolean("wps", true)) return
     val bssid = event.optString("bssid").trim().uppercase()
     val channel = event.optInt("channel", 0)
     if (bssid.isBlank() || channel <= 0) return
     val vendor = ouiDatabaseRepository.lookup(bssid)?.vendor
     val ouiRule = matchOuiRule(bssid, _ouiRules.value)
+
+    // WPS_LOCK_SCAN is WPS-only by default. WPS Pixie may explicitly request
+    // non-WPS records so its WPS-only filter can be switched off. Those rows
+    // are display-only candidates and are never passed into WPS lock state.
+    if (!event.optBoolean("wps", true)) {
+        if (!allowNonWps) return
+        val nonWpsTarget = NetworkTarget(
+            ssid = event.optString("ssid").ifBlank { "(hidden)" },
+            bssid = bssid,
+            channel = channel,
+            rssi = event.optInt("rssi", -127),
+            security = event.optString("security", "?"),
+            wps = false,
+            vendor = vendor,
+            ouiWhitelisted = ouiRule?.action == OuiRuleAction.WHITELIST,
+            ouiBlacklisted = ouiRule?.action == OuiRuleAction.BLACKLIST,
+        )
+        if (destination == WifiScanDestination.WPS) {
+            _wpsPixieLive.update { state ->
+                state.copy(
+                    targets = (state.targets.filterNot {
+                        it.bssid.equals(bssid, ignoreCase = true)
+                    } + nonWpsTarget).sortedByDescending { it.rssi },
+                )
+            }
+        }
+        return
+    }
     val ap = WpsLockAccessPoint(
         ssid = event.optString("ssid").ifBlank { "(hidden)" },
         bssid = bssid,

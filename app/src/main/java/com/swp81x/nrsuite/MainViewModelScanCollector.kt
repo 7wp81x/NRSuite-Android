@@ -116,6 +116,7 @@ internal data class WpsLockScanResult(
 internal suspend fun MainViewModel.runWpsLockScanWithRecovery(
     activeSession: NrSession,
     destination: WifiScanDestination?,
+    includeNonWps: Boolean = false,
     maxAttempts: Int = 2,
 ): WpsLockScanResult {
     var response: JSONObject? = null
@@ -128,7 +129,11 @@ internal suspend fun MainViewModel.runWpsLockScanWithRecovery(
         attempts++
         wpsLockEventsReceived.set(0)
         val snapshot = runCatching {
-            activeSession.scanWpsLockSnapshot(timeoutMs = 45_000, dwellMs = 120)
+            activeSession.scanWpsLockSnapshot(
+                timeoutMs = 45_000,
+                dwellMs = 120,
+                includeNonWps = includeNonWps,
+            )
         }.getOrNull()
         response = snapshot?.response
         reportedCount = snapshot?.expectedCount ?: 0
@@ -137,7 +142,7 @@ internal suspend fun MainViewModel.runWpsLockScanWithRecovery(
         if (snapshot?.pulled == true) {
             snapshot.results.forEach { event ->
                 wpsLockEventsReceived.incrementAndGet()
-                handleWpsLockApEventImpl(event, destination)
+                handleWpsLockApEventImpl(event, destination, includeNonWps)
             }
             receivedCount = snapshot.receivedCount
             if (response?.optBoolean("ok") == true) break

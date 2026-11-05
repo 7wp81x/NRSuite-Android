@@ -295,7 +295,12 @@ Use **WiFi → Attack → WPS Pixie Dust**.
 - WPS target discovery uses the active Wi-Fi scan candidate set and a passive
   WPS-IE enrichment pass. This keeps WPS candidates aligned with normal Wi-Fi
   scan coverage while preserving AP Setup Locked, WPS version, and configuration
-  metadata.
+  metadata. The scan also returns non-WPS nearby APs for display filtering.
+- `WPS only` is enabled by default. It shows only actionable WPS targets using
+  WPA/WPA2-PSK-style security. Open, WEP, enterprise, and WPA3-only WPS rows are
+  hidden from this filtered view and cannot be selected for a Pixie attempt.
+  Turning the filter off reveals the full scan list; non-actionable rows remain
+  display-only.
 - WPS target rows show top-right `WPS` and `WPS LOCKED` / `LIKELY UNLOCKED` /
   `WPS UNKNOWN` badges. The channel/RSSI line is color-coded by signal quality
   and includes a `Near` / `Good` / `Far` / `Weak` label.

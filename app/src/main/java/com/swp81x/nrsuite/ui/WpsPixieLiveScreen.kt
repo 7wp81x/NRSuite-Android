@@ -67,6 +67,8 @@ import com.swp81x.nrsuite.WpsPixieLiveUiState
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wps.WpsPinSource
+import com.swp81x.nrsuite.core.wps.filterWpsPixieTargets
+import com.swp81x.nrsuite.core.wps.isActionableWpsPixieTarget
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
@@ -120,7 +122,7 @@ fun WpsPixieLiveScreen(
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
-    val displayedTargets = state.targets.filter { !state.wpsOnly || it.wps }
+    val displayedTargets = filterWpsPixieTargets(state.targets, state.wpsOnly)
     val selected = state.selectedTarget
     val candidatePinValid =
         (state.candidatePin.length == 4 || state.candidatePin.length == 8) &&
@@ -510,7 +512,7 @@ private fun TargetConfigCard(
                                 vendor = target.vendor,
                                 ouiWhitelisted = target.ouiWhitelisted,
                                 ouiBlacklisted = target.ouiBlacklisted,
-                                enabled = !running && !scanning && target.wps,
+                                enabled = !running && !scanning && isActionableWpsPixieTarget(target),
                                 onClick = { onSelectTarget(target) },
                                 modifier = Modifier.padding(vertical = 3.dp),
                             )
