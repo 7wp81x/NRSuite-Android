@@ -39,7 +39,10 @@ private const val PREF_BEACON_LISTS = "beacon_lists"
  * Used by both the legacy `scan_ap` event path and the pull-based
  * `SCAN_RESULTS` path so both routes have identical UI semantics.
  */
-internal fun MainViewModel.handleScanApEventImpl(event: JSONObject) {
+internal fun MainViewModel.handleScanApEventImpl(
+    event: JSONObject,
+    destination: WifiScanDestination? = wifiScanDestination,
+) {
     val bssid = event.optString("bssid")
     val resolvedSsid = resolvedHiddenSsidByBssid[bssid.uppercase()]
     if (event.optString("ssid").isBlank() && !resolvedSsid.isNullOrBlank()) {
@@ -54,7 +57,6 @@ internal fun MainViewModel.handleScanApEventImpl(event: JSONObject) {
     event.put("oui_whitelisted", ouiWhitelisted)
     event.put("oui_blacklisted", ouiBlacklisted)
 
-    val destination = wifiScanDestination
     val updatedList: (List<JSONObject>) -> List<JSONObject> = { current ->
         (current.filterNot { it.optString("bssid") == bssid } + event)
             .sortedByDescending { it.optInt("rssi", -999) }
@@ -260,7 +262,7 @@ private fun MainViewModel.scanWifiInternalImpl(
                     // UI semantics stay identical.
                     snapshot.results.forEach { result ->
                         wifiScanEventsReceived.incrementAndGet()
-                        handleScanApEventImpl(result)
+                        handleScanApEventImpl(result, destination)
                     }
                     eventsReceived = snapshot.receivedCount
                     break

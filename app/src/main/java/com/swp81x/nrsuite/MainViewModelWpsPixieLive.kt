@@ -100,7 +100,7 @@ internal fun MainViewModel.scanWpsTargetsImpl() {
     logWpsPixieLive("Scanning for WPS-enabled access points...")
     wpsTargetScanJob = scope.launch {
         try {
-            val scan = runWpsLockScanWithRecovery(activeSession)
+            val scan = runWpsLockScanWithRecovery(activeSession, destination = WifiScanDestination.WPS)
             val visibleTargetCount = _wpsPixieLive.value.targets.size
             val keepPartial = shouldKeepWpsScanResults(scan.receivedCount, visibleTargetCount)
             if (scan.response?.optBoolean("ok") == true) {

@@ -503,6 +503,7 @@ class MainViewModel(internal val app: Application) {
     internal val _channelAnalyzerNetworks = MutableStateFlow<List<JSONObject>>(emptyList())
     val channelAnalyzerNetworks: StateFlow<List<JSONObject>> = _channelAnalyzerNetworks.asStateFlow()
 
+    @Volatile
     internal var wifiScanDestination: WifiScanDestination? = null
 
     internal val _wifiBand = MutableStateFlow(WifiBand.AUTO)

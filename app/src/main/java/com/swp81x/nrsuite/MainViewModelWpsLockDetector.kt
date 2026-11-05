@@ -38,7 +38,7 @@ internal fun MainViewModel.startWpsLockScanImpl() {
     wpsLockScanJob = scope.launch(Dispatchers.IO) {
         var success = false
         try {
-            val scan = runWpsLockScanWithRecovery(activeSession)
+            val scan = runWpsLockScanWithRecovery(activeSession, destination = null)
             val visibleCount = _wpsLockDetector.value.accessPoints.size
             if (scan.response?.optBoolean("ok") == true) {
                 success = true
@@ -80,7 +80,10 @@ internal fun MainViewModel.startWpsLockScanImpl() {
     }
 }
 
-internal fun MainViewModel.handleWpsLockApEventImpl(event: JSONObject) {
+internal fun MainViewModel.handleWpsLockApEventImpl(
+    event: JSONObject,
+    destination: WifiScanDestination? = wifiScanDestination,
+) {
     val bssid = event.optString("bssid").trim().uppercase()
     val channel = event.optInt("channel", 0)
     if (bssid.isBlank() || channel <= 0) return
@@ -110,10 +113,10 @@ internal fun MainViewModel.handleWpsLockApEventImpl(event: JSONObject) {
             } + ap).sortedByDescending { it.rssi },
         )
     }
-    if (wifiScanDestination == WifiScanDestination.WPS) {
+    if (destination == WifiScanDestination.WPS) {
         observeWpsLockScanTargetImpl(ap)
     }
-    if (wifiScanDestination == WifiScanDestination.WPS_ATTEMPT_TARGETS) {
+    if (destination == WifiScanDestination.WPS_ATTEMPT_TARGETS) {
         val target = NetworkTarget(
             ssid = ap.ssid,
             bssid = ap.bssid,

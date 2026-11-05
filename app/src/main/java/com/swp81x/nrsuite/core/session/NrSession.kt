@@ -375,6 +375,14 @@ class NrSession(
         val collected = mutableListOf<JSONObject>()
         var offset = 0
         var failure: String? = null
+        // WPS records are substantially larger than scan_ap records. Keeping a
+        // WPS chunk to one record gives the UART bridge the same small-frame
+        // profile that proved reliable for normal WiFi scan chunks.
+        val chunkLimit = if (kind.equals("wps", ignoreCase = true)) {
+            SCAN_RESULT_WPS_CHUNK_LIMIT
+        } else {
+            SCAN_RESULT_CHUNK_LIMIT
+        }
 
         while (offset < expectedCount) {
             var chunk: com.swp81x.nrsuite.core.scan.ScanResultPullChunk? = null
@@ -385,7 +393,7 @@ class NrSession(
                     JSONObject().apply {
                         put("scan_id", scanId)
                         put("offset", offset)
-                        put("limit", SCAN_RESULT_CHUNK_LIMIT)
+                        put("limit", chunkLimit)
                     },
                     timeoutMs = SCAN_RESULT_CHUNK_TIMEOUT_MS,
                 )
@@ -423,8 +431,18 @@ class NrSession(
             val accepted = chunk
             if (accepted == null) {
                 failure = lastError ?: "scan result chunk failed"
+                android.util.Log.w(
+                    "NRSuiteWire",
+                    "SCAN_RESULTS abandoned scan_id=$scanId kind=$kind offset=$offset: $failure",
+                )
                 break
             }
+            android.util.Log.i(
+                "NRSuiteWire",
+                "SCAN_RESULTS accepted scan_id=$scanId kind=$kind offset=$offset " +
+                    "next=${accepted.nextOffset} count=${accepted.results.size} " +
+                    "total=${accepted.total} crc=${accepted.crc32.toString(16)}",
+            )
             collected += accepted.results
             if (accepted.nextOffset <= offset) {
                 failure = "scan result chunk made no progress at offset $offset"
@@ -849,6 +867,7 @@ class NrSession(
         private const val AUTO_RETRY_DELAY_MS = 650L
         private const val DIAGNOSTIC_SETTLE_MS = 700L
         private const val SCAN_RESULT_CHUNK_LIMIT = 4
+        private const val SCAN_RESULT_WPS_CHUNK_LIMIT = 1
         private const val SCAN_RESULT_CHUNK_TIMEOUT_MS = 5_000L
         private const val SCAN_RESULT_CHUNK_ATTEMPTS = 3
     }

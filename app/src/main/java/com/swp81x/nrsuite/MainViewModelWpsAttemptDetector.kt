@@ -49,7 +49,7 @@ internal fun MainViewModel.startWpsAttemptTargetScanImpl() {
     updateForegroundService()
     wpsAttemptTargetScanJob = scope.launch(Dispatchers.IO) {
         try {
-            val scan = runWpsLockScanWithRecovery(activeSession)
+            val scan = runWpsLockScanWithRecovery(activeSession, destination = WifiScanDestination.WPS_ATTEMPT_TARGETS)
             val visibleCount = _wpsAttemptDetector.value.scanCandidates.size
             if (scan.response?.optBoolean("ok") == true) {
                 if (shouldRetryWpsTargetScan(scan.reportedCount, scan.receivedCount)) {

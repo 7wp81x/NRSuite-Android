@@ -37,6 +37,42 @@ class ScanResultPullCodecTest {
         assertEquals(0x7efeb06fL, ScanResultPullCodec.canonicalCrc32("wifi", listOf(wifiResult())))
     }
 
+    private fun wpsResult(): JSONObject = JSONObject()
+        .put("type", "wps_lock_ap")
+        .put("ssid", "Test")
+        .put("bssid", "C8:3A:35:CA:75:48")
+        .put("channel", 6)
+        .put("rssi", -55)
+        .put("security", "WPA/WPA2-PSK")
+        .put("wps", true)
+        .put("wps_parsed", true)
+        .put("lock_reported", false)
+        .put("ap_setup_locked", false)
+        .put("wps_version", 16)
+        .put("config_methods", 0)
+        .put("selected_registrar", false)
+        .put("last_seen_ms", 123456)
+
+    @Test
+    fun `wps canonical CRC matches shared zlib polynomial sample`() {
+        assertEquals(0x2514ae1fL, ScanResultPullCodec.canonicalCrc32("wps", listOf(wpsResult())))
+    }
+
+    @Test
+    fun `decodes a valid WPS chunk`() {
+        val result = wpsResult()
+        val response = response(listOf(result), 0x2514ae1fL)
+        response.put("kind", "wps")
+        val chunk = ScanResultPullCodec.decode(
+            response = response,
+            expectedScanId = 42,
+            expectedKind = "wps",
+            expectedOffset = 0,
+        )
+        assertEquals("wps_lock_ap", chunk.results.single().optString("type"))
+        assertEquals(16, chunk.results.single().optInt("wps_version"))
+    }
+
     @Test
     fun `decodes a valid chunk`() {
         val result = wifiResult()
