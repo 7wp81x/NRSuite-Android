@@ -6,23 +6,28 @@ import org.junit.Test
 
 class WifiScanResultPolicyTest {
     @Test
-    fun partialResultsAreNotRetriedAfterTheyBecomeVisible() {
-        assertFalse(shouldRetryWifiScan(eventsReceived = 4))
+    fun partialEventLossTriggersOneRecoveryAttempt() {
+        assertTrue(shouldRetryWifiScan(count = 6, eventsReceived = 4))
+    }
+
+    @Test
+    fun completeEventCountDoesNotRetry() {
+        assertFalse(shouldRetryWifiScan(count = 6, eventsReceived = 6))
     }
 
     @Test
     fun noEventsAndPositiveCountRetries() {
-        assertTrue(shouldRetryWifiScan(eventsReceived = 0))
+        assertTrue(shouldRetryWifiScan(count = 6, eventsReceived = 0))
     }
 
     @Test
     fun timeoutWithoutEventsRetries() {
-        assertTrue(shouldRetryWifiScan(eventsReceived = 0))
+        assertTrue(shouldRetryWifiScan(count = null, eventsReceived = 0))
     }
 
     @Test
     fun emptyScanWithoutEventsRetries() {
-        assertTrue(shouldRetryWifiScan(eventsReceived = 0))
+        assertTrue(shouldRetryWifiScan(count = 0, eventsReceived = 0))
     }
 
     @Test

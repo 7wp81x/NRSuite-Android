@@ -192,14 +192,19 @@ private fun MainViewModel.scanWifiInternalImpl(
                     }
                 }
                 eventsReceived = wifiScanEventsReceived.get()
-                val shouldRetry = shouldRetryWifiScan(eventsReceived)
+                val shouldRetry = shouldRetryWifiScan(count, eventsReceived)
                 if (!shouldRetry || attempts >= maxAttempts) break
 
                 appendLog(
                     "WiFi scan attempt $attempts returned " +
                         "${count?.toString() ?: "timeout"} result(s), received " +
-                        "$eventsReceived event(s); retrying once after settle.",
-                    level = LogLevel.INFO,
+                        "$eventsReceived event(s); retrying once to fill missing results " +
+                        "while keeping the current list.",
+                    level = if (count != null && count > eventsReceived) {
+                        LogLevel.ERROR
+                    } else {
+                        LogLevel.INFO
+                    },
                 )
                 delay(1_200)
             }
