@@ -55,7 +55,9 @@ internal fun MainViewModel.startWpsAttemptTargetScanImpl() {
                 if (shouldRetryWpsTargetScan(scan.reportedCount, scan.receivedCount)) {
                     appendLog(
                         "WPS Attempt Detector: scan returned ${scan.reportedCount} target(s) but only " +
-                            "${scan.receivedCount} event(s) arrived; kept $visibleCount partial target(s).",
+                            "${scan.receivedCount} complete result(s) arrived" +
+                            (scan.transportError?.let { " ($it)" } ?: "") +
+                            "; kept $visibleCount partial target(s).",
                         level = LogLevel.ERROR,
                     )
                 } else {

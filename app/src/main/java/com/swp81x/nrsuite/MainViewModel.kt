@@ -2582,6 +2582,9 @@ class MainViewModel(internal val app: Application) {
                     val tracked = deviceSessions[fingerprint]
                     if (tracked?.session !== session) break
                     if (session.state.value !is ConnectionState.Connected) continue
+                    // Scan result transfer must not compete with periodic
+                    // telemetry traffic on the UART bridge.
+                    if (session.isScanOperationActive) continue
                     runCatching { session.refreshStatus() }
                 }
             },
@@ -2623,61 +2626,7 @@ class MainViewModel(internal val app: Application) {
 
                         "scan_ap" -> {
                             wifiScanEventsReceived.incrementAndGet()
-                            val bssid = event.optString("bssid")
-                            val resolvedSsid = resolvedHiddenSsidByBssid[bssid.uppercase()]
-                            if (event.optString("ssid").isBlank() && !resolvedSsid.isNullOrBlank()) {
-                                event.put("ssid", resolvedSsid)
-                                event.put("hidden_resolved", true)
-                            }
-                            val vendor = ouiDatabaseRepository.lookup(bssid)?.vendor
-                            val ouiRule = matchOuiRule(bssid, _ouiRules.value)
-                            val ouiWhitelisted = ouiRule?.action == OuiRuleAction.WHITELIST
-                            val ouiBlacklisted = ouiRule?.action == OuiRuleAction.BLACKLIST
-                            if (!vendor.isNullOrBlank()) event.put("vendor", vendor)
-                            event.put("oui_whitelisted", ouiWhitelisted)
-                            event.put("oui_blacklisted", ouiBlacklisted)
-
-                            val destination = wifiScanDestination
-                            val updatedList: (List<JSONObject>) -> List<JSONObject> = { current ->
-                                (current.filterNot { it.optString("bssid") == bssid } + event)
-                                    .sortedByDescending { it.optInt("rssi", -999) }
-                            }
-                            when (destination) {
-                                WifiScanDestination.WIFI,
-                                WifiScanDestination.TARGETS -> _networks.update(updatedList)
-                                WifiScanDestination.CHANNEL_ANALYZER -> _channelAnalyzerNetworks.update(updatedList)
-                                WifiScanDestination.WPS,
-                                WifiScanDestination.WPS_ATTEMPT_TARGETS,
-                                null -> Unit
-                            }
-                            val ssid = event.optString("ssid").ifBlank { "(hidden)" }
-                            val target = NetworkTarget(
-                                ssid = ssid,
-                                bssid = bssid,
-                                channel = event.optInt("channel", 0),
-                                rssi = event.optInt("rssi", -100),
-                                security = event.optString("security", "?"),
-                                wps = event.optBoolean("wps"),
-                                vendor = vendor,
-                                ouiWhitelisted = ouiWhitelisted,
-                                ouiBlacklisted = ouiBlacklisted,
-                            )
-                            if (destination == WifiScanDestination.WPS) {
-                                this@MainViewModel.observeWpsScanTargetImpl(target)
-                            } else {
-                                _deauthDetectorTargets.update { current ->
-                                    (current.filterNot { it.bssid.equals(bssid, ignoreCase = true) } + target)
-                                        .sortedByDescending { it.rssi }
-                                }
-                                _deauthDetectorSelectedTarget.update { selected ->
-                                    selected?.takeIf { it.bssid.equals(bssid, ignoreCase = true) } ?: selected
-                                }
-                            }
-                            appendLog(
-                                "AP: $ssid  ${event.optString("bssid")}  " +
-                                    "ch ${event.optInt("channel")}  ${event.optInt("rssi")} dBm  " +
-                                    event.optString("security")
-                            )
+                            this@MainViewModel.handleScanApEventImpl(event)
                         }
                         "portal_viewed" -> {
                             if (_portalMode.value == "evil_twin") {

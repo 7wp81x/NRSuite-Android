@@ -107,7 +107,9 @@ internal fun MainViewModel.scanWpsTargetsImpl() {
                 if (shouldRetryWpsTargetScan(scan.reportedCount, scan.receivedCount)) {
                     appendLog(
                         "WPS Pixie: scan returned ${scan.reportedCount} target(s) but only " +
-                            "${scan.receivedCount} event(s) arrived; kept $visibleTargetCount partial target(s).",
+                            "${scan.receivedCount} complete result(s) arrived" +
+                            (scan.transportError?.let { " ($it)" } ?: "") +
+                            "; kept $visibleTargetCount partial target(s).",
                         level = LogLevel.ERROR,
                     )
                     logWpsPixieLive(

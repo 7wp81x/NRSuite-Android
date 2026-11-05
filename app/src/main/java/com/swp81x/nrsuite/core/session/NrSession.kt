@@ -4,6 +4,9 @@ import com.swp81x.nrsuite.core.protocol.Frame
 import com.swp81x.nrsuite.core.protocol.FrameCodec
 import com.swp81x.nrsuite.core.protocol.FrameDecoder
 import com.swp81x.nrsuite.core.protocol.FrameType
+import com.swp81x.nrsuite.core.scan.FEATURE_SCAN_RESULTS_PULL
+import com.swp81x.nrsuite.core.scan.ScanResultPullCodec
+import com.swp81x.nrsuite.core.scan.ScanResultChunkException
 import com.swp81x.nrsuite.core.usb.NrTransport
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -49,6 +52,7 @@ class NrSession(
     private val decoder = FrameDecoder()
     private val nextFrameId = AtomicInteger(1)
     private val pendingResponses = ConcurrentHashMap<Int, CompletableDeferred<JSONObject>>()
+    private val invalidEventPayloads = AtomicInteger()
 
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val state: StateFlow<ConnectionState> = _state.asStateFlow()
@@ -65,6 +69,11 @@ class NrSession(
     private var readerJob: Job? = null
     @Volatile private var closed = false
     @Volatile private var lastInboundDataAtMs = 0L
+    @Volatile private var scanOperationDepth = 0
+
+    /** True while a scan command and its pull-based retrieval are in flight. */
+    val isScanOperationActive: Boolean
+        get() = scanOperationDepth > 0
 
     // Connection diagnostics are collected during both handshake attempts and
     // exposed only if the connection ultimately fails.
@@ -243,6 +252,212 @@ class NrSession(
     }
 
     /**
+     * Run `SCAN_WIFI` and, when the connected firmware advertises
+     * `scan_results_pull`, retrieve the result snapshot in verified chunks.
+     *
+     * Older firmware keeps the legacy asynchronous `scan_ap` behavior; the
+     * caller detects this from [ScanSnapshotResult.pulled] and drains events
+     * as before.
+     */
+    suspend fun scanWifiSnapshot(
+        band: String? = null,
+        timeoutMs: Long = 45_000,
+        settleMs: Int? = null,
+    ): ScanSnapshotResult = withScanOperation {
+        val pullSupported = supportsFeature(FEATURE_SCAN_RESULTS_PULL)
+        val args = JSONObject()
+        if (!band.isNullOrBlank()) args.put("band", band)
+        if (settleMs != null) args.put("settle_ms", settleMs.coerceIn(250, 5_000))
+        if (pullSupported) args.put("pull_results", true)
+
+        val response = sendCommand("SCAN_WIFI", args, timeoutMs = timeoutMs)
+        if (response == null) {
+            return@withScanOperation ScanSnapshotResult(
+                response = null,
+                results = emptyList(),
+                pulled = pullSupported,
+                expectedCount = 0,
+                receivedCount = 0,
+                error = "scan timed out",
+            )
+        }
+        if (!response.optBoolean("ok")) {
+            return@withScanOperation ScanSnapshotResult(
+                response = response,
+                results = emptyList(),
+                pulled = pullSupported,
+                expectedCount = 0,
+                receivedCount = 0,
+                error = response.optString("msg").ifBlank { "scan failed" },
+            )
+        }
+
+        val scanId = response.optInt("scan_id", 0)
+        if (scanId > 0) {
+            pullScanResults(
+                response = response,
+                scanId = scanId,
+                kind = response.optString("kind", "wifi").ifBlank { "wifi" },
+                expectedCount = response.optInt("count", 0),
+            )
+        } else {
+            ScanSnapshotResult(
+                response = response,
+                results = emptyList(),
+                pulled = false,
+                expectedCount = response.optInt("count", 0),
+                receivedCount = 0,
+            )
+        }
+    }
+
+    /**
+     * Pull-based equivalent of `WPS_LOCK_SCAN`. Returns `wps_lock_ap`-shaped
+     * JSON objects in [ScanSnapshotResult.results] when supported.
+     */
+    suspend fun scanWpsLockSnapshot(
+        timeoutMs: Long = 45_000,
+        dwellMs: Int = 120,
+    ): ScanSnapshotResult = withScanOperation {
+        val pullSupported = supportsFeature(FEATURE_SCAN_RESULTS_PULL)
+        val args = JSONObject().apply {
+            put("band", "auto")
+            put("dwell_ms", dwellMs.coerceIn(60, 1_000))
+            if (pullSupported) put("pull_results", true)
+        }
+        val response = sendCommand("WPS_LOCK_SCAN", args, timeoutMs = timeoutMs)
+        if (response == null) {
+            return@withScanOperation ScanSnapshotResult(
+                response = null,
+                results = emptyList(),
+                pulled = pullSupported,
+                expectedCount = 0,
+                receivedCount = 0,
+                error = "WPS scan timed out",
+            )
+        }
+        if (!response.optBoolean("ok")) {
+            return@withScanOperation ScanSnapshotResult(
+                response = response,
+                results = emptyList(),
+                pulled = pullSupported,
+                expectedCount = 0,
+                receivedCount = 0,
+                error = response.optString("msg").ifBlank { "WPS scan failed" },
+            )
+        }
+
+        val scanId = response.optInt("scan_id", 0)
+        if (scanId > 0) {
+            pullScanResults(
+                response = response,
+                scanId = scanId,
+                kind = response.optString("kind", "wps").ifBlank { "wps" },
+                expectedCount = response.optInt("count", 0),
+            )
+        } else {
+            ScanSnapshotResult(
+                response = response,
+                results = emptyList(),
+                pulled = false,
+                expectedCount = response.optInt("count", 0),
+                receivedCount = 0,
+            )
+        }
+    }
+
+    private suspend fun pullScanResults(
+        response: JSONObject,
+        scanId: Int,
+        kind: String,
+        expectedCount: Int,
+    ): ScanSnapshotResult {
+        val collected = mutableListOf<JSONObject>()
+        var offset = 0
+        var failure: String? = null
+
+        while (offset < expectedCount) {
+            var chunk: com.swp81x.nrsuite.core.scan.ScanResultPullChunk? = null
+            var lastError: String? = null
+            for (attempt in 1..SCAN_RESULT_CHUNK_ATTEMPTS) {
+                val chunkResponse = sendCommand(
+                    "SCAN_RESULTS",
+                    JSONObject().apply {
+                        put("scan_id", scanId)
+                        put("offset", offset)
+                        put("limit", SCAN_RESULT_CHUNK_LIMIT)
+                    },
+                    timeoutMs = SCAN_RESULT_CHUNK_TIMEOUT_MS,
+                )
+                if (chunkResponse == null) {
+                    lastError = "chunk timeout at offset $offset"
+                } else {
+                    try {
+                        val decoded = ScanResultPullCodec.decode(
+                            response = chunkResponse,
+                            expectedScanId = scanId,
+                            expectedKind = kind,
+                            expectedOffset = offset,
+                        )
+                        if (decoded.total != expectedCount) {
+                            throw ScanResultChunkException(
+                                "scan total changed: command=$expectedCount chunk=${decoded.total}",
+                            )
+                        }
+                        chunk = decoded
+                        break
+                    } catch (t: Throwable) {
+                        lastError = t.message ?: t.javaClass.simpleName
+                    }
+                }
+                android.util.Log.w(
+                    "NRSuiteWire",
+                    "SCAN_RESULTS retry $attempt/$SCAN_RESULT_CHUNK_ATTEMPTS " +
+                        "scan_id=$scanId offset=$offset: $lastError",
+                )
+                if (attempt < SCAN_RESULT_CHUNK_ATTEMPTS) {
+                    delay(120L * attempt)
+                }
+            }
+
+            val accepted = chunk
+            if (accepted == null) {
+                failure = lastError ?: "scan result chunk failed"
+                break
+            }
+            collected += accepted.results
+            if (accepted.nextOffset <= offset) {
+                failure = "scan result chunk made no progress at offset $offset"
+                break
+            }
+            offset = accepted.nextOffset
+        }
+
+        return ScanSnapshotResult(
+            response = response,
+            results = collected,
+            pulled = true,
+            expectedCount = expectedCount,
+            receivedCount = collected.size,
+            error = failure,
+        )
+    }
+
+    private fun supportsFeature(feature: String): Boolean {
+        val connected = _state.value as? ConnectionState.Connected ?: return false
+        return feature in connected.features
+    }
+
+    private suspend fun <T> withScanOperation(block: suspend () -> T): T {
+        synchronized(this) { scanOperationDepth++ }
+        try {
+            return block()
+        } finally {
+            synchronized(this) { scanOperationDepth-- }
+        }
+    }
+
+    /**
      * Apply a regulatory country in firmware and refresh the channel lists
      * exposed through the connected state. The caller is responsible for
      * choosing the user's actual legal country.
@@ -305,6 +520,9 @@ class NrSession(
      */
     suspend fun refreshStatus(timeoutMs: Long = 5_000): Boolean {
         if (_state.value !is ConnectionState.Connected) return false
+        // Do not inject STATUS traffic while a scan command/result transfer is
+        // active; UART bridges are most vulnerable during the result burst.
+        if (isScanOperationActive) return false
         val status = sendCommand("STATUS", timeoutMs = timeoutMs) ?: return false
         if (!status.optBoolean("ok")) return false
         _state.value = connectedFromStatus(status)
@@ -502,7 +720,20 @@ class NrSession(
     }
 
     private suspend fun handleEvent(frame: Frame) {
-        val json = parseJson(frame) ?: return
+        val json = parseJson(frame)
+        if (json == null) {
+            invalidEventPayloads.incrementAndGet()
+            val preview = frame.payloadAsString
+                .replace("\n", " ")
+                .replace("\r", " ")
+                .take(160)
+            android.util.Log.w(
+                "NRSuiteWire",
+                "Invalid JSON event id=${frame.id} " +
+                    "invalidEvents=${invalidEventPayloads.get()} payload=$preview",
+            )
+            return
+        }
         _events.emit(json)
     }
 
@@ -617,5 +848,8 @@ class NrSession(
         private const val AUTO_CONNECT_ATTEMPTS = 2
         private const val AUTO_RETRY_DELAY_MS = 650L
         private const val DIAGNOSTIC_SETTLE_MS = 700L
+        private const val SCAN_RESULT_CHUNK_LIMIT = 4
+        private const val SCAN_RESULT_CHUNK_TIMEOUT_MS = 5_000L
+        private const val SCAN_RESULT_CHUNK_ATTEMPTS = 3
     }
 }

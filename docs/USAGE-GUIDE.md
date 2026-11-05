@@ -17,7 +17,27 @@ configuration, and the main workflows that need more than a quick description.
 5. Confirm basic communication with a `PING`/status update.
 
 If the app receives heartbeats but commands time out, verify the phone-to-ESP32
-TX/RX path before troubleshooting individual modules.
+TX/RX path before troubleshooting individual modules. On classic ESP32 boards
+using CP2102/CH340 UART bridges, current firmware supports pull-based Wi-Fi scan
+results (`SCAN_RESULTS` with CRC32 and per-chunk retries). If a scan is still
+incomplete, capture `NRSuiteWire`, `NRSuiteUsb`, and `NRSuiteFirmwareMem` logs
+before changing RF or scan settings.
+
+### UART-bridge transport A/B diagnostics
+
+External CP2102/CH340/FTDI UART bridges can use two different bulk-I/O paths.
+Debug builds default to the native libusb handoff used by recent 3.1.x hotfixes.
+To build the usb-serial-for-android Java-bulk comparison APK:
+
+```bash
+./gradlew :app:assembleDebug --offline -Pnrsuite.uartBulkBackend=java
+```
+
+Compare `NRSuiteUsb` lines (backend, chunk counts, zero-filled chunks, max chunk
+size) and `NRSuiteWire` lines (scan completion, pull-chunk retries, CRC errors)
+on the same phone, board, and cable. Add `-Pnrsuite.usbVerboseIo=true` only for a
+short diagnostic capture because per-chunk hex logging adds USB read latency.
+The default build remains `native` unless the Gradle property is supplied.
 
 ### Root directory
 

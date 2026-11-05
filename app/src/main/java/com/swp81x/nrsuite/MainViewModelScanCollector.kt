@@ -12,6 +12,19 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
+internal fun JSONObject.toNetworkTargetOrNull(): NetworkTarget? {
+    val bssid = optString("bssid").trim().uppercase()
+    if (bssid.isBlank()) return null
+    return NetworkTarget(
+        ssid = optString("ssid"),
+        bssid = bssid,
+        channel = normalizeWifiChannel(optInt("channel", 1), fallback = 1),
+        rssi = optInt("rssi", -100),
+        security = optString("security", "UNKNOWN"),
+        wps = optBoolean("wps", false),
+    )
+}
+
 internal data class CollectedWifiScan(
     val commandResult: Int?,
     val eventsReceived: Int,
@@ -40,21 +53,27 @@ internal suspend fun MainViewModel.collectWifiScanWithRecovery(
         val collector = scope.launch {
             activeSession.events.collect { event ->
                 if (event.optString("type") != "scan_ap") return@collect
-                val bssid = event.optString("bssid").trim().uppercase()
-                if (bssid.isBlank()) return@collect
+                val target = event.toNetworkTargetOrNull() ?: return@collect
                 attemptEvents.incrementAndGet()
-                found[bssid] = NetworkTarget(
-                    ssid = event.optString("ssid"),
-                    bssid = bssid,
-                    channel = normalizeWifiChannel(event.optInt("channel", 1), fallback = 1),
-                    rssi = event.optInt("rssi", -100),
-                    security = event.optString("security", "UNKNOWN"),
-                    wps = event.optBoolean("wps", false),
-                )
+                found[target.bssid] = target
             }
         }
         try {
-            lastResult = activeSession.scanWifi(timeoutMs = timeoutMs)
+            val snapshot = activeSession.scanWifiSnapshot(timeoutMs = timeoutMs)
+            lastResult = when {
+                snapshot.response == null -> null
+                !snapshot.response.optBoolean("ok") -> -1
+                else -> snapshot.expectedCount
+            }
+            if (snapshot.pulled && snapshot.response?.optBoolean("ok") == true) {
+                snapshot.results.forEach { result ->
+                    val target = result.toNetworkTargetOrNull() ?: return@forEach
+                    found[target.bssid] = target
+                }
+                lastEvents = snapshot.receivedCount
+                // Pull mode already retried each failed/corrupt chunk.
+                break
+            }
             if (lastResult != null && lastResult > 0) {
                 val drainDeadlineMs = System.currentTimeMillis() + 750
                 while (attemptEvents.get() < lastResult &&
@@ -86,6 +105,7 @@ internal data class WpsLockScanResult(
     val response: JSONObject?,
     val reportedCount: Int,
     val receivedCount: Int,
+    val transportError: String? = null,
 )
 
 /**
@@ -102,20 +122,28 @@ internal suspend fun MainViewModel.runWpsLockScanWithRecovery(
     var receivedCount = 0
     var attempts = 0
 
+    var transportError: String? = null
     while (attempts < maxAttempts) {
         attempts++
         wpsLockEventsReceived.set(0)
-        response = runCatching {
-            activeSession.sendCommand(
-                "WPS_LOCK_SCAN",
-                JSONObject().apply {
-                    put("band", "auto")
-                    put("dwell_ms", 120)
-                },
-                timeoutMs = 45_000,
-            )
+        val snapshot = runCatching {
+            activeSession.scanWpsLockSnapshot(timeoutMs = 45_000, dwellMs = 120)
         }.getOrNull()
-        reportedCount = response?.optInt("count", 0) ?: 0
+        response = snapshot?.response
+        reportedCount = snapshot?.expectedCount ?: 0
+        transportError = snapshot?.error
+
+        if (snapshot?.pulled == true) {
+            snapshot.results.forEach { event ->
+                wpsLockEventsReceived.incrementAndGet()
+                handleWpsLockApEventImpl(event)
+            }
+            receivedCount = snapshot.receivedCount
+            if (response?.optBoolean("ok") == true) break
+            if (attempts >= maxAttempts) break
+            delay(1_200)
+            continue
+        }
 
         if (reportedCount > 0) {
             val drainDeadlineMs = System.currentTimeMillis() + 750
@@ -140,5 +168,6 @@ internal suspend fun MainViewModel.runWpsLockScanWithRecovery(
         response = response,
         reportedCount = reportedCount,
         receivedCount = receivedCount,
+        transportError = transportError,
     )
 }

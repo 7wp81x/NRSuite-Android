@@ -45,7 +45,9 @@ internal fun MainViewModel.startWpsLockScanImpl() {
                 if (shouldRetryWpsTargetScan(scan.reportedCount, scan.receivedCount)) {
                     appendLog(
                         "WPS Lock Detector: scan returned ${scan.reportedCount} WPS AP(s) but only " +
-                            "${scan.receivedCount} event(s) arrived; kept $visibleCount partial AP(s).",
+                            "${scan.receivedCount} complete result(s) arrived" +
+                            (scan.transportError?.let { " ($it)" } ?: "") +
+                            "; kept $visibleCount partial AP(s).",
                         level = LogLevel.ERROR,
                     )
                 } else {

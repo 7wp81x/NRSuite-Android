@@ -10,7 +10,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 
 ## 1. Offense Modules (Wi-Fi / BLE)
 
-- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; screen-local Auto/2.4/5 GHz filter; regulatory settings display allowed 2.4 and 5 GHz channel lists; retry/result-preservation and response-vs-event transport diagnostics
+- [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; screen-local Auto/2.4/5 GHz filter; regulatory settings display allowed 2.4 and 5 GHz channel lists; pull-based `SCAN_RESULTS` retrieval with per-chunk CRC/retry and legacy event fallback; retry/result-preservation transport diagnostics
 - [x] **Wi-Fi regulatory country** - C5-only Settings control for the persisted country/channel mask
 - [x] **Beacon Spam** - Broadcast custom or hidden SSIDs
 - [x] **Deauthentication** - Finite burst or stoppable duration-based loop mode with mutually exclusive count/duration controls; multi-target selection; firmware-native `DEAUTH_MULTI` when advertised; repeated `DEAUTH_BURST` channel-hopping fallback for older firmware; manual channel locked to a target-derived schedule when multiple targets are selected
