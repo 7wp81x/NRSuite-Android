@@ -813,7 +813,6 @@ internal fun CategoryModulesScreen(
                     rxLabel = irRxLabel,
                     onOpenConfig = onOpenIrConfig,
                     modifier = Modifier.fillMaxWidth(),
-                    accentColor = effectiveAccent,
                 )
             }
         }
