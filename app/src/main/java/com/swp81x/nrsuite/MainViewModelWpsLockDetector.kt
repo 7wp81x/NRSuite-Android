@@ -84,6 +84,9 @@ internal fun MainViewModel.handleWpsLockApEventImpl(
     event: JSONObject,
     destination: WifiScanDestination? = wifiScanDestination,
 ) {
+    // WPS_LOCK_SCAN is a WPS-only contract. Drop malformed/legacy records
+    // rather than allowing a non-WPS AP into module target lists.
+    if (!event.optBoolean("wps", true)) return
     val bssid = event.optString("bssid").trim().uppercase()
     val channel = event.optInt("channel", 0)
     if (bssid.isBlank() || channel <= 0) return

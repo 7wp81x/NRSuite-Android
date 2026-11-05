@@ -292,8 +292,13 @@ Use **WiFi → Attack → WPS Pixie Dust**.
 
 - WPS target scans are isolated to that module; other Wi-Fi scans do not populate
   the WPS target list.
-- The WPS target scan reports `WPS LOCKED`, `LIKELY UNLOCKED`, or
-  `WPS LOCK UNKNOWN` when the AP advertises WPS lock metadata.
+- WPS target discovery uses the active Wi-Fi scan candidate set and a passive
+  WPS-IE enrichment pass. This keeps WPS candidates aligned with normal Wi-Fi
+  scan coverage while preserving AP Setup Locked, WPS version, and configuration
+  metadata.
+- WPS target rows show top-right `WPS` and `WPS LOCKED` / `LIKELY UNLOCKED` /
+  `WPS UNKNOWN` badges. The channel/RSSI line is color-coded by signal quality
+  and includes a `Near` / `Good` / `Far` / `Weak` label.
 - Select a WPS-enabled target after a scan, then start the live attempt.
 - The live status card appears only after an attempt has activity or a result.
 - Leaving the module clears transient WPS state and targets.
