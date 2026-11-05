@@ -198,7 +198,7 @@ fun DeauthDetectorScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
-                enabled = running || canStart,
+                enabled = running || (canStart && !isScanning),
                 statusAction = if (running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 Icon(
@@ -528,7 +528,7 @@ private fun ConfigZone(
                                         ouiWhitelisted = target.ouiWhitelisted,
                                         ouiBlacklisted = target.ouiBlacklisted,
                                         selected = selectedTarget?.bssid == target.bssid,
-                                        enabled = controlsEnabled,
+                                        enabled = controlsEnabled && !isScanning,
                                         onClick = { onSelectTarget(target) },
                                     )
                                 }

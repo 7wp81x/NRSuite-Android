@@ -281,7 +281,7 @@ fun EvilTwinScreen(
                                 val apSsid = network.optString("ssid")
                                 if (apSsid.isNotBlank()) ssid = apSsid
                             },
-                            enabled = !running,
+                            enabled = !running && !scanning,
                         )
                     }
                 }
@@ -567,7 +567,7 @@ fun EvilTwinScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
-                enabled = !starting && !stopping,
+                enabled = !starting && !stopping && (running || !scanning),
                 statusAction = if (running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 if (starting || stopping) {

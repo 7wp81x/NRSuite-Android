@@ -209,6 +209,7 @@ fun DeauthScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
+                enabled = running || (!scanning && selectedTargets.isNotEmpty() && validClient),
                 statusAction = if (running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 Icon(
@@ -372,7 +373,7 @@ private fun ConfigZone(
                                 style = MaterialTheme.typography.labelLarge,
                                 modifier = Modifier.weight(1f),
                             )
-                            if (selectedBssids.isNotEmpty() && !running) {
+                            if (selectedBssids.isNotEmpty() && !running && !scanning) {
                                 TextButton(onClick = onClearTargets) {
                                     Text("Clear")
                                 }
@@ -382,7 +383,7 @@ private fun ConfigZone(
                             networks = networks,
                             selectedBssids = selectedBssids,
                             onToggle = onToggleTarget,
-                            enabled = !running,
+                            enabled = !running && !scanning,
                             multiSelect = true,
                         )
                     }

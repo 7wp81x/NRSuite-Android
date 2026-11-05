@@ -127,7 +127,7 @@ fun SniffScreen(
     val validClient = !targetCaptureMode ||
         !deauthBeforeCapture ||
         SNIFF_MAC_REGEX.matches(client.trim())
-    val canStart = validTargetSelection && validClient
+    val canStart = validTargetSelection && validClient && !scanning
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -462,7 +462,7 @@ private fun ConfigZone(
                                     onTargetBssidChange(network.optString("bssid"))
                                     onChannelChange(network.optInt("channel", channel))
                                 },
-                                enabled = !sniffing,
+                                enabled = !sniffing && !scanning,
                             )
                         }
 
