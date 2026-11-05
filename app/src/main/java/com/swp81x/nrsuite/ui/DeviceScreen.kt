@@ -128,6 +128,7 @@ import com.swp81x.nrsuite.core.update.VersionComparator
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.ui.components.ConnectionDiagnosticSummary
 import com.swp81x.nrsuite.ui.components.DeviceMemoryBanner
+import com.swp81x.nrsuite.ui.components.DeviceMemorySummaryRow
 import com.swp81x.nrsuite.ui.components.FirmwareUpdateInlineNotice
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
@@ -367,16 +368,18 @@ internal fun DeviceConnectionCard(
                     freeHeap = state.heapFree,
                     largestBlock = state.heapMaxAlloc,
                 )
-                // Debug/testing visibility: keep live heap telemetry on screen
-                // for every connected device, regardless of current pressure.
-                Spacer(Modifier.height(8.dp))
-                DeviceMemoryBanner(
-                    health = memoryHealth,
-                    canRestart = "reboot" in state.features,
-                    restartInProgress = restartInProgress,
-                    onStopModules = onStopModulesForMemory,
-                    onRestartEsp32 = { showRestartDialog = true },
-                )
+                Spacer(Modifier.height(4.dp))
+                if (memoryHealth.shouldShowBanner) {
+                    DeviceMemoryBanner(
+                        health = memoryHealth,
+                        canRestart = "reboot" in state.features,
+                        restartInProgress = restartInProgress,
+                        onStopModules = onStopModulesForMemory,
+                        onRestartEsp32 = { showRestartDialog = true },
+                    )
+                } else {
+                    DeviceMemorySummaryRow(health = memoryHealth)
+                }
                 NrQuietButton(
                     text = if (detailsExpanded) "Hide details" else "Show details",
                     onClick = { detailsExpanded = !detailsExpanded },

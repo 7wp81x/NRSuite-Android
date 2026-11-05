@@ -30,7 +30,6 @@ import com.swp81x.nrsuite.core.session.DeviceMemoryHealth
 import com.swp81x.nrsuite.core.session.DeviceMemoryPressure
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
-import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
 import java.util.Locale
@@ -61,19 +60,12 @@ fun DeviceMemoryBanner(
     modifier: Modifier = Modifier,
 ) {
     val critical = health.pressure == DeviceMemoryPressure.CRITICAL
-    val warning = health.pressure == DeviceMemoryPressure.WARNING
-    val telemetryMissing = health.freeHeap == null && health.largestBlock == null
-    val color = when {
-        telemetryMissing -> StatusNeutral
-        health.pressure == DeviceMemoryPressure.CRITICAL -> StatusRed
-        health.pressure == DeviceMemoryPressure.WARNING -> StatusAmber
-        else -> StatusGreen
+    val color = when (health.pressure) {
+        DeviceMemoryPressure.CRITICAL -> StatusRed
+        DeviceMemoryPressure.WARNING -> StatusAmber
+        DeviceMemoryPressure.NORMAL -> StatusNeutral
     }
-    val title = when (health.pressure) {
-        DeviceMemoryPressure.CRITICAL -> "Critical device memory"
-        DeviceMemoryPressure.WARNING -> "Low device memory"
-        DeviceMemoryPressure.NORMAL -> "Device memory"
-    }
+    val title = if (critical) "Critical device memory" else "Low device memory"
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -108,17 +100,10 @@ fun DeviceMemoryBanner(
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                text = when {
-                    critical ->
-                        "Firmware operations may fail or exhaust the heap. Stop active modules before starting another radio task."
-                    warning ->
-                        "Stop unused modules before starting another radio task to avoid allocation failures."
-                    telemetryMissing ->
-                        "This firmware did not report current heap telemetry. Update firmware for live memory diagnostics."
-                    else ->
-                        "Current heap telemetry is shown for debug/testing. Warning thresholds: " +
-                            "below ${formatMemoryBytes(DeviceMemoryHealth.WARNING_FREE_HEAP_BYTES)} free " +
-                            "or ${formatMemoryBytes(DeviceMemoryHealth.WARNING_LARGEST_BLOCK_BYTES)} largest block."
+                text = if (critical) {
+                    "Firmware operations may fail or exhaust the heap. Stop active modules before starting another radio task."
+                } else {
+                    "Stop unused modules before starting another radio task to avoid allocation failures."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
@@ -152,6 +137,36 @@ fun DeviceMemoryBanner(
                 )
             }
         }
+    }
+}
+
+/** Compact, neutral telemetry shown when heap pressure is within limits. */
+@Composable
+fun DeviceMemorySummaryRow(
+    health: DeviceMemoryHealth,
+    modifier: Modifier = Modifier,
+) {
+    val telemetryMissing = health.freeHeap == null && health.largestBlock == null
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Memory",
+            style = MaterialTheme.typography.bodySmall,
+            color = NrOnSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = if (telemetryMissing) {
+                "Not reported"
+            } else {
+                "${formatMemoryBytes(health.freeHeap)} free · " +
+                    "${formatMemoryBytes(health.largestBlock)} largest"
+            },
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
