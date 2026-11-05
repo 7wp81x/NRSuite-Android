@@ -115,7 +115,7 @@ object NrSuiteNotifications {
         NotificationManagerCompat.from(context).notify(
             BLE_NOTIFICATION_ID,
             NotificationCompat.Builder(context, CHANNEL_ALERTS)
-                .setSmallIcon(R.drawable.ic_stat_nrsuite)
+                .setSmallIcon(R.drawable.ic_stat_ble)
                 .setContentTitle("BLE device connected")
                 .setContentText(label)
                 .setContentIntent(mainActivityIntent(context))

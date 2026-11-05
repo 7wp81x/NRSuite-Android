@@ -213,7 +213,10 @@ count.
 A shortcut can be pinned to the Home screen and can optionally ask for
 confirmation before running. The Home shortcut card provides **Open shortcuts**,
 which opens the quick sheet over Home, and **Manage shortcuts**, which opens the
-full CRUD screen without switching to the Terminal tab.
+full CRUD screen without switching to the Terminal tab. The quick-sheet `+`
+action opens a new-shortcut editor directly. Back from a directly opened editor
+returns to its launching screen; Back from an editor opened inside Manage
+Shortcuts returns to Manage Shortcuts.
 
 ### Parameterized shortcuts
 

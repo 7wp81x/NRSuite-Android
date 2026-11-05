@@ -889,7 +889,7 @@ private fun ConnectedTerminal(
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text("Terminal Launcher") },
+                        text = { Text("Terminal Shortcuts") },
                         leadingIcon = { Icon(Icons.Default.GridView, contentDescription = null) },
                         onClick = {
                             terminalMenuExpanded = false
@@ -925,7 +925,7 @@ private fun ConnectedTerminal(
             }
             Spacer(Modifier.weight(1f))
             IconButton(onClick = onOpenLauncher) {
-                Icon(Icons.Default.GridView, contentDescription = "Terminal Launcher")
+                Icon(Icons.Default.GridView, contentDescription = "Terminal Shortcuts")
             }
             IconButton(
                 onClick = { if (imeVisible) hideKeyboard() else showKeyboard() },

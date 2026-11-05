@@ -90,7 +90,7 @@ internal fun TerminalSettingsScreen(
     ) {
         SettingsCard(title = "Home and launcher") {
             SettingsToggleRow(
-                title = "Show Terminal Launcher on Home",
+                title = "Show Terminal Shortcuts on Home",
                 description = "Adds an optional shortcut card to the Home dashboard.",
                 checked = settings.showLauncherOnHome,
                 onCheckedChange = {

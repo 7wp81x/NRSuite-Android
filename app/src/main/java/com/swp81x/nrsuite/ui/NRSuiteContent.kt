@@ -1138,6 +1138,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
     var terminalAutoconnectAttempted by rememberSaveable { mutableStateOf(false) }
     var showHomeShortcutSheet by rememberSaveable { mutableStateOf(false) }
+    var terminalShortcutCreateRequested by rememberSaveable { mutableStateOf(false) }
     var previousMemoryModuleId by remember { mutableStateOf<String?>(null) }
     val memoryDeviceLabel = remember(devices, primaryFingerprint) {
         devices.firstOrNull {
@@ -1185,6 +1186,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         terminalState is TerminalConnectionState.Connected &&
         terminalSessions.isNotEmpty()
     val terminalImmersive = terminalReady && imeVisible
+    val shortcutManagerFullScreen = activeModuleId == "terminal_shortcuts"
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -1200,7 +1202,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             ScaffoldDefaults.contentWindowInsets
         },
         topBar = {
-            if (!terminalReady) NRSuiteTopBar(
+            if (!terminalReady && !shortcutManagerFullScreen) NRSuiteTopBar(
                 title = activeTitle,
                 showBack = showBack,
                 backDescription = when {
@@ -2365,21 +2367,26 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             activeModuleId == "terminal_shortcuts" -> TerminalLauncherScreen(
                 shortcuts = terminalShortcuts,
                 categories = terminalShortcutCategories,
-                onClose = { activeModuleId = null },
+                onClose = {
+                    activeModuleId = null
+                    terminalShortcutCreateRequested = false
+                },
                 onUpsertShortcut = viewModel::upsertTerminalShortcut,
                 onDeleteShortcut = viewModel::deleteTerminalShortcut,
                 onAddCategory = viewModel::addTerminalShortcutCategory,
                 onDeleteCategory = viewModel::deleteTerminalShortcutCategory,
                 onRenameCategory = viewModel::renameTerminalShortcutCategory,
+                initialCreateShortcut = terminalShortcutCreateRequested,
                 modifier = Modifier,
             )
 
             activeModuleId == "terminal_settings" -> TerminalSettingsRoot(
                 viewModel = viewModel,
                 onManageShortcuts = {
-                    activeModuleId = null
+                    terminalShortcutCreateRequested = false
                     selectedTab = AppTab.TERMINAL
-                    showTerminalLauncher = true
+                    showTerminalLauncher = false
+                    activeModuleId = "terminal_shortcuts"
                 },
                 onClearPinnedHostKey = {
                     viewModel.clearTerminalPinnedHostKey()
@@ -2507,6 +2514,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     showHomeShortcutSheet = true
                 },
                 onManageTerminalShortcuts = {
+                    terminalShortcutCreateRequested = false
                     activeModuleId = "terminal_shortcuts"
                 },
                 onRunTerminalShortcut = { shortcut ->
@@ -2623,10 +2631,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             },
             onAdd = {
                 showHomeShortcutSheet = false
+                terminalShortcutCreateRequested = true
                 activeModuleId = "terminal_shortcuts"
             },
             onManage = {
                 showHomeShortcutSheet = false
+                terminalShortcutCreateRequested = false
                 activeModuleId = "terminal_shortcuts"
             },
             onOpenSettings = {

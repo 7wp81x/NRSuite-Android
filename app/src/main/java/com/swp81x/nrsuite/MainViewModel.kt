@@ -2477,14 +2477,24 @@ class MainViewModel(internal val app: Application) {
         if (activeText != null) {
             intent.action = NrSuiteForegroundService.ACTION_START
             intent.putExtra(NrSuiteForegroundService.EXTRA_TEXT, activeText)
+            val smallIconRes = when {
+                _firmwareFlashing.value -> com.swp81x.nrsuite.R.drawable.ic_stat_firmware
+                _bleConnected.value ||
+                    _bleAdvertising.value ||
+                    _bleScanStarting.value ||
+                    _bleScanRunning.value ||
+                    _bleScanStopping.value ||
+                    _bleProfileRunning.value -> com.swp81x.nrsuite.R.drawable.ic_stat_ble
+                else -> com.swp81x.nrsuite.R.drawable.ic_stat_nrsuite
+            }
+            intent.putExtra(
+                NrSuiteForegroundService.EXTRA_SMALL_ICON,
+                smallIconRes,
+            )
             if (_firmwareFlashing.value) {
                 intent.putExtra(
                     NrSuiteForegroundService.EXTRA_PROGRESS,
                     _firmwareFlashProgress.value.coerceIn(0, 100),
-                )
-                intent.putExtra(
-                    NrSuiteForegroundService.EXTRA_SMALL_ICON,
-                    com.swp81x.nrsuite.R.drawable.ic_stat_firmware,
                 )
             }
             runCatching {

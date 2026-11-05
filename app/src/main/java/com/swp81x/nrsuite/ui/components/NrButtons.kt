@@ -161,12 +161,17 @@ fun NrQuietButton(
     leadingIcon: ImageVector? = null,
     leadingIconTint: Color? = null,
     compact: Boolean = false,
+    edgeAligned: Boolean = false,
 ) {
     TextButton(
         onClick = onClick,
         modifier = modifier.height(actionHeight(compact)),
         enabled = enabled,
-        contentPadding = contentPadding(compact),
+        contentPadding = if (edgeAligned) {
+            PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+        } else {
+            contentPadding(compact)
+        },
         colors = ButtonDefaults.textButtonColors(
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.50f),

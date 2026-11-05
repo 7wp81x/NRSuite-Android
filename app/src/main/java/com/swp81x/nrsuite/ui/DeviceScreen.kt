@@ -384,6 +384,7 @@ internal fun DeviceConnectionCard(
                     text = if (detailsExpanded) "Hide details" else "Show details",
                     onClick = { detailsExpanded = !detailsExpanded },
                     leadingIcon = if (detailsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    edgeAligned = true,
                 )
                 NrAnimatedVisibility(visible = detailsExpanded) {
                     DeviceSpecsContent(state)

@@ -65,6 +65,7 @@ import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
+import com.swp81x.nrsuite.core.ble.isBleHidSessionActive
 
 private val specialKeys = listOf(
     "ENTER", "TAB", "ESC", "BACKSPACE", "DELETE",
@@ -107,6 +108,9 @@ fun BleScreen(
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var realtimeText by rememberSaveable { mutableStateOf("") }
     val canRealtime = connected && bleConnected
+    // Firmware can stop advertising once a host connects. The HID session is
+    // still active in that state, so the FAB must use either signal.
+    val bleSessionActive = isBleHidSessionActive(advertising, bleConnected)
     val context = LocalContext.current
 
     LaunchedEffect(bleConnected) {
@@ -181,7 +185,7 @@ fun BleScreen(
             }
         }
 
-        if (connected && advertising) {
+        if (connected && bleSessionActive) {
             ModuleActionFab(
                 onClick = onStop,
                 modifier = Modifier
