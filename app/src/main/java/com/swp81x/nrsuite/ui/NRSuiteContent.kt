@@ -146,6 +146,7 @@ import com.swp81x.nrsuite.core.ir.IrTransmitBackend
 import com.swp81x.nrsuite.core.log.NrSuiteMemoryLogger
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
+import com.swp81x.nrsuite.core.terminal.shouldAttemptTerminalAutoconnect
 import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
 import com.swp81x.nrsuite.core.update.AppUpdateInfo
 import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
@@ -1140,6 +1141,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         if (suppressUsbAttachPrompt) viewModel.dismissUsbAttachPrompt()
     }
 
+    var terminalAppOpenAutoconnectAttempted by rememberSaveable { mutableStateOf(false) }
     var terminalAutoconnectAttempted by rememberSaveable { mutableStateOf(false) }
     var showHomeShortcutSheet by rememberSaveable { mutableStateOf(false) }
     var terminalShortcutCreateRequested by rememberSaveable { mutableStateOf(false) }
@@ -1159,6 +1161,23 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
         previousMemoryModuleId = moduleId
     }
+    LaunchedEffect(Unit) {
+        // Try once per app open, independently of navigation. This keeps the
+        // saved SSH transport available for Home shortcuts without taking the
+        // user to Terminal or showing setup/permission prompts. rememberSaveable
+        // prevents an Activity recreation from consuming a second attempt.
+        if (terminalAppOpenAutoconnectAttempted) return@LaunchedEffect
+        terminalAppOpenAutoconnectAttempted = true
+        val savedConfig = viewModel.savedTerminalConfig()
+        if (shouldAttemptTerminalAutoconnect(
+                autoconnectEnabled = terminalSettings.autoconnect,
+                savedConfigurationAvailable = savedConfig != null,
+                state = terminalState,
+            )
+        ) {
+            viewModel.connectTerminal(savedConfig!!)
+        }
+    }
     LaunchedEffect(selectedTab, terminalSettings.autoconnect, terminalState) {
         if (selectedTab != AppTab.TERMINAL) {
             // Autoconnect is a one-attempt-per-visit action. Leaving the
@@ -1171,14 +1190,23 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             terminalAutoconnectAttempted = false
             return@LaunchedEffect
         }
-        if (terminalState is TerminalConnectionState.Disconnected && !terminalAutoconnectAttempted) {
-            val savedConfig = viewModel.savedTerminalConfig()
-            if (savedConfig != null) {
-                terminalAutoconnectAttempted = true
-                viewModel.connectTerminal(savedConfig)
+        if (terminalState is TerminalConnectionState.Disconnected) {
+            if (!terminalAutoconnectAttempted) {
+                val savedConfig = viewModel.savedTerminalConfig()
+                if (shouldAttemptTerminalAutoconnect(
+                        autoconnectEnabled = terminalSettings.autoconnect,
+                        savedConfigurationAvailable = savedConfig != null,
+                        state = terminalState,
+                    )
+                ) {
+                    terminalAutoconnectAttempted = true
+                    viewModel.connectTerminal(savedConfig!!)
+                }
             }
-        }
-        if (terminalState is TerminalConnectionState.Failed) {
+        } else {
+            // An app-open autoconnect may already have produced a live or
+            // failed session before Terminal was visited. Mark this visit as
+            // attempted so a later manual Disconnect stays disconnected.
             terminalAutoconnectAttempted = true
         }
     }

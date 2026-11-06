@@ -151,11 +151,15 @@ Existing installations keep their previously saved settings.
 
 When autoconnect is enabled:
 
-- Entering the Terminal tab attempts one automatic connection if a saved key and
-  connection configuration exist.
+- Opening NRSuite attempts one silent background connection if a saved key and
+  connection configuration exist. This does not navigate to Terminal and does
+  not show setup or permission prompts.
+- Entering the Terminal tab also attempts one automatic connection if a saved
+  key and connection configuration exist.
 - A manual **Disconnect SSH** leaves the setup screen visible while the user stays
-  on Terminal.
-- Leaving Terminal and returning re-arms autoconnect for a new attempt.
+  on Terminal and suppresses the app-open attempt until NRSuite is opened again.
+- Leaving Terminal and returning re-arms the Terminal-tab autoconnect fallback
+  for a new attempt.
 - **Force reconnect** in the session menu closes the old transport and reconnects
   immediately.
 

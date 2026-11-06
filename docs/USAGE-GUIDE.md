@@ -521,10 +521,14 @@ key-import walkthrough.
 
 ### Connection behavior
 
-- Autoconnect attempts one connection when entering Terminal and re-arms after
-  leaving and revisiting the tab.
+- With autoconnect enabled, opening NRSuite makes one silent background
+  connection attempt when a saved key/configuration exists. It does not navigate
+  to Terminal or prompt for setup.
+- Entering Terminal also attempts one connection and re-arms after leaving and
+  revisiting the tab.
 - A manual **Disconnect SSH** leaves the setup screen visible until the user
-  reconnects or revisits Terminal.
+  reconnects or revisits Terminal; the app-open attempt is suppressed until the
+  next NRSuite open.
 - **Force reconnect** closes the old SSH transport and reconnects immediately.
 - Closing the last terminal tab is disabled. Use **Disconnect SSH** to close the
   transport intentionally.

@@ -62,7 +62,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 
 - [x] **Native terminal** - Native Termux terminal view over local OpenSSH; multiple shell tabs, PTY resize, scrollback, selection, clipboard, and session paging
 - [x] **SSH authentication** - Ed25519 and RSA public-key auth, Android Keystore-encrypted key storage, key fingerprint display, BouncyCastle Ed25519 signatures on Android, and pinned host-key validation
-- [x] **Connection lifecycle** - autoconnect, connecting status in the terminal surface, manual disconnect, force reconnect, and last-tab protection
+- [x] **Connection lifecycle** - silent app-open autoconnect, per-visit Terminal autoconnect, connecting status in the terminal surface, manual disconnect, force reconnect, and last-tab protection
 - [x] **Terminal UI defaults** - 34 dp font, block cursor, 500 ms blink, pinch-to-zoom, keyboard controls, and extra keys shown only with the IME
 - [x] **Terminal Shortcuts** - Quick shortcut bottom sheet, search/category filters, run modes, Home pinning, confirmations, parameterized `{{name}}` commands with previews, and seeded editable examples
 - [x] **Terminal documentation** - [Terminal / Termux SSH guide](docs/TERMINAL-GUIDE.md)
