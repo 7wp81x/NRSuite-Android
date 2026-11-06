@@ -2781,12 +2781,21 @@ class MainViewModel(internal val app: Application) {
                             val clientIp = event.optString("client_ip", "unknown")
                             val destination = event.optString("destination", "unknown")
                             val count = event.optInt("count", 0)
+                            val freeHeap = event.optLong("free_heap", -1)
+                            val minFree = event.optLong("heap_min_free", -1)
+                            val largest = event.optLong("heap_max_alloc", -1)
+                            val heapText = if (freeHeap >= 0) {
+                                " | heap=$freeHeap, min=$minFree, largest=$largest"
+                            } else {
+                                ""
+                            }
                             appendLog(
                                 "Captive DNS hijack response sent to $clientIp " +
-                                    "for query to $destination (count=$count)."
+                                    "for query to $destination (count=$count)$heapText."
                             )
                             this@MainViewModel.portalLogImpl(
-                                "DNS hijack -> $clientIp | resolver: $destination | count: $count"
+                                "DNS hijack -> $clientIp | resolver: $destination | " +
+                                    "count: $count$heapText"
                             )
                         }
                         "captive_data" -> {
