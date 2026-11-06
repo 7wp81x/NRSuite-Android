@@ -548,7 +548,9 @@ on-screen keyboard is visible. Existing users keep their saved settings.
 The optional NRSuite prompt can be enabled under **Terminal settings → Terminal
 startup**. It applies only to newly opened local Termux shells, shortens deep
 paths with `PROMPT_DIRTRIM=2`, shows `$` for a normal user and `#` for root, and
-does not modify `.bashrc` or any remote configuration.
+does not modify `.bashrc` or any remote configuration. The app uploads its small
+startup helper to `~/.NRSuite` over SSH and replaces it automatically when
+missing or modified.
 
 ### Terminal Shortcuts
 

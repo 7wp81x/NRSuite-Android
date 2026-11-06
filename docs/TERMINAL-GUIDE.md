@@ -151,9 +151,10 @@ Existing installations keep their previously saved settings.
 
 ### Startup banner and prompt
 
-Each newly opened shell can show a short NRSuite version banner. The banner is
-displayed locally by the app; it does not run a remote command and has no
-dependency on `figlet` or another Termux package.
+Each newly opened shell can show a short NRSuite version banner. The app
+generates a small startup script, uploads it to `~/.NRSuite` over SSH when the
+remote copy is missing or modified, and sources it in the new shell. No manual
+file copy or `figlet` package is required.
 
 The optional **Use NRSuite prompt** setting applies a compact, non-persistent
 prompt to new local Termux shells only:
@@ -169,7 +170,9 @@ to Bash prompts and is not applied to remote SSH hosts.
 
 Change either option in **Terminal → Settings → Terminal startup**. Both apply to
 newly opened shells; existing shells keep their current prompt until reconnected
-or replaced with **New session**.
+or replaced with **New session**. The app verifies the generated script against
+`~/.NRSuite` before each new shell and replaces missing, truncated, or modified
+copies automatically.
 
 ### Autoconnect
 
