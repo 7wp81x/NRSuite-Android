@@ -216,6 +216,9 @@ class MainViewModel(internal val app: Application) {
     private val _exportDirectoryName = MutableStateFlow("Not configured")
     val exportDirectoryName: StateFlow<String> = _exportDirectoryName.asStateFlow()
 
+    internal val _storageAccessIssue = MutableStateFlow<String?>(null)
+    val storageAccessIssue: StateFlow<String?> = _storageAccessIssue.asStateFlow()
+
     internal val _wifiCaptureDirectory = MutableStateFlow<Uri?>(null)
     val wifiCaptureDirectory: StateFlow<Uri?> = _wifiCaptureDirectory.asStateFlow()
 
@@ -1566,7 +1569,24 @@ class MainViewModel(internal val app: Application) {
     fun setExportDirectory(uri: Uri) {
         val resolver = app.contentResolver
         val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        runCatching { resolver.takePersistableUriPermission(uri, flags) }
+        val grantError = runCatching {
+            resolver.takePersistableUriPermission(uri, flags)
+        }.exceptionOrNull()
+        val accessIssue = if (grantError != null) {
+            "Android did not retain access to the selected folder. " +
+                "Choose it again from the system folder picker."
+        } else {
+            validateTreeAccess(uri)
+        }
+        if (accessIssue != null) {
+            clearStoredExportDirectory(accessIssue)
+            _requiresRootDirectory.value = true
+            _toastMessage.value = accessIssue
+            appendLog(accessIssue, level = LogLevel.ERROR)
+            return
+        }
+
+        _storageAccessIssue.value = null
         _exportDirectory.value = uri
         preferences.edit().putString(PREF_EXPORT_DIRECTORY, uri.toString()).apply()
         _exportDirectoryName.value = displayNameForTreeUri(uri)
@@ -1577,10 +1597,82 @@ class MainViewModel(internal val app: Application) {
 
     private fun loadExportDirectory() {
         val stored = preferences.getString(PREF_EXPORT_DIRECTORY, null) ?: return
-        val uri = runCatching { Uri.parse(stored) }.getOrNull() ?: return
+        val uri = runCatching { Uri.parse(stored) }.getOrNull()
+        val accessIssue = if (uri == null) {
+            "The stored NRSuite root folder is invalid. Choose it again."
+        } else {
+            validateTreeAccess(uri)
+        }
+        if (accessIssue != null) {
+            clearStoredExportDirectory(accessIssue)
+            _requiresRootDirectory.value = true
+            appendLog(accessIssue, level = LogLevel.ERROR)
+            return
+        }
+        _storageAccessIssue.value = null
         _exportDirectory.value = uri
-        _exportDirectoryName.value = displayNameForTreeUri(uri)
+        _exportDirectoryName.value = displayNameForTreeUri(uri!!)
         ensureRootStructure(uri)
+    }
+
+    /**
+     * Validate the URI grant and folder access before operations that depend on
+     * SAF-backed storage. This must be rechecked because persisted grants can be
+     * lost after restore, provider changes, or system permission reset.
+     */
+    internal fun ensureStorageAccessOrPrompt(message: String): Boolean {
+        val uri = _exportDirectory.value
+        if (uri == null) {
+            val issue = "$message Choose the NRSuite root folder from Settings."
+            _storageAccessIssue.value = issue
+            _requiresRootDirectory.value = true
+            _toastMessage.value = issue
+            appendLog(issue, level = LogLevel.ERROR)
+            return false
+        }
+        val issue = validateTreeAccess(uri)
+        if (issue != null) {
+            clearStoredExportDirectory(issue)
+            _requiresRootDirectory.value = true
+            _toastMessage.value = issue
+            appendLog(issue, level = LogLevel.ERROR)
+            return false
+        }
+        _storageAccessIssue.value = null
+        return true
+    }
+
+    private fun validateTreeAccess(uri: Uri): String? {
+        val persisted = app.contentResolver.persistedUriPermissions.any { permission ->
+            permission.uri == uri &&
+                permission.isReadPermission &&
+                permission.isWritePermission
+        }
+        if (!persisted) {
+            return "NRSuite no longer has persistent access to its root folder. " +
+                "Open Settings and grant folder access again."
+        }
+        val root = runCatching { DocumentFile.fromTreeUri(app, uri) }.getOrNull()
+            ?: return "The selected NRSuite root folder is no longer available. Choose it again."
+        if (!root.exists()) {
+            return "The selected NRSuite root folder was removed or is unavailable. Choose it again."
+        }
+        if (!root.canRead()) {
+            return "NRSuite cannot read the selected root folder. Grant folder access again."
+        }
+        if (!root.canWrite()) {
+            return "NRSuite cannot write to the selected root folder. Choose a writable folder."
+        }
+        return null
+    }
+
+    private fun clearStoredExportDirectory(issue: String) {
+        preferences.edit().remove(PREF_EXPORT_DIRECTORY).apply()
+        _exportDirectory.value = null
+        _exportDirectoryName.value = "Not configured"
+        _storageAccessIssue.value = issue
+        _wifiCaptureDirectory.value = null
+        _wifiCaptureDirectoryName.value = null
     }
 
     fun setWifiCaptureDirectory(uri: Uri?) {

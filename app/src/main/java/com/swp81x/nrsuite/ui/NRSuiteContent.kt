@@ -223,6 +223,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val sniffHandshake by viewModel.sniffHandshake.collectAsState()
     val capturePath by viewModel.capturePath.collectAsState()
     val exportDirectoryName by viewModel.exportDirectoryName.collectAsState()
+    val storageAccessIssue by viewModel.storageAccessIssue.collectAsState()
     val wifiCaptureDirectoryName by viewModel.wifiCaptureDirectoryName.collectAsState()
     val ouiRules by viewModel.ouiRules.collectAsState()
     val ouiDatabaseStatus by viewModel.ouiDatabaseStatus.collectAsState()
@@ -1292,12 +1293,22 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onDismissRequest = { showRootDirectoryDialog = false },
                 title = { Text("NRSuite root directory") },
                 text = {
-                    Text(
-                        text = "NRSuite needs a root folder for PCAP captures, logs, " +
-                            "DuckyScripts, and portal exports. Choose a folder now, " +
-                            "or tap Later and choose it when starting a capture.",
-                        color = NrOnSurfaceVariant,
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "NRSuite needs a writable root folder for PCAP captures, logs, " +
+                                "DuckyScripts, portal exports, and IR files. Android grants access " +
+                                "through the system folder picker; there is no broad storage permission " +
+                                "to enable in Android Settings. Choose a folder now, or tap Later and " +
+                                "grant access from Settings when needed.",
+                            color = NrOnSurfaceVariant,
+                        )
+                        storageAccessIssue?.let { issue ->
+                            Text(
+                                text = issue,
+                                color = StatusAmber,
+                            )
+                        }
+                    }
                 },
                 confirmButton = {
                     Button(onClick = {
@@ -1880,6 +1891,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     backend = irTransmitBackend,
                     loopIntervalMs = irLoopIntervalMs,
                     exportDirectoryName = exportDirectoryName,
+                    storageAccessIssue = storageAccessIssue,
                     remoteCount = irRemotes.size,
                     importing = irImporting,
                     scanProgress = irScanProgress,
@@ -2408,6 +2420,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 NRSuiteSettingsRoute(
                     connectionState = connectionState,
                     exportDirectoryName = exportDirectoryName,
+                    storageAccessIssue = storageAccessIssue,
                     firmwareFileName = firmwareFlashName,
                     firmwareFlashSize = firmwareFlashSize,
                     firmwareFlashing = firmwareFlashing,
@@ -2801,6 +2814,7 @@ private fun NRSuiteBottomBar(
 private fun NRSuiteSettingsRoute(
     connectionState: ConnectionState,
     exportDirectoryName: String,
+    storageAccessIssue: String?,
     firmwareFileName: String?,
     firmwareFlashSize: Long,
     firmwareFlashing: Boolean,
@@ -2835,6 +2849,7 @@ private fun NRSuiteSettingsRoute(
     SettingsScreen(
         connectionState = connectionState,
         exportDirectoryName = exportDirectoryName,
+        storageAccessIssue = storageAccessIssue,
         firmwareFileName = firmwareFileName,
         firmwareFlashSize = firmwareFlashSize,
         firmwareFlashing = firmwareFlashing,

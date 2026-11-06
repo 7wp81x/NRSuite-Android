@@ -73,6 +73,7 @@ fun IrConfigScreen(
     backend: IrTransmitBackend,
     loopIntervalMs: Int,
     exportDirectoryName: String,
+    storageAccessIssue: String? = null,
     remoteCount: Int,
     importing: Boolean,
     scanProgress: IrScanProgress?,
@@ -440,6 +441,13 @@ fun IrConfigScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = if (rootConfigured) NrOnSurfaceVariant else StatusAmber,
                 )
+                if (storageAccessIssue != null) {
+                    Text(
+                        text = storageAccessIssue,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusAmber,
+                    )
+                }
                 Text(
                     text = "Storage: NRSuite/IR/Database/Flipper-IRDB",
                     style = MaterialTheme.typography.bodySmall,
@@ -592,14 +600,14 @@ fun IrConfigScreen(
                         onClick = {
                             Toast.makeText(
                                 context,
-                                "Choose the NRSuite root directory first.",
+                                "Choose a writable NRSuite root folder in the system picker.",
                                 Toast.LENGTH_SHORT,
                             ).show()
                             onChooseRootDirectory()
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Choose NRSuite root")
+                        Text("Grant storage access")
                     }
                     Spacer(Modifier.height(6.dp))
                 } else if (databaseRunning) {

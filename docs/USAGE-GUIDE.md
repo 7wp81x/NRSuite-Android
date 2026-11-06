@@ -42,7 +42,15 @@ The default build remains `native` unless the Gradle property is supplied.
 ### Root directory
 
 NRSuite needs a writable root directory for captures, imports, exports, and
-history-related files. Select it when prompted, or use the app settings.
+history-related files. Select it when prompted, or use **Settings → Storage
+access → Grant storage access**.
+
+Android grants access through the system folder picker (Storage Access
+Framework). There is intentionally no broad storage permission in Android
+Settings for NRSuite. Choose a writable folder; NRSuite creates its `Pcap/`,
+`Logs/`, `Portals/`, and `DuckyEditor/` subdirectories there. If Android later
+loses the persisted folder grant, NRSuite detects it, marks storage access as
+needing attention, and asks you to grant access again.
 
 Captured PCAP files are normally written under:
 

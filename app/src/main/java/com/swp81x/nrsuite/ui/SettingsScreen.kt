@@ -172,6 +172,7 @@ private fun sanitizeFirmwareFileNamePart(raw: String): String =
 internal fun SettingsScreen(
     connectionState: ConnectionState,
     exportDirectoryName: String,
+    storageAccessIssue: String? = null,
     firmwareFileName: String?,
     firmwareFlashSize: Long,
     firmwareFlashing: Boolean,
@@ -372,21 +373,38 @@ internal fun SettingsScreen(
         border = BorderStroke(0.5.dp, NrOutline),
         ) {
             Column(Modifier.padding(14.dp)) {
-                Text("NRSuite root directory", fontWeight = FontWeight.SemiBold)
+                Text("Storage access", fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = exportDirectoryName,
+                    text = if (exportDirectoryName == "Not configured") {
+                        "No root folder selected"
+                    } else {
+                        exportDirectoryName
+                    },
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = NrOnSurfaceVariant,
                 )
+                if (storageAccessIssue != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = storageAccessIssue,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusAmber,
+                    )
+                }
                 Spacer(Modifier.height(10.dp))
                 NrPrimaryButton(
-                    text = "Choose root folder",
+                    text = if (storageAccessIssue == null) {
+                        "Grant storage access"
+                    } else {
+                        "Re-grant storage access"
+                    },
                     onClick = onChooseExportDirectory,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "Captures are stored under Pcap/ inside this directory. Choose it once; the app creates the structure.",
+                    text = "Android uses the system folder picker instead of a broad storage permission. " +
+                        "Choose a writable folder; NRSuite creates Pcap/, Logs/, Portals/, and DuckyEditor/ inside it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
