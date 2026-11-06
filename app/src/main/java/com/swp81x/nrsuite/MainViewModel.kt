@@ -2777,6 +2777,18 @@ class MainViewModel(internal val app: Application) {
                                     userAgent.ifBlank { "unknown" }
                             )
                         }
+                        "portal_dns_hijack" -> {
+                            val clientIp = event.optString("client_ip", "unknown")
+                            val destination = event.optString("destination", "unknown")
+                            val count = event.optInt("count", 0)
+                            appendLog(
+                                "Captive DNS hijack response sent to $clientIp " +
+                                    "for query to $destination (count=$count)."
+                            )
+                            this@MainViewModel.portalLogImpl(
+                                "DNS hijack -> $clientIp | resolver: $destination | count: $count"
+                            )
+                        }
                         "captive_data" -> {
                             if (_portalMode.value == "evil_twin") {
                                 _evilTwinMetrics.update {

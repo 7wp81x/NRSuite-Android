@@ -234,6 +234,10 @@ Captive Portal and Evil Twin share one local HTML template library:
 - HTML is required for both Captive Portal and Evil Twin before start.
 - The app checks device free heap before starting the portal; a firmware
   `RESET_HTML`/upload rejection is shown clearly and the portal is stopped.
+- The firmware advertises the portal AP as the DHCP DNS server, answers
+  wildcard DNS, and force-serves the landing page for unmatched HTTP paths.
+  It also best-effort intercepts plaintext IPv4 DNS sent to custom resolvers.
+  DoH/DoT, DNS over TCP, IPv6 DNS, and hardcoded-IP probes are not guaranteed.
 - The HTML Templates tab is available from both portal workflows.
 
 See [Captive Portal / Evil Twin HTML authoring](CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)

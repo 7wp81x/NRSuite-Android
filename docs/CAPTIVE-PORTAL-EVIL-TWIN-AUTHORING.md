@@ -23,13 +23,22 @@ The relevant routes are:
 |---|---|---|
 | `/` | GET | Built-in NRSuite notice page |
 | `/continue` | GET | Uploaded custom HTML page |
-| `/login` | POST | Receives form fields and emits `captive_data` |
-| anything else | GET | Redirected to `/` |
+| `/login` | POST/GET | Receives form fields and emits `captive_data` |
+| anything else | any | Serves the landing/custom page directly |
 
 Important consequences:
 
 - The initial page shown to a connecting client is the built-in notice page.
   The custom HTML is served at `/continue` after the user continues.
+- Unmatched paths are answered with the landing page directly rather than a
+  redirect. This makes OS captive-portal probes and arbitrary 404 requests
+  resolve to the portal even when a client does not follow 3xx responses.
+- The AP advertises itself as the DHCP DNS server and uses wildcard DNS.
+  Plaintext IPv4 UDP DNS queries sent to a manually configured external
+  resolver are best-effort intercepted and answered as `192.168.4.1`. This is
+  enabled automatically for every portal start; there is no user-facing
+  toggle. DNS over HTTPS/TLS, DNS over TCP, IPv6 DNS, and hardcoded IP-based
+  probes are not guaranteed to be intercepted.
 - Serve all CSS, JavaScript, and images **inline** in the HTML file.
   There is no static asset route for separate files.
 - External CDN links may not load before the client completes captive-portal
@@ -151,6 +160,7 @@ different allowed channel or change the Wi-Fi regulatory country in **Settings**
 | No captured fields | Ensure inputs have `name` attributes and the form posts to `/login` |
 | Evil Twin shows no password candidate | Use `name="password"` or `name="pass"` |
 | AP fails to start | Channel may be disallowed by the country mask; change it in Settings |
+| Captive page does not appear on a custom-DNS client | Plaintext IPv4 DNS is intercepted best-effort, but DoH/DoT, DNS over TCP, IPv6 DNS, and hardcoded IP probes cannot be forced. Open `http://192.168.4.1/` manually and verify the client is using an authorized test device |
 | Redirect loop | Keep links relative and avoid external captive-portal detection URLs |
 
 ## 6. Privacy and safety
