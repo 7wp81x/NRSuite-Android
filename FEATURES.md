@@ -65,6 +65,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **SSH authentication** - Ed25519 and RSA public-key auth, Android Keystore-encrypted key storage, key fingerprint display, BouncyCastle Ed25519 signatures on Android, and pinned host-key validation
 - [x] **Connection lifecycle** - silent app-open autoconnect, per-visit Terminal autoconnect, connecting status in the terminal surface, manual disconnect, force reconnect, and last-tab protection
 - [x] **Terminal UI defaults** - 34 dp font, block cursor, 500 ms blink, pinch-to-zoom, keyboard controls, and extra keys shown only with the IME
+- [x] **Terminal startup branding** - local version banner on new shells and an optional non-persistent NRSuite Bash prompt with shortened paths and `$`/`#` user-root indicator
 - [x] **Terminal Shortcuts** - Quick shortcut bottom sheet, search/category filters, run modes, Home pinning, confirmations, parameterized `{{name}}` commands with previews, and seeded editable examples
 - [x] **Terminal documentation** - [Terminal / Termux SSH guide](docs/TERMINAL-GUIDE.md)
 - [ ] **Termux tools** - planned Nmap scanning/topology, PCAP workflows, and optional Wireshark through Termux:X11

@@ -120,6 +120,26 @@ internal fun TerminalSettingsScreen(
             )
         }
 
+        SettingsCard(title = "Terminal startup") {
+            SettingsToggleRow(
+                title = "Show startup banner",
+                description = "Display the NRSuite version banner in each newly opened shell.",
+                checked = settings.showStartupBanner,
+                onCheckedChange = {
+                    onUpdateSettings(settings.copy(showStartupBanner = it))
+                },
+            )
+            SettingsToggleRow(
+                title = "Use NRSuite prompt",
+                description = "Use a compact NRSuite prompt for new local Termux shells. " +
+                    "This does not modify .bashrc or remote configuration.",
+                checked = settings.useNrSuitePrompt,
+                onCheckedChange = {
+                    onUpdateSettings(settings.copy(useNrSuitePrompt = it))
+                },
+            )
+        }
+
         SettingsCard(title = "SSH key") {
             Text(
                 text = if (hasPrivateKey) {

@@ -15,6 +15,7 @@ import com.jcraft.jsch.HostKeyRepository
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
 import com.jcraft.jsch.UserInfo
+import com.swp81x.nrsuite.BuildConfig
 import com.termux.terminal.TerminalColors
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
@@ -310,6 +311,7 @@ internal class SshTerminalManager(
                     username = normalized.username,
                 )
                 first.start()
+                applyTerminalStartup(first)
             }.onFailure { error ->
                 closeTransport()
                 _state.value = TerminalConnectionState.Failed(
@@ -330,14 +332,7 @@ internal class SshTerminalManager(
                 activeSessionId = newSession.id
                 publishSessions()
                 newSession.start()
-                if (!initialCommand.isNullOrBlank()) {
-                    val suffix = if (closeAfterCommand) {
-                        "; printf '\\n[Press Enter to close]\\n'; read -r _; exit\r"
-                    } else {
-                        "\r"
-                    }
-                    newSession.terminalSession.write(initialCommand + suffix)
-                }
+                applyTerminalStartup(newSession, initialCommand, closeAfterCommand)
             }.onFailure { error ->
                 Log.w("NRSuiteTerminal", "Could not open new shell session", error)
             }
@@ -568,6 +563,41 @@ internal class SshTerminalManager(
         }
         if (activeSessionId !in managedSessions) {
             activeSessionId = managedSessions.values.lastOrNull()?.id
+        }
+    }
+
+    private fun applyTerminalStartup(
+        managed: ManagedTerminalSession,
+        initialCommand: String? = null,
+        closeAfterCommand: Boolean = false,
+    ) {
+        if (_settings.value.showStartupBanner) {
+            val banner = TerminalStartup.banner(BuildConfig.VERSION_NAME)
+                .toByteArray(Charsets.UTF_8)
+            managed.terminalSession.feedOutput(banner, 0, banner.size)
+        }
+
+        val promptCommand = if (
+            _settings.value.useNrSuitePrompt &&
+            lastConnectionConfig?.host?.let(TerminalStartup::isLocalTermuxHost) == true
+        ) {
+            TerminalStartup.promptCommand
+        } else {
+            null
+        }
+
+        val startupCommand = buildString {
+            if (promptCommand != null) append(promptCommand)
+            if (!initialCommand.isNullOrBlank()) {
+                if (isNotEmpty()) append("; ")
+                append(initialCommand)
+                if (closeAfterCommand) {
+                    append("; printf '\\n[Press Enter to close]\\n'; read -r _; exit")
+                }
+            }
+        }
+        if (startupCommand.isNotEmpty()) {
+            managed.terminalSession.write(startupCommand + "\r")
         }
     }
 

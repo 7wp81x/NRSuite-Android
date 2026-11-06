@@ -144,8 +144,32 @@ Fresh-install defaults:
 | Cursor blink | 500 ms |
 | Extra keys | Shown only while the keyboard is open |
 | Authentication | Public key only |
+| Startup banner | Enabled |
+| NRSuite prompt | Disabled |
 
 Existing installations keep their previously saved settings.
+
+### Startup banner and prompt
+
+Each newly opened shell can show a short NRSuite version banner. The banner is
+displayed locally by the app; it does not run a remote command and has no
+dependency on `figlet` or another Termux package.
+
+The optional **Use NRSuite prompt** setting applies a compact, non-persistent
+prompt to new local Termux shells only:
+
+```text
+NRSuite ~/.../NRSuite $
+```
+
+`PROMPT_DIRTRIM=2` keeps deep working-directory paths short, and the prompt uses
+Bash's `\$` marker so a normal user sees `$` while root sees `#`. The setting
+does not modify `.bashrc`, `.profile`, or any remote configuration. It is limited
+to Bash prompts and is not applied to remote SSH hosts.
+
+Change either option in **Terminal → Settings → Terminal startup**. Both apply to
+newly opened shells; existing shells keep their current prompt until reconnected
+or replaced with **New session**.
 
 ### Autoconnect
 

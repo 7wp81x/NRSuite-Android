@@ -18,6 +18,8 @@ data class TerminalUiSettings(
     val defaultFontSize: Int = 34,
     val cursorStyle: Int = 0,
     val cursorBlinkMs: Int = 500,
+    val showStartupBanner: Boolean = true,
+    val useNrSuitePrompt: Boolean = false,
 )
 
 internal class TerminalPreferences(context: Context) {
@@ -36,6 +38,8 @@ internal class TerminalPreferences(context: Context) {
         defaultFontSize = preferences.getInt(KEY_FONT_SIZE, 34).coerceIn(9, 34),
         cursorStyle = preferences.getInt(KEY_CURSOR_STYLE, 0).coerceIn(0, 2),
         cursorBlinkMs = preferences.getInt(KEY_BLINK_MS, 500).coerceIn(100, 2000),
+        showStartupBanner = preferences.getBoolean(KEY_SHOW_STARTUP_BANNER, true),
+        useNrSuitePrompt = preferences.getBoolean(KEY_USE_NRSUITE_PROMPT, false),
     )
 
     fun save(settings: TerminalUiSettings) {
@@ -47,6 +51,8 @@ internal class TerminalPreferences(context: Context) {
             .putInt(KEY_FONT_SIZE, settings.defaultFontSize.coerceIn(9, 34))
             .putInt(KEY_CURSOR_STYLE, settings.cursorStyle.coerceIn(0, 2))
             .putInt(KEY_BLINK_MS, settings.cursorBlinkMs.coerceIn(100, 2000))
+            .putBoolean(KEY_SHOW_STARTUP_BANNER, settings.showStartupBanner)
+            .putBoolean(KEY_USE_NRSUITE_PROMPT, settings.useNrSuitePrompt)
             .apply()
     }
 
@@ -125,6 +131,8 @@ internal class TerminalPreferences(context: Context) {
         const val KEY_FONT_SIZE = "default_font_size"
         const val KEY_CURSOR_STYLE = "cursor_style"
         const val KEY_BLINK_MS = "cursor_blink_ms"
+        const val KEY_SHOW_STARTUP_BANNER = "show_startup_banner"
+        const val KEY_USE_NRSUITE_PROMPT = "use_nrsuite_prompt"
         const val KEY_SAVED_PASSWORD = "saved_password"
         const val KEY_PRIVATE_KEY = "private_key"
         const val KEY_PRIVATE_KEY_NAME = "private_key_name"

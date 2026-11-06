@@ -542,8 +542,13 @@ key-import walkthrough.
 ### Terminal defaults
 
 Fresh installs use a 34 dp font, block cursor, 500 ms cursor blink, autoconnect,
-and a Home shortcut card. Extra key rows appear only while the on-screen keyboard
-is visible. Existing users keep their saved settings.
+a startup banner, and a Home shortcut card. Extra key rows appear only while the
+on-screen keyboard is visible. Existing users keep their saved settings.
+
+The optional NRSuite prompt can be enabled under **Terminal settings → Terminal
+startup**. It applies only to newly opened local Termux shells, shortens deep
+paths with `PROMPT_DIRTRIM=2`, shows `$` for a normal user and `#` for root, and
+does not modify `.bashrc` or any remote configuration.
 
 ### Terminal Shortcuts
 
