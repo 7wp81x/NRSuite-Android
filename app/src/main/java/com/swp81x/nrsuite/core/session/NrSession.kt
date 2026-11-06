@@ -525,6 +525,7 @@ class NrSession(
             psramTotal = optionalLong(status, "psram_total"),
             chipCores = optionalInt(status, "chip_cores"),
             cpuMhz = optionalInt(status, "cpu_mhz"),
+            temperatureC = optionalDouble(status, "temp_c"),
             flashSize = optionalLong(status, "flash_size"),
             sdkVersion = status.optString("sdk").takeIf { it.isNotBlank() },
             protocolVersion = optionalInt(status, "proto"),
@@ -585,6 +586,12 @@ class NrSession(
 
     private fun optionalInt(source: JSONObject, key: String): Int? =
         if (!source.has(key) || source.isNull(key)) null else source.optInt(key, 0)
+
+    private fun optionalDouble(source: JSONObject, key: String): Double? {
+        if (!source.has(key) || source.isNull(key)) return null
+        val value = source.optDouble(key, Double.NaN)
+        return value.takeIf { it.isFinite() }
+    }
 
     private fun parseChannelArray(source: JSONObject, key: String): List<Int> {
         val array = source.optJSONArray(key) ?: return emptyList()

@@ -779,11 +779,17 @@ private fun DeviceSpecsContent(state: ConnectionState.Connected) {
             else -> "Not reported"
         },
     )
+    SpecRow("Chip temp", formatChipTemperature(state.temperatureC))
     SpecRow("Flash", formatBytes(state.flashSize))
     if (!state.sdkVersion.isNullOrBlank()) SpecRow("SDK", state.sdkVersion)
     SpecRow("Transport", transportLabel(state.transport))
     SpecRow("Features", "${state.features.size} advertised")
 }
+
+private fun formatChipTemperature(value: Double?): String =
+    value?.takeIf { it.isFinite() }
+        ?.let { String.format(Locale.US, "%.1f °C", it) }
+        ?: "Not reported"
 
 private fun transportLabel(transport: String?): String = when (transport) {
     "usb_cdc" -> "Native USB CDC/JTAG"
@@ -875,6 +881,7 @@ internal fun HardwareInfoCard(
                     else -> "Not reported"
                 },
             )
+            SpecRow("Chip temp", formatChipTemperature(state.temperatureC))
             SpecRow("Flash", formatBytes(state.flashSize))
             if (!state.sdkVersion.isNullOrBlank()) {
                 SpecRow("SDK", state.sdkVersion)

@@ -172,6 +172,7 @@ import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.util.Locale
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.ui.theme.LogBgError
@@ -1171,7 +1172,15 @@ internal fun DashboardDeviceCard(
                         color = NrOnSurfaceVariant,
                     )
                     Text(
-                        text = "id: ${state.deviceId ?: "unknown"}",
+                        text = buildString {
+                            append("id: ${state.deviceId ?: "unknown"}")
+                            state.temperatureC
+                                ?.takeIf { it.isFinite() }
+                                ?.let {
+                                    append(" · ")
+                                    append(String.format(Locale.US, "%.1f °C", it))
+                                }
+                        },
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = NrOnSurfaceVariant,
                     )

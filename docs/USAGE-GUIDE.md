@@ -593,6 +593,7 @@ The Device screen shows the telemetry reported by current firmware in `STATUS`:
 - Largest allocatable block
 - PSRAM total/free, or `Not present` when unavailable
 - CPU frequency and core count
+- Internal chip/die temperature, or `Not reported` when unavailable
 - Flash size
 - SDK version
 - Active transport (`usb_cdc` or `uart0`)

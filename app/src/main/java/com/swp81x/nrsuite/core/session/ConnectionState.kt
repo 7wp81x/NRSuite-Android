@@ -73,6 +73,7 @@ sealed interface ConnectionState {
         val psramTotal: Long? = null,
         val chipCores: Int? = null,
         val cpuMhz: Int? = null,
+        val temperatureC: Double? = null,
         val flashSize: Long? = null,
         val sdkVersion: String? = null,
         val protocolVersion: Int? = null,
