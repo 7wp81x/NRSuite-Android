@@ -114,6 +114,8 @@ class TerminalStartupTest {
 
         assertTrue(command.contains("\$HOME/.NRSuite"))
         assertTrue(command.contains(". \"\$HOME/.NRSuite\" 1 1"))
+        assertTrue(command.contains("sha256sum"))
+        assertTrue(command.contains("cut -d' ' -f1"))
         assertTrue(command.contains("printf '%b'"))
         assertFalse(command.contains("\n"))
     }

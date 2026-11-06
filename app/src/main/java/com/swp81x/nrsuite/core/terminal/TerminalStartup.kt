@@ -1,5 +1,7 @@
 package com.swp81x.nrsuite.core.terminal
 
+import java.security.MessageDigest
+
 /**
  * App-controlled terminal startup text. The generated script is compared with
  * ~/.NRSuite over SSH and uploaded when missing or stale, so the user does not
@@ -104,8 +106,11 @@ internal object TerminalStartup {
         if (!useRemoteScript) return fallback
         val show = if (showBanner) "1" else "0"
         val prompt = if (applyPrompt) "1" else "0"
+        val expectedHash = sha256Hex(script(versionName).toByteArray(Charsets.UTF_8))
         return "if [ -r \"\$HOME/$REMOTE_FILE_NAME\" ] && " +
-            ". \"\$HOME/$REMOTE_FILE_NAME\" $show $prompt; then :; " +
+            "[ \"\$(sha256sum \"\$HOME/$REMOTE_FILE_NAME\" 2>/dev/null | cut -d' ' -f1)\" = " +
+            "\"$expectedHash\" ]; then " +
+            ". \"\$HOME/$REMOTE_FILE_NAME\" $show $prompt; " +
             "else $fallback; fi"
     }
 
@@ -137,6 +142,11 @@ internal object TerminalStartup {
         val normalized = host.trim()
         return normalized == "127.0.0.1" || normalized.equals("localhost", ignoreCase = true)
     }
+
+    private fun sha256Hex(value: ByteArray): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(value)
+            .joinToString("") { "%02x".format(it) }
 
     private fun shellPrintfEscaped(value: String): String =
         value
