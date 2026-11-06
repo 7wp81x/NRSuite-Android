@@ -77,6 +77,8 @@ private val specialKeys = listOf(
 fun BleScreen(
     connected: Boolean,
     advertising: Boolean,
+    sessionActive: Boolean,
+    linkConnected: Boolean,
     bleConnected: Boolean,
     peer: String,
     selectedPayloadName: String?,
@@ -110,7 +112,7 @@ fun BleScreen(
     val canRealtime = connected && bleConnected
     // Firmware can stop advertising once a host connects. The HID session is
     // still active in that state, so the FAB must use either signal.
-    val bleSessionActive = isBleHidSessionActive(advertising, bleConnected)
+    val bleSessionActive = isBleHidSessionActive(sessionActive, advertising, bleConnected)
     val context = LocalContext.current
 
     LaunchedEffect(bleConnected) {
@@ -147,6 +149,8 @@ fun BleScreen(
                 PayloadTab(
                     connected = connected,
                     advertising = advertising,
+                    sessionActive = sessionActive,
+                    linkConnected = linkConnected,
                     bleConnected = bleConnected,
                     bleScriptRunning = bleScriptRunning,
                     peer = peer,
@@ -226,6 +230,8 @@ fun BleScreen(
 private fun PayloadTab(
     connected: Boolean,
     advertising: Boolean,
+    sessionActive: Boolean,
+    linkConnected: Boolean,
     bleConnected: Boolean,
     bleScriptRunning: Boolean,
     peer: String,
@@ -259,7 +265,14 @@ private fun PayloadTab(
             onRunPayload = onRunPayload,
         )
 
-        StatusCard(connected = connected, advertising = advertising, bleConnected = bleConnected, peer = peer)
+        StatusCard(
+            connected = connected,
+            advertising = advertising,
+            sessionActive = sessionActive,
+            linkConnected = linkConnected,
+            bleConnected = bleConnected,
+            peer = peer,
+        )
     }
 }
 
@@ -583,6 +596,8 @@ private fun ConfigCard(
 private fun StatusCard(
     connected: Boolean,
     advertising: Boolean,
+    sessionActive: Boolean,
+    linkConnected: Boolean,
     bleConnected: Boolean,
     peer: String,
 ) {
@@ -599,13 +614,15 @@ private fun StatusCard(
                 label = when {
                     !connected -> "No device connected"
                     bleConnected -> "Host connected"
+                    linkConnected -> "Pairing / confirming connection…"
                     advertising -> "Advertising / waiting for host"
+                    sessionActive -> "BLE HID active"
                     else -> "Idle"
                 },
                 color = when {
                     !connected -> StatusNeutral
                     bleConnected -> StatusGreen
-                    advertising -> StatusAmber
+                    linkConnected || advertising || sessionActive -> StatusAmber
                     else -> StatusNeutral
                 },
             )

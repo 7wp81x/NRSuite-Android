@@ -1081,6 +1081,12 @@ class MainViewModel(internal val app: Application) {
     internal val _bleAdvertising = MutableStateFlow(false)
     val bleAdvertising: StateFlow<Boolean> = _bleAdvertising.asStateFlow()
 
+    internal val _bleSessionActive = MutableStateFlow(false)
+    val bleSessionActive: StateFlow<Boolean> = _bleSessionActive.asStateFlow()
+
+    internal val _bleLinkConnected = MutableStateFlow(false)
+    val bleLinkConnected: StateFlow<Boolean> = _bleLinkConnected.asStateFlow()
+
     internal val _bleLowHeapWarning = MutableStateFlow<BleHidHeapFailure?>(null)
     val bleLowHeapWarning: StateFlow<BleHidHeapFailure?> = _bleLowHeapWarning.asStateFlow()
 
@@ -1907,6 +1913,8 @@ class MainViewModel(internal val app: Application) {
         _deauthDetectorCurrentHopChannel.value = null
         _deauthDetectorFramesPerSecond.value = 0
         _bleAdvertising.value = false
+        _bleSessionActive.value = false
+        _bleLinkConnected.value = false
         _bleConnected.value = false
         _bleScriptRunning.value = false
         _pinBruteforce.update { it.copy(state = "paused", starting = false) }
@@ -2348,7 +2356,7 @@ class MainViewModel(internal val app: Application) {
         // BLE HID PIN Bruteforce is hidden/experimental. Do not let stale
         // persisted state from the hidden module block unrelated Wi-Fi
         // modules. Its SDK/state is retained for future reuse only.
-        if (includeBle && (_bleAdvertising.value || _bleConnected.value)) {
+        if (includeBle && (_bleSessionActive.value || _bleAdvertising.value || _bleConnected.value)) {
             return "BLE HID"
         }
         if (includeBle && (_bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value)) {
@@ -2431,6 +2439,8 @@ class MainViewModel(internal val app: Application) {
             _bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value -> "BLE scanner active"
             _bleProfileRunning.value -> "BLE profile active"
             _bleConnected.value -> "BLE HID connected · ${_blePeer.value.ifBlank { "device" }}"
+            _bleLinkConnected.value -> "BLE HID pairing"
+            _bleSessionActive.value -> "BLE HID active"
             _bleAdvertising.value -> "BLE HID advertising"
             else -> null
         }
@@ -2479,7 +2489,8 @@ class MainViewModel(internal val app: Application) {
             intent.putExtra(NrSuiteForegroundService.EXTRA_TEXT, activeText)
             val smallIconRes = when {
                 _firmwareFlashing.value -> com.swp81x.nrsuite.R.drawable.ic_stat_firmware
-                _bleConnected.value ||
+                _bleSessionActive.value ||
+                    _bleConnected.value ||
                     _bleAdvertising.value ||
                     _bleScanStarting.value ||
                     _bleScanRunning.value ||

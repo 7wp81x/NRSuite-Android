@@ -372,6 +372,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val badUsbTargetDevice by viewModel.badUsbTargetDevice.collectAsState()
     val duckyScripts by viewModel.duckyScriptMap.collectAsState()
     val bleAdvertising by viewModel.bleAdvertising.collectAsState()
+    val bleSessionActive by viewModel.bleSessionActive.collectAsState()
+    val bleLinkConnected by viewModel.bleLinkConnected.collectAsState()
     val bleConnected by viewModel.bleConnected.collectAsState()
     val blePeer by viewModel.blePeer.collectAsState()
     val blePayloadName by viewModel.blePayloadName.collectAsState()
@@ -523,6 +525,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         portalRunning,
         portalMode,
         bleAdvertising,
+        bleSessionActive,
         bleScanRunning,
         ouiDatabaseStatus,
         meshActive,
@@ -624,7 +627,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "hidden_ap" -> hiddenApRunning
                 "portal" -> portalRunning && portalMode == "portal"
                 "evil_twin" -> portalRunning && portalMode == "evil_twin"
-                "ble" -> bleAdvertising
+                "ble" -> bleSessionActive
                 "ble_pin_bruteforce" -> blePinBruteforce.running
                 "ble_scanner" -> bleScannerScanRunning || bleScannerScanStarting
                 "tracker_detector" -> trackerScanRunning
@@ -774,7 +777,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
     val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning ||
         rogueApRunning || clientPresenceRunning || hiddenApRunning || hiddenApStarting ||
-        portalRunning || bleAdvertising || bleScanRunning || bleProfileRunning || meshActive ||
+        portalRunning || bleSessionActive || bleAdvertising || bleScanRunning || bleProfileRunning || meshActive ||
         crackerRunning || wpsAttemptDetectorState.running || wpsAttemptDetectorState.starting ||
         wpsAttemptDetectorState.scanningTargets
     val view = LocalView.current
@@ -2240,6 +2243,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 BleScreen(
                     connected = connectionState is ConnectionState.Connected,
                     advertising = bleAdvertising,
+                    sessionActive = bleSessionActive,
+                    linkConnected = bleLinkConnected,
                     bleConnected = bleConnected,
                     peer = blePeer,
                     selectedPayloadName = blePayloadName,
