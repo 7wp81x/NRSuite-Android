@@ -67,6 +67,7 @@ import com.swp81x.nrsuite.core.wpa.EvilTwinResult
 import com.swp81x.nrsuite.ui.components.ScanButtonContent
 import com.swp81x.nrsuite.ui.components.HtmlTemplatesTab
 import com.swp81x.nrsuite.ui.components.HtmlUploadSection
+import com.swp81x.nrsuite.ui.components.PortalDnsHijackToggle
 import com.swp81x.nrsuite.ui.components.PortalFirmwareNoticeToggle
 import com.swp81x.nrsuite.ui.components.PortalVisitorsTab
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
@@ -99,6 +100,8 @@ fun EvilTwinScreen(
     allowedChannels: List<Int> = emptyList(),
     firmwareNoticeEnabled: Boolean = true,
     onFirmwareNoticeEnabledChange: (Boolean) -> Unit = {},
+    dnsHijackEnabled: Boolean = true,
+    onDnsHijackEnabledChange: (Boolean) -> Unit = {},
     handshake: EapolHandshake,
     results: List<EvilTwinResult>,
     metrics: PortalSessionMetrics = PortalSessionMetrics(),
@@ -154,6 +157,10 @@ fun EvilTwinScreen(
         PortalFirmwareNoticeToggle(
             enabled = firmwareNoticeEnabled,
             onEnabledChange = onFirmwareNoticeEnabledChange,
+        )
+        PortalDnsHijackToggle(
+            enabled = dnsHijackEnabled,
+            onEnabledChange = onDnsHijackEnabledChange,
         )
         Spacer(Modifier.height(6.dp))
         RoundedTabRow(

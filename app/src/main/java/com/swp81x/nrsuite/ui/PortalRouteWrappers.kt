@@ -34,6 +34,7 @@ internal fun PortalModuleRoute(
     val templateMessage by viewModel.htmlTemplateMessage.collectAsState()
     val templateMessageIsError by viewModel.htmlTemplateMessageIsError.collectAsState()
     val firmwareNoticeEnabled by viewModel.portalFirmwareNoticeEnabled.collectAsState()
+    val dnsHijackEnabled by viewModel.portalDnsHijackEnabled.collectAsState()
 
     PortalScreen(
         connected = connected,
@@ -69,6 +70,8 @@ internal fun PortalModuleRoute(
         allowedChannels = allowedChannels,
         firmwareNoticeEnabled = firmwareNoticeEnabled,
         onFirmwareNoticeEnabledChange = viewModel::setPortalFirmwareNoticeEnabled,
+        dnsHijackEnabled = dnsHijackEnabled,
+        onDnsHijackEnabledChange = viewModel::setPortalDnsHijackEnabled,
         modifier = modifier,
     )
 }
@@ -102,6 +105,7 @@ internal fun EvilTwinModuleRoute(
     val templateMessage by viewModel.htmlTemplateMessage.collectAsState()
     val templateMessageIsError by viewModel.htmlTemplateMessageIsError.collectAsState()
     val firmwareNoticeEnabled by viewModel.portalFirmwareNoticeEnabled.collectAsState()
+    val dnsHijackEnabled by viewModel.portalDnsHijackEnabled.collectAsState()
 
     EvilTwinScreen(
         connected = connected,
@@ -137,6 +141,8 @@ internal fun EvilTwinModuleRoute(
         onClearPasswords = viewModel::clearEvilTwinPasswords,
         firmwareNoticeEnabled = firmwareNoticeEnabled,
         onFirmwareNoticeEnabledChange = viewModel::setPortalFirmwareNoticeEnabled,
+        dnsHijackEnabled = dnsHijackEnabled,
+        onDnsHijackEnabledChange = viewModel::setPortalDnsHijackEnabled,
         modifier = modifier,
     )
 }

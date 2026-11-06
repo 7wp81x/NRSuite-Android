@@ -36,11 +36,11 @@ Important consequences:
 - The AP advertises itself as the DHCP DNS server and uses wildcard DNS.
   Plaintext IPv4 UDP DNS queries sent to a manually configured external
   resolver are best-effort intercepted and answered as `192.168.4.1`. This is
-  enabled automatically for every portal start; there is no user-facing
-  toggle. The DNS-only mode avoids allocating the normal PCAP queues, and each
-  `portal_dns_hijack` event reports current free/minimum heap and largest block
-  for memory monitoring. DNS over HTTPS/TLS, DNS over TCP, IPv6 DNS, and
-  hardcoded IP-based probes are not guaranteed to be intercepted.
+  enabled by default and can be disabled with the **Intercept custom DNS**
+  switch for each app run. The DNS-only mode avoids allocating the normal PCAP
+  queues, and each `portal_dns_hijack` event reports current free/minimum heap
+  and largest block for memory monitoring. DNS over HTTPS/TLS, DNS over TCP,
+  IPv6 DNS, and hardcoded IP-based probes are not guaranteed to be intercepted.
 - Serve all CSS, JavaScript, and images **inline** in the HTML file.
   There is no static asset route for separate files.
 - External CDN links may not load before the client completes captive-portal

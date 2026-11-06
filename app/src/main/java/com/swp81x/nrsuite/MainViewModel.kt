@@ -233,6 +233,9 @@ class MainViewModel(internal val app: Application) {
     internal val _portalFirmwareNoticeEnabled = MutableStateFlow(true)
     val portalFirmwareNoticeEnabled: StateFlow<Boolean> =
         _portalFirmwareNoticeEnabled.asStateFlow()
+    internal val _portalDnsHijackEnabled = MutableStateFlow(true)
+    val portalDnsHijackEnabled: StateFlow<Boolean> =
+        _portalDnsHijackEnabled.asStateFlow()
 
     internal val _actionError = MutableStateFlow<String?>(null)
     val actionError: StateFlow<String?> = _actionError.asStateFlow()
@@ -1449,6 +1452,10 @@ class MainViewModel(internal val app: Application) {
 
     fun setPortalFirmwareNoticeEnabled(enabled: Boolean) {
         _portalFirmwareNoticeEnabled.value = enabled
+    }
+
+    fun setPortalDnsHijackEnabled(enabled: Boolean) {
+        _portalDnsHijackEnabled.value = enabled
     }
 
     fun clearMacLookup() {
