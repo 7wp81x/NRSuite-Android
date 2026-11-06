@@ -53,8 +53,36 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build release APK
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+      - name: Validate app version against release tag
+        run: |
+          set -eu
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION_NAME=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts | head -1)
+          VERSION_CODE=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts | head -1)
+          echo "Tag: $TAG"
+          echo "App versionName: $VERSION_NAME"
+          echo "App versionCode: $VERSION_CODE"
+          if [ "$VERSION_NAME" != "$TAG" ]; then
+            echo "ERROR: release tag and Android versionName do not match." >&2
+            exit 1
+          fi
+          if [ -z "$VERSION_CODE" ] || [ "$VERSION_CODE" -le 0 ]; then
+            echo "ERROR: invalid Android versionCode." >&2
+            exit 1
+          fi
+
+      - name: Test, lint, and build release APK
+        run: ./gradlew :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Verify release APK signature
+        run: |
+          set -eu
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          if [ -z "$APKSIGNER" ]; then
+            echo "ERROR: apksigner not found in Android SDK build-tools." >&2
+            exit 1
+          fi
+          "$APKSIGNER" verify --verbose app/build/outputs/apk/release/app-release.apk
 
       - name: Prepare release assets
         run: |

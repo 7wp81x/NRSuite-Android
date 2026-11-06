@@ -601,6 +601,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             !module.available -> module.statusLabel ?: "Unavailable"
             !isDeviceConnected && requiresDevice -> "Device needed"
             isDeviceConnected && !supported -> when {
+                connectedChip == "ESP32-S2" &&
+                    module.id in setOf("portal", "evil_twin", "nrugochi") ->
+                    "Not supported on ESP32-S2"
                 module.id in setOf("ble", "ble_scanner", "tracker_detector", "ble_profile", "badusb", "pin_bruteforce", "ble_pin_bruteforce") -> "Not supported"
                 else -> "Firmware required"
             }
@@ -614,7 +617,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             else -> themePalette.statusAmber
         }
         module.copy(
-            available = module.available,
+            // Keep cards tappable while no device is attached so the user can
+            // see the connection requirement. Once connected, a firmware that
+            // does not advertise the capability disables the card instead of
+            // letting the user enter a screen that cannot work.
+            available = module.available && (!isDeviceConnected || supported),
             iconTint = categoryColor(module.category, themePalette.isLight),
             statusLabel = availabilityLabel,
             statusColor = availabilityColor,

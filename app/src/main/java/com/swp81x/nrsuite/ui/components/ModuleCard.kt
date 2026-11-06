@@ -63,7 +63,13 @@ fun ModuleCard(
 ) {
     val statusLabel = module.statusLabel?.takeIf { it.isNotBlank() }
     val attentionLabel = statusLabel?.takeIf {
-        it in setOf("Firmware required", "Not supported", "OUI DB required", "Unavailable")
+        it in setOf(
+            "Firmware required",
+            "Not supported",
+            "Not supported on ESP32-S2",
+            "OUI DB required",
+            "Unavailable",
+        )
     }
 
     Card(

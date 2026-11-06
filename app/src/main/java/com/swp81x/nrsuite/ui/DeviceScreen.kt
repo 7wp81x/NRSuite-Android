@@ -123,7 +123,7 @@ import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.DeviceMemoryHealth
 import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
 import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
-import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
+import com.swp81x.nrsuite.core.update.compatibleFirmwareAssetsForDevice
 import com.swp81x.nrsuite.core.update.VersionComparator
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.ui.components.ConnectionDiagnosticSummary
@@ -803,11 +803,12 @@ private fun availableFirmwareUpdateTag(
     releases: List<ReleaseInfo>,
 ): String? {
     val connected = state as? ConnectionState.Connected ?: return null
-    val chip = connected.chip ?: return null
     val current = connected.firmwareVersion ?: return null
     return releases.firstOrNull { release ->
-        release.compatibleFirmwareAssets(chip).isNotEmpty() &&
-            VersionComparator.isNewer(release.tag, current)
+        release.compatibleFirmwareAssetsForDevice(
+            chip = connected.chip,
+            features = connected.features,
+        ).isNotEmpty() && VersionComparator.isNewer(release.tag, current)
     }?.tag
 }
 
