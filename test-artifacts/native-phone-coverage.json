@@ -1,0 +1,57 @@
+{
+  "tests": 130,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "suites": 40,
+  "new_policy_tests": 4,
+  "code_coverage_percent": null,
+  "coverage_note": "JUnit counts are not a coverage percentage. No line/branch coverage instrumentation was collected; device acceptance is separate.",
+  "lint": {
+    "result": "passed",
+    "severities": {
+      "Warning": 102,
+      "Hint": 18
+    },
+    "new_file_entries": [
+      {
+        "id": "StaticFieldLeak",
+        "severity": "Warning",
+        "message": "This field leaks a context object",
+        "locations": [
+          {
+            "file": "app/src/main/java/com/swp81x/nrsuite/core/hardware/PhoneHardwareViewModel.kt",
+            "line": "27",
+            "column": "5"
+          }
+        ]
+      },
+      {
+        "id": "UseKtx",
+        "severity": "Warning",
+        "message": "Use the KTX extension function `String.toUri` instead?",
+        "locations": [
+          {
+            "file": "app/src/main/java/com/swp81x/nrsuite/PhoneHardwareActivity.kt",
+            "line": "111",
+            "column": "29"
+          }
+        ]
+      }
+    ]
+  },
+  "final_apk_sha256": "26282e8b269335bc4723ad673f54d717755be9b5e8550d50f702b814b0c21246",
+  "apk_class_presence": {
+    "PhoneHardwareActivity": true,
+    "core/hardware/PhoneHardwareViewModel": true,
+    "RootControlActivity": true,
+    "core/hardware/RootControlViewModel": true
+  },
+  "publication_smoke": {
+    "apk_sha256": "26282e8b269335bc4723ad673f54d717755be9b5e8550d50f702b814b0c21246",
+    "root_radio_status": "exit 0, Wi-Fi/Bluetooth enabled, NFC on",
+    "nfc_broken_pipe_absent": true,
+    "app_root_and_kali_health": "exit 0, uid=0 confirmed",
+    "note": "Publication APK changes only NFC status output consumption relative to the earlier rooted coverage snapshot. Earlier Samsung and rooted snapshots retain their own APK hashes."
+  }
+}

@@ -1117,6 +1117,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     }
                 },
                 actions = {
+                    TextButton(onClick = {
+                        context.startActivity(Intent(context, com.swp81x.nrsuite.PhoneHardwareActivity::class.java))
+                    }) { Text("Phone") }
                     ConnectionStatusIndicator(
                         state = connectionState,
                         hasDevices = devices.isNotEmpty(),

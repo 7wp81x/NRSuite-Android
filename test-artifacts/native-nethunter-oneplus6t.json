@@ -1,0 +1,76 @@
+{
+  "recorded_at": "2026-11-02T10:26:41-07:00",
+  "base_release": "v1.0.0-beta.3.1.2",
+  "device": "OnePlus ONEPLUS_A6013 / OnePlus 6T",
+  "android": "15 / API 35",
+  "kernel": "4.9.337+",
+  "test_package": "com.swp81x.nrsuite.nativepreview",
+  "app_root": "UID 0 verified in app after enabling its normal Magisk superuser toggle; initial app denial was handled with disabled controls",
+  "apk_sha256": "e31aa7b01d63820a02f1099e70cbab9c4a1e8ea689747f10121120dfb917762b",
+  "unit_tests": {
+    "tests": 130,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "shell_syntax": {
+    "commands_checked": 25,
+    "failures": 0,
+    "note": "Actual generated command scripts parsed by Android sh -n. Final NFC status query additionally verified through final installed app."
+  },
+  "native_controls": {
+    "Wi-Fi on": "exit 0, initial enabled state preserved",
+    "Bluetooth on": "exit 0, initial enabled state preserved",
+    "NFC on": "exit 0, initial enabled state preserved",
+    "Radio status": "Final APK passed; Wi-Fi and Bluetooth enabled; NFC off/on independently observed",
+    "Driver report": "exit 0; monitor advertised",
+    "Wi-Fi off cancellation": "passed; radio unchanged"
+  },
+  "kali_controls": {
+    "Kali health": "Kali health | Exit 0; expected output verified",
+    "Kali interfaces": "Kali interfaces | Exit 0; expected output verified",
+    "Kali tool inventory": "Kali tool inventory | Exit 0; expected output verified",
+    "Run nmap version": "Run nmap version | Exit 0; expected output verified",
+    "SSH status": "SSH status | Exit 0; expected output verified",
+    "Start chroot": "Start chroot | Exit 0; expected output verified",
+    "Stop idle chroot": "Stop idle chroot | Exit 23; expected output verified",
+    "Start SSH": "exit 0; existing SSH server already running"
+  },
+  "launcher_handoffs": {
+    "NetHunter app": {
+      "focused_expected_package": true
+    },
+    "Terminal": {
+      "focused_expected_package": true
+    },
+    "KeX": {
+      "focused_expected_package": true
+    }
+  },
+  "final_apk_smoke": {
+    "NFC off": "mState=off",
+    "NFC on": "mState=on",
+    "Final APK Kali health": "exit 0, uid=0 confirmed"
+  },
+  "limits": [
+    "Wi-Fi/Bluetooth off transitions not exercised; existing connections preserved. Wi-Fi off confirmation/cancel passed.",
+    "Physical NFC tag read is still untested.",
+    "Chroot initializer from fully unmounted state and successful idle unmount were not exercised; current active Kali sessions preserved.",
+    "SSH already-running start and status passed. SSH stop and Apache/PostgreSQL service cycles are not device-verified.",
+    "Monitor mode is advertised by driver; no capture/injection or packet transmission validation.",
+    "KeX and terminal handoffs passed; no new desktop server or arbitrary terminal command started by this app."
+  ],
+  "verification_notes": [
+    "First radio status used an unset NFC setting. Final rebuild uses NFC service state and verified real off/on transitions.",
+    "Transient launcher focus and active UI timing attempts were excluded and repeated with foreground waiting.",
+    "Most root-panel checks began on initial control build; final build changed NFC status only and reverified root, NFC off/on and Kali health.",
+    "Final independent SSH check used explicit Kali PATH, matching the app; a direct service invocation with inherited Android PATH was excluded."
+  ],
+  "restored_state": {
+    "wifi_enabled": true,
+    "bluetooth_enabled": true,
+    "nfc_on": true,
+    "ssh_still_running": true
+  },
+  "app_crash_buffer_empty": true
+}

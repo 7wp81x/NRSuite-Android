@@ -22,3 +22,7 @@ local.properties
 
 # Release signing config
 keystore.properties
+
+# Python maintenance-script caches
+__pycache__/
+*.py[cod]

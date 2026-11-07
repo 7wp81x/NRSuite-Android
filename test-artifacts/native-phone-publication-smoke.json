@@ -1,0 +1,7 @@
+{
+  "apk_sha256": "26282e8b269335bc4723ad673f54d717755be9b5e8550d50f702b814b0c21246",
+  "root_radio_status": "exit 0, Wi-Fi/Bluetooth enabled, NFC on",
+  "nfc_broken_pipe_absent": true,
+  "app_root_and_kali_health": "exit 0, uid=0 confirmed",
+  "note": "Publication APK changes only NFC status output consumption relative to the earlier rooted coverage snapshot. Earlier Samsung and rooted snapshots retain their own APK hashes."
+}

@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "upstream_repository": "7wp81x/NRSuite-Android",
+  "upstream_git_url": "https://github.com/7wp81x/NRSuite-Android.git",
+  "patch_git_url": "https://github.com/mrmcgrain/NRSuite-Android.git",
+  "patch_commits": [
+    "e00f866d504c1f23893c0ca8cb622de79823e5e1"
+  ],
+  "expected_application_id": "com.swp81x.nrsuite.nativepreview",
+  "application_id_suffix": ".nativepreview",
+  "version_name_suffix": "-native-preview",
+  "certificate_sha256": "b8651b4b8556d0f515d93be8009d345e33e7a8a24911824fd1c46c49d8b92a44",
+  "minimum_version_code": 10,
+  "required_dex_classes": [
+    "PhoneHardwareActivity",
+    "core/hardware/PhoneHardwareViewModel",
+    "RootControlActivity",
+    "core/hardware/RootControlViewModel"
+  ]
+}
