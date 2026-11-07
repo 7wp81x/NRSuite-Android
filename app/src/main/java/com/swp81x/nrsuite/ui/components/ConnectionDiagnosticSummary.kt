@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.session.ConnectionDiagnostic
+import com.swp81x.nrsuite.core.session.ConnectionDiagnosticRecommendation
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
@@ -54,6 +55,9 @@ internal fun ConnectionDiagnosticSummary(
         DiagnosticCheckRow("USB device detected", diagnostic.deviceDetected)
         DiagnosticCheckRow("Serial port opened", diagnostic.portOpened)
         DiagnosticCheckRow("NRSuite protocol response", diagnostic.sawProtocolFrame)
+        if (diagnostic.sawNrsuiteHeartbeat) {
+            DiagnosticCheckRow("NRSuite heartbeat detected", true)
+        }
         DiagnosticCheckRow("Device activity observed", diagnostic.sawDeviceActivity)
         if (diagnostic.sawRomBootLog || diagnostic.sawInvalidFirmwareHeader) {
             DiagnosticCheckRow("ROM boot / invalid firmware log detected", false)
@@ -77,19 +81,47 @@ internal fun ConnectionDiagnosticSummary(
         }
 
         Spacer(Modifier.height(10.dp))
-        Button(
-            onClick = { onOpenFirmwareFlasher(diagnostic.detectedChip) },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(10.dp),
-        ) {
-            Text("Open Firmware Flasher")
+        when (diagnostic.recommendation) {
+            ConnectionDiagnosticRecommendation.FLASH_FIRMWARE -> {
+                Button(
+                    onClick = { onOpenFirmwareFlasher(diagnostic.detectedChip) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                ) {
+                    Text("Open Firmware Flasher")
+                }
+                Text(
+                    text = "No valid NRSuite firmware response was detected.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+            ConnectionDiagnosticRecommendation.REPLUG_AND_RETRY -> {
+                Text(
+                    text = "NRSuite appears to be installed. Unplug and replug the device, " +
+                        "then retry the connection before flashing firmware.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusNeutral,
+                )
+            }
+            ConnectionDiagnosticRecommendation.RETRY -> {
+                Text(
+                    text = "Retry the connection from the device row below. " +
+                        "If it keeps failing, unplug and replug the device.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusNeutral,
+                )
+            }
+            ConnectionDiagnosticRecommendation.REPORT_BUG -> {
+                Text(
+                    text = "The device responded, but the handshake did not complete. " +
+                        "Retry from the device row and capture logs if it persists.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StatusNeutral,
+                )
+            }
         }
-        Text(
-            text = "You can also retry from the device row below.",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 6.dp),
-        )
 
         if (!diagnostic.rawLogPreview.isNullOrBlank()) {
             TextButton(

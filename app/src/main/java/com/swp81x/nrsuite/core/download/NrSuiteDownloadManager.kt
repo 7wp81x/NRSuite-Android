@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 
+private const val DOWNLOAD_STALL_TIMEOUT_MS = 45_000L
+
 private fun downloadPercent(downloadedBytes: Long, totalBytes: Long): Float? =
     if (totalBytes > 0L) {
         (downloadedBytes * 100f / totalBytes).coerceIn(0f, 100f)
@@ -107,10 +109,41 @@ object NrSuiteDownloadManager {
 
     fun observe(context: Context, downloadId: Long): Flow<DownloadState> = flow {
         val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        var lastProgressAt = System.currentTimeMillis()
+        var lastDownloadedBytes = -1L
         while (currentCoroutineContext().isActive) {
-            val state = query(manager, downloadId)
+            val state = runCatching { query(manager, downloadId) }
+                .getOrElse { error ->
+                    DownloadState.Failed(error.message ?: "Download status check failed")
+                }
+            if (state is DownloadState.Completed || state is DownloadState.Failed) {
+                emit(state)
+                break
+            }
+
+            val downloadedBytes = when (state) {
+                is DownloadState.Pending -> state.downloadedBytes
+                is DownloadState.Running -> state.downloadedBytes
+                is DownloadState.Paused -> state.downloadedBytes
+                else -> lastDownloadedBytes
+            }
+            val now = System.currentTimeMillis()
+            if (downloadedBytes > lastDownloadedBytes) {
+                lastDownloadedBytes = downloadedBytes
+                lastProgressAt = now
+            }
+            if (now - lastProgressAt >= DOWNLOAD_STALL_TIMEOUT_MS) {
+                // DownloadManager can remain paused waiting for network indefinitely.
+                // Fail instead of leaving the UI stuck on "Downloading…".
+                manager.remove(downloadId)
+                emit(
+                    DownloadState.Failed(
+                        "Download timed out. Check your internet connection and try again.",
+                    ),
+                )
+                break
+            }
             emit(state)
-            if (state is DownloadState.Completed || state is DownloadState.Failed) break
             delay(1000)
         }
     }.flowOn(Dispatchers.IO)

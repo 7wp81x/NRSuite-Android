@@ -120,6 +120,7 @@ internal fun MainViewModel.downloadFirmwareAssetImpl(
                     is DownloadState.Failed -> {
                         _firmwareAssetDownload.value =
                             FirmwareAssetDownloadState.Failed(state.reason)
+                        _toastMessage.value = state.reason
                         appendLog(
                             "Firmware download failed: ${state.reason}",
                             level = LogLevel.ERROR,
@@ -130,6 +131,7 @@ internal fun MainViewModel.downloadFirmwareAssetImpl(
         }.onFailure { error ->
             val message = error.message ?: "Firmware download failed"
             _firmwareAssetDownload.value = FirmwareAssetDownloadState.Failed(message)
+            _toastMessage.value = message
             appendLog("Firmware download failed: $message", level = LogLevel.ERROR)
         }
     }

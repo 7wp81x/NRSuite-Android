@@ -83,6 +83,7 @@ class NrSession(
     @Volatile private var diagnosticSawRomBootLog = false
     @Volatile private var diagnosticSawInvalidHeader = false
     @Volatile private var diagnosticSawProtocolFrame = false
+    @Volatile private var diagnosticSawNrsuiteHeartbeat = false
     @Volatile private var diagnosticDetectedChip: String? = null
     @Volatile private var diagnosticTransportError: String? = null
     private val diagnosticRawLog = StringBuilder()
@@ -99,6 +100,7 @@ class NrSession(
         diagnosticSawRomBootLog = false
         diagnosticSawInvalidHeader = false
         diagnosticSawProtocolFrame = false
+        diagnosticSawNrsuiteHeartbeat = false
         diagnosticDetectedChip = null
         diagnosticTransportError = null
         synchronized(diagnosticRawLogLock) { diagnosticRawLog.setLength(0) }
@@ -189,6 +191,7 @@ class NrSession(
             sawRomBootLog = diagnosticSawRomBootLog,
             sawInvalidFirmwareHeader = diagnosticSawInvalidHeader,
             sawProtocolFrame = diagnosticSawProtocolFrame,
+            sawNrsuiteHeartbeat = diagnosticSawNrsuiteHeartbeat,
             detectedChip = diagnosticDetectedChip,
             transportError = diagnosticTransportError,
             rawLogPreview = synchronized(diagnosticRawLogLock) {
@@ -761,6 +764,9 @@ class NrSession(
             )
             return
         }
+        if (json.optString("type").equals("heartbeat", ignoreCase = true)) {
+            diagnosticSawNrsuiteHeartbeat = true
+        }
         _events.emit(json)
     }
 
@@ -807,12 +813,6 @@ class NrSession(
 
     private fun inspectDiagnosticBytes(bytes: ByteArray) {
         if (bytes.isEmpty()) return
-        if (bytes.size >= 2 &&
-            bytes[0] == FrameCodec.MAGIC_0.toByte() &&
-            bytes[1] == FrameCodec.MAGIC_1.toByte()
-        ) {
-            return
-        }
         val text = buildString {
             for (byte in bytes) {
                 val value = byte.toInt() and 0xFF
@@ -820,6 +820,19 @@ class NrSession(
             }
         }
         val lower = text.lowercase()
+        // A heartbeat is valid NRSuite activity even when the frame header is
+        // still visible as binary garbage in a serial-monitor capture.
+        if (lower.contains("\"type\":\"heartbeat\"") ||
+            lower.contains("\"type\": \"heartbeat\"")
+        ) {
+            diagnosticSawNrsuiteHeartbeat = true
+        }
+        if (bytes.size >= 2 &&
+            bytes[0] == FrameCodec.MAGIC_0.toByte() &&
+            bytes[1] == FrameCodec.MAGIC_1.toByte()
+        ) {
+            return
+        }
         if (lower.contains("esp-rom:") || lower.contains("rst:0x") ||
             lower.contains("ets_flash_boot") || lower.contains("boot:0x")
         ) {
