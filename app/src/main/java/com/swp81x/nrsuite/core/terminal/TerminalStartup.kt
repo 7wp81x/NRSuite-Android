@@ -76,8 +76,7 @@ internal object TerminalStartup {
      * BuildConfig.VERSION_NAME, so it does not need manual updates.
      */
     fun script(versionName: String): String = SCRIPT_TEMPLATE
-        .replace("@VERSION@", versionName)
-        .replace("@D@", "$")
+        .replace("@BANNER@", shellSingleQuote(shellPrintfEscaped(banner(versionName))))
         .trimIndent() + "\n"
 
     /**
@@ -163,17 +162,7 @@ internal object TerminalStartup {
         stty -echo 2>/dev/null
         clear 2>/dev/null || printf '\033[2J\033[H'
         if [ "${'$'}__nrsuite_show_banner" = "1" ]; then
-            GRAY='\033[1;90m'    # Literal characters \033
-            GRAY=@D@'\033[1;90m'  # Actual ANSI escape character
-
-            VERSION_CODE="v@VERSION@"
-            printf  "\033[0m ${'$'}{VERSION_CODE}\n"
-            printf  "\033[1;92m  _   _ ____ %s ____        _ _          \n" ${'$'}GRAY
-            printf  "\033[1;92m | \ | |  _ \%s/ ___| _   _(_) |_ ___  \n" ${'$'}GRAY
-            printf  "\033[1;92m |  \| | |_) \%s___ \| | | | | __/ _ \ \n" ${'$'}GRAY
-            printf  "\033[1;92m | |\  |  _ < %s___) | |_| | | ||  __/ \n" ${'$'}GRAY
-            printf  "\033[1;92m |_| \_|_| \_\%s____/ \__,_|_|\__\___| \n\n" ${'$'}GRAY
-            printf  "\033[1;90m [ Developed by 7wp81x ]\033[0m\n\n"
+            printf '%b' @BANNER@
         fi
         if [ "${'$'}__nrsuite_apply_prompt" = "1" ]; then
             if [ -n "${'$'}BASH_VERSION" ]; then
@@ -186,6 +175,6 @@ internal object TerminalStartup {
             fi
         fi
         stty echo 2>/dev/null
-        unset __nrsuite_show_banner __nrsuite_apply_prompt GRAY VERSION_CODE
+        unset __nrsuite_show_banner __nrsuite_apply_prompt
     """.trimIndent()
 }

@@ -106,6 +106,7 @@ fun IrJammerScreen(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
+                Spacer(Modifier.height(4.dp))
                 Text(
                     text = "Authorized, time-bounded IR interference testing.",
                     style = MaterialTheme.typography.bodySmall,
@@ -123,6 +124,7 @@ fun IrJammerScreen(
             ) {
                 Column(Modifier.padding(14.dp)) {
                     Text("Run duration", style = MaterialTheme.typography.labelMedium)
+                    Spacer(Modifier.height(6.dp))
                     Box {
                         OutlinedButton(
                             onClick = { durationMenu = true },
@@ -169,6 +171,7 @@ fun IrJammerScreen(
                         modifier = Modifier.fillMaxWidth(),
                         leadingIcon = Icons.Default.PlayArrow,
                     )
+                    Spacer(Modifier.height(8.dp))
                     Text(
                         text = "Stops when you leave this screen, background the app, or press Stop. " +
                             "Unlimited mode never runs in the background.",
@@ -194,6 +197,7 @@ fun IrJammerScreen(
                         fontWeight = FontWeight.Bold,
                         color = StatusRed,
                     )
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         text = if (state.unlimited) {
                             "Unlimited · manual stop required"
@@ -203,6 +207,7 @@ fun IrJammerScreen(
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.SemiBold,
                     )
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         text = "Output: ${state.backendLabel}",
                         style = MaterialTheme.typography.labelSmall,

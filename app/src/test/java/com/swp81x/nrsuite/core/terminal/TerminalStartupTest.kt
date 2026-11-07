@@ -52,13 +52,14 @@ class TerminalStartupTest {
         val script = TerminalStartup.script("1.0.0-beta.3.2.0")
 
         assertTrue(script.startsWith("#!/usr/bin/env bash"))
-        assertTrue(script.contains("VERSION_CODE=\"v1.0.0-beta.3.2.0\""))
         assertTrue(script.contains("1.0.0-beta.3.2.0"))
         assertTrue(script.contains("clear 2>/dev/null || printf '\\033[2J\\033[H'"))
-        assertTrue(script.contains("GRAY=\$'\\033[1;90m'"))
-        assertTrue(script.contains("_   _ ____ %s ____"))
-        assertTrue(script.contains("PROMPT_DIRTRIM=2"))
         assertTrue(script.contains("__nrsuite_show_banner"))
+        assertTrue(script.contains("printf '%b'"))
+        assertTrue(script.contains("\\033[1;92m"))
+        assertTrue(script.contains("\\033[1;90m"))
+        assertTrue(script.contains("_   _ ____"))
+        assertTrue(script.contains("PROMPT_DIRTRIM=2"))
         assertTrue(script.contains("__nrsuite_apply_prompt"))
     }
 

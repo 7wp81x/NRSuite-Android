@@ -2133,10 +2133,20 @@ internal fun MainViewModel.prepareIrCommonButtonsImpl(
     minRemotes: Int,
 ) {
     val threshold = minRemotes.coerceIn(MIN_IR_COMMON_BUTTON_REMOTES, 100)
+    val current = _irCommonButtonsState.value
+    if (
+        current.category == category &&
+        current.brand == brand &&
+        current.minRemotes == threshold &&
+        (current.loading || current.loaded || current.errorMessage != null)
+    ) {
+        return
+    }
+
     val key = irCommonButtonCacheKey(category, brand, threshold)
     val cached = irCommonButtonCache[key]
-    _irCommonButtonsState.value = if (cached != null) {
-        IrCommonButtonsState(
+    if (cached != null) {
+        _irCommonButtonsState.value = IrCommonButtonsState(
             category = category,
             brand = brand,
             minRemotes = threshold,
@@ -2144,12 +2154,15 @@ internal fun MainViewModel.prepareIrCommonButtonsImpl(
             buttons = cached,
         )
     } else {
-        IrCommonButtonsState(
+        // Changing category, brand, or the occurrence threshold should not
+        // require a second manual "Load" tap. Mark the scope as loading and
+        // build the cache immediately.
+        _irCommonButtonsState.value = IrCommonButtonsState(
             category = category,
             brand = brand,
             minRemotes = threshold,
-            loaded = false,
         )
+        refreshIrCommonButtonsImpl(category, brand, threshold)
     }
 }
 
