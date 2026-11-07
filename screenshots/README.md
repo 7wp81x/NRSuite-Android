@@ -2,53 +2,53 @@
 
 Full screenshot gallery for the NRSuite Android app. For the main project page, see [../README.md](../README.md).
 
+Screenshots are from NRSuite `1.0.0-beta.3.2.0`.
+
 ## Core
 
-| Home | Modules | Logs |
+| Home | Devices | Logs |
 |---|---|---|
-| ![Home](home.jpg) | ![Modules](module-catalog.jpg) | ![Logs](logs-screen.jpg) |
+| ![Home](home.jpg) | ![Devices](device-manager.jpg) | ![Logs](logs-screen.jpg) |
 
-| Device Manager | WiFi Scan | Packet Sniffer |
+| Multi-device Home | Device Update | Settings |
 |---|---|---|
-| ![Device Manager](device-manager.jpg) | ![WiFi Scan](wifi-scan.jpg) | ![Packet Sniffer](packet-sniffer.jpg) |
+| ![Multi-device home](home-multi-device.jpg) | ![Device update](device-manager-update.jpg) | ![Settings](settings.jpg) |
+
+## Terminal
+
+| Terminal | Terminal Shortcuts | Terminal Settings |
+|---|---|---|
+| ![Terminal](terminal.jpg) | ![Terminal shortcuts](terminal-shortcuts.jpg) | ![Terminal settings](terminal-settings.jpg) |
+
+| Shortcut Editor | Manage Shortcuts |
+|---|---|
+| ![Shortcut editor](terminal-shortcut-editor.jpg) | ![Manage shortcuts](terminal-shortcut-manager.jpg) |
 
 ## Wireless
 
-| Hidden AP Revealer | Beacon | Deauth |
+| WiFi Recon | WiFi Attack | WiFi Defense |
 |---|---|---|
-| ![Hidden AP Revealer](hidden-ap.jpg) | ![Beacon](beacon.jpg) | ![Deauth](deauth.jpg) |
+| ![WiFi recon](wifi-recon.jpg) | ![WiFi attack](wifi-attack.jpg) | ![WiFi defense](wifi-defense.jpg) |
 
-| Captive Portal | Evil Twin | Deauth Detector |
+## Module Categories
+
+| BLE | Sensors | Mesh |
 |---|---|---|
-| ![Captive Portal](captive-portal.jpg) | ![Evil Twin](evil-twin.jpg) | ![Deauth Detector](deauth-detector.jpg) |
+| ![BLE modules](ble-category.jpg) | ![Sensors](sensors-category.jpg) | ![Mesh](mesh-category.jpg) |
 
-| Rogue AP Detector | Client Detector | BLE Scanner |
+| Tools | Credentials | HID |
 |---|---|---|
-| ![Rogue AP Detector](rogue-ap.jpg) | ![Client Detector](client-detector.jpg) | ![BLE Scanner](ble-scanner.jpg) |
+| ![Tools](tools-category.jpg) | ![Credentials](credentials-category.jpg) | ![HID](hid-category.jpg) |
 
-## BLE
-
-| BLE GATT Profile | Tracker Detector | MAC Lookup |
+| Storage | Firmware | IR |
 |---|---|---|
-| ![BLE GATT Profile](ble-gatt.jpg) | ![Tracker Detector](tracker-detector.jpg) | ![MAC Lookup](mac-lookup.jpg) |
+| ![Storage](storage.jpg) | ![Firmware modules](firmware-category.jpg) | ![IR](ir-category.jpg) |
 
-## Tools and Credentials
+## Appearance and Flashing
 
-| Credential Manager | WPA Cracker | Ducky Editor |
-|---|---|---|
-| ![Credential Manager](credential-manager.jpg) | ![WPA Cracker](wpa-cracker.jpg) | ![Ducky Editor](ducky-editor.jpg) |
-
-## HID and Storage
-
-| BadUSB | BLE HID | Mass Storage |
-|---|---|---|
-| ![BadUSB](badusb.jpg) | ![BLE HID](ble-hid.jpg) | ![Mass Storage](storage.jpg) |
-
-## Firmware and Settings
-
-| Firmware Flasher | Serial Monitor | Settings |
-|---|---|---|
-| ![Firmware Flasher](firmware-flasher.jpg) | ![Serial Monitor](serial-monitor.jpg) | ![Settings](settings.jpg) |
+| Themes | Firmware Flasher |
+|---|---|
+| ![Themes](settings-appearance.jpg) | ![Firmware Flasher](firmware-flasher.jpg) |
 
 ## Hardware
 
