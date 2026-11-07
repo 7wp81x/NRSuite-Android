@@ -63,6 +63,18 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 
 Categories below match the app's actual module grid and navigation.
 
+### Interface and themes
+
+NRSuite uses a refreshed, high-contrast field-instrument UI across Home, Devices,
+Terminal, Logs, the module catalog, settings, dialogs, cards, filters, and
+shared controls.
+
+Three switchable themes are available in **Settings → Appearance**:
+
+- **Obsidian** — near-black layered surfaces with a lime accent.
+- **Black** — true-black AMOLED surfaces for darker environments.
+- **Daylight** — high-contrast light surfaces for bright environments.
+
 ### Board Capability Matrix
 
 Not every ESP32 variant supports every capability. Check your board before relying on a feature:
@@ -182,6 +194,20 @@ Provision, monitor, and control the ESP-NOW mesh from its own module. The underl
 
 </details>
 
+<details open>
+<summary><strong>Terminal / Termux SSH</strong></summary>
+
+- [x] **Native SSH terminal** - local Termux OpenSSH connection at `127.0.0.1:8022`, forced `nrsuite` username for local connections, native terminal emulator, multiple shell tabs, PTY resize, scrollback, selection, and clipboard support
+- [x] **Ed25519 / RSA public-key authentication** - encrypted key import, JSch BouncyCastle Ed25519 support, key fingerprint display, public-key-only auth, and pinned host-key validation
+- [x] **Autoconnect and recovery** - one connection attempt per Terminal visit, setup/connecting status, manual disconnect behavior, and explicit force reconnect
+- [x] **Terminal settings** - 34 dp default font size, block cursor, 500 ms blink, pinch-to-zoom, keyboard toggle, and IME-aware extra-key rows
+- [x] **Terminal Shortcuts** - quick bottom sheet, search, category filters, run modes, Home pinning, confirmation, `{{parameter}}` forms with command previews, and built-in editable examples
+- [x] **Tab/session safety** - closing the last tab is disabled; Disconnect SSH is the explicit transport-close action
+- [x] **Terminal guide** - [Termux SSH setup, auth, shortcuts, and troubleshooting](docs/TERMINAL-GUIDE.md)
+- [ ] **Termux tools** - planned Nmap topology visualization, PCAP workflows, and optional Wireshark through Termux:X11
+
+</details>
+
 <details>
 <summary><strong>Storage</strong></summary>
 
@@ -195,6 +221,7 @@ Provision, monitor, and control the ESP-NOW mesh from its own module. The underl
 - [x] **Firmware Flasher** - flash merged NRSuite firmware directly from the app over USB; supports ESP32, S2, S3, C3, and C5 images with target-chip validation, esptool-aligned reset timing, C5 SYNC/SPI-attach handling, TinyUSB-to-ROM bootloader restart, automatic manual-recovery fallback, and background foreground-service progress notification
 - [x] **Serial Monitor** - raw USB serial monitor for any ESP32 or USB-UART firmware, with reliable clipboard copy, bounded log retention, and visible save/export feedback
 - [x] **Persistent firmware device ID** - `NRxxxxxxx` NVS ID shown in the app so devices remain identifiable across reconnects
+- [x] **Dual USB/UART transport reporting** - Native-USB-capable firmware reports `usb_cdc` or `uart0`; device specs and logs show which path is active
 
 </details>
 
@@ -293,8 +320,10 @@ See [docs/USAGE-GUIDE.md](docs/USAGE-GUIDE.md) for:
 - IR Config, IR Remotes, Receiver, Finder, and Jammer usage
 - Sensor Config and HLK-LD2450 UART wiring
 - BLE/USB essentials, troubleshooting, and safety notes
+- Termux SSH setup, key authentication, terminal defaults, shortcuts, and reconnect behavior
 
 The guide is intentionally general and is not tied to a single release version.
+See [docs/TERMINAL-GUIDE.md](docs/TERMINAL-GUIDE.md) for the dedicated terminal guide.
 
 ---
 
@@ -488,21 +517,33 @@ NRSuite uses a custom framing protocol (`FrameCodec` / `NrJson`) over USB serial
 
 ## Screenshots
 
-| Home | Modules | Logs |
+| Home | Devices | Logs |
 |---|---|---|
-| ![Home](screenshots/home.jpg) | ![Modules](screenshots/module-catalog.jpg) | ![Logs](screenshots/logs-screen.jpg) |
+| ![Home](screenshots/home.jpg) | ![Devices](screenshots/device-manager.jpg) | ![Logs](screenshots/logs-screen.jpg) |
 
-| Device Manager | WiFi Scan | Packet Sniffer |
+| Terminal | Terminal Shortcuts | Terminal Settings |
 |---|---|---|
-| ![Device Manager](screenshots/device-manager.jpg) | ![WiFi Scan](screenshots/wifi-scan.jpg) | ![Packet Sniffer](screenshots/packet-sniffer.jpg) |
+| ![Terminal](screenshots/terminal.jpg) | ![Terminal shortcuts](screenshots/terminal-shortcuts.jpg) | ![Terminal settings](screenshots/terminal-settings.jpg) |
 
-| Deauth Detector | Rogue AP Detector | BLE Scanner |
+| WiFi Recon | WiFi Attack | WiFi Defense |
 |---|---|---|
-| ![Deauth Detector](screenshots/deauth-detector.jpg) | ![Rogue AP Detector](screenshots/rogue-ap.jpg) | ![BLE Scanner](screenshots/ble-scanner.jpg) |
+| ![WiFi recon](screenshots/wifi-recon.jpg) | ![WiFi attack](screenshots/wifi-attack.jpg) | ![WiFi defense](screenshots/wifi-defense.jpg) |
 
-| BadUSB | Credential Manager | Firmware Flasher |
+| BLE | Sensors | Tools |
 |---|---|---|
-| ![BadUSB](screenshots/badusb.jpg) | ![Credential Manager](screenshots/credential-manager.jpg) | ![Firmware Flasher](screenshots/firmware-flasher.jpg) |
+| ![BLE modules](screenshots/ble-category.jpg) | ![Sensors](screenshots/sensors-category.jpg) | ![Tools](screenshots/tools-category.jpg) |
+
+| Credentials | HID | IR |
+|---|---|---|
+| ![Credentials](screenshots/credentials-category.jpg) | ![HID](screenshots/hid-category.jpg) | ![IR](screenshots/ir-category.jpg) |
+
+| Firmware | Storage | Settings |
+|---|---|---|
+| ![Firmware modules](screenshots/firmware-category.jpg) | ![Storage](screenshots/storage.jpg) | ![Settings](screenshots/settings.jpg) |
+
+| Themes | Firmware Flasher | Multi-device |
+|---|---|---|
+| ![Themes](screenshots/settings-appearance.jpg) | ![Firmware flasher](screenshots/firmware-flasher.jpg) | ![Multi-device](screenshots/home-multi-device.jpg) |
 
 More screenshots in [./screenshots/](./screenshots/).
 
@@ -543,7 +584,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide: branching model, PR
 
 | App version | Firmware version | Protocol spec |
 |---|---|---|
-| v1.0.0-beta.3.1.1 | v1.0.0-beta.3.1.1 | v1.0 (non-mesh); mesh protocol 1.1 is experimental |
+| v1.0.0-beta.3.2.0 | v1.0.0-beta.3.2.0 | v1.0 / proto_minor 2 (non-mesh); mesh protocol 1.1 is experimental |
 
 This table is updated with each release. Always check compatibility before mixing app and firmware versions.
 
