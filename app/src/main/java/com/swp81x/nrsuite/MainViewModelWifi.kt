@@ -1,5 +1,7 @@
 package com.swp81x.nrsuite
 
+import com.swp81x.nrsuite.core.defense.OuiRuleAction
+import com.swp81x.nrsuite.core.defense.matchOuiRule
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
 import com.swp81x.nrsuite.core.eapol.EapolParser
 import com.swp81x.nrsuite.core.history.HistoryLevel
@@ -15,6 +17,8 @@ import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
 import com.swp81x.nrsuite.core.wifi.deauthMultiCommandTimeoutMs
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
+import com.swp81x.nrsuite.core.wifi.shouldKeepPartialScanResults
+import com.swp81x.nrsuite.core.wifi.shouldRetryWifiScan
 import com.swp81x.nrsuite.core.wifi.shouldUseNativeDeauthMulti
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +33,71 @@ import org.json.JSONObject
 private const val PREF_BEACON_LISTS = "beacon_lists"
 
 // WiFi scan, deauth, beacon, sniff capture, and related helpers.
+
+/**
+ * Applies one scan result to the active Wi-Fi destination and target state.
+ * Used by both the legacy `scan_ap` event path and the pull-based
+ * `SCAN_RESULTS` path so both routes have identical UI semantics.
+ */
+internal fun MainViewModel.handleScanApEventImpl(
+    event: JSONObject,
+    destination: WifiScanDestination? = wifiScanDestination,
+) {
+    val bssid = event.optString("bssid")
+    val resolvedSsid = resolvedHiddenSsidByBssid[bssid.uppercase()]
+    if (event.optString("ssid").isBlank() && !resolvedSsid.isNullOrBlank()) {
+        event.put("ssid", resolvedSsid)
+        event.put("hidden_resolved", true)
+    }
+    val vendor = ouiDatabaseRepository.lookup(bssid)?.vendor
+    val ouiRule = matchOuiRule(bssid, _ouiRules.value)
+    val ouiWhitelisted = ouiRule?.action == OuiRuleAction.WHITELIST
+    val ouiBlacklisted = ouiRule?.action == OuiRuleAction.BLACKLIST
+    if (!vendor.isNullOrBlank()) event.put("vendor", vendor)
+    event.put("oui_whitelisted", ouiWhitelisted)
+    event.put("oui_blacklisted", ouiBlacklisted)
+
+    val updatedList: (List<JSONObject>) -> List<JSONObject> = { current ->
+        (current.filterNot { it.optString("bssid") == bssid } + event)
+            .sortedByDescending { it.optInt("rssi", -999) }
+    }
+    when (destination) {
+        WifiScanDestination.WIFI,
+        WifiScanDestination.TARGETS -> _networks.update(updatedList)
+        WifiScanDestination.CHANNEL_ANALYZER -> _channelAnalyzerNetworks.update(updatedList)
+        WifiScanDestination.WPS,
+        WifiScanDestination.WPS_ATTEMPT_TARGETS,
+        null -> Unit
+    }
+    val ssid = event.optString("ssid").ifBlank { "(hidden)" }
+    val target = NetworkTarget(
+        ssid = ssid,
+        bssid = bssid,
+        channel = event.optInt("channel", 0),
+        rssi = event.optInt("rssi", -100),
+        security = event.optString("security", "?"),
+        wps = event.optBoolean("wps"),
+        vendor = vendor,
+        ouiWhitelisted = ouiWhitelisted,
+        ouiBlacklisted = ouiBlacklisted,
+    )
+    if (destination == WifiScanDestination.WPS) {
+        this.observeWpsScanTargetImpl(target)
+    } else {
+        _deauthDetectorTargets.update { current ->
+            (current.filterNot { it.bssid.equals(bssid, ignoreCase = true) } + target)
+                .sortedByDescending { it.rssi }
+        }
+        _deauthDetectorSelectedTarget.update { selected ->
+            selected?.takeIf { it.bssid.equals(bssid, ignoreCase = true) } ?: selected
+        }
+    }
+    appendLog(
+        "AP: $ssid  ${event.optString("bssid")}  " +
+            "ch ${event.optInt("channel")}  ${event.optInt("rssi")} dBm  " +
+            event.optString("security")
+    )
+}
 
 internal fun MainViewModel.saveBeaconListImpl(name: String, ssids: List<String>) {
     val cleanName = name.trim()
@@ -152,10 +221,10 @@ private fun MainViewModel.scanWifiInternalImpl(
         _deauthDetectorTargets.value = previousDetectorTargets
     }
 
-    val previousResultCount = when (destination) {
+    fun currentResultCount(): Int = when (destination) {
         WifiScanDestination.WIFI,
-        WifiScanDestination.TARGETS -> previousNetworks.size
-        WifiScanDestination.CHANNEL_ANALYZER -> previousChannelAnalyzerNetworks.size
+        WifiScanDestination.TARGETS -> _networks.value.size
+        WifiScanDestination.CHANNEL_ANALYZER -> _channelAnalyzerNetworks.value.size
         WifiScanDestination.WPS,
         WifiScanDestination.WPS_ATTEMPT_TARGETS -> 0
     }
@@ -167,71 +236,140 @@ private fun MainViewModel.scanWifiInternalImpl(
             var count: Int? = null
             var eventsReceived = 0
             var attempts = 0
+            var usedPull = false
+            var pullError: String? = null
             val maxAttempts = 2
 
             while (attempts < maxAttempts) {
                 attempts++
                 wifiScanEventsReceived.set(0)
-                count = activeSession.scanWifi(
+                val snapshot = activeSession.scanWifiSnapshot(
                     band = wireBand,
                     timeoutMs = 45_000,
                     settleMs = if (attempts == 1) 1_000 else 1_200,
                 )
+                count = when {
+                    snapshot.response == null -> null
+                    !snapshot.response.optBoolean("ok") -> -1
+                    else -> snapshot.expectedCount
+                }
+                usedPull = snapshot.pulled
+                pullError = snapshot.error
+
+                if (snapshot.pulled && snapshot.response?.optBoolean("ok") == true) {
+                    // Pull mode contains the verified scan snapshot. Feed the
+                    // same handler used by legacy scan_ap events so target and
+                    // UI semantics stay identical.
+                    snapshot.results.forEach { result ->
+                        wifiScanEventsReceived.incrementAndGet()
+                        handleScanApEventImpl(result, destination)
+                    }
+                    eventsReceived = snapshot.receivedCount
+                    break
+                }
+
+                // Legacy firmware: event delivery and command-response
+                // completion are separate coroutine paths. Give already-
+                // received scan_ap events a short drain window.
+                if (count != null && count > 0) {
+                    val drainDeadlineMs = System.currentTimeMillis() + 750
+                    while (wifiScanEventsReceived.get() < count &&
+                        System.currentTimeMillis() < drainDeadlineMs
+                    ) {
+                        delay(25)
+                    }
+                }
                 eventsReceived = wifiScanEventsReceived.get()
-                val lowComparedWithPrevious = count != null && count > 0 &&
-                    previousResultCount >= 3 && count < maxOf(2, previousResultCount / 2)
-                val transportMismatch = count != null && count > eventsReceived
-                val shouldRetry = count == null || count <= 0 ||
-                    lowComparedWithPrevious || transportMismatch
+                val shouldRetry = shouldRetryWifiScan(count, eventsReceived)
                 if (!shouldRetry || attempts >= maxAttempts) break
 
                 appendLog(
                     "WiFi scan attempt $attempts returned " +
                         "${count?.toString() ?: "timeout"} result(s), received " +
-                        "$eventsReceived event(s); retrying once after settle.",
-                    level = if (transportMismatch) LogLevel.ERROR else LogLevel.INFO,
+                        "$eventsReceived event(s); retrying once to fill missing results " +
+                        "while keeping the current list.",
+                    level = if (count != null && count > eventsReceived) {
+                        LogLevel.ERROR
+                    } else {
+                        LogLevel.INFO
+                    },
                 )
                 delay(1_200)
             }
 
             val elapsedMs = System.currentTimeMillis() - startedAt
+            val visibleResultCount = currentResultCount()
+            val keepPartialResults = shouldKeepPartialScanResults(
+                eventsReceived = eventsReceived,
+                currentResultCount = visibleResultCount,
+            )
             when {
                 count == null -> {
-                    restorePreviousResults()
+                    if (!keepPartialResults) restorePreviousResults()
                     appendLog(
-                        "WiFi scan timed out after ${elapsedMs} ms; " +
-                            "kept ${previousNetworks.size} previous result(s).",
-                        level = LogLevel.ERROR,
+                        if (keepPartialResults) {
+                            "WiFi scan timed out after ${elapsedMs} ms, but kept " +
+                                "$visibleResultCount partial result(s) already received."
+                        } else {
+                            "WiFi scan timed out after ${elapsedMs} ms; " +
+                                "kept ${previousNetworks.size} previous result(s)."
+                        },
+                        level = if (keepPartialResults) LogLevel.INFO else LogLevel.ERROR,
                     )
                 }
                 count < 0 -> {
-                    restorePreviousResults()
+                    if (!keepPartialResults) restorePreviousResults()
                     appendLog(
-                        "WiFi scan failed after ${elapsedMs} ms; " +
-                            "kept ${previousNetworks.size} previous result(s).",
-                        level = LogLevel.ERROR,
+                        if (keepPartialResults) {
+                            "WiFi scan failed after ${elapsedMs} ms, but kept " +
+                                "$visibleResultCount partial result(s) already received."
+                        } else {
+                            "WiFi scan failed after ${elapsedMs} ms; " +
+                                "kept ${previousNetworks.size} previous result(s)."
+                        },
+                        level = if (keepPartialResults) LogLevel.INFO else LogLevel.ERROR,
                     )
                 }
                 count == 0 -> {
-                    restorePreviousResults()
+                    if (!keepPartialResults) restorePreviousResults()
                     appendLog(
-                        "WiFi scan completed with no results after ${elapsedMs} ms; " +
-                            "kept ${previousNetworks.size} previous result(s).",
+                        if (keepPartialResults) {
+                            "WiFi scan returned no count after ${elapsedMs} ms, but kept " +
+                                "$visibleResultCount partial result(s) already received."
+                        } else {
+                            "WiFi scan completed with no results after ${elapsedMs} ms; " +
+                                "kept ${previousNetworks.size} previous result(s)."
+                        },
                     )
                 }
                 count > eventsReceived -> {
-                    restorePreviousResults()
+                    if (!keepPartialResults) restorePreviousResults()
+                    val reason = if (usedPull) {
+                        pullError ?: "one or more result chunks were missing or corrupt"
+                    } else {
+                        "scan event loss points to a transport/framing issue, not RF"
+                    }
                     appendLog(
-                        "WiFi scan returned $count result(s), but only $eventsReceived " +
-                            "scan event(s) arrived over USB; kept the previous list. " +
-                            "This points to a transport/framing issue, not RF.",
+                        if (keepPartialResults) {
+                            "WiFi scan returned $count result(s) but only $eventsReceived " +
+                                "complete result(s) arrived ($reason); kept " +
+                                "$visibleResultCount partial result(s)."
+                        } else {
+                            "WiFi scan returned $count result(s), but only $eventsReceived " +
+                                "complete result(s) arrived ($reason); kept the previous list."
+                        },
                         level = LogLevel.ERROR,
                     )
                 }
                 else -> {
+                    val delivery = if (usedPull) {
+                        "verified result chunk(s)"
+                    } else {
+                        "scan event(s)"
+                    }
                     appendLog(
                         "WiFi scan complete: $count network(s) in ${elapsedMs} ms " +
-                            "(${band.label}); received $eventsReceived scan event(s)."
+                            "(${band.label}); received $eventsReceived $delivery."
                     )
                     addHistory(
                         "scan",

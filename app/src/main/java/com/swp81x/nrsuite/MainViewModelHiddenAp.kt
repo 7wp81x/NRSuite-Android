@@ -3,6 +3,7 @@ package com.swp81x.nrsuite
 import com.swp81x.nrsuite.core.defense.HiddenApObservation
 import com.swp81x.nrsuite.core.defense.HiddenSsidCandidate
 import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
@@ -45,16 +46,25 @@ internal fun MainViewModel.startHiddenApImpl(
             // One-time baseline scan. This is best-effort: if it fails or the
             // user moves, passive detection still runs without filtering.
             appendLog("Running baseline WiFi scan for Hidden AP Revealer...")
-            wifiScanDestination = null
-            val baselineCount = activeSession.scanWifi(timeoutMs = 15_000)
+            val scan = collectWifiScanWithRecovery(
+                activeSession = activeSession,
+                timeoutMs = 15_000,
+            )
+            val baselineCount = scan.commandResult
             if (baselineCount != null && baselineCount >= 0) {
-                delay(150)
-                val hiddenSeeds = _networks.value.count { network ->
-                    network.optString("bssid").isNotBlank() &&
-                        network.optString("ssid").isBlank()
+                val hiddenSeeds = scan.aps.count { network ->
+                    network.bssid.isNotBlank() && network.ssid.isBlank()
                 }
-                seedHiddenApObservationsFromScan()
-                appendLog("Revealer baseline: $baselineCount scan result(s), $hiddenSeeds hidden seed(s).")
+                seedHiddenApObservationsFromScan(scan.aps)
+                val partialSuffix = if (baselineCount > scan.eventsReceived) {
+                    " (partial events: ${scan.eventsReceived}/$baselineCount)"
+                } else {
+                    ""
+                }
+                appendLog(
+                    "Revealer baseline: $baselineCount scan result(s), " +
+                        "$hiddenSeeds hidden seed(s)$partialSuffix.",
+                )
             } else {
                 appendLog("Revealer baseline scan failed; continuing with passive detection only.")
             }
@@ -101,15 +111,16 @@ internal fun MainViewModel.stopHiddenApImpl() {
     }
 }
 
-internal fun MainViewModel.seedHiddenApObservationsFromScan() {
+internal fun MainViewModel.seedHiddenApObservationsFromScan(networks: List<NetworkTarget>) {
     val now = timeHmNow()
-    val seeded = _networks.value.mapNotNull { network ->
-        val bssid = network.optString("bssid").uppercase().takeIf { it.isNotBlank() } ?: return@mapNotNull null
-        if (network.optString("ssid").isNotBlank()) return@mapNotNull null
+    val seeded = networks.mapNotNull { network ->
+        val bssid = network.bssid.trim().uppercase().takeIf { it.isNotBlank() }
+            ?: return@mapNotNull null
+        if (network.ssid.isNotBlank()) return@mapNotNull null
         HiddenApObservation(
             bssid = bssid,
-            channel = network.optInt("channel", _hiddenApChannel.value),
-            rssi = network.optInt("rssi", -127),
+            channel = network.channel.takeIf { it > 0 } ?: _hiddenApChannel.value,
+            rssi = network.rssi,
             resolvedSsid = null,
             resolutionSource = null,
             firstSeen = now,

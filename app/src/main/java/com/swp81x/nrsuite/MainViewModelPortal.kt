@@ -229,8 +229,12 @@ internal fun MainViewModel.startPortalInternalImpl(ssid: String, channel: Int, t
             put("channel", safeChannel)
             put("bssid", cleanBssid.ifBlank { "" })
             put("show_notice", _portalFirmwareNoticeEnabled.value)
+            put("dns_hijack", _portalDnsHijackEnabled.value)
         }
-        appendLog("Starting captive portal '$cleanSsid' on channel $safeChannel...")
+        appendLog(
+            "Starting captive portal '$cleanSsid' on channel $safeChannel " +
+                "(dns_hijack=${_portalDnsHijackEnabled.value})..."
+        )
         val response = activeSession.sendCommand("START_PORTAL", args, timeoutMs = 15_000)
         if (response?.optBoolean("ok") != true) {
             val errorCode = response?.optString("error").orEmpty()

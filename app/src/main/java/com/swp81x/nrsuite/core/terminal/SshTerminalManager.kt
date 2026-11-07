@@ -15,6 +15,7 @@ import com.jcraft.jsch.HostKeyRepository
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
 import com.jcraft.jsch.UserInfo
+import com.swp81x.nrsuite.BuildConfig
 import com.termux.terminal.TerminalColors
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
@@ -24,6 +25,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.MessageDigest
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -36,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
 
 data class TerminalConfig(
@@ -115,6 +118,9 @@ internal class SshTerminalManager(
 
     @Volatile
     private var lastConnectionConfig: TerminalConfig? = null
+
+    @Volatile
+    private var remoteStartupScriptReady = false
 
     init {
         // Warm the BouncyCastle signature classes off the UI thread so the first
@@ -298,6 +304,11 @@ internal class SshTerminalManager(
             val result = runCatching {
                 withContext(Dispatchers.IO) {
                     openSshSession(normalized)
+                    remoteStartupScriptReady = if (startupFeaturesEnabled()) {
+                        syncTerminalStartupScript()
+                    } else {
+                        false
+                    }
                     openShellSession(normalized)
                 }
             }
@@ -310,6 +321,7 @@ internal class SshTerminalManager(
                     username = normalized.username,
                 )
                 first.start()
+                applyTerminalStartup(first)
             }.onFailure { error ->
                 closeTransport()
                 _state.value = TerminalConnectionState.Failed(
@@ -324,20 +336,18 @@ internal class SshTerminalManager(
         if (_state.value !is TerminalConnectionState.Connected) return
         scope.launch {
             runCatching {
-                withContext(Dispatchers.IO) { openShellSession(null) }
+                withContext(Dispatchers.IO) {
+                    if (startupFeaturesEnabled()) {
+                        remoteStartupScriptReady = syncTerminalStartupScript()
+                    }
+                    openShellSession(null)
+                }
             }.onSuccess { newSession ->
                 managedSessions[newSession.id] = newSession
                 activeSessionId = newSession.id
                 publishSessions()
                 newSession.start()
-                if (!initialCommand.isNullOrBlank()) {
-                    val suffix = if (closeAfterCommand) {
-                        "; printf '\\n[Press Enter to close]\\n'; read -r _; exit\r"
-                    } else {
-                        "\r"
-                    }
-                    newSession.terminalSession.write(initialCommand + suffix)
-                }
+                applyTerminalStartup(newSession, initialCommand, closeAfterCommand)
             }.onFailure { error ->
                 Log.w("NRSuiteTerminal", "Could not open new shell session", error)
             }
@@ -571,6 +581,141 @@ internal class SshTerminalManager(
         }
     }
 
+    private fun applyTerminalStartup(
+        managed: ManagedTerminalSession,
+        initialCommand: String? = null,
+        closeAfterCommand: Boolean = false,
+    ) {
+        val applyPrompt = _settings.value.useNrSuitePrompt &&
+            lastConnectionConfig?.host?.let(TerminalStartup::isLocalTermuxHost) == true
+        val startupCommand = TerminalStartup.executeCommand(
+            versionName = BuildConfig.VERSION_NAME,
+            showBanner = _settings.value.showStartupBanner,
+            applyPrompt = applyPrompt,
+            useRemoteScript = remoteStartupScriptReady,
+        )
+        val followUpCommand = if (initialCommand.isNullOrBlank()) {
+            null
+        } else {
+            buildString {
+                append(initialCommand)
+                if (closeAfterCommand) {
+                    append("; printf '\\n[Press Enter to close]\\n'; read -r _; exit")
+                }
+            }
+        }
+        val commandLine = listOfNotNull(startupCommand, followUpCommand)
+            .joinToString("; ")
+        if (commandLine.isEmpty()) return
+
+        scope.launch {
+            // Wait for the first shell output so the startup block is not consumed
+            // while bashrc/profile scripts are still initializing. Fall back after
+            // five seconds for shells that produce no initial output.
+            withTimeoutOrNull(5_000L) { managed.startupReady.await() }
+            managed.terminalSession.write(commandLine + "\r")
+        }
+    }
+
+    private fun startupFeaturesEnabled(): Boolean {
+        val applyPrompt = _settings.value.useNrSuitePrompt &&
+            lastConnectionConfig?.host?.let(TerminalStartup::isLocalTermuxHost) == true
+        return _settings.value.showStartupBanner || applyPrompt
+    }
+
+    /**
+     * Check the remote ~/.NRSuite against the script generated by this exact app
+     * build. A missing, truncated, or user-modified file is replaced through a
+     * separate SSH exec channel. The shell is never started with a stale script
+     * when the upload cannot be verified; the caller falls back to inline text.
+     */
+    private fun syncTerminalStartupScript(): Boolean {
+        val activeSsh = sshSession?.takeIf { it.isConnected } ?: return false
+        val expected = TerminalStartup.script(BuildConfig.VERSION_NAME)
+            .toByteArray(Charsets.UTF_8)
+        val existing = runCatching {
+            readRemoteFile(activeSsh, TerminalStartup.REMOTE_SCRIPT_PATH)
+        }.getOrNull()
+        if (existing != null && existing.contentEquals(expected)) {
+            Log.i("NRSuiteTerminal", "Terminal startup script already current.")
+            return true
+        }
+
+        Log.i(
+            "NRSuiteTerminal",
+            if (existing == null) {
+                "Terminal startup script missing; uploading over SSH."
+            } else {
+                "Terminal startup script changed; replacing over SSH."
+            },
+        )
+        val uploaded = runCatching {
+            writeRemoteFile(activeSsh, TerminalStartup.REMOTE_SCRIPT_PATH, expected)
+            readRemoteFile(activeSsh, TerminalStartup.REMOTE_SCRIPT_PATH)
+                ?.contentEquals(expected) == true
+        }.getOrDefault(false)
+        if (!uploaded) {
+            Log.w("NRSuiteTerminal", "Could not verify uploaded terminal startup script.")
+        }
+        return uploaded
+    }
+
+    private fun readRemoteFile(activeSsh: Session, name: String): ByteArray? {
+        val channel = activeSsh.openChannel("exec") as ChannelExec
+        channel.setCommand(
+            "if [ -f \"\$HOME/$name\" ]; then cat \"\$HOME/$name\"; fi",
+        )
+        val input = channel.inputStream
+        val error = ByteArrayOutputStream()
+        channel.setErrStream(error)
+        channel.connect(15_000)
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(4096)
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            if (read > 0) output.write(buffer, 0, read)
+        }
+        val exitCode = channel.exitStatus
+        channel.disconnect()
+        if (exitCode != 0) {
+            Log.w(
+                "NRSuiteTerminal",
+                "Remote file check failed for $name: ${error.toString(Charsets.UTF_8.name()).trim()}",
+            )
+        }
+        return if (exitCode == 0 && output.size() > 0) output.toByteArray() else null
+    }
+
+    private fun writeRemoteFile(activeSsh: Session, name: String, content: ByteArray) {
+        val channel = activeSsh.openChannel("exec") as ChannelExec
+        channel.setCommand(
+            "umask 077; " +
+                "if [ -f \"\$HOME/${TerminalStartup.REMOTE_DIRECTORY}\" ]; then " +
+                "rm -f \"\$HOME/${TerminalStartup.REMOTE_DIRECTORY}\"; fi; " +
+                "mkdir -p \"\$HOME/${TerminalStartup.REMOTE_DIRECTORY}\" && " +
+                "cat > \"\$HOME/$name\" && chmod 600 \"\$HOME/$name\"",
+        )
+        val error = ByteArrayOutputStream()
+        channel.setErrStream(error)
+        val input = channel.inputStream
+        channel.connect(15_000)
+        val output = channel.outputStream
+        output.write(content)
+        output.close()
+        val buffer = ByteArray(4096)
+        while (input.read(buffer) >= 0) {
+            // Drain the exec channel until the remote command exits.
+        }
+        val exitCode = channel.exitStatus
+        channel.disconnect()
+        if (exitCode != 0) {
+            throw IOException(
+                "Remote write failed for $name: ${error.toString(Charsets.UTF_8.name()).trim()}",
+            )
+        }
+    }
+
     private fun closeTransport() {
         runCatching { sshSession?.disconnect() }
         sshSession = null
@@ -602,6 +747,7 @@ internal class SshTerminalManager(
         private val channel: ChannelShell,
         val terminalSession: TerminalSession,
     ) {
+        val startupReady = CompletableDeferred<Unit>()
         private var readerJob: Job? = null
         private var output: OutputStream? = null
         private var gracefulCloseRequested = false
@@ -670,7 +816,10 @@ internal class SshTerminalManager(
                     while (isActive) {
                         val read = input.read(buffer)
                         if (read < 0) break
-                        if (read > 0) terminalSession.feedOutput(buffer, 0, read)
+                        if (read > 0) {
+                            if (!startupReady.isCompleted) startupReady.complete(Unit)
+                            terminalSession.feedOutput(buffer, 0, read)
+                        }
                     }
                     if (isActive) {
                         terminalSession.markDisconnected("SSH session ended")

@@ -144,18 +144,51 @@ Fresh-install defaults:
 | Cursor blink | 500 ms |
 | Extra keys | Shown only while the keyboard is open |
 | Authentication | Public key only |
+| Startup banner | Enabled |
+| NRSuite prompt | Disabled |
 
 Existing installations keep their previously saved settings.
+
+### Startup banner and prompt
+
+Each newly opened shell can show a short NRSuite version banner. The app
+generates a small startup script, creates `~/.NRSuite/`, uploads the script as
+`~/.NRSuite/nr.sh` over SSH when the remote copy is missing or modified, checks
+its SHA-256, and sources it in the new shell. No manual file copy or `figlet`
+package is required.
+
+The optional **Use NRSuite prompt** setting applies a compact, non-persistent
+prompt to new local Termux shells only:
+
+```text
+NRSuite ~/.../NRSuite $
+```
+
+`PROMPT_DIRTRIM=2` keeps deep working-directory paths short, and the prompt uses
+Bash's `\$` marker so a normal user sees `$` while root sees `#`. The setting
+does not modify `.bashrc`, `.profile`, or any remote configuration. It is limited
+to Bash prompts and is not applied to remote SSH hosts.
+
+Change either option in **Terminal → Settings → Terminal startup**. Both apply to
+newly opened shells; existing shells keep their current prompt until reconnected
+or replaced with **New session**. Before each new shell, the app verifies
+`~/.NRSuite/nr.sh` against the expected SHA-256 and replaces missing, truncated,
+or modified copies. If the script cannot be verified, NRSuite uses the verified
+inline fallback instead of executing the remote file.
 
 ### Autoconnect
 
 When autoconnect is enabled:
 
-- Entering the Terminal tab attempts one automatic connection if a saved key and
-  connection configuration exist.
+- Opening NRSuite attempts one silent background connection if a saved key and
+  connection configuration exist. This does not navigate to Terminal and does
+  not show setup or permission prompts.
+- Entering the Terminal tab also attempts one automatic connection if a saved
+  key and connection configuration exist.
 - A manual **Disconnect SSH** leaves the setup screen visible while the user stays
-  on Terminal.
-- Leaving Terminal and returning re-arms autoconnect for a new attempt.
+  on Terminal and suppresses the app-open attempt until NRSuite is opened again.
+- Leaving Terminal and returning re-arms the Terminal-tab autoconnect fallback
+  for a new attempt.
 - **Force reconnect** in the session menu closes the old transport and reconnects
   immediately.
 
@@ -213,7 +246,10 @@ count.
 A shortcut can be pinned to the Home screen and can optionally ask for
 confirmation before running. The Home shortcut card provides **Open shortcuts**,
 which opens the quick sheet over Home, and **Manage shortcuts**, which opens the
-full CRUD screen without switching to the Terminal tab.
+full CRUD screen without switching to the Terminal tab. The quick-sheet `+`
+action opens a new-shortcut editor directly. Back from a directly opened editor
+returns to its launching screen; Back from an editor opened inside Manage
+Shortcuts returns to Manage Shortcuts.
 
 ### Parameterized shortcuts
 

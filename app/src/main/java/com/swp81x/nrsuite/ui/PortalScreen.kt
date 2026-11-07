@@ -68,6 +68,7 @@ import com.swp81x.nrsuite.core.portal.PortalVisitor
 import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.components.HtmlTemplatesTab
 import com.swp81x.nrsuite.ui.components.HtmlUploadSection
+import com.swp81x.nrsuite.ui.components.PortalDnsHijackToggle
 import com.swp81x.nrsuite.ui.components.PortalFirmwareNoticeToggle
 import com.swp81x.nrsuite.ui.components.PortalVisitorsTab
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
@@ -120,6 +121,8 @@ fun PortalScreen(
     allowedChannels: List<Int> = emptyList(),
     firmwareNoticeEnabled: Boolean = true,
     onFirmwareNoticeEnabledChange: (Boolean) -> Unit = {},
+    dnsHijackEnabled: Boolean = true,
+    onDnsHijackEnabledChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by rememberSaveable { mutableStateOf(true) }
@@ -152,6 +155,10 @@ fun PortalScreen(
             PortalFirmwareNoticeToggle(
                 enabled = firmwareNoticeEnabled,
                 onEnabledChange = onFirmwareNoticeEnabledChange,
+            )
+            PortalDnsHijackToggle(
+                enabled = dnsHijackEnabled,
+                onEnabledChange = onDnsHijackEnabledChange,
             )
             Spacer(Modifier.height(6.dp))
             RoundedTabRow(

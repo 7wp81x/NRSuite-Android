@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.LinearProgressIndicator
@@ -40,7 +41,7 @@ fun StartupScreen() {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "Wireless research toolkit",
+                text = "Wireless security research toolkit",
                 style = MaterialTheme.typography.bodyMedium,
                 color = NrOnSurfaceVariant,
             )
@@ -51,5 +52,13 @@ fun StartupScreen() {
                 trackColor = com.swp81x.nrsuite.ui.theme.NrOutline,
             )
         }
+        Text(
+            text = "Developed by 7wp81x",
+            style = MaterialTheme.typography.labelSmall,
+            color = NrOnSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 28.dp),
+        )
     }
 }

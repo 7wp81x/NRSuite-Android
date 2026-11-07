@@ -17,12 +17,40 @@ configuration, and the main workflows that need more than a quick description.
 5. Confirm basic communication with a `PING`/status update.
 
 If the app receives heartbeats but commands time out, verify the phone-to-ESP32
-TX/RX path before troubleshooting individual modules.
+TX/RX path before troubleshooting individual modules. On classic ESP32 boards
+using CP2102/CH340 UART bridges, current firmware supports pull-based Wi-Fi scan
+results (`SCAN_RESULTS` with CRC32 and per-chunk retries). If a scan is still
+incomplete, capture `NRSuiteWire`, `NRSuiteUsb`, and `NRSuiteFirmwareMem` logs
+before changing RF or scan settings.
+
+### UART-bridge transport A/B diagnostics
+
+External CP2102/CH340/FTDI UART bridges can use two different bulk-I/O paths.
+Debug builds default to the native libusb handoff used by recent 3.1.x hotfixes.
+To build the usb-serial-for-android Java-bulk comparison APK:
+
+```bash
+./gradlew :app:assembleDebug --offline -Pnrsuite.uartBulkBackend=java
+```
+
+Compare `NRSuiteUsb` lines (backend, chunk counts, zero-filled chunks, max chunk
+size) and `NRSuiteWire` lines (scan completion, pull-chunk retries, CRC errors)
+on the same phone, board, and cable. Add `-Pnrsuite.usbVerboseIo=true` only for a
+short diagnostic capture because per-chunk hex logging adds USB read latency.
+The default build remains `native` unless the Gradle property is supplied.
 
 ### Root directory
 
 NRSuite needs a writable root directory for captures, imports, exports, and
-history-related files. Select it when prompted, or use the app settings.
+history-related files. Select it when prompted, or use **Settings → Storage
+access → Grant storage access**.
+
+Android grants access through the system folder picker (Storage Access
+Framework). There is intentionally no broad storage permission in Android
+Settings for NRSuite. Choose a writable folder; NRSuite creates its `Pcap/`,
+`Logs/`, `Portals/`, and `DuckyEditor/` subdirectories there. If Android later
+loses the persisted folder grant, NRSuite detects it, marks storage access as
+needing attention, and asks you to grant access again.
 
 Captured PCAP files are normally written under:
 
@@ -206,6 +234,12 @@ Captive Portal and Evil Twin share one local HTML template library:
 - HTML is required for both Captive Portal and Evil Twin before start.
 - The app checks device free heap before starting the portal; a firmware
   `RESET_HTML`/upload rejection is shown clearly and the portal is stopped.
+- The firmware advertises the portal AP as the DHCP DNS server, answers
+  wildcard DNS, and force-serves the landing page for unmatched HTTP paths.
+  It also best-effort intercepts plaintext IPv4 DNS sent to custom resolvers;
+  this can be disabled with **Intercept custom DNS** if memory pressure is a
+  concern. DoH/DoT, DNS over TCP, IPv6 DNS, and hardcoded-IP probes are not
+  guaranteed.
 - The HTML Templates tab is available from both portal workflows.
 
 See [Captive Portal / Evil Twin HTML authoring](CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)
@@ -272,8 +306,18 @@ Use **WiFi → Attack → WPS Pixie Dust**.
 
 - WPS target scans are isolated to that module; other Wi-Fi scans do not populate
   the WPS target list.
-- The WPS target scan reports `WPS LOCKED`, `LIKELY UNLOCKED`, or
-  `WPS LOCK UNKNOWN` when the AP advertises WPS lock metadata.
+- WPS target discovery uses the active Wi-Fi scan candidate set and a passive
+  WPS-IE enrichment pass. This keeps WPS candidates aligned with normal Wi-Fi
+  scan coverage while preserving AP Setup Locked, WPS version, and configuration
+  metadata. The scan also returns non-WPS nearby APs for display filtering.
+- `WPS only` is enabled by default. It shows only actionable WPS targets using
+  WPA/WPA2-PSK-style security. Open, WEP, enterprise, and WPA3-only WPS rows are
+  hidden from this filtered view and cannot be selected for a Pixie attempt.
+  Turning the filter off reveals the full scan list; non-actionable rows remain
+  display-only.
+- WPS target rows show top-right `WPS` and `WPS LOCKED` / `LIKELY UNLOCKED` /
+  `WPS UNKNOWN` badges. The channel/RSSI line is color-coded by signal quality
+  and includes a `Near` / `Good` / `Far` / `Weak` label.
 - Select a WPS-enabled target after a scan, then start the live attempt.
 - The live status card appears only after an attempt has activity or a result.
 - Leaving the module clears transient WPS state and targets.
@@ -441,6 +485,10 @@ Depending on the board:
 - Tracker Detector flags Find My/AirTag-style behavior.
 - BLE GATT Profile enumerates read-only services/characteristics.
 - BLE HID supports keyboard, mouse, and scripts.
+- BLE HID start requires at least 90 KiB free heap and a 48 KiB largest block.
+  If firmware rejects startup for insufficient heap, the app shows the live
+  values, the required thresholds, stop-module guidance, and an explicit ESP32
+  restart action.
 - FastPair Model ID is parked until suitable test hardware is available.
 
 ESP32-S2 has no BLE radio.
@@ -479,10 +527,14 @@ key-import walkthrough.
 
 ### Connection behavior
 
-- Autoconnect attempts one connection when entering Terminal and re-arms after
-  leaving and revisiting the tab.
+- With autoconnect enabled, opening NRSuite makes one silent background
+  connection attempt when a saved key/configuration exists. It does not navigate
+  to Terminal or prompt for setup.
+- Entering Terminal also attempts one connection and re-arms after leaving and
+  revisiting the tab.
 - A manual **Disconnect SSH** leaves the setup screen visible until the user
-  reconnects or revisits Terminal.
+  reconnects or revisits Terminal; the app-open attempt is suppressed until the
+  next NRSuite open.
 - **Force reconnect** closes the old SSH transport and reconnects immediately.
 - Closing the last terminal tab is disabled. Use **Disconnect SSH** to close the
   transport intentionally.
@@ -490,8 +542,15 @@ key-import walkthrough.
 ### Terminal defaults
 
 Fresh installs use a 34 dp font, block cursor, 500 ms cursor blink, autoconnect,
-and a Home shortcut card. Extra key rows appear only while the on-screen keyboard
-is visible. Existing users keep their saved settings.
+a startup banner, and a Home shortcut card. Extra key rows appear only while the
+on-screen keyboard is visible. Existing users keep their saved settings.
+
+The optional NRSuite prompt can be enabled under **Terminal settings → Terminal
+startup**. It applies only to newly opened local Termux shells, shortens deep
+paths with `PROMPT_DIRTRIM=2`, shows `$` for a normal user and `#` for root, and
+does not modify `.bashrc` or any remote configuration. The app creates
+`~/.NRSuite/`, uploads `nr.sh` over SSH, verifies its SHA-256, and replaces it
+automatically when missing or modified.
 
 ### Terminal Shortcuts
 
@@ -532,9 +591,56 @@ behavior as part of a non-mesh release validation.
 
 ## 9. Common troubleshooting
 
+### Device specs
+
+The Device screen shows the telemetry reported by current firmware in `STATUS`:
+
+- Heap usage: used / total, free bytes, and percentage
+- Minimum free heap
+- Largest allocatable block
+- PSRAM total/free, or `Not present` when unavailable
+- CPU frequency and core count
+- Internal chip/die temperature, or `Not reported` when unavailable
+- Flash size
+- SDK version
+- Active transport (`usb_cdc` or `uart0`)
+
+Older firmware that does not report a field shows `Not reported`; it does not
+crash the app.
+
+### Device memory banner and explicit restart
+
+The Devices screen always shows the active device's current free heap and
+largest allocatable block for debugging and field diagnostics. The banner uses
+the current values only; it does not use the historical minimum-free value.
+
+- Warning: free heap below 48 KiB or largest block below 28 KiB.
+- Critical: free heap below 20 KiB or largest block below 12 KiB.
+
+**Stop modules** sends `STOP_ALL` and refreshes telemetry. **Restart ESP32**
+requires explicit confirmation, sends `REBOOT`, and expects the USB device to
+disconnect and re-enumerate. Reconnect from Devices after it appears again.
+Restart is never automatic and requires firmware that advertises the `reboot`
+feature.
+
+For module memory testing, use:
+
+```bash
+adb logcat -s NRSuiteMem:I NRSuiteFirmwareMem:I NRSuiteWire:I
+```
+
+`NRSuiteMem` emits one line when a module starts/ends and one line for lifecycle
+operations such as START/STOP commands. `NRSuiteFirmwareMem` forwards the
+firmware command memory snapshots as protocol events, so they work on UART-only
+boards without corrupting the protocol stream.
+
 ### Device appears but commands time out
 
 - Confirm the firmware heartbeat is arriving.
+- On devkits with two USB-C ports, try the other port. Modern S3/C5 boards
+  often expose a USB-to-UART bridge and a native USB CDC/JTAG port.
+- Check the reported `transport` field in the connection log or device specs:
+  `usb_cdc` means native USB and `uart0` means the UART bridge.
 - Verify phone-to-ESP32 TX/RX wiring, especially with CP2102/CH340 boards.
 - Do not share UART0 with sensor or IR wiring.
 - Try another USB-OTG cable/adapter.

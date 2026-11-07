@@ -8,9 +8,10 @@ import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
 import com.swp81x.nrsuite.core.update.ChecksumUtils
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.session.ConnectionState
-import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
+import com.swp81x.nrsuite.core.update.compatibleFirmwareAssetsForDevice
 import com.swp81x.nrsuite.core.update.firmwareChipFromAssetName
 import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
+import com.swp81x.nrsuite.core.update.firmwareTargetForConnectedDevice
 import java.io.File
 import kotlinx.coroutines.launch
 
@@ -19,18 +20,22 @@ internal fun MainViewModel.downloadFirmwareUpdateForCurrentDeviceImpl() {
         appendLog("Connect a device before downloading a firmware update.", level = LogLevel.ERROR)
         return
     }
-    val chip = connected.chip ?: run {
+    val target = firmwareTargetForConnectedDevice(connected.chip, connected.features) ?: run {
         appendLog("Could not determine the connected chip for firmware update.", level = LogLevel.ERROR)
         return
     }
     val release = _firmwareUpdate.value?.latest
-        ?: _firmwareReleases.value.firstOrNull { it.compatibleFirmwareAssets(chip).isNotEmpty() }
+        ?: _firmwareReleases.value.firstOrNull {
+            it.compatibleFirmwareAssetsForDevice(connected.chip, connected.features).isNotEmpty()
+        }
         ?: run {
-            appendLog("No firmware release is available for $chip.", level = LogLevel.ERROR)
+            appendLog("No firmware release is available for $target.", level = LogLevel.ERROR)
             return
         }
-    val asset = release.compatibleFirmwareAssets(chip).firstOrNull() ?: run {
-        appendLog("No firmware asset matches $chip in ${release.tag}.", level = LogLevel.ERROR)
+    val asset = release
+        .compatibleFirmwareAssetsForDevice(connected.chip, connected.features)
+        .firstOrNull() ?: run {
+        appendLog("No firmware asset matches $target in ${release.tag}.", level = LogLevel.ERROR)
         return
     }
     downloadFirmwareAssetImpl(release.tag, asset.name)
@@ -115,6 +120,7 @@ internal fun MainViewModel.downloadFirmwareAssetImpl(
                     is DownloadState.Failed -> {
                         _firmwareAssetDownload.value =
                             FirmwareAssetDownloadState.Failed(state.reason)
+                        _toastMessage.value = state.reason
                         appendLog(
                             "Firmware download failed: ${state.reason}",
                             level = LogLevel.ERROR,
@@ -125,6 +131,7 @@ internal fun MainViewModel.downloadFirmwareAssetImpl(
         }.onFailure { error ->
             val message = error.message ?: "Firmware download failed"
             _firmwareAssetDownload.value = FirmwareAssetDownloadState.Failed(message)
+            _toastMessage.value = message
             appendLog("Firmware download failed: $message", level = LogLevel.ERROR)
         }
     }

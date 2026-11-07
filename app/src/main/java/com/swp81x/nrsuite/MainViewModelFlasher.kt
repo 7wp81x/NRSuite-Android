@@ -13,6 +13,8 @@ import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
+import com.swp81x.nrsuite.core.update.firmwareHardwareChip
+import com.swp81x.nrsuite.core.update.firmwareTargetForConnectedDevice
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -124,7 +126,9 @@ internal fun MainViewModel.selectFirmwareTargetImpl(device: UsbDevice) {
     _firmwareTargetDevice.value = entry
     val fingerprint = deviceFingerprintImpl(device)
     val targetState = _deviceConnectionStates.value[fingerprint] as? ConnectionState.Connected
-    val targetChip = targetState?.chip ?: firmwareTargetChipHints[device.deviceId]
+    val targetChip = targetState
+        ?.let { firmwareTargetForConnectedDevice(it.chip, it.features) }
+        ?: firmwareTargetChipHints[device.deviceId]
     _firmwareTargetChip.value = targetChip
     _firmwareTargetFirmwareVersion.value = targetState?.firmwareVersion
     if (!targetChip.isNullOrBlank()) {
@@ -389,7 +393,7 @@ internal fun MainViewModel.startFirmwareFlashImpl(
                     driver = entry.driver,
                     onLog = { message -> appendLog(message, tag = "flasher") },
                 ),
-                supportsEncryptedFlash = targetChip in setOf(
+                supportsEncryptedFlash = firmwareHardwareChip(targetChip) in setOf(
                     "ESP32-S2",
                     "ESP32-S3",
                     "ESP32-C3",

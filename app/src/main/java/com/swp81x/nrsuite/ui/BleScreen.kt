@@ -51,6 +51,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
+import com.swp81x.nrsuite.core.session.BleHidHeapFailure
+import com.swp81x.nrsuite.ui.components.BleHidLowHeapDialog
 import com.swp81x.nrsuite.ui.components.SavedScriptPicker
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
@@ -63,6 +65,7 @@ import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
 import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
+import com.swp81x.nrsuite.core.ble.isBleHidSessionActive
 
 private val specialKeys = listOf(
     "ENTER", "TAB", "ESC", "BACKSPACE", "DELETE",
@@ -74,6 +77,8 @@ private val specialKeys = listOf(
 fun BleScreen(
     connected: Boolean,
     advertising: Boolean,
+    sessionActive: Boolean,
+    linkConnected: Boolean,
     bleConnected: Boolean,
     peer: String,
     selectedPayloadName: String?,
@@ -81,6 +86,11 @@ fun BleScreen(
     modifiers: Set<String>,
     modifierHold: Boolean,
     bleScriptRunning: Boolean,
+    lowHeapWarning: BleHidHeapFailure?,
+    canRestartEsp32: Boolean,
+    restartInProgress: Boolean,
+    onDismissLowHeapWarning: () -> Unit,
+    onRestartEsp32: () -> Unit,
     onUseSavedScript: (String) -> Unit,
     onChoosePayload: () -> Unit,
     onClearPayload: () -> Unit,
@@ -100,6 +110,9 @@ fun BleScreen(
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var realtimeText by rememberSaveable { mutableStateOf("") }
     val canRealtime = connected && bleConnected
+    // Firmware can stop advertising once a host connects. The HID session is
+    // still active in that state, so the FAB must use either signal.
+    val bleSessionActive = isBleHidSessionActive(sessionActive, advertising, bleConnected)
     val context = LocalContext.current
 
     LaunchedEffect(bleConnected) {
@@ -136,6 +149,8 @@ fun BleScreen(
                 PayloadTab(
                     connected = connected,
                     advertising = advertising,
+                    sessionActive = sessionActive,
+                    linkConnected = linkConnected,
                     bleConnected = bleConnected,
                     bleScriptRunning = bleScriptRunning,
                     peer = peer,
@@ -174,7 +189,7 @@ fun BleScreen(
             }
         }
 
-        if (connected && advertising) {
+        if (connected && bleSessionActive) {
             ModuleActionFab(
                 onClick = onStop,
                 modifier = Modifier
@@ -196,12 +211,27 @@ fun BleScreen(
             }
         }
     }
+
+    lowHeapWarning?.let { failure ->
+        BleHidLowHeapDialog(
+            failure = failure,
+            canRestart = canRestartEsp32,
+            restartInProgress = restartInProgress,
+            onRestartEsp32 = {
+                onDismissLowHeapWarning()
+                onRestartEsp32()
+            },
+            onDismiss = onDismissLowHeapWarning,
+        )
+    }
 }
 
 @Composable
 private fun PayloadTab(
     connected: Boolean,
     advertising: Boolean,
+    sessionActive: Boolean,
+    linkConnected: Boolean,
     bleConnected: Boolean,
     bleScriptRunning: Boolean,
     peer: String,
@@ -235,7 +265,14 @@ private fun PayloadTab(
             onRunPayload = onRunPayload,
         )
 
-        StatusCard(connected = connected, advertising = advertising, bleConnected = bleConnected, peer = peer)
+        StatusCard(
+            connected = connected,
+            advertising = advertising,
+            sessionActive = sessionActive,
+            linkConnected = linkConnected,
+            bleConnected = bleConnected,
+            peer = peer,
+        )
     }
 }
 
@@ -559,6 +596,8 @@ private fun ConfigCard(
 private fun StatusCard(
     connected: Boolean,
     advertising: Boolean,
+    sessionActive: Boolean,
+    linkConnected: Boolean,
     bleConnected: Boolean,
     peer: String,
 ) {
@@ -575,13 +614,15 @@ private fun StatusCard(
                 label = when {
                     !connected -> "No device connected"
                     bleConnected -> "Host connected"
+                    linkConnected -> "Pairing / confirming connection…"
                     advertising -> "Advertising / waiting for host"
+                    sessionActive -> "BLE HID active"
                     else -> "Idle"
                 },
                 color = when {
                     !connected -> StatusNeutral
                     bleConnected -> StatusGreen
-                    advertising -> StatusAmber
+                    linkConnected || advertising || sessionActive -> StatusAmber
                     else -> StatusNeutral
                 },
             )

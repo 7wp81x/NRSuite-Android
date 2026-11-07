@@ -204,6 +204,7 @@ fun IrSearchScreen(
                 Spacer(Modifier.height(10.dp))
 
                 Text("Category", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(4.dp))
                 Box {
                     NrSecondaryButton(
                         text = category.ifBlank { "Select category" },
@@ -228,6 +229,7 @@ fun IrSearchScreen(
 
                 Spacer(Modifier.height(8.dp))
                 Text("Brand", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(4.dp))
                 Box {
                     NrSecondaryButton(
                         text = if (brand == "All brands") {
@@ -289,53 +291,64 @@ fun IrSearchScreen(
                 shape = RoundedCornerShape(12.dp),
             ) {
                 Column(Modifier.padding(14.dp)) {
-                    Text("Search settings", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Text("Auto-step / loop interval", style = MaterialTheme.typography.labelMedium)
-                Box {
-                    NrSecondaryButton(
-                        text = "$intervalMs ms",
-                        onClick = { intervalMenu = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !active,
-                        leadingIcon = Icons.Default.ArrowDropDown,
+                    Text(
+                        "Search settings",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
                     )
-                    DropdownMenu(expanded = intervalMenu, onDismissRequest = { intervalMenu = false }) {
-                        listOf(500, 750, 1000, 1200, 1500, 2000, 3000, 5000).forEach { item ->
-                            DropdownMenuItem(
-                                text = { Text("$item ms") },
-                                onClick = {
-                                    intervalMs = item
-                                    intervalMenu = false
-                                },
-                            )
-                        }
-                    }
-                }
-                if (selectedButtons.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "Selected: " + selectedButtons.joinToString(", "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
+                        "Auto-step / loop interval",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Box {
+                        NrSecondaryButton(
+                            text = "$intervalMs ms",
+                            onClick = { intervalMenu = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !active,
+                            leadingIcon = Icons.Default.ArrowDropDown,
+                        )
+                        DropdownMenu(
+                            expanded = intervalMenu,
+                            onDismissRequest = { intervalMenu = false },
+                        ) {
+                            listOf(500, 750, 1000, 1200, 1500, 2000, 3000, 5000).forEach { item ->
+                                DropdownMenuItem(
+                                    text = { Text("$item ms") },
+                                    onClick = {
+                                        intervalMs = item
+                                        intervalMenu = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    if (selectedButtons.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Selected: " + selectedButtons.joinToString(", "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    NrPrimaryButton(
+                        text = "Start search",
+                        onClick = {
+                            onStart(category, brand, selectedButtons.toList(), intervalMs)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !active &&
+                            category.isNotBlank() &&
+                            commonButtonsState.loaded &&
+                            selectedButtons.isNotEmpty() &&
+                            !commonButtonsState.loading,
+                        leadingIcon = Icons.Default.PlayArrow,
                     )
                 }
-                Spacer(Modifier.height(12.dp))
-                NrPrimaryButton(
-                    text = "Start Searcher",
-                    onClick = {
-                        onStart(category, brand, selectedButtons.toList(), intervalMs)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !active &&
-                        category.isNotBlank() &&
-                        commonButtonsState.loaded &&
-                        selectedButtons.isNotEmpty() &&
-                        !commonButtonsState.loading,
-                    leadingIcon = Icons.Default.PlayArrow,
-                )
             }
-        }
         }
 
         if (active && state.candidates.isNotEmpty()) {
@@ -447,10 +460,15 @@ private fun CommonButtonsCard(
                 )
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = "Minimum remote occurrences",
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Spacer(Modifier.height(4.dp))
             Box {
                 NrSecondaryButton(
-                    text = "Minimum remote occurrences: ${minRemotes}+",
+                    text = "${minRemotes}+ remotes",
                     onClick = { thresholdMenu = true },
                     enabled = enabled,
                     modifier = Modifier.fillMaxWidth(),
@@ -471,6 +489,7 @@ private fun CommonButtonsCard(
                     }
                 }
             }
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = "Lower thresholds expose more buttons and can create broader searches.",
                 style = MaterialTheme.typography.labelSmall,

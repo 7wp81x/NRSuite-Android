@@ -209,6 +209,7 @@ Provision, monitor, and control the ESP-NOW mesh from its own module. The underl
 - [x] **Firmware Flasher** - flash merged NRSuite firmware directly from the app over USB; supports ESP32, S2, S3, C3, and C5 images with target-chip validation, esptool-aligned reset timing, C5 SYNC/SPI-attach handling, TinyUSB-to-ROM bootloader restart, automatic manual-recovery fallback, and background foreground-service progress notification
 - [x] **Serial Monitor** - raw USB serial monitor for any ESP32 or USB-UART firmware, with reliable clipboard copy, bounded log retention, and visible save/export feedback
 - [x] **Persistent firmware device ID** - `NRxxxxxxx` NVS ID shown in the app so devices remain identifiable across reconnects
+- [x] **Dual USB/UART transport reporting** - Native-USB-capable firmware reports `usb_cdc` or `uart0`; device specs and logs show which path is active
 
 </details>
 

@@ -2,6 +2,7 @@ package com.swp81x.nrsuite.core.session
 
 enum class ConnectionDiagnosticRecommendation {
     FLASH_FIRMWARE,
+    REPLUG_AND_RETRY,
     RETRY,
     REPORT_BUG,
 }
@@ -15,17 +16,23 @@ data class ConnectionDiagnostic(
     val sawRomBootLog: Boolean,
     val sawInvalidFirmwareHeader: Boolean,
     val sawProtocolFrame: Boolean,
+    val sawNrsuiteHeartbeat: Boolean = false,
     val detectedChip: String? = null,
     val transportError: String? = null,
     val rawLogPreview: String? = null,
 ) {
     val recommendation: ConnectionDiagnosticRecommendation
         get() = when {
-            sawRomBootLog || sawInvalidFirmwareHeader || !sawProtocolFrame -> {
+            sawRomBootLog || sawInvalidFirmwareHeader -> {
                 if (portOpened) ConnectionDiagnosticRecommendation.FLASH_FIRMWARE
                 else ConnectionDiagnosticRecommendation.RETRY
             }
+            sawNrsuiteHeartbeat || sawProtocolFrame ->
+                ConnectionDiagnosticRecommendation.REPLUG_AND_RETRY
             transportError != null -> ConnectionDiagnosticRecommendation.RETRY
+            !portOpened -> ConnectionDiagnosticRecommendation.RETRY
+            !sawProtocolFrame ->
+                ConnectionDiagnosticRecommendation.FLASH_FIRMWARE
             else -> ConnectionDiagnosticRecommendation.REPORT_BUG
         }
 
@@ -33,6 +40,9 @@ data class ConnectionDiagnostic(
         get() = when {
             sawInvalidFirmwareHeader || sawRomBootLog ->
                 "The device appears to be in ROM bootloader or has no valid NRSuite firmware."
+            sawNrsuiteHeartbeat || sawProtocolFrame ->
+                "NRSuite activity was detected, but the command handshake did not complete. " +
+                    "Unplug and replug the device, then retry before flashing firmware."
             !portOpened ->
                 "The USB serial port could not be opened."
             transportError != null ->
@@ -66,16 +76,19 @@ sealed interface ConnectionState {
         val uptimeMs: Long? = null,
         val heapFree: Long? = null,
         val heapTotal: Long? = null,
+        val heapUsed: Long? = null,
         val heapMinFree: Long? = null,
         val heapMaxAlloc: Long? = null,
         val psramFree: Long? = null,
         val psramTotal: Long? = null,
         val chipCores: Int? = null,
         val cpuMhz: Int? = null,
+        val temperatureC: Double? = null,
         val flashSize: Long? = null,
         val sdkVersion: String? = null,
         val protocolVersion: Int? = null,
         val protocolMinor: Int? = null,
+        val transport: String? = null,
     ) : ConnectionState
 
     data class Failed(

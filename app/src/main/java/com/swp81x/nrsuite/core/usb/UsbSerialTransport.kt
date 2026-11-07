@@ -6,7 +6,9 @@ import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
 import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
+import android.os.SystemClock
 import android.util.Log
+import com.swp81x.nrsuite.BuildConfig
 import com.hoho.android.usbserial.driver.Ch34xSerialDriver
 import com.hoho.android.usbserial.driver.CommonUsbSerialPort
 import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
@@ -16,6 +18,7 @@ import com.hoho.android.usbserial.driver.ProlificSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * [NrTransport] backed by usb-serial-for-android.
@@ -28,6 +31,11 @@ import java.io.IOException
  * without reaching the ESP32. Those chips are configured through their normal
  * driver (baud rate / line state), then the interface is handed to the native
  * libusb fd transport, matching the working Termux/espbridge path.
+ *
+ * `BuildConfig.UART_BULK_BACKEND` allows a same-device A/B test:
+ * `native` (default) uses the libusb fd handoff; `java` keeps bulk I/O on the
+ * usb-serial-for-android path. Set it with
+ * `-Pnrsuite.uartBulkBackend=java`.
  */
 class UsbSerialTransport(
     private val usbManager: UsbManager,
@@ -43,6 +51,15 @@ class UsbSerialTransport(
     private var nativeRawOpen = false
     private var ownerSession: UsbDeviceOwnerClient.Session? = null
 
+    private val rxChunks = AtomicLong()
+    private val rxBytes = AtomicLong()
+    private val zeroOnlyRxChunks = AtomicLong()
+    private val maxRxChunk = AtomicLong()
+    @Volatile private var lastRxSummaryAtMs = 0L
+
+    private val preferJavaBulkBackend: Boolean
+        get() = BuildConfig.UART_BULK_BACKEND.equals("java", ignoreCase = true)
+
     private val isCh34x: Boolean
         get() = driver is Ch34xSerialDriver
 
@@ -57,10 +74,12 @@ class UsbSerialTransport(
      * usb-serial-for-android, then moved to the native libusb bulk path.
      */
     private val isLibraryConfiguredNativeRaw: Boolean
-        get() = isCp21xx || isFtdi
+        get() = !preferJavaBulkBackend && (isCp21xx || isFtdi)
 
     init {
-        CommonUsbSerialPort.DEBUG = true
+        // The library's per-transfer logging is useful for A/B transport
+        // captures but adds latency to CP210x reads when left enabled.
+        CommonUsbSerialPort.DEBUG = BuildConfig.USB_VERBOSE_IO
     }
 
     override val isOpen: Boolean
@@ -77,24 +96,33 @@ class UsbSerialTransport(
         Log.i(
             "NRSuiteWire",
             "open driver=${driver.javaClass.simpleName} vid=0x${usbDevice.vendorId.toString(16)} " +
-                "pid=0x${usbDevice.productId.toString(16)} name=${usbDevice.deviceName}",
+                "pid=0x${usbDevice.productId.toString(16)} name=${usbDevice.deviceName} " +
+                "bulkBackend=${BuildConfig.UART_BULK_BACKEND}",
         )
         if (!usbManager.hasPermission(usbDevice)) {
             throw IOException("USB permission has not been granted for ${usbDevice.deviceName}")
         }
 
-        if (isCh34x) {
-            if (tryOpenNativeRaw(usbDevice, "CH34x") {
-                    NativeUsbBridge.ch34xInit(ch34xDivisor(baudRate))
-                }) return
-        } else if (isCp21xx) {
-            if (tryOpenNativeRaw(usbDevice, "CP210x") {
-                    NativeUsbBridge.cp21xxInit(baudRate)
-                }) return
-        } else if (isFtdi) {
-            if (tryOpenNativeRaw(usbDevice, "FTDI") {
-                    NativeUsbBridge.ftdiInit(baudRate)
-                }) return
+        if (!preferJavaBulkBackend) {
+            if (isCh34x) {
+                if (tryOpenNativeRaw(usbDevice, "CH34x") {
+                        NativeUsbBridge.ch34xInit(ch34xDivisor(baudRate))
+                    }) return
+            } else if (isCp21xx) {
+                if (tryOpenNativeRaw(usbDevice, "CP210x") {
+                        NativeUsbBridge.cp21xxInit(baudRate)
+                    }) return
+            } else if (isFtdi) {
+                if (tryOpenNativeRaw(usbDevice, "FTDI") {
+                        NativeUsbBridge.ftdiInit(baudRate)
+                    }) return
+            }
+        } else {
+            Log.i(
+                "NRSuiteWire",
+                "using usb-serial-for-android Java bulk path for " +
+                    driver.javaClass.simpleName,
+            )
         }
 
         val openedConnection = usbManager.openDevice(usbDevice)
@@ -157,36 +185,39 @@ class UsbSerialTransport(
         }
 
         if (count > 0) {
-            val preview = buildString {
-                for (i in 0 until minOf(count, 64)) {
-                    if (i > 0) append(' ')
-                    append(String.format("%02X", buffer[i].toInt() and 0xFF))
-                }
-            }
-            Log.d("NRSuiteWire", "RX $count bytes: $preview")
-
-            // Raw boot/crash logs are ASCII text, not NRSuite frames. Log them
-            // in full so a panic reason/backtrace is preserved in logcat.
-            val startsWithFrame =
-                count >= 2 &&
-                    buffer[0] == 0xAD.toByte() &&
-                    buffer[1] == 0xDE.toByte()
-            if (!startsWithFrame) {
-                val text = buildString {
-                    for (i in 0 until count) {
-                        val b = buffer[i].toInt() and 0xFF
-                        append(
-                            when {
-                                b == 13 -> '\r'
-                                b == 10 -> '\n'
-                                b in 32..126 -> b.toChar()
-                                else -> '.'
-                            },
-                        )
+            recordRxDiagnostics(buffer, count)
+            if (BuildConfig.USB_VERBOSE_IO) {
+                val preview = buildString {
+                    for (i in 0 until minOf(count, 64)) {
+                        if (i > 0) append(' ')
+                        append(String.format("%02X", buffer[i].toInt() and 0xFF))
                     }
                 }
-                text.chunked(1000).forEachIndexed { index, chunk ->
-                    Log.d("NRSuiteWire", "RXRAW[$index] $chunk")
+                Log.d("NRSuiteWire", "RX $count bytes: $preview")
+
+                // Raw boot/crash logs are ASCII text, not NRSuite frames. Log
+                // them in full so a panic reason/backtrace is preserved.
+                val startsWithFrame =
+                    count >= 2 &&
+                        buffer[0] == 0xAD.toByte() &&
+                        buffer[1] == 0xDE.toByte()
+                if (!startsWithFrame) {
+                    val text = buildString {
+                        for (i in 0 until count) {
+                            val b = buffer[i].toInt() and 0xFF
+                            append(
+                                when {
+                                    b == 13 -> '\r'
+                                    b == 10 -> '\n'
+                                    b in 32..126 -> b.toChar()
+                                    else -> '.'
+                                },
+                            )
+                        }
+                    }
+                    text.chunked(1000).forEachIndexed { index, chunk ->
+                        Log.d("NRSuiteWire", "RXRAW[$index] $chunk")
+                    }
                 }
             }
         }
@@ -194,13 +225,15 @@ class UsbSerialTransport(
     }
 
     override fun write(data: ByteArray, timeoutMs: Int) {
-        val preview = buildString {
-            for (i in 0 until minOf(data.size, 64)) {
-                if (i > 0) append(' ')
-                append(String.format("%02X", data[i].toInt() and 0xFF))
+        if (BuildConfig.USB_VERBOSE_IO) {
+            val preview = buildString {
+                for (i in 0 until minOf(data.size, 64)) {
+                    if (i > 0) append(' ')
+                    append(String.format("%02X", data[i].toInt() and 0xFF))
+                }
             }
+            Log.d("NRSuiteWire", "TX ${data.size} bytes: $preview")
         }
-        Log.d("NRSuiteWire", "TX ${data.size} bytes: $preview")
         if (nativeRawOpen) {
             if (!NativeUsbBridge.write(data, timeoutMs)) {
                 throw IOException("Native libusb write failed")
@@ -255,6 +288,39 @@ class UsbSerialTransport(
         runCatching { connection?.close() }
         port = null
         connection = null
+    }
+
+    private fun recordRxDiagnostics(buffer: ByteArray, count: Int) {
+        rxChunks.incrementAndGet()
+        rxBytes.addAndGet(count.toLong())
+        maxRxChunk.updateAndGet { previous -> maxOf(previous, count.toLong()) }
+
+        var allZero = true
+        for (index in 0 until count) {
+            if (buffer[index].toInt() != 0) {
+                allZero = false
+                break
+            }
+        }
+        if (allZero) {
+            zeroOnlyRxChunks.incrementAndGet()
+            Log.w(
+                "NRSuiteUsb",
+                "zero-filled RX chunk count=$count " +
+                    "zeroChunks=${zeroOnlyRxChunks.get()} totalChunks=${rxChunks.get()}",
+            )
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastRxSummaryAtMs >= 5_000L) {
+            lastRxSummaryAtMs = now
+            Log.i(
+                "NRSuiteUsb",
+                "rx summary backend=${BuildConfig.UART_BULK_BACKEND} " +
+                    "bytes=${rxBytes.get()} chunks=${rxChunks.get()} " +
+                    "zeroChunks=${zeroOnlyRxChunks.get()} maxChunk=${maxRxChunk.get()}",
+            )
+        }
     }
 
     private fun ch34xDivisor(baud: Int): Int {

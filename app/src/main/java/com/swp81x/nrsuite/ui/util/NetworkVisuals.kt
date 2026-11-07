@@ -21,6 +21,13 @@ fun signalQualityColor(rssi: Int): Color = when {
     else -> StatusNeutral
 }
 
+fun signalQualityLabel(rssi: Int): String = when {
+    rssi >= -50 -> "Near"
+    rssi >= -65 -> "Good"
+    rssi >= -75 -> "Far"
+    else -> "Weak"
+}
+
 /**
  * Threat proximity used by deauth/rogue AP detection: closer means more urgent.
  */

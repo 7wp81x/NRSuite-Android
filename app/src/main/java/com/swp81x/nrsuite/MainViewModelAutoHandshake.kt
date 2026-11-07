@@ -1295,32 +1295,17 @@ private suspend fun MainViewModel.collectAutoHandshakeScan(
     activeSession: NrSession,
     timeoutMs: Long,
 ): NrugochiScanResult {
-    val found = ConcurrentHashMap<String, NetworkTarget>()
-    val collector = scope.launch {
-        activeSession.events.collect { event ->
-            if (event.optString("type") != "scan_ap") return@collect
-            val bssid = event.optString("bssid")
-            if (bssid.isBlank()) return@collect
-            found[bssid.uppercase()] = NetworkTarget(
-                ssid = event.optString("ssid"),
-                bssid = bssid,
-                channel = normalizeWifiChannel(event.optInt("channel", 1), fallback = 1),
-                rssi = event.optInt("rssi", -100),
-                security = event.optString("security", "UNKNOWN"),
-                wps = event.optBoolean("wps", false),
-            )
-        }
-    }
-    val commandResult = try {
-        wifiScanDestination = null
-        activeSession.scanWifi(timeoutMs = timeoutMs)
-    } finally {
-        delay(250L)
-        collector.cancelAndJoin()
+    val scan = collectWifiScanWithRecovery(activeSession, timeoutMs)
+    if (scan.commandResult != null && scan.commandResult > scan.eventsReceived) {
+        addAutoHandshakeFeed(
+            "Scan returned ${scan.commandResult} AP(s) but only ${scan.eventsReceived} event(s) " +
+                "arrived; using ${scan.aps.size} recovered AP(s).",
+            LogLevel.ERROR,
+        )
     }
     return NrugochiScanResult(
-        commandResult = commandResult,
-        aps = found.values.sortedByDescending { it.rssi },
+        commandResult = scan.commandResult,
+        aps = scan.aps,
     )
 }
 

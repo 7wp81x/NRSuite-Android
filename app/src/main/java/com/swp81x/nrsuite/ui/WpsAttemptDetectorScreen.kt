@@ -275,7 +275,7 @@ fun WpsAttemptDetectorScreen(
                                         ouiBlacklisted = network.ouiBlacklisted,
                                         selected = network.bssid in selectedBssids,
                                         selectionControl = TargetSelectionControl.CHECKBOX,
-                                        enabled = !state.running && !state.starting,
+                                        enabled = !state.running && !state.starting && !state.scanningTargets,
                                         onClick = {
                                             autoSelectPending = false
                                             selectedBssids = if (network.bssid in selectedBssids) {
@@ -440,6 +440,7 @@ fun WpsAttemptDetectorScreen(
                     }
                 },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
+                enabled = state.running || state.starting || !state.scanningTargets,
                 statusAction = if (state.running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 when {

@@ -9,6 +9,22 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+// A/B switch for external UART-bridge bulk I/O:
+//   native (default) = libusb fd handoff used by the beta.3.1.x hotfix
+//   java             = usb-serial-for-android UsbDeviceConnection bulk path
+// Override for a test build with: -Pnrsuite.uartBulkBackend=java
+val uartBulkBackend = providers.gradleProperty("nrsuite.uartBulkBackend")
+    .orElse("native")
+    .get()
+    .lowercase()
+require(uartBulkBackend == "native" || uartBulkBackend == "java") {
+    "nrsuite.uartBulkBackend must be 'native' or 'java', was '$uartBulkBackend'"
+}
+val usbVerboseIo = providers.gradleProperty("nrsuite.usbVerboseIo")
+    .orElse("false")
+    .get()
+    .toBooleanStrictOrNull() ?: false
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -26,10 +42,13 @@ android {
         applicationId = "com.swp81x.nrsuite"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.0.0-beta.3.1.2"
+        versionCode = 11
+        versionName = "1.0.0-beta.3.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "UART_BULK_BACKEND", "\"$uartBulkBackend\"")
+        buildConfigField("boolean", "USB_VERBOSE_IO", usbVerboseIo.toString())
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
@@ -81,6 +100,7 @@ android {
         jvmTarget = "11"
     }
     buildFeatures {
+        buildConfig = true
         compose = true
         aidl = true
     }

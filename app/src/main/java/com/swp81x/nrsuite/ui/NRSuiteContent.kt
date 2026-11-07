@@ -143,8 +143,10 @@ import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.ir.IrRemoteSource
 import com.swp81x.nrsuite.core.ir.IrTransmitBackend
+import com.swp81x.nrsuite.core.log.NrSuiteMemoryLogger
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
+import com.swp81x.nrsuite.core.terminal.shouldAttemptTerminalAutoconnect
 import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
 import com.swp81x.nrsuite.core.update.AppUpdateInfo
 import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
@@ -222,6 +224,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val sniffHandshake by viewModel.sniffHandshake.collectAsState()
     val capturePath by viewModel.capturePath.collectAsState()
     val exportDirectoryName by viewModel.exportDirectoryName.collectAsState()
+    val storageAccessIssue by viewModel.storageAccessIssue.collectAsState()
     val wifiCaptureDirectoryName by viewModel.wifiCaptureDirectoryName.collectAsState()
     val ouiRules by viewModel.ouiRules.collectAsState()
     val ouiDatabaseStatus by viewModel.ouiDatabaseStatus.collectAsState()
@@ -371,12 +374,16 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val badUsbTargetDevice by viewModel.badUsbTargetDevice.collectAsState()
     val duckyScripts by viewModel.duckyScriptMap.collectAsState()
     val bleAdvertising by viewModel.bleAdvertising.collectAsState()
+    val bleSessionActive by viewModel.bleSessionActive.collectAsState()
+    val bleLinkConnected by viewModel.bleLinkConnected.collectAsState()
     val bleConnected by viewModel.bleConnected.collectAsState()
     val blePeer by viewModel.blePeer.collectAsState()
     val blePayloadName by viewModel.blePayloadName.collectAsState()
     val bleModifiers by viewModel.bleModifiers.collectAsState()
     val bleModifierHold by viewModel.bleModifierHold.collectAsState()
     val bleScriptRunning by viewModel.bleScriptRunning.collectAsState()
+    val bleLowHeapWarning by viewModel.bleLowHeapWarning.collectAsState()
+    val deviceRestarting by viewModel.deviceRestarting.collectAsState()
     val bleScanStarting by viewModel.bleScanStarting.collectAsState()
     val bleScanRunning by viewModel.bleScanRunning.collectAsState()
     val bleScanOwner by viewModel.bleScanOwner.collectAsState()
@@ -520,6 +527,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         portalRunning,
         portalMode,
         bleAdvertising,
+        bleSessionActive,
         bleScanRunning,
         ouiDatabaseStatus,
         meshActive,
@@ -593,6 +601,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             !module.available -> module.statusLabel ?: "Unavailable"
             !isDeviceConnected && requiresDevice -> "Device needed"
             isDeviceConnected && !supported -> when {
+                connectedChip == "ESP32-S2" &&
+                    module.id in setOf("portal", "evil_twin", "nrugochi") ->
+                    "Not supported on ESP32-S2"
                 module.id in setOf("ble", "ble_scanner", "tracker_detector", "ble_profile", "badusb", "pin_bruteforce", "ble_pin_bruteforce") -> "Not supported"
                 else -> "Firmware required"
             }
@@ -606,7 +617,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             else -> themePalette.statusAmber
         }
         module.copy(
-            available = module.available,
+            // Keep cards tappable while no device is attached so the user can
+            // see the connection requirement. Once connected, a firmware that
+            // does not advertise the capability disables the card instead of
+            // letting the user enter a screen that cannot work.
+            available = module.available && (!isDeviceConnected || supported),
             iconTint = categoryColor(module.category, themePalette.isLight),
             statusLabel = availabilityLabel,
             statusColor = availabilityColor,
@@ -621,7 +636,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "hidden_ap" -> hiddenApRunning
                 "portal" -> portalRunning && portalMode == "portal"
                 "evil_twin" -> portalRunning && portalMode == "evil_twin"
-                "ble" -> bleAdvertising
+                "ble" -> bleSessionActive
                 "ble_pin_bruteforce" -> blePinBruteforce.running
                 "ble_scanner" -> bleScannerScanRunning || bleScannerScanStarting
                 "tracker_detector" -> trackerScanRunning
@@ -771,7 +786,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
     val anyModuleRunning = sniffing || beaconRunning || deauthRunning || deauthDetectorRunning ||
         rogueApRunning || clientPresenceRunning || hiddenApRunning || hiddenApStarting ||
-        portalRunning || bleAdvertising || bleScanRunning || bleProfileRunning || meshActive ||
+        portalRunning || bleSessionActive || bleAdvertising || bleScanRunning || bleProfileRunning || meshActive ||
         crackerRunning || wpsAttemptDetectorState.running || wpsAttemptDetectorState.starting ||
         wpsAttemptDetectorState.scanningTargets
     val view = LocalView.current
@@ -973,6 +988,35 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         }
     }
 
+    fun openFirmwareFlasherForUpdate() {
+        viewModel.prepareFirmwareFlasherForUpdate()
+        viewModel.onModuleOpened("firmware")
+        activeModuleId = "firmware"
+    }
+
+    fun openFirmwareFlasherForDevice(device: UsbDevice?, chip: String?) {
+        viewModel.prepareFirmwareFlasherForDiagnostic(chip, device?.deviceId)
+        if (device != null) {
+            if (usbManager.hasPermission(device)) {
+                viewModel.selectFirmwareTarget(device)
+            } else {
+                requestFirmwarePermission(device)
+            }
+        }
+        viewModel.onModuleOpened("firmware")
+        activeModuleId = "firmware"
+    }
+
+    fun switchActiveDeviceWithToast(device: UsbDevice) {
+        if (viewModel.switchActiveDevice(device)) {
+            Toast.makeText(
+                context,
+                "Active device: ${device.productName ?: "USB device"}",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
     fun isSerialMonitorActiveDevice(deviceId: Int): Boolean =
         serialMonitorConnected && serialMonitorSelected?.device?.deviceId == deviceId
 
@@ -1104,8 +1148,43 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         if (suppressUsbAttachPrompt) viewModel.dismissUsbAttachPrompt()
     }
 
+    var terminalAppOpenAutoconnectAttempted by rememberSaveable { mutableStateOf(false) }
     var terminalAutoconnectAttempted by rememberSaveable { mutableStateOf(false) }
     var showHomeShortcutSheet by rememberSaveable { mutableStateOf(false) }
+    var terminalShortcutCreateRequested by rememberSaveable { mutableStateOf(false) }
+    var previousMemoryModuleId by remember { mutableStateOf<String?>(null) }
+    val memoryDeviceLabel = remember(devices, primaryFingerprint) {
+        devices.firstOrNull {
+            viewModel.deviceFingerprintImpl(it.device) == primaryFingerprint
+        }?.displayName ?: "no-device"
+    }
+    LaunchedEffect(activeModuleId, memoryDeviceLabel) {
+        val moduleId = activeModuleId
+        if (previousMemoryModuleId != null) {
+            NrSuiteMemoryLogger.endModule(connectionState, memoryDeviceLabel)
+        }
+        if (moduleId != null) {
+            NrSuiteMemoryLogger.startModule(moduleId, connectionState, memoryDeviceLabel)
+        }
+        previousMemoryModuleId = moduleId
+    }
+    LaunchedEffect(Unit) {
+        // Try once per app open, independently of navigation. This keeps the
+        // saved SSH transport available for Home shortcuts without taking the
+        // user to Terminal or showing setup/permission prompts. rememberSaveable
+        // prevents an Activity recreation from consuming a second attempt.
+        if (terminalAppOpenAutoconnectAttempted) return@LaunchedEffect
+        terminalAppOpenAutoconnectAttempted = true
+        val savedConfig = viewModel.savedTerminalConfig()
+        if (shouldAttemptTerminalAutoconnect(
+                autoconnectEnabled = terminalSettings.autoconnect,
+                savedConfigurationAvailable = savedConfig != null,
+                state = terminalState,
+            )
+        ) {
+            viewModel.connectTerminal(savedConfig!!)
+        }
+    }
     LaunchedEffect(selectedTab, terminalSettings.autoconnect, terminalState) {
         if (selectedTab != AppTab.TERMINAL) {
             // Autoconnect is a one-attempt-per-visit action. Leaving the
@@ -1118,14 +1197,23 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             terminalAutoconnectAttempted = false
             return@LaunchedEffect
         }
-        if (terminalState is TerminalConnectionState.Disconnected && !terminalAutoconnectAttempted) {
-            val savedConfig = viewModel.savedTerminalConfig()
-            if (savedConfig != null) {
-                terminalAutoconnectAttempted = true
-                viewModel.connectTerminal(savedConfig)
+        if (terminalState is TerminalConnectionState.Disconnected) {
+            if (!terminalAutoconnectAttempted) {
+                val savedConfig = viewModel.savedTerminalConfig()
+                if (shouldAttemptTerminalAutoconnect(
+                        autoconnectEnabled = terminalSettings.autoconnect,
+                        savedConfigurationAvailable = savedConfig != null,
+                        state = terminalState,
+                    )
+                ) {
+                    terminalAutoconnectAttempted = true
+                    viewModel.connectTerminal(savedConfig!!)
+                }
             }
-        }
-        if (terminalState is TerminalConnectionState.Failed) {
+        } else {
+            // An app-open autoconnect may already have produced a live or
+            // failed session before Terminal was visited. Mark this visit as
+            // attempted so a later manual Disconnect stays disconnected.
             terminalAutoconnectAttempted = true
         }
     }
@@ -1137,6 +1225,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         terminalState is TerminalConnectionState.Connected &&
         terminalSessions.isNotEmpty()
     val terminalImmersive = terminalReady && imeVisible
+    val shortcutManagerFullScreen = activeModuleId == "terminal_shortcuts"
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -1152,7 +1241,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             ScaffoldDefaults.contentWindowInsets
         },
         topBar = {
-            if (!terminalReady) NRSuiteTopBar(
+            if (!terminalReady && !shortcutManagerFullScreen) NRSuiteTopBar(
                 title = activeTitle,
                 showBack = showBack,
                 backDescription = when {
@@ -1239,12 +1328,22 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 onDismissRequest = { showRootDirectoryDialog = false },
                 title = { Text("NRSuite root directory") },
                 text = {
-                    Text(
-                        text = "NRSuite needs a root folder for PCAP captures, logs, " +
-                            "DuckyScripts, and portal exports. Choose a folder now, " +
-                            "or tap Later and choose it when starting a capture.",
-                        color = NrOnSurfaceVariant,
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "NRSuite needs a writable root folder for PCAP captures, logs, " +
+                                "DuckyScripts, portal exports, and IR files. Android grants access " +
+                                "through the system folder picker; there is no broad storage permission " +
+                                "to enable in Android Settings. Choose a folder now, or tap Later and " +
+                                "grant access from Settings when needed.",
+                            color = NrOnSurfaceVariant,
+                        )
+                        storageAccessIssue?.let { issue ->
+                            Text(
+                                text = issue,
+                                color = StatusAmber,
+                            )
+                        }
+                    }
                 },
                 confirmButton = {
                     Button(onClick = {
@@ -1827,6 +1926,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     backend = irTransmitBackend,
                     loopIntervalMs = irLoopIntervalMs,
                     exportDirectoryName = exportDirectoryName,
+                    storageAccessIssue = storageAccessIssue,
                     remoteCount = irRemotes.size,
                     importing = irImporting,
                     scanProgress = irScanProgress,
@@ -2190,6 +2290,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 BleScreen(
                     connected = connectionState is ConnectionState.Connected,
                     advertising = bleAdvertising,
+                    sessionActive = bleSessionActive,
+                    linkConnected = bleLinkConnected,
                     bleConnected = bleConnected,
                     peer = blePeer,
                     selectedPayloadName = blePayloadName,
@@ -2197,6 +2299,11 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     modifiers = bleModifiers,
                     modifierHold = bleModifierHold,
                     bleScriptRunning = bleScriptRunning,
+                    lowHeapWarning = bleLowHeapWarning,
+                    canRestartEsp32 = "reboot" in deviceFeatures,
+                    restartInProgress = deviceRestarting,
+                    onDismissLowHeapWarning = viewModel::dismissBleLowHeapWarning,
+                    onRestartEsp32 = viewModel::restartEsp32,
                     onUseSavedScript = viewModel::useBleSavedScript,
                     onChoosePayload = { blePicker.launch(arrayOf("text/plain", "*/*")) },
                     onClearPayload = viewModel::clearBlePayload,
@@ -2215,50 +2322,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
 
             activeModuleId == "devices" -> {
-                DeviceScreen(
-                    connectionState = connectionState,
-                    activeFingerprint = primaryFingerprint,
-                    devices = devices,
-                    deviceConnectionStates = deviceConnectionStates,
-                    deviceFingerprint = { viewModel.deviceFingerprintImpl(it) },
-                    pendingPermissionRequests = pendingPermissionRequests,
-                    disconnectingFingerprints = disconnectingFingerprints,
+                DeviceScreenRoute(
+                    viewModel = viewModel,
                     usbManager = usbManager,
-                    firmwareUpdate = firmwareUpdate,
-                    firmwareReleases = firmwareReleases,
-                    firmwareAssetDownload = firmwareAssetDownload,
-                    onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
-                    onOpenFirmwareFlasherForUpdate = {
-                        viewModel.prepareFirmwareFlasherForUpdate()
-                        viewModel.onModuleOpened("firmware")
-                        activeModuleId = "firmware"
-                    },
-                    onRefresh = viewModel::refreshDevices,
-                    onConnect = { device -> connectOrRequestPermission(device) },
-                    onDisconnect = viewModel::disconnect,
-                    onDisconnectDevice = viewModel::disconnectDevice,
-                    onRefreshStatus = viewModel::refreshActiveDeviceStatus,
-                    onSwitchDevice = { device ->
-                        if (viewModel.switchActiveDevice(device)) {
-                            Toast.makeText(
-                                context,
-                                "Active device: ${device.productName ?: "USB device"}",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        }
-                    },
-                    onOpenFirmwareFlasher = { device, chip ->
-                        viewModel.prepareFirmwareFlasherForDiagnostic(chip, device?.deviceId)
-                        if (device != null) {
-                            if (usbManager.hasPermission(device)) {
-                                viewModel.selectFirmwareTarget(device)
-                            } else {
-                                requestFirmwarePermission(device)
-                            }
-                        }
-                        viewModel.onModuleOpened("firmware")
-                        activeModuleId = "firmware"
-                    },
+                    onConnectRequest = ::connectOrRequestPermission,
+                    onOpenFirmwareFlasher = ::openFirmwareFlasherForDevice,
+                    onOpenFirmwareFlasherForUpdate = ::openFirmwareFlasherForUpdate,
                     modifier = Modifier,
                 )
             }
@@ -2350,21 +2419,26 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             activeModuleId == "terminal_shortcuts" -> TerminalLauncherScreen(
                 shortcuts = terminalShortcuts,
                 categories = terminalShortcutCategories,
-                onClose = { activeModuleId = null },
+                onClose = {
+                    activeModuleId = null
+                    terminalShortcutCreateRequested = false
+                },
                 onUpsertShortcut = viewModel::upsertTerminalShortcut,
                 onDeleteShortcut = viewModel::deleteTerminalShortcut,
                 onAddCategory = viewModel::addTerminalShortcutCategory,
                 onDeleteCategory = viewModel::deleteTerminalShortcutCategory,
                 onRenameCategory = viewModel::renameTerminalShortcutCategory,
+                initialCreateShortcut = terminalShortcutCreateRequested,
                 modifier = Modifier,
             )
 
             activeModuleId == "terminal_settings" -> TerminalSettingsRoot(
                 viewModel = viewModel,
                 onManageShortcuts = {
-                    activeModuleId = null
+                    terminalShortcutCreateRequested = false
                     selectedTab = AppTab.TERMINAL
-                    showTerminalLauncher = true
+                    showTerminalLauncher = false
+                    activeModuleId = "terminal_shortcuts"
                 },
                 onClearPinnedHostKey = {
                     viewModel.clearTerminalPinnedHostKey()
@@ -2381,6 +2455,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 NRSuiteSettingsRoute(
                     connectionState = connectionState,
                     exportDirectoryName = exportDirectoryName,
+                    storageAccessIssue = storageAccessIssue,
                     firmwareFileName = firmwareFlashName,
                     firmwareFlashSize = firmwareFlashSize,
                     firmwareFlashing = firmwareFlashing,
@@ -2492,6 +2567,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     showHomeShortcutSheet = true
                 },
                 onManageTerminalShortcuts = {
+                    terminalShortcutCreateRequested = false
                     activeModuleId = "terminal_shortcuts"
                 },
                 onRunTerminalShortcut = { shortcut ->
@@ -2548,50 +2624,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 modifier = Modifier,
             )
 
-            selectedTab == AppTab.DEVICES -> DeviceScreen(
-                connectionState = connectionState,
-                activeFingerprint = primaryFingerprint,
-                devices = devices,
-                deviceConnectionStates = deviceConnectionStates,
-                deviceFingerprint = { viewModel.deviceFingerprintImpl(it) },
-                pendingPermissionRequests = pendingPermissionRequests,
-                disconnectingFingerprints = disconnectingFingerprints,
+            selectedTab == AppTab.DEVICES -> DeviceScreenRoute(
+                viewModel = viewModel,
                 usbManager = usbManager,
-                firmwareUpdate = firmwareUpdate,
-                firmwareReleases = firmwareReleases,
-                firmwareAssetDownload = firmwareAssetDownload,
-                onDownloadFirmwareUpdate = viewModel::downloadFirmwareUpdate,
-                onOpenFirmwareFlasherForUpdate = {
-                    viewModel.prepareFirmwareFlasherForUpdate()
-                    viewModel.onModuleOpened("firmware")
-                    activeModuleId = "firmware"
-                },
-                onRefresh = viewModel::refreshDevices,
-                onConnect = { device -> connectOrRequestPermission(device) },
-                onDisconnect = viewModel::disconnect,
-                onDisconnectDevice = viewModel::disconnectDevice,
-                onRefreshStatus = viewModel::refreshActiveDeviceStatus,
-                onSwitchDevice = { device ->
-                    if (viewModel.switchActiveDevice(device)) {
-                        Toast.makeText(
-                            context,
-                            "Active device: ${device.productName ?: "USB device"}",
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                    }
-                },
-                onOpenFirmwareFlasher = { device, chip ->
-                    viewModel.prepareFirmwareFlasherForDiagnostic(chip, device?.deviceId)
-                    if (device != null) {
-                        if (usbManager.hasPermission(device)) {
-                            viewModel.selectFirmwareTarget(device)
-                        } else {
-                            requestFirmwarePermission(device)
-                        }
-                    }
-                    viewModel.onModuleOpened("firmware")
-                    activeModuleId = "firmware"
-                },
+                onConnectRequest = ::connectOrRequestPermission,
+                onOpenFirmwareFlasher = ::openFirmwareFlasherForDevice,
+                onOpenFirmwareFlasherForUpdate = ::openFirmwareFlasherForUpdate,
                 modifier = Modifier,
             )
 
@@ -2646,10 +2684,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             },
             onAdd = {
                 showHomeShortcutSheet = false
+                terminalShortcutCreateRequested = true
                 activeModuleId = "terminal_shortcuts"
             },
             onManage = {
                 showHomeShortcutSheet = false
+                terminalShortcutCreateRequested = false
                 activeModuleId = "terminal_shortcuts"
             },
             onOpenSettings = {
@@ -2809,6 +2849,7 @@ private fun NRSuiteBottomBar(
 private fun NRSuiteSettingsRoute(
     connectionState: ConnectionState,
     exportDirectoryName: String,
+    storageAccessIssue: String?,
     firmwareFileName: String?,
     firmwareFlashSize: Long,
     firmwareFlashing: Boolean,
@@ -2843,6 +2884,7 @@ private fun NRSuiteSettingsRoute(
     SettingsScreen(
         connectionState = connectionState,
         exportDirectoryName = exportDirectoryName,
+        storageAccessIssue = storageAccessIssue,
         firmwareFileName = firmwareFileName,
         firmwareFlashSize = firmwareFlashSize,
         firmwareFlashing = firmwareFlashing,

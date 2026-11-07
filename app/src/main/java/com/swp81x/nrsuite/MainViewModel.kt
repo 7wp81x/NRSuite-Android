@@ -99,6 +99,7 @@ import com.swp81x.nrsuite.core.portal.PortalSessionMetrics
 import com.swp81x.nrsuite.core.portal.PortalVisitor
 import com.swp81x.nrsuite.core.portal.mergePortalVisitor
 import com.swp81x.nrsuite.core.pcap.PcapWriter
+import com.swp81x.nrsuite.core.session.BleHidHeapFailure
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
 import com.swp81x.nrsuite.core.wifi.DetectedSsid
@@ -215,6 +216,9 @@ class MainViewModel(internal val app: Application) {
     private val _exportDirectoryName = MutableStateFlow("Not configured")
     val exportDirectoryName: StateFlow<String> = _exportDirectoryName.asStateFlow()
 
+    internal val _storageAccessIssue = MutableStateFlow<String?>(null)
+    val storageAccessIssue: StateFlow<String?> = _storageAccessIssue.asStateFlow()
+
     internal val _wifiCaptureDirectory = MutableStateFlow<Uri?>(null)
     val wifiCaptureDirectory: StateFlow<Uri?> = _wifiCaptureDirectory.asStateFlow()
 
@@ -229,6 +233,9 @@ class MainViewModel(internal val app: Application) {
     internal val _portalFirmwareNoticeEnabled = MutableStateFlow(true)
     val portalFirmwareNoticeEnabled: StateFlow<Boolean> =
         _portalFirmwareNoticeEnabled.asStateFlow()
+    internal val _portalDnsHijackEnabled = MutableStateFlow(true)
+    val portalDnsHijackEnabled: StateFlow<Boolean> =
+        _portalDnsHijackEnabled.asStateFlow()
 
     internal val _actionError = MutableStateFlow<String?>(null)
     val actionError: StateFlow<String?> = _actionError.asStateFlow()
@@ -502,6 +509,7 @@ class MainViewModel(internal val app: Application) {
     internal val _channelAnalyzerNetworks = MutableStateFlow<List<JSONObject>>(emptyList())
     val channelAnalyzerNetworks: StateFlow<List<JSONObject>> = _channelAnalyzerNetworks.asStateFlow()
 
+    @Volatile
     internal var wifiScanDestination: WifiScanDestination? = null
 
     internal val _wifiBand = MutableStateFlow(WifiBand.AUTO)
@@ -699,6 +707,7 @@ class MainViewModel(internal val app: Application) {
     internal val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
     internal val wifiScanEventsReceived = java.util.concurrent.atomic.AtomicInteger(0)
+    internal val wpsLockEventsReceived = java.util.concurrent.atomic.AtomicInteger(0)
 
     internal val _sniffing = MutableStateFlow(false)
     val sniffing: StateFlow<Boolean> = _sniffing.asStateFlow()
@@ -1078,6 +1087,18 @@ class MainViewModel(internal val app: Application) {
     internal val _bleAdvertising = MutableStateFlow(false)
     val bleAdvertising: StateFlow<Boolean> = _bleAdvertising.asStateFlow()
 
+    internal val _bleSessionActive = MutableStateFlow(false)
+    val bleSessionActive: StateFlow<Boolean> = _bleSessionActive.asStateFlow()
+
+    internal val _bleLinkConnected = MutableStateFlow(false)
+    val bleLinkConnected: StateFlow<Boolean> = _bleLinkConnected.asStateFlow()
+
+    internal val _bleLowHeapWarning = MutableStateFlow<BleHidHeapFailure?>(null)
+    val bleLowHeapWarning: StateFlow<BleHidHeapFailure?> = _bleLowHeapWarning.asStateFlow()
+
+    internal val _deviceRestarting = MutableStateFlow(false)
+    val deviceRestarting: StateFlow<Boolean> = _deviceRestarting.asStateFlow()
+
     internal val _bleConnected = MutableStateFlow(false)
     val bleConnected: StateFlow<Boolean> = _bleConnected.asStateFlow()
 
@@ -1433,6 +1454,10 @@ class MainViewModel(internal val app: Application) {
         _portalFirmwareNoticeEnabled.value = enabled
     }
 
+    fun setPortalDnsHijackEnabled(enabled: Boolean) {
+        _portalDnsHijackEnabled.value = enabled
+    }
+
     fun clearMacLookup() {
         _macLookupResult.value = null
     }
@@ -1551,7 +1576,24 @@ class MainViewModel(internal val app: Application) {
     fun setExportDirectory(uri: Uri) {
         val resolver = app.contentResolver
         val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        runCatching { resolver.takePersistableUriPermission(uri, flags) }
+        val grantError = runCatching {
+            resolver.takePersistableUriPermission(uri, flags)
+        }.exceptionOrNull()
+        val accessIssue = if (grantError != null) {
+            "Android did not retain access to the selected folder. " +
+                "Choose it again from the system folder picker."
+        } else {
+            validateTreeAccess(uri)
+        }
+        if (accessIssue != null) {
+            clearStoredExportDirectory(accessIssue)
+            _requiresRootDirectory.value = true
+            _toastMessage.value = accessIssue
+            appendLog(accessIssue, level = LogLevel.ERROR)
+            return
+        }
+
+        _storageAccessIssue.value = null
         _exportDirectory.value = uri
         preferences.edit().putString(PREF_EXPORT_DIRECTORY, uri.toString()).apply()
         _exportDirectoryName.value = displayNameForTreeUri(uri)
@@ -1562,10 +1604,82 @@ class MainViewModel(internal val app: Application) {
 
     private fun loadExportDirectory() {
         val stored = preferences.getString(PREF_EXPORT_DIRECTORY, null) ?: return
-        val uri = runCatching { Uri.parse(stored) }.getOrNull() ?: return
+        val uri = runCatching { Uri.parse(stored) }.getOrNull()
+        val accessIssue = if (uri == null) {
+            "The stored NRSuite root folder is invalid. Choose it again."
+        } else {
+            validateTreeAccess(uri)
+        }
+        if (accessIssue != null) {
+            clearStoredExportDirectory(accessIssue)
+            _requiresRootDirectory.value = true
+            appendLog(accessIssue, level = LogLevel.ERROR)
+            return
+        }
+        _storageAccessIssue.value = null
         _exportDirectory.value = uri
-        _exportDirectoryName.value = displayNameForTreeUri(uri)
+        _exportDirectoryName.value = displayNameForTreeUri(uri!!)
         ensureRootStructure(uri)
+    }
+
+    /**
+     * Validate the URI grant and folder access before operations that depend on
+     * SAF-backed storage. This must be rechecked because persisted grants can be
+     * lost after restore, provider changes, or system permission reset.
+     */
+    internal fun ensureStorageAccessOrPrompt(message: String): Boolean {
+        val uri = _exportDirectory.value
+        if (uri == null) {
+            val issue = "$message Choose the NRSuite root folder from Settings."
+            _storageAccessIssue.value = issue
+            _requiresRootDirectory.value = true
+            _toastMessage.value = issue
+            appendLog(issue, level = LogLevel.ERROR)
+            return false
+        }
+        val issue = validateTreeAccess(uri)
+        if (issue != null) {
+            clearStoredExportDirectory(issue)
+            _requiresRootDirectory.value = true
+            _toastMessage.value = issue
+            appendLog(issue, level = LogLevel.ERROR)
+            return false
+        }
+        _storageAccessIssue.value = null
+        return true
+    }
+
+    private fun validateTreeAccess(uri: Uri): String? {
+        val persisted = app.contentResolver.persistedUriPermissions.any { permission ->
+            permission.uri == uri &&
+                permission.isReadPermission &&
+                permission.isWritePermission
+        }
+        if (!persisted) {
+            return "NRSuite no longer has persistent access to its root folder. " +
+                "Open Settings and grant folder access again."
+        }
+        val root = runCatching { DocumentFile.fromTreeUri(app, uri) }.getOrNull()
+            ?: return "The selected NRSuite root folder is no longer available. Choose it again."
+        if (!root.exists()) {
+            return "The selected NRSuite root folder was removed or is unavailable. Choose it again."
+        }
+        if (!root.canRead()) {
+            return "NRSuite cannot read the selected root folder. Grant folder access again."
+        }
+        if (!root.canWrite()) {
+            return "NRSuite cannot write to the selected root folder. Choose a writable folder."
+        }
+        return null
+    }
+
+    private fun clearStoredExportDirectory(issue: String) {
+        preferences.edit().remove(PREF_EXPORT_DIRECTORY).apply()
+        _exportDirectory.value = null
+        _exportDirectoryName.value = "Not configured"
+        _storageAccessIssue.value = issue
+        _wifiCaptureDirectory.value = null
+        _wifiCaptureDirectoryName.value = null
     }
 
     fun setWifiCaptureDirectory(uri: Uri?) {
@@ -1676,10 +1790,15 @@ class MainViewModel(internal val app: Application) {
     fun onPermissionResult(device: UsbDevice, granted: Boolean) = this.onPermissionResultImpl(device, granted)
 
     fun connect(device: UsbDevice) = this.connectImpl(device)
-    fun refreshActiveDeviceStatus() = this.refreshActiveDeviceStatusImpl()
+    fun refreshDeviceStatus(device: UsbDevice) = this.refreshDeviceStatusImpl(device)
     fun markPermissionRequested(device: UsbDevice) = this.markPermissionRequestedImpl(device)
     fun clearPermissionRequest(deviceId: Int) = this.clearPermissionRequestImpl(deviceId)
     fun disconnectDevice(device: UsbDevice) = this.disconnectDeviceImpl(device)
+    fun stopModulesForMemory() = this.stopModulesForMemoryImpl()
+    fun restartEsp32() = this.restartEsp32Impl()
+    fun dismissBleLowHeapWarning() {
+        _bleLowHeapWarning.value = null
+    }
 
     fun scanWifi() = this.scanWifiImpl()
     fun scanWifiForTargets() = this.scanWifiForTargetsImpl()
@@ -1893,6 +2012,8 @@ class MainViewModel(internal val app: Application) {
         _deauthDetectorCurrentHopChannel.value = null
         _deauthDetectorFramesPerSecond.value = 0
         _bleAdvertising.value = false
+        _bleSessionActive.value = false
+        _bleLinkConnected.value = false
         _bleConnected.value = false
         _bleScriptRunning.value = false
         _pinBruteforce.update { it.copy(state = "paused", starting = false) }
@@ -2334,7 +2455,7 @@ class MainViewModel(internal val app: Application) {
         // BLE HID PIN Bruteforce is hidden/experimental. Do not let stale
         // persisted state from the hidden module block unrelated Wi-Fi
         // modules. Its SDK/state is retained for future reuse only.
-        if (includeBle && (_bleAdvertising.value || _bleConnected.value)) {
+        if (includeBle && (_bleSessionActive.value || _bleAdvertising.value || _bleConnected.value)) {
             return "BLE HID"
         }
         if (includeBle && (_bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value)) {
@@ -2417,6 +2538,8 @@ class MainViewModel(internal val app: Application) {
             _bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value -> "BLE scanner active"
             _bleProfileRunning.value -> "BLE profile active"
             _bleConnected.value -> "BLE HID connected · ${_blePeer.value.ifBlank { "device" }}"
+            _bleLinkConnected.value -> "BLE HID pairing"
+            _bleSessionActive.value -> "BLE HID active"
             _bleAdvertising.value -> "BLE HID advertising"
             else -> null
         }
@@ -2463,14 +2586,25 @@ class MainViewModel(internal val app: Application) {
         if (activeText != null) {
             intent.action = NrSuiteForegroundService.ACTION_START
             intent.putExtra(NrSuiteForegroundService.EXTRA_TEXT, activeText)
+            val smallIconRes = when {
+                _firmwareFlashing.value -> com.swp81x.nrsuite.R.drawable.ic_stat_firmware
+                _bleSessionActive.value ||
+                    _bleConnected.value ||
+                    _bleAdvertising.value ||
+                    _bleScanStarting.value ||
+                    _bleScanRunning.value ||
+                    _bleScanStopping.value ||
+                    _bleProfileRunning.value -> com.swp81x.nrsuite.R.drawable.ic_stat_ble
+                else -> com.swp81x.nrsuite.R.drawable.ic_stat_nrsuite
+            }
+            intent.putExtra(
+                NrSuiteForegroundService.EXTRA_SMALL_ICON,
+                smallIconRes,
+            )
             if (_firmwareFlashing.value) {
                 intent.putExtra(
                     NrSuiteForegroundService.EXTRA_PROGRESS,
                     _firmwareFlashProgress.value.coerceIn(0, 100),
-                )
-                intent.putExtra(
-                    NrSuiteForegroundService.EXTRA_SMALL_ICON,
-                    com.swp81x.nrsuite.R.drawable.ic_stat_firmware,
                 )
             }
             runCatching {
@@ -2569,6 +2703,9 @@ class MainViewModel(internal val app: Application) {
                     val tracked = deviceSessions[fingerprint]
                     if (tracked?.session !== session) break
                     if (session.state.value !is ConnectionState.Connected) continue
+                    // Scan result transfer must not compete with periodic
+                    // telemetry traffic on the UART bridge.
+                    if (session.isScanOperationActive) continue
                     runCatching { session.refreshStatus() }
                 }
             },
@@ -2596,6 +2733,7 @@ class MainViewModel(internal val app: Application) {
                         }
 
                         "wps_lock_ap" -> {
+                            wpsLockEventsReceived.incrementAndGet()
                             this@MainViewModel.handleWpsLockApEventImpl(event)
                         }
 
@@ -2609,61 +2747,7 @@ class MainViewModel(internal val app: Application) {
 
                         "scan_ap" -> {
                             wifiScanEventsReceived.incrementAndGet()
-                            val bssid = event.optString("bssid")
-                            val resolvedSsid = resolvedHiddenSsidByBssid[bssid.uppercase()]
-                            if (event.optString("ssid").isBlank() && !resolvedSsid.isNullOrBlank()) {
-                                event.put("ssid", resolvedSsid)
-                                event.put("hidden_resolved", true)
-                            }
-                            val vendor = ouiDatabaseRepository.lookup(bssid)?.vendor
-                            val ouiRule = matchOuiRule(bssid, _ouiRules.value)
-                            val ouiWhitelisted = ouiRule?.action == OuiRuleAction.WHITELIST
-                            val ouiBlacklisted = ouiRule?.action == OuiRuleAction.BLACKLIST
-                            if (!vendor.isNullOrBlank()) event.put("vendor", vendor)
-                            event.put("oui_whitelisted", ouiWhitelisted)
-                            event.put("oui_blacklisted", ouiBlacklisted)
-
-                            val destination = wifiScanDestination
-                            val updatedList: (List<JSONObject>) -> List<JSONObject> = { current ->
-                                (current.filterNot { it.optString("bssid") == bssid } + event)
-                                    .sortedByDescending { it.optInt("rssi", -999) }
-                            }
-                            when (destination) {
-                                WifiScanDestination.WIFI,
-                                WifiScanDestination.TARGETS -> _networks.update(updatedList)
-                                WifiScanDestination.CHANNEL_ANALYZER -> _channelAnalyzerNetworks.update(updatedList)
-                                WifiScanDestination.WPS,
-                                WifiScanDestination.WPS_ATTEMPT_TARGETS,
-                                null -> Unit
-                            }
-                            val ssid = event.optString("ssid").ifBlank { "(hidden)" }
-                            val target = NetworkTarget(
-                                ssid = ssid,
-                                bssid = bssid,
-                                channel = event.optInt("channel", 0),
-                                rssi = event.optInt("rssi", -100),
-                                security = event.optString("security", "?"),
-                                wps = event.optBoolean("wps"),
-                                vendor = vendor,
-                                ouiWhitelisted = ouiWhitelisted,
-                                ouiBlacklisted = ouiBlacklisted,
-                            )
-                            if (destination == WifiScanDestination.WPS) {
-                                this@MainViewModel.observeWpsScanTargetImpl(target)
-                            } else {
-                                _deauthDetectorTargets.update { current ->
-                                    (current.filterNot { it.bssid.equals(bssid, ignoreCase = true) } + target)
-                                        .sortedByDescending { it.rssi }
-                                }
-                                _deauthDetectorSelectedTarget.update { selected ->
-                                    selected?.takeIf { it.bssid.equals(bssid, ignoreCase = true) } ?: selected
-                                }
-                            }
-                            appendLog(
-                                "AP: $ssid  ${event.optString("bssid")}  " +
-                                    "ch ${event.optInt("channel")}  ${event.optInt("rssi")} dBm  " +
-                                    event.optString("security")
-                            )
+                            this@MainViewModel.handleScanApEventImpl(event)
                         }
                         "portal_viewed" -> {
                             if (_portalMode.value == "evil_twin") {
@@ -2698,6 +2782,27 @@ class MainViewModel(internal val app: Application) {
                             this@MainViewModel.portalLogImpl(
                                 "$requestType from $ip | MAC: $mac | UA: " +
                                     userAgent.ifBlank { "unknown" }
+                            )
+                        }
+                        "portal_dns_hijack" -> {
+                            val clientIp = event.optString("client_ip", "unknown")
+                            val destination = event.optString("destination", "unknown")
+                            val count = event.optInt("count", 0)
+                            val freeHeap = event.optLong("free_heap", -1)
+                            val minFree = event.optLong("heap_min_free", -1)
+                            val largest = event.optLong("heap_max_alloc", -1)
+                            val heapText = if (freeHeap >= 0) {
+                                " | heap=$freeHeap, min=$minFree, largest=$largest"
+                            } else {
+                                ""
+                            }
+                            appendLog(
+                                "Captive DNS hijack response sent to $clientIp " +
+                                    "for query to $destination (count=$count)$heapText."
+                            )
+                            this@MainViewModel.portalLogImpl(
+                                "DNS hijack -> $clientIp | resolver: $destination | " +
+                                    "count: $count$heapText"
                             )
                         }
                         "captive_data" -> {
@@ -2865,6 +2970,12 @@ class MainViewModel(internal val app: Application) {
                                 ?: "ESP32 IR error."
                         }
                         "ir_tx_done" -> Unit
+                        "mem" -> {
+                            android.util.Log.i(
+                                "NRSuiteFirmwareMem",
+                                "device=$fingerprint $event",
+                            )
+                        }
                         "heartbeat" -> Unit
                     }
                 }

@@ -122,7 +122,8 @@ fun ClientPresenceScreen(
         }
     }
     val validTarget = targetBssid.isNotBlank()
-    val canStart = connected && (mode == ClientPresenceMode.PASSIVE || validTarget)
+    val canStart = connected && !scanning &&
+        (mode == ClientPresenceMode.PASSIVE || validTarget)
 
     LaunchedEffect(running) {
         if (running) configExpanded = false
@@ -197,6 +198,7 @@ fun ClientPresenceScreen(
                     .align(Alignment.BottomEnd)
                     .padding(20.dp)
                     .alpha(if (!canStart && !running) 0.4f else 1f),
+                enabled = running || canStart,
                 statusAction = if (running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 Icon(
@@ -406,7 +408,7 @@ private fun ConfigZone(
                                         )
                                     )
                                 },
-                                enabled = controlsEnabled,
+                                enabled = controlsEnabled && !scanning,
                             )
                         }
                     } else {

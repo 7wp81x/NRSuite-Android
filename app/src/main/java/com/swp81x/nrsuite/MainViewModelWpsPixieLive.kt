@@ -10,6 +10,8 @@ import com.swp81x.nrsuite.core.wps.WpsPinAttemptResult
 import com.swp81x.nrsuite.core.wps.WpsPinGenerator
 import com.swp81x.nrsuite.core.wps.WpsPinRecord
 import com.swp81x.nrsuite.core.wps.WpsPinSource
+import com.swp81x.nrsuite.core.wps.shouldKeepWpsScanResults
+import com.swp81x.nrsuite.core.wps.shouldRetryWpsTargetScan
 import com.swp81x.nrsuite.core.wps.WpsPixieCapturedMaterial
 import com.swp81x.nrsuite.core.wps.WpsPixieCracker
 import com.swp81x.nrsuite.core.wps.WpsPixieMaterial
@@ -98,23 +100,46 @@ internal fun MainViewModel.scanWpsTargetsImpl() {
     logWpsPixieLive("Scanning for WPS-enabled access points...")
     wpsTargetScanJob = scope.launch {
         try {
-            val response = runCatching {
-                activeSession.sendCommand(
-                    "WPS_LOCK_SCAN",
-                    JSONObject().apply {
-                        put("band", "auto")
-                        put("dwell_ms", 120)
-                    },
-                    timeoutMs = 45_000,
+            val scan = runWpsLockScanWithRecovery(
+                activeSession,
+                destination = WifiScanDestination.WPS,
+                includeNonWps = true,
+            )
+            val visibleTargetCount = _wpsPixieLive.value.targets.size
+            val wpsTargetCount = _wpsPixieLive.value.targets.count { it.wps }
+            val keepPartial = shouldKeepWpsScanResults(scan.receivedCount, visibleTargetCount)
+            if (scan.response?.optBoolean("ok") == true) {
+                if (shouldRetryWpsTargetScan(scan.reportedCount, scan.receivedCount)) {
+                    appendLog(
+                        "WPS Pixie: scan returned ${scan.reportedCount} target(s) but only " +
+                            "${scan.receivedCount} complete result(s) arrived" +
+                            (scan.transportError?.let { " ($it)" } ?: "") +
+                            "; kept $visibleTargetCount partial target(s).",
+                        level = LogLevel.ERROR,
+                    )
+                    logWpsPixieLive(
+                        "Scan incomplete: ${scan.receivedCount} of ${scan.reportedCount} " +
+                            "result(s) received; $wpsTargetCount WPS target(s) visible.",
+                    )
+                } else {
+                    logWpsPixieLive(
+                        "Scan complete: $wpsTargetCount WPS target(s) " +
+                            "from $visibleTargetCount result(s).",
+                    )
+                    appendLog(
+                        "WPS Pixie: WPS scan complete ($wpsTargetCount WPS target(s) " +
+                            "from $visibleTargetCount result(s)).",
+                    )
+                }
+            } else if (keepPartial) {
+                appendLog(
+                    "WPS Pixie: scan failed but kept $visibleTargetCount partial target(s).",
+                    level = LogLevel.ERROR,
                 )
-            }.getOrNull()
-            val count = response?.optInt("count", _wpsPixieLive.value.targets.size) ?: 0
-            if (response?.optBoolean("ok") == true) {
-                logWpsPixieLive("Scan complete: $count WPS target(s).")
-                appendLog("WPS Pixie: WPS scan complete ($count targets).")
+                logWpsPixieLive("Scan failed; kept $visibleTargetCount partial target(s).")
             } else {
-                val message = response?.optString("error")?.takeIf { it.isNotBlank() }
-                    ?: response?.optString("msg")?.takeIf { it.isNotBlank() }
+                val message = scan.response?.optString("error")?.takeIf { it.isNotBlank() }
+                    ?: scan.response?.optString("msg")?.takeIf { it.isNotBlank() }
                     ?: "scan timed out"
                 _wpsPixieLive.update { it.copy(error = message) }
                 logWpsPixieLive("Scan failed: $message")

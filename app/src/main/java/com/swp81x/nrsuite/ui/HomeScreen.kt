@@ -172,6 +172,7 @@ import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.util.Locale
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.ui.theme.LogBgError
@@ -813,7 +814,6 @@ internal fun CategoryModulesScreen(
                     rxLabel = irRxLabel,
                     onOpenConfig = onOpenIrConfig,
                     modifier = Modifier.fillMaxWidth(),
-                    accentColor = effectiveAccent,
                 )
             }
         }
@@ -1167,12 +1167,20 @@ internal fun DashboardDeviceCard(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "fw: ${state.firmwareVersion ?: "unknown"}  ·  USB serial / CDC",
+                        text = "fw: ${state.firmwareVersion ?: "unknown"}  ·  ${deviceTransportLabel(state.transport)}",
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = NrOnSurfaceVariant,
                     )
                     Text(
-                        text = "id: ${state.deviceId ?: "unknown"}",
+                        text = buildString {
+                            append("id: ${state.deviceId ?: "unknown"}")
+                            state.temperatureC
+                                ?.takeIf { it.isFinite() }
+                                ?.let {
+                                    append(" · ")
+                                    append(String.format(Locale.US, "%.1f °C", it))
+                                }
+                        },
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = NrOnSurfaceVariant,
                     )
@@ -1715,4 +1723,11 @@ private fun OuiDatabaseDashboardWarning(
             }
         }
     }
+}
+
+private fun deviceTransportLabel(transport: String?): String = when (transport) {
+    "usb_cdc" -> "Native USB CDC/JTAG"
+    "uart0" -> "UART"
+    null -> "Transport not reported"
+    else -> transport
 }

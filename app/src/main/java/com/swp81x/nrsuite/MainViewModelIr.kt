@@ -270,11 +270,12 @@ internal fun MainViewModel.importIrFileImpl(uri: Uri) {
 
 internal fun MainViewModel.rescanIrLibraryImpl() {
     if (_irImporting.value || irScanJob?.isActive == true || irDatabaseJob?.isActive == true) return
-    val rootUri = _exportDirectory.value
-    if (rootUri == null) {
-        _irErrorMessage.value = "Set the NRSuite root directory before scanning IR files."
+    if (!ensureStorageAccessOrPrompt("Unable to scan the IR library.")) {
+        _irErrorMessage.value = _storageAccessIssue.value
+            ?: "Grant NRSuite storage access before scanning IR files."
         return
     }
+    val rootUri = _exportDirectory.value ?: return
     _irImporting.value = true
     _irErrorMessage.value = null
     _irDatabaseState.value = IrDatabaseUiState(
@@ -1193,13 +1194,11 @@ internal fun MainViewModel.cancelIrDatabaseOperationImpl() {
 
 private fun MainViewModel.startIrDatabasePipelineImpl(forceDownload: Boolean) {
     if (irDatabaseJob?.isActive == true) return
-    val rootUri = _exportDirectory.value
-    if (rootUri == null) {
-        _requiresRootDirectory.value = true
-        _toastMessage.value = "Choose the NRSuite root directory before downloading Flipper-IRDB."
+    if (!ensureStorageAccessOrPrompt("Unable to download Flipper-IRDB.")) {
         _irDatabaseState.value = IrDatabaseUiState()
         return
     }
+    val rootUri = _exportDirectory.value ?: return
     val cacheDirectory = File(app.cacheDir, "ir_database").apply { mkdirs() }
     val archive = File(cacheDirectory, IR_DATABASE_CACHE_ARCHIVE)
     irDatabaseJob = scope.launch(Dispatchers.IO) {
@@ -1446,13 +1445,11 @@ private suspend fun MainViewModel.extractFlipperDatabaseAndIndex(
 
 internal fun MainViewModel.importIrZipImpl(uri: Uri) {
     if (irDatabaseJob?.isActive == true) return
-    val rootUri = _exportDirectory.value
-    if (rootUri == null) {
-        _requiresRootDirectory.value = true
-        _toastMessage.value = "Choose the NRSuite root directory before importing an IR ZIP."
+    if (!ensureStorageAccessOrPrompt("Unable to import the IR ZIP.")) {
         _irDatabaseState.value = IrDatabaseUiState()
         return
     }
+    val rootUri = _exportDirectory.value ?: return
     irDatabaseJob = scope.launch(Dispatchers.IO) {
         var foregroundStarted = false
         var tempZip: File? = null
@@ -2136,10 +2133,20 @@ internal fun MainViewModel.prepareIrCommonButtonsImpl(
     minRemotes: Int,
 ) {
     val threshold = minRemotes.coerceIn(MIN_IR_COMMON_BUTTON_REMOTES, 100)
+    val current = _irCommonButtonsState.value
+    if (
+        current.category == category &&
+        current.brand == brand &&
+        current.minRemotes == threshold &&
+        (current.loading || current.loaded || current.errorMessage != null)
+    ) {
+        return
+    }
+
     val key = irCommonButtonCacheKey(category, brand, threshold)
     val cached = irCommonButtonCache[key]
-    _irCommonButtonsState.value = if (cached != null) {
-        IrCommonButtonsState(
+    if (cached != null) {
+        _irCommonButtonsState.value = IrCommonButtonsState(
             category = category,
             brand = brand,
             minRemotes = threshold,
@@ -2147,12 +2154,15 @@ internal fun MainViewModel.prepareIrCommonButtonsImpl(
             buttons = cached,
         )
     } else {
-        IrCommonButtonsState(
+        // Changing category, brand, or the occurrence threshold should not
+        // require a second manual "Load" tap. Mark the scope as loading and
+        // build the cache immediately.
+        _irCommonButtonsState.value = IrCommonButtonsState(
             category = category,
             brand = brand,
             minRemotes = threshold,
-            loaded = false,
         )
+        refreshIrCommonButtonsImpl(category, brand, threshold)
     }
 }
 

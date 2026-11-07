@@ -90,6 +90,11 @@ internal fun TerminalLauncherScreen(
         )
     }
     var editorShortcutId by rememberSaveable { mutableStateOf<Long?>(null) }
+    // A directly launched new-shortcut editor returns to its host screen.
+    // An editor opened from Manage Shortcuts returns to Manage.
+    var editorReturnsToHost by rememberSaveable {
+        mutableStateOf(initialCreateShortcut)
+    }
     var pendingDelete by remember { mutableStateOf<TerminalShortcut?>(null) }
     val routeKey = runCatching { ShortcutRouteKey.valueOf(routeKeyName) }
         .getOrDefault(ShortcutRouteKey.MANAGE)
@@ -102,11 +107,15 @@ internal fun TerminalLauncherScreen(
         ShortcutRouteKey.EDITOR -> ShortcutRoute.Editor(editorShortcut)
     }
 
+    fun backFromEditor() {
+        if (editorReturnsToHost) onClose() else routeKeyName = ShortcutRouteKey.MANAGE.name
+    }
+
     BackHandler {
         when (routeKey) {
             ShortcutRouteKey.MANAGE -> onClose()
-            ShortcutRouteKey.CATEGORIES,
-            ShortcutRouteKey.EDITOR -> routeKeyName = ShortcutRouteKey.MANAGE.name
+            ShortcutRouteKey.CATEGORIES -> routeKeyName = ShortcutRouteKey.MANAGE.name
+            ShortcutRouteKey.EDITOR -> backFromEditor()
         }
     }
 
@@ -116,10 +125,12 @@ internal fun TerminalLauncherScreen(
             onBack = onClose,
             onNew = {
                 editorShortcutId = null
+                editorReturnsToHost = false
                 routeKeyName = ShortcutRouteKey.EDITOR.name
             },
             onEdit = { shortcut ->
                 editorShortcutId = shortcut.id
+                editorReturnsToHost = false
                 routeKeyName = ShortcutRouteKey.EDITOR.name
             },
             onDelete = { pendingDelete = it },
@@ -141,10 +152,10 @@ internal fun TerminalLauncherScreen(
         is ShortcutRoute.Editor -> ShortcutEditorContent(
             initial = current.shortcut,
             categories = categories,
-            onBack = { routeKeyName = ShortcutRouteKey.MANAGE.name },
+            onBack = ::backFromEditor,
             onSave = { shortcut ->
                 onUpsertShortcut(shortcut)
-                routeKeyName = ShortcutRouteKey.MANAGE.name
+                if (editorReturnsToHost) onClose() else routeKeyName = ShortcutRouteKey.MANAGE.name
             },
             onDelete = current.shortcut?.let { shortcut ->
                 { pendingDelete = shortcut }
