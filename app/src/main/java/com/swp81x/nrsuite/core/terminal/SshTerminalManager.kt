@@ -634,7 +634,7 @@ internal class SshTerminalManager(
         val expected = TerminalStartup.script(BuildConfig.VERSION_NAME)
             .toByteArray(Charsets.UTF_8)
         val existing = runCatching {
-            readRemoteFile(activeSsh, TerminalStartup.REMOTE_FILE_NAME)
+            readRemoteFile(activeSsh, TerminalStartup.REMOTE_SCRIPT_PATH)
         }.getOrNull()
         if (existing != null && existing.contentEquals(expected)) {
             Log.i("NRSuiteTerminal", "Terminal startup script already current.")
@@ -650,8 +650,8 @@ internal class SshTerminalManager(
             },
         )
         val uploaded = runCatching {
-            writeRemoteFile(activeSsh, TerminalStartup.REMOTE_FILE_NAME, expected)
-            readRemoteFile(activeSsh, TerminalStartup.REMOTE_FILE_NAME)
+            writeRemoteFile(activeSsh, TerminalStartup.REMOTE_SCRIPT_PATH, expected)
+            readRemoteFile(activeSsh, TerminalStartup.REMOTE_SCRIPT_PATH)
                 ?.contentEquals(expected) == true
         }.getOrDefault(false)
         if (!uploaded) {
@@ -690,7 +690,10 @@ internal class SshTerminalManager(
     private fun writeRemoteFile(activeSsh: Session, name: String, content: ByteArray) {
         val channel = activeSsh.openChannel("exec") as ChannelExec
         channel.setCommand(
-            "umask 077; mkdir -p \"\$HOME\" && " +
+            "umask 077; " +
+                "if [ -f \"\$HOME/${TerminalStartup.REMOTE_DIRECTORY}\" ]; then " +
+                "rm -f \"\$HOME/${TerminalStartup.REMOTE_DIRECTORY}\"; fi; " +
+                "mkdir -p \"\$HOME/${TerminalStartup.REMOTE_DIRECTORY}\" && " +
                 "cat > \"\$HOME/$name\" && chmod 600 \"\$HOME/$name\"",
         )
         val error = ByteArrayOutputStream()

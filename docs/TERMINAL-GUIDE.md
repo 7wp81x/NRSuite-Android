@@ -152,9 +152,10 @@ Existing installations keep their previously saved settings.
 ### Startup banner and prompt
 
 Each newly opened shell can show a short NRSuite version banner. The app
-generates a small startup script, uploads it to `~/.NRSuite` over SSH when the
-remote copy is missing or modified, and sources it in the new shell. No manual
-file copy or `figlet` package is required.
+generates a small startup script, creates `~/.NRSuite/`, uploads the script as
+`~/.NRSuite/nr.sh` over SSH when the remote copy is missing or modified, checks
+its SHA-256, and sources it in the new shell. No manual file copy or `figlet`
+package is required.
 
 The optional **Use NRSuite prompt** setting applies a compact, non-persistent
 prompt to new local Termux shells only:
@@ -170,9 +171,10 @@ to Bash prompts and is not applied to remote SSH hosts.
 
 Change either option in **Terminal → Settings → Terminal startup**. Both apply to
 newly opened shells; existing shells keep their current prompt until reconnected
-or replaced with **New session**. The app verifies the generated script against
-`~/.NRSuite` before each new shell and replaces missing, truncated, or modified
-copies automatically.
+or replaced with **New session**. Before each new shell, the app verifies
+`~/.NRSuite/nr.sh` against the expected SHA-256 and replaces missing, truncated,
+or modified copies. If the script cannot be verified, NRSuite uses the verified
+inline fallback instead of executing the remote file.
 
 ### Autoconnect
 

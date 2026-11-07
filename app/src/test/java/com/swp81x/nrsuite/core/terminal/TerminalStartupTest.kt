@@ -12,7 +12,7 @@ class TerminalStartupTest {
         val banner = TerminalStartup.banner("1.0.0-beta.3.2.0")
 
         assertTrue(banner.contains("v1.0.0-beta.3.2.0"))
-        assertTrue(banner.contains(" _   _ ____  ____"))
+        assertTrue(banner.contains("_   _ ____"))
         assertTrue(banner.contains("Developed by 7wp81x"))
         assertTrue(banner.startsWith("\u001B[0m"))
         assertTrue(banner.endsWith("\u001B[0m"))
@@ -52,9 +52,11 @@ class TerminalStartupTest {
         val script = TerminalStartup.script("1.0.0-beta.3.2.0")
 
         assertTrue(script.startsWith("#!/usr/bin/env bash"))
-        assertTrue(script.contains("v%s"))
+        assertTrue(script.contains("VERSION_CODE=\"v1.0.0-beta.3.2.0\""))
         assertTrue(script.contains("1.0.0-beta.3.2.0"))
-        assertTrue(script.contains("printf '\\033[2J\\033[H'"))
+        assertTrue(script.contains("clear 2>/dev/null || printf '\\033[2J\\033[H'"))
+        assertTrue(script.contains("GRAY=\$'\\033[1;90m'"))
+        assertTrue(script.contains("_   _ ____ %s ____"))
         assertTrue(script.contains("PROMPT_DIRTRIM=2"))
         assertTrue(script.contains("__nrsuite_show_banner"))
         assertTrue(script.contains("__nrsuite_apply_prompt"))
@@ -95,7 +97,7 @@ class TerminalStartupTest {
             val output = process.inputStream.bufferedReader().use { it.readText() }
             assertEquals(output, 0, process.waitFor())
             assertTrue(output.contains("v1.0.0-beta.3.2.0"))
-            assertTrue(output.contains("_   _ ____  ____"))
+            assertTrue(output.contains("_   _ ____"))
             assertTrue(output.contains("NRSuite"))
             assertTrue(output.contains("\\w"))
         } finally {
@@ -112,8 +114,8 @@ class TerminalStartupTest {
             useRemoteScript = true,
         ) ?: error("execute command was null")
 
-        assertTrue(command.contains("\$HOME/.NRSuite"))
-        assertTrue(command.contains(". \"\$HOME/.NRSuite\" 1 1"))
+        assertTrue(command.contains("\$HOME/.NRSuite/nr.sh"))
+        assertTrue(command.contains(". \"\$HOME/.NRSuite/nr.sh\" 1 1"))
         assertTrue(command.contains("sha256sum"))
         assertTrue(command.contains("cut -d' ' -f1"))
         assertTrue(command.contains("printf '%b'"))
