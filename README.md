@@ -3,6 +3,7 @@
 # NRSuite
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-NRSuite--Docs-3DDC84?logo=readthedocs&logoColor=white)](https://7wp81x.github.io/NRSuite-Docs/)
 [![Platform: Android](https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84?logo=android&logoColor=white)](#requirements)
 [![Firmware: ESP32](https://img.shields.io/badge/firmware-ESP32-E7352C?logo=espressif&logoColor=white)](https://github.com/7wp81x/nrsuite-firmware)
 [![Status: Beta](https://img.shields.io/badge/status-beta-yellow.svg)](../../releases)
@@ -24,6 +25,9 @@ Install the Android app, flash an ESP32 over USB-OTG with NRSuite firmware, and 
 
 Want to build from source instead? See [Building from Source](#building-from-source).
 
+Full user documentation, downloadable resources, and troubleshooting:
+[NRSuite Documentation](https://7wp81x.github.io/NRSuite-Docs/)
+
 ---
 
 ## Community
@@ -41,7 +45,8 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 - [Quick Start](#quick-start)
 - [Community](#community)
 - [Features](#features)
-- [Usage Guide](#usage-guide)
+- [Documentation](https://7wp81x.github.io/NRSuite-Docs/)
+- [Usage Guide](https://7wp81x.github.io/NRSuite-Docs/android/usage-guide/)
 - [Installation](#installation)
 - [Updating](#updating)
 - [Getting Started](#getting-started)
@@ -110,7 +115,7 @@ See [nrsuite-firmware](https://github.com/7wp81x/nrsuite-firmware) for the autho
 - [x] **Deauth** - finite burst or unlimited loop until stopped, with elapsed time, frames/sec, sent/failed telemetry, multi-target selection, and app-side per-target channel hopping
 - [x] **Beacon** - broadcast custom or hidden SSIDs; Overview / SSID Lists tabs, saved-list CRUD, and a built-in short-form Rickroll preset
 - [x] **HTML Template Manager** - shared Portal/Evil Twin template tab with template dropdown, custom-file picker, import, rename, delete, SHA-256 duplicate rejection, 16 KB warning, 24 KB hard limit, and start-time firmware heap preflight
-- [x] **Portal authoring guide** - [Captive Portal / Evil Twin HTML authoring](docs/CAPTIVE-PORTAL-EVIL-TWIN-AUTHORING.md)
+- [x] **Portal authoring guide** - [Captive Portal / Evil Twin HTML authoring](https://7wp81x.github.io/NRSuite-Docs/resources/portal-templates/)
 - [ ] **PMKID Capture**
 
 </details>
@@ -203,7 +208,7 @@ Provision, monitor, and control the ESP-NOW mesh from its own module. The underl
 - [x] **Terminal settings** - 34 dp default font size, block cursor, 500 ms blink, pinch-to-zoom, keyboard toggle, and IME-aware extra-key rows
 - [x] **Terminal Shortcuts** - quick bottom sheet, search, category filters, run modes, Home pinning, confirmation, `{{parameter}}` forms with command previews, and built-in editable examples
 - [x] **Tab/session safety** - closing the last tab is disabled; Disconnect SSH is the explicit transport-close action
-- [x] **Terminal guide** - [Termux SSH setup, auth, shortcuts, and troubleshooting](docs/TERMINAL-GUIDE.md)
+- [x] **Terminal guide** - [Termux SSH setup, auth, shortcuts, and troubleshooting](https://7wp81x.github.io/NRSuite-Docs/android/terminal-guide/)
 - [ ] **Termux tools** - planned Nmap topology visualization, PCAP workflows, and optional Wireshark through Termux:X11
 
 </details>
@@ -312,18 +317,19 @@ For a full status and roadmap breakdown across every phase, see [FEATURES.md](./
 
 ## Usage Guide
 
-See [docs/USAGE-GUIDE.md](docs/USAGE-GUIDE.md) for:
+The canonical user documentation now lives at:
 
-- First connection and root-directory setup
-- Navigation and category-level configuration
-- WiFi Config, shared channel controls, and Packet Sniffer workflows
-- IR Config, IR Remotes, Receiver, Finder, and Jammer usage
-- Sensor Config and HLK-LD2450 UART wiring
-- BLE/USB essentials, troubleshooting, and safety notes
-- Termux SSH setup, key authentication, terminal defaults, shortcuts, and reconnect behavior
+**[NRSuite Documentation](https://7wp81x.github.io/NRSuite-Docs/)**
 
-The guide is intentionally general and is not tied to a single release version.
-See [docs/TERMINAL-GUIDE.md](docs/TERMINAL-GUIDE.md) for the dedicated terminal guide.
+Useful entry points:
+
+- [Installation](https://7wp81x.github.io/NRSuite-Docs/getting-started/installation/)
+- [Android Usage Guide](https://7wp81x.github.io/NRSuite-Docs/android/usage-guide/)
+- [Terminal / Termux SSH Guide](https://7wp81x.github.io/NRSuite-Docs/android/terminal-guide/)
+- [Android 16 Storage / SAF](https://7wp81x.github.io/NRSuite-Docs/android/storage-saf/)
+- [Firmware Flashing](https://7wp81x.github.io/NRSuite-Docs/firmware/flashing/)
+- [Troubleshooting](https://7wp81x.github.io/NRSuite-Docs/troubleshooting/)
+- [Resources and Downloads](https://7wp81x.github.io/NRSuite-Docs/resources/)
 
 ---
 
@@ -577,6 +583,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide: branching model, PR
 |---|---|
 | [nrsuite-firmware](https://github.com/7wp81x/nrsuite-firmware) | ESP32 firmware (PlatformIO / ESP-IDF) |
 | [nrsuite-protocol](https://github.com/7wp81x/nrsuite-protocol) | Wire protocol specification |
+| [NRSuite-Docs](https://github.com/7wp81x/NRSuite-Docs) | User guides, protocol docs, and downloadable resources |
 
 ---
 
