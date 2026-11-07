@@ -63,6 +63,18 @@ Use `#support` for help, `#showcase` for builds, and `#github` for repo/code dis
 
 Categories below match the app's actual module grid and navigation.
 
+### Interface and themes
+
+NRSuite uses a refreshed, high-contrast field-instrument UI across Home, Devices,
+Terminal, Logs, the module catalog, settings, dialogs, cards, filters, and
+shared controls.
+
+Three switchable themes are available in **Settings → Appearance**:
+
+- **Obsidian** — near-black layered surfaces with a lime accent.
+- **Black** — true-black AMOLED surfaces for darker environments.
+- **Daylight** — high-contrast light surfaces for bright environments.
+
 ### Board Capability Matrix
 
 Not every ESP32 variant supports every capability. Check your board before relying on a feature:
@@ -509,17 +521,29 @@ NRSuite uses a custom framing protocol (`FrameCodec` / `NrJson`) over USB serial
 |---|---|---|
 | ![Home](screenshots/home.jpg) | ![Devices](screenshots/device-manager.jpg) | ![Logs](screenshots/logs-screen.jpg) |
 
-| Module Catalog | WiFi Scan | Packet Sniffer |
+| Terminal | Terminal Shortcuts | Terminal Settings |
 |---|---|---|
-| ![Module Catalog](screenshots/module-catalog.jpg) | ![WiFi Scan](screenshots/wifi-scan.jpg) | ![Packet Sniffer](screenshots/packet-sniffer.jpg) |
+| ![Terminal](screenshots/terminal.jpg) | ![Terminal shortcuts](screenshots/terminal-shortcuts.jpg) | ![Terminal settings](screenshots/terminal-settings.jpg) |
 
-| Deauth Detector | Rogue AP Detector | BLE Scanner |
+| WiFi Recon | WiFi Attack | WiFi Defense |
 |---|---|---|
-| ![Deauth Detector](screenshots/deauth-detector.jpg) | ![Rogue AP Detector](screenshots/rogue-ap.jpg) | ![BLE Scanner](screenshots/ble-scanner.jpg) |
+| ![WiFi recon](screenshots/wifi-recon.jpg) | ![WiFi attack](screenshots/wifi-attack.jpg) | ![WiFi defense](screenshots/wifi-defense.jpg) |
 
-| BadUSB | Credential Manager | Firmware Flasher |
+| BLE | Sensors | Tools |
 |---|---|---|
-| ![BadUSB](screenshots/badusb.jpg) | ![Credential Manager](screenshots/credential-manager.jpg) | ![Firmware Flasher](screenshots/firmware-flasher.jpg) |
+| ![BLE modules](screenshots/ble-category.jpg) | ![Sensors](screenshots/sensors-category.jpg) | ![Tools](screenshots/tools-category.jpg) |
+
+| Credentials | HID | IR |
+|---|---|---|
+| ![Credentials](screenshots/credentials-category.jpg) | ![HID](screenshots/hid-category.jpg) | ![IR](screenshots/ir-category.jpg) |
+
+| Firmware | Storage | Settings |
+|---|---|---|
+| ![Firmware modules](screenshots/firmware-category.jpg) | ![Storage](screenshots/storage.jpg) | ![Settings](screenshots/settings.jpg) |
+
+| Themes | Firmware Flasher | Multi-device |
+|---|---|---|
+| ![Themes](screenshots/settings-appearance.jpg) | ![Firmware flasher](screenshots/firmware-flasher.jpg) | ![Multi-device](screenshots/home-multi-device.jpg) |
 
 More screenshots in [./screenshots/](./screenshots/).
 
@@ -560,7 +584,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide: branching model, PR
 
 | App version | Firmware version | Protocol spec |
 |---|---|---|
-| v1.0.0-beta.3.1.1 | v1.0.0-beta.3.1.1 | v1.0 (non-mesh); mesh protocol 1.1 is experimental |
+| v1.0.0-beta.3.2.0 | v1.0.0-beta.3.2.0 | v1.0 / proto_minor 2 (non-mesh); mesh protocol 1.1 is experimental |
 
 This table is updated with each release. Always check compatibility before mixing app and firmware versions.
 
