@@ -59,6 +59,12 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **Credential Manager Wi-Fi QR** - `Share QR` beside `Share PCAP`; standard Wi-Fi QR generated locally with ZXing, image share, and payload copy; WPS PIN remains separate
 - [x] **Serial Monitor** - Raw USB serial monitor with reliable clipboard copy, bounded log retention, and visible save/export success or failure feedback
 
+## 4.1 UI and appearance
+
+- [x] **Switchable themes** - Obsidian near-black/lime, Black true-black AMOLED, and Daylight high-contrast light palettes
+- [x] **Global UI refresh** - consistent navigation shell, module/category cards, dialogs, filters, semantic buttons, logs, and terminal styling
+- [x] **Theme-aware semantic colors** - shared status, category, surface, outline, and log colors across all screens
+
 ## 5. Terminal / Termux SSH
 
 - [x] **Native terminal** - Native Termux terminal view over local OpenSSH; multiple shell tabs, PTY resize, scrollback, selection, clipboard, and session paging
