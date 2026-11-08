@@ -17,6 +17,9 @@ import org.json.JSONObject
 internal const val PREF_AUTO_UPDATE_CHECK = "auto_update_check"
 internal const val PREF_EXCLUDE_BETA_RELEASES = "exclude_beta_releases"
 
+/** Fresh installs start with the "Receive beta updates" toggle OFF. */
+internal const val DEFAULT_EXCLUDE_BETA_RELEASES = true
+
 private const val PREF_APP_RELEASE = "update_app_release"
 private const val PREF_FW_RELEASE = "update_fw_release"
 private const val PREF_FW_RELEASES = "update_fw_releases"

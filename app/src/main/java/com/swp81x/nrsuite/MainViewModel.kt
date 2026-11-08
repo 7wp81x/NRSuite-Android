@@ -474,7 +474,7 @@ class MainViewModel(internal val app: Application) {
     val autoUpdateCheck: StateFlow<Boolean> = _autoUpdateCheck.asStateFlow()
 
     internal val _excludeBetaReleases = MutableStateFlow(
-        preferences.getBoolean(PREF_EXCLUDE_BETA_RELEASES, false),
+        preferences.getBoolean(PREF_EXCLUDE_BETA_RELEASES, DEFAULT_EXCLUDE_BETA_RELEASES),
     )
     val excludeBetaReleases: StateFlow<Boolean> = _excludeBetaReleases.asStateFlow()
 

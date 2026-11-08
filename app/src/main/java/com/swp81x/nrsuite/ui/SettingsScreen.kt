@@ -208,7 +208,7 @@ internal fun SettingsScreen(
     ouiDatabaseProgress: Float? = null,
     onDownloadOuiDatabase: () -> Unit = {},
     autoUpdateCheck: Boolean = true,
-    excludeBetaReleases: Boolean = false,
+    excludeBetaReleases: Boolean = true,
     updateCheckInProgress: Boolean = false,
     appUpdate: AppUpdateInfo? = null,
     appUpdateDownload: AppUpdateDownloadState = AppUpdateDownloadState.Idle,
@@ -1382,8 +1382,9 @@ private fun UpdatesCard(
                 Column(Modifier.weight(1f)) {
                     Text("Receive beta updates", style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        text = "Include alpha and beta releases alongside RC and stable " +
-                            "releases in app and firmware update checks.",
+                        text = "Off by default. Enable to include alpha and beta " +
+                            "releases alongside RC and stable releases in app and " +
+                            "firmware update checks.",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
