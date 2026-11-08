@@ -34,6 +34,10 @@ class FirmwareAssetsTest {
             "ESP32-C5",
             firmwareChipFromAssetName("nrsuite-esp32c5.bin"),
         )
+        assertEquals(
+            "ESP32-C3",
+            firmwareChipFromAssetName("nrsuite-esp32c3-v1.0.0-rc.1.bin"),
+        )
     }
 
     @Test

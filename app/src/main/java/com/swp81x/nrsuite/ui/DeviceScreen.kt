@@ -119,6 +119,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.swp81x.nrsuite.MainViewModel
 import com.swp81x.nrsuite.NrSuiteApplication
+import com.swp81x.nrsuite.core.flasher.FirmwareFlashDevicePhase
+import com.swp81x.nrsuite.core.flasher.FirmwareFlashDeviceState
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.DeviceMemoryHealth
 import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
@@ -171,6 +173,7 @@ internal fun DeviceScreen(
     pendingPermissionRequests: Set<Int>,
     disconnectingFingerprints: Set<String>,
     usbManager: UsbManager,
+    firmwareFlashDeviceState: FirmwareFlashDeviceState?,
     firmwareUpdate: FirmwareUpdateInfo?,
     firmwareReleases: List<ReleaseInfo>,
     firmwareAssetDownload: FirmwareAssetDownloadState,
@@ -207,6 +210,8 @@ internal fun DeviceScreen(
             DeviceConnectionCard(
                 state = connectionState,
                 activeDevice = activeDevice,
+                activeFingerprint = activeFingerprint,
+                firmwareFlashDeviceState = firmwareFlashDeviceState,
                 disconnecting = disconnectingFingerprints.isNotEmpty(),
                 onDisconnect = onDisconnect,
                 onRefreshStatus = onRefreshStatus,
@@ -252,14 +257,18 @@ internal fun DeviceScreen(
             }
         } else {
             items(otherDevices, key = { it.device.deviceId }) { device ->
+                val fingerprint = deviceFingerprint(device.device)
                 DeviceRow(
                     entry = device,
                     hasPermission = usbManager.hasPermission(device.device),
                     permissionRevision = 0,
-                    state = deviceConnectionStates[deviceFingerprint(device.device)],
+                    state = deviceConnectionStates[fingerprint],
                     pendingPermission = device.device.deviceId in pendingPermissionRequests,
-                    disconnecting = deviceFingerprint(device.device) in disconnectingFingerprints,
+                    disconnecting = fingerprint in disconnectingFingerprints,
                     connectEnabled = !usbConnectBusy,
+                    firmwareFlashPhase = firmwareFlashDeviceState
+                        ?.takeIf { it.matches(device.device.deviceId, fingerprint) }
+                        ?.phase,
                     updateAvailableTag = availableFirmwareUpdateTag(
                         deviceConnectionStates[deviceFingerprint(device.device)],
                         firmwareReleases,
@@ -282,6 +291,8 @@ internal fun DeviceScreen(
 internal fun DeviceConnectionCard(
     state: ConnectionState,
     activeDevice: UsbSerialDevice?,
+    activeFingerprint: String?,
+    firmwareFlashDeviceState: FirmwareFlashDeviceState?,
     disconnecting: Boolean,
     onDisconnect: () -> Unit,
     onRefreshStatus: (UsbDevice) -> Unit,
@@ -296,6 +307,14 @@ internal fun DeviceConnectionCard(
 ) {
     var detailsExpanded by rememberSaveable { mutableStateOf(false) }
     var showRestartDialog by rememberSaveable { mutableStateOf(false) }
+    val activeFlashPhase = firmwareFlashDeviceState?.let { flash ->
+        val device = activeDevice ?: return@let null
+        if (flash.matches(device.device.deviceId, activeFingerprint.orEmpty())) {
+            flash.phase
+        } else {
+            null
+        }
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -334,15 +353,19 @@ internal fun DeviceConnectionCard(
                 }
             }
             Spacer(Modifier.height(4.dp))
-            val (label, color) = if (disconnecting) {
-                "Disconnecting..." to StatusAmber
-            } else {
-                when (state) {
-                    ConnectionState.Disconnected -> "Disconnected" to StatusNeutral
-                    ConnectionState.Connecting -> "Connecting..." to StatusAmber
-                    ConnectionState.Diagnosing -> "Diagnosing..." to StatusAmber
-                    is ConnectionState.Connected -> "Connected" to StatusGreen
-                    is ConnectionState.Failed -> "Connection diagnosis" to StatusRed
+            val (label, color) = when (activeFlashPhase) {
+                FirmwareFlashDevicePhase.FLASHING -> "Flashing firmware..." to StatusAmber
+                FirmwareFlashDevicePhase.FLASHED -> "Replug required" to StatusAmber
+                null -> if (disconnecting) {
+                    "Disconnecting..." to StatusAmber
+                } else {
+                    when (state) {
+                        ConnectionState.Disconnected -> "Disconnected" to StatusNeutral
+                        ConnectionState.Connecting -> "Connecting..." to StatusAmber
+                        ConnectionState.Diagnosing -> "Diagnosing..." to StatusAmber
+                        is ConnectionState.Connected -> "Connected" to StatusGreen
+                        is ConnectionState.Failed -> "Connection diagnosis" to StatusRed
+                    }
                 }
             }
             StatusIndicator(label = label, color = color)
@@ -398,11 +421,31 @@ internal fun DeviceConnectionCard(
                     modifier = Modifier.padding(top = 8.dp),
                 )
                 Spacer(Modifier.height(8.dp))
-                NrSecondaryButton(
-                    text = "Disconnect",
-                    onClick = onDisconnect,
-                    compact = true,
-                )
+                when (activeFlashPhase) {
+                    FirmwareFlashDevicePhase.FLASHING -> {
+                        NrSecondaryButton(
+                            text = "Flashing...",
+                            onClick = {},
+                            compact = true,
+                            enabled = false,
+                        )
+                    }
+                    FirmwareFlashDevicePhase.FLASHED -> {
+                        NrSecondaryButton(
+                            text = "Flashed",
+                            onClick = {},
+                            compact = true,
+                            enabled = false,
+                        )
+                    }
+                    null -> {
+                        NrSecondaryButton(
+                            text = "Disconnect",
+                            onClick = onDisconnect,
+                            compact = true,
+                        )
+                    }
+                }
             }
             if (state is ConnectionState.Failed && state.diagnostic != null) {
                 Spacer(Modifier.height(8.dp))
@@ -470,6 +513,7 @@ internal fun DeviceRow(
     pendingPermission: Boolean,
     disconnecting: Boolean = false,
     connectEnabled: Boolean = true,
+    firmwareFlashPhase: FirmwareFlashDevicePhase? = null,
     updateAvailableTag: String? = null,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
@@ -503,6 +547,7 @@ internal fun DeviceRow(
                     imageVector = Icons.Default.Usb,
                     contentDescription = null,
                     tint = when {
+                        firmwareFlashPhase != null -> StatusAmber
                         state is ConnectionState.Connected -> StatusGreen
                         state is ConnectionState.Failed -> StatusRed
                         else -> NrOnSurfaceVariant
@@ -521,24 +566,32 @@ internal fun DeviceRow(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    val statusText = when {
-                        disconnecting -> "Disconnecting..."
-                        state is ConnectionState.Connected -> "Connected · inactive"
-                        state is ConnectionState.Connecting -> "Connecting..."
-                        state is ConnectionState.Diagnosing -> "Diagnosing..."
-                        pendingPermission -> "Permission requested"
-                        state is ConnectionState.Failed -> "Connection failed"
-                        hasPermission -> "Permission granted"
-                        else -> "Permission required"
+                    val statusText = when (firmwareFlashPhase) {
+                        FirmwareFlashDevicePhase.FLASHING -> "Flashing firmware..."
+                        FirmwareFlashDevicePhase.FLASHED -> "Replug required"
+                        null -> when {
+                            disconnecting -> "Disconnecting..."
+                            state is ConnectionState.Connected -> "Connected · inactive"
+                            state is ConnectionState.Connecting -> "Connecting..."
+                            state is ConnectionState.Diagnosing -> "Diagnosing..."
+                            pendingPermission -> "Permission requested"
+                            state is ConnectionState.Failed -> "Connection failed"
+                            hasPermission -> "Permission granted"
+                            else -> "Permission required"
+                        }
                     }
-                    val statusColor = when {
-                        disconnecting -> StatusAmber
-                        state is ConnectionState.Connected -> StatusGreen
-                        state is ConnectionState.Connecting -> StatusAmber
-                        state is ConnectionState.Diagnosing -> StatusAmber
-                        pendingPermission -> StatusAmber
-                        state is ConnectionState.Failed -> StatusRed
-                        else -> NrOnSurfaceVariant
+                    val statusColor = when (firmwareFlashPhase) {
+                        FirmwareFlashDevicePhase.FLASHING,
+                        FirmwareFlashDevicePhase.FLASHED -> StatusAmber
+                        null -> when {
+                            disconnecting -> StatusAmber
+                            state is ConnectionState.Connected -> StatusGreen
+                            state is ConnectionState.Connecting -> StatusAmber
+                            state is ConnectionState.Diagnosing -> StatusAmber
+                            pendingPermission -> StatusAmber
+                            state is ConnectionState.Failed -> StatusRed
+                            else -> NrOnSurfaceVariant
+                        }
                     }
                     Text(
                         text = statusText,
@@ -555,6 +608,25 @@ internal fun DeviceRow(
                 }
                 Spacer(Modifier.width(12.dp))
                 when {
+                    firmwareFlashPhase == FirmwareFlashDevicePhase.FLASHING -> {
+                        NrCompactStatusButton(
+                            text = "Flashing...",
+                            status = NrStatusAction.PAUSE,
+                            onClick = {},
+                            enabled = false,
+                            modifier = Modifier.width(100.dp),
+                        )
+                    }
+
+                    firmwareFlashPhase == FirmwareFlashDevicePhase.FLASHED -> {
+                        NrCompactPrimaryButton(
+                            text = "Flashed",
+                            onClick = {},
+                            enabled = false,
+                            modifier = Modifier.width(100.dp),
+                        )
+                    }
+
                     disconnecting -> {
                         NrCompactStatusButton(
                             text = "Disconnecting…",

@@ -1,6 +1,10 @@
 package com.swp81x.nrsuite.ui
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
+import com.swp81x.nrsuite.ui.components.NrFilterChip
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,6 +35,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,7 +63,9 @@ import androidx.compose.ui.window.DialogProperties
 import com.swp81x.nrsuite.core.handshake.AutoHandshakeConfig
 import com.swp81x.nrsuite.core.handshake.CapturedHandshakeEntry
 import com.swp81x.nrsuite.core.handshake.HandshakeCrackStatus
+import com.swp81x.nrsuite.core.handshake.PwnModeQueueUiState
 import com.swp81x.nrsuite.core.handshake.PwnModeState
+import com.swp81x.nrsuite.core.handshake.PwnModeStore
 import com.swp81x.nrsuite.core.handshake.AutoHandshakeFeedEntry
 import com.swp81x.nrsuite.core.handshake.AutoHandshakePhase
 import com.swp81x.nrsuite.core.handshake.AutoHandshakeSession
@@ -97,6 +104,7 @@ fun NrugochiScreen(
     sessions: List<AutoHandshakeSession>,
     feed: List<AutoHandshakeFeedEntry>,
     pwnMode: PwnModeState,
+    pwnModeQueueState: PwnModeQueueUiState,
     captures: List<CapturedHandshakeEntry>,
     onStart: (AutoHandshakeConfig) -> Unit,
     onStop: () -> Unit,
@@ -106,6 +114,8 @@ fun NrugochiScreen(
     onPwnModeEnabledChange: (Boolean) -> Unit,
     onAddPwnPassword: (String) -> Unit,
     onRemovePwnPassword: (String) -> Unit,
+    onImportPwnWordlist: (Uri) -> Unit,
+    onClearPwnPasswords: () -> Unit,
     onCrackCapture: (CapturedHandshakeEntry) -> Unit,
     onDeleteCapture: (CapturedHandshakeEntry) -> Unit,
     onResetStats: () -> Unit,
@@ -126,6 +136,11 @@ fun NrugochiScreen(
     var rescanDelayMs by remember { mutableStateOf(1500) }
 
     var showAuthorization by remember { mutableStateOf(true) }
+    val pwnWordlistPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        uri?.let(onImportPwnWordlist)
+    }
 
     fun buildConfig(): AutoHandshakeConfig = AutoHandshakeConfig(
         allChannels = allChannels,
@@ -206,15 +221,21 @@ fun NrugochiScreen(
                     )
                 }
                 item { Spacer(Modifier.height(10.dp)) }
-                item {
-                    NrugochiPwnModeCard(
-                        pwnMode = pwnMode,
-                        onEnabledChange = onPwnModeEnabledChange,
-                        onAddPassword = onAddPwnPassword,
-                        onRemovePassword = onRemovePwnPassword,
-                    )
+                if (!state.running) {
+                    item {
+                        NrugochiPwnModeCard(
+                            pwnMode = pwnMode,
+                            onEnabledChange = onPwnModeEnabledChange,
+                            onAddPassword = onAddPwnPassword,
+                            onRemovePassword = onRemovePwnPassword,
+                            onImportWordlist = {
+                                pwnWordlistPicker.launch(arrayOf("text/plain"))
+                            },
+                            onClearPasswords = onClearPwnPasswords,
+                        )
+                    }
+                    item { Spacer(Modifier.height(10.dp)) }
                 }
-                item { Spacer(Modifier.height(10.dp)) }
                 item { NrugochiTargetsCard(state) }
                 item { Spacer(Modifier.height(10.dp)) }
                 item { NrugochiLiveCard(state) }
@@ -222,7 +243,14 @@ fun NrugochiScreen(
                 item { NrugochiFeedCard(feed) }
             } else {
                 item { Spacer(Modifier.height(8.dp)) }
-                item { NrugochiCapturedTab(captures, onCrackCapture, onDeleteCapture) }
+                item {
+                    NrugochiCapturedTab(
+                        captures = captures,
+                        pwnModeQueueState = pwnModeQueueState,
+                        onCrackCapture = onCrackCapture,
+                        onDeleteCapture = onDeleteCapture,
+                    )
+                }
             }
             item { Spacer(Modifier.height(80.dp)) }
         }
@@ -594,14 +622,24 @@ private fun NumberField(
     )
 }
 
+private enum class PwnPasswordInputMode {
+    MANUAL,
+    WORDLIST,
+}
+
 @Composable
 private fun NrugochiPwnModeCard(
     pwnMode: PwnModeState,
     onEnabledChange: (Boolean) -> Unit,
     onAddPassword: (String) -> Unit,
     onRemovePassword: (String) -> Unit,
+    onImportWordlist: () -> Unit,
+    onClearPasswords: () -> Unit,
 ) {
     var newPassword by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
+    var inputMode by remember { mutableStateOf(PwnPasswordInputMode.MANUAL) }
+    var confirmClear by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -621,84 +659,184 @@ private fun NrugochiPwnModeCard(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = if (pwnMode.enabled) {
-                            "New captures are checked against your saved passwords."
-                        } else {
-                            "Disabled by default."
+                        text = when {
+                            !pwnMode.enabled -> "Disabled by default."
+                            pwnMode.wordlistName != null ->
+                                "${pwnMode.passwords.size} imported candidate(s) · ${pwnMode.wordlistName}"
+                            else -> "${pwnMode.passwords.size} manual candidate(s) saved."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = if (pwnMode.enabled) StatusGreen else NrOnSurfaceVariant,
                     )
                 }
+                Spacer(Modifier.width(12.dp))
                 Switch(
                     checked = pwnMode.enabled,
                     onCheckedChange = onEnabledChange,
                 )
+                IconButton(onClick = { expanded = !expanded }) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (expanded) "Collapse Pwn Mode" else "Expand Pwn Mode",
+                    )
+                }
             }
 
-            if (pwnMode.enabled) {
+            if (pwnMode.enabled && expanded) {
                 Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    OutlinedTextField(
-                        value = newPassword,
-                        onValueChange = { newPassword = it },
-                        label = { Text("Password") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    NrFilterChip(
+                        selected = inputMode == PwnPasswordInputMode.MANUAL,
+                        onClick = { inputMode = PwnPasswordInputMode.MANUAL },
+                        label = "Manual password",
                     )
-                    Spacer(Modifier.width(8.dp))
-                    OutlinedButton(
-                        onClick = {
-                            onAddPassword(newPassword)
-                            newPassword = ""
-                        },
-                        enabled = pwnMode.passwords.size < 10,
-                    ) {
-                        Text("Add")
-                    }
+                    NrFilterChip(
+                        selected = inputMode == PwnPasswordInputMode.WORDLIST,
+                        onClick = { inputMode = PwnPasswordInputMode.WORDLIST },
+                        label = "Import wordlist",
+                    )
                 }
-                Spacer(Modifier.height(8.dp))
-                if (pwnMode.passwords.isEmpty()) {
-                    Text(
-                        text = "No passwords saved.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                } else {
-                    pwnMode.passwords.forEach { password ->
+                Spacer(Modifier.height(10.dp))
+
+                when (inputMode) {
+                    PwnPasswordInputMode.MANUAL -> {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                text = password,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                ),
+                            OutlinedTextField(
+                                value = newPassword,
+                                onValueChange = { newPassword = it },
+                                label = { Text("WPA/WPA2 password (8-63 chars)") },
+                                singleLine = true,
                                 modifier = Modifier.weight(1f),
                             )
-                            IconButton(onClick = { onRemovePassword(password) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Remove password")
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    onAddPassword(newPassword)
+                                    newPassword = ""
+                                },
+                                enabled = pwnMode.passwords.size < PwnModeStore.MAX_PASSWORDS,
+                            ) {
+                                Text("Add")
                             }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "${pwnMode.passwords.size}/${PwnModeStore.MAX_PASSWORDS} candidates saved.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                        pwnMode.passwords.takeLast(5).forEach { password ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = password,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                    ),
+                                    modifier = Modifier.weight(1f),
+                                )
+                                IconButton(onClick = { onRemovePassword(password) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Remove password")
+                                }
+                            }
+                        }
+                        if (pwnMode.passwords.size > 5) {
+                            Text(
+                                text = "+${pwnMode.passwords.size - 5} more saved candidate(s) not shown.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NrOnSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    PwnPasswordInputMode.WORDLIST -> {
+                        OutlinedButton(
+                            onClick = onImportWordlist,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Choose .txt wordlist")
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Only .txt UTF-8 files are accepted. Lines outside " +
+                                "8-63 characters are rejected. Up to " +
+                                "${PwnModeStore.MAX_PASSWORDS} unique passwords are kept.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                        pwnMode.wordlistName?.let { name ->
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "Imported: $name",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Text(
+                                text = "${pwnMode.sourceLineCount} non-empty line(s) · " +
+                                    "${pwnMode.passwords.size} accepted · " +
+                                    "${pwnMode.rejectedLineCount} rejected · " +
+                                    "${pwnMode.duplicateLineCount} duplicate(s)" +
+                                    if (pwnMode.truncated) " · truncated" else "",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = NrOnSurfaceVariant,
+                            )
                         }
                     }
                 }
+
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = { confirmClear = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = pwnMode.passwords.isNotEmpty(),
+                ) {
+                    Text("Clear saved candidates")
+                }
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "Stored on this device only. Maximum 10 passwords.",
+                    text = "Stored on this device only. Candidate checks run in the background queue.",
                     style = MaterialTheme.typography.labelSmall,
                     color = NrOnSurfaceVariant,
                 )
             }
         }
     }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("Clear Pwn Mode candidates?") },
+            text = {
+                Text("This removes all ${pwnMode.passwords.size} saved password candidate(s).")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmClear = false
+                        onClearPasswords()
+                    },
+                ) {
+                    Text("Clear")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClear = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 }
 
 @Composable
 private fun NrugochiCapturedTab(
     captures: List<CapturedHandshakeEntry>,
+    pwnModeQueueState: PwnModeQueueUiState,
     onCrackCapture: (CapturedHandshakeEntry) -> Unit,
     onDeleteCapture: (CapturedHandshakeEntry) -> Unit,
 ) {
@@ -781,11 +919,48 @@ private fun NrugochiCapturedTab(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = StatusAmber,
                                 )
-                                HandshakeCrackStatus.UNCLEARED -> Text(
-                                    text = "Not checked",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = NrOnSurfaceVariant,
-                                )
+                                HandshakeCrackStatus.UNCLEARED -> {
+                                    val isCurrent = pwnModeQueueState.active &&
+                                        capture.bssid.equals(
+                                            pwnModeQueueState.currentBssid,
+                                            ignoreCase = true,
+                                        )
+                                    val isQueued = pwnModeQueueState.queuedBssids.any {
+                                        it.equals(capture.bssid, ignoreCase = true)
+                                    }
+                                    when {
+                                        isCurrent -> Column(
+                                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                                        ) {
+                                            Text(
+                                                text = "Checking " +
+                                                    "${pwnModeQueueState.currentCandidate}/" +
+                                                    "${pwnModeQueueState.totalCandidates}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                            )
+                                            if (pwnModeQueueState.totalCandidates > 0) {
+                                                LinearProgressIndicator(
+                                                    progress = {
+                                                        pwnModeQueueState.currentCandidate.toFloat() /
+                                                            pwnModeQueueState.totalCandidates
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                )
+                                            }
+                                        }
+                                        isQueued -> Text(
+                                            text = "Queued for Pwn Mode check",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = StatusAmber,
+                                        )
+                                        else -> Text(
+                                            text = "Not checked",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = NrOnSurfaceVariant,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

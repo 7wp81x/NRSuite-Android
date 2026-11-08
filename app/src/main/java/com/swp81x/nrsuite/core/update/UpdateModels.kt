@@ -73,6 +73,12 @@ data class ReleaseInfo(
     }
 }
 
+/** Alpha/beta builds are hidden when a user opts into stable/RC-only updates. */
+internal fun ReleaseInfo.isAlphaOrBetaRelease(): Boolean {
+    val normalized = tag.lowercase()
+    return normalized.contains("-alpha") || normalized.contains("-beta")
+}
+
 data class AppUpdateInfo(
     val currentVersion: String,
     val latest: ReleaseInfo,

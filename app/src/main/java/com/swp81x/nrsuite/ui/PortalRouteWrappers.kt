@@ -106,6 +106,7 @@ internal fun EvilTwinModuleRoute(
     val templateMessageIsError by viewModel.htmlTemplateMessageIsError.collectAsState()
     val firmwareNoticeEnabled by viewModel.portalFirmwareNoticeEnabled.collectAsState()
     val dnsHijackEnabled by viewModel.portalDnsHijackEnabled.collectAsState()
+    val saveHandshakePcap by viewModel.evilTwinSavePcap.collectAsState()
 
     EvilTwinScreen(
         connected = connected,
@@ -143,6 +144,8 @@ internal fun EvilTwinModuleRoute(
         onFirmwareNoticeEnabledChange = viewModel::setPortalFirmwareNoticeEnabled,
         dnsHijackEnabled = dnsHijackEnabled,
         onDnsHijackEnabledChange = viewModel::setPortalDnsHijackEnabled,
+        saveHandshakePcap = saveHandshakePcap,
+        onSaveHandshakePcapChange = viewModel::setEvilTwinSavePcap,
         modifier = modifier,
     )
 }

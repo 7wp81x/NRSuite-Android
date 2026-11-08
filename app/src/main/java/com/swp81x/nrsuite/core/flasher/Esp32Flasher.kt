@@ -18,6 +18,7 @@ import kotlin.math.max
 class Esp32Flasher(
     private val transport: FlasherTransport,
     private val supportsEncryptedFlash: Boolean,
+    private val useStub: Boolean = false,
 ) {
     enum class ResetMode {
         CLASSIC,
@@ -66,6 +67,13 @@ class Esp32Flasher(
             connectToRomBootloader(resetMode, fallbackResetMode)
             Thread.sleep(POST_SYNC_SETTLE_MS)
 
+            if (useStub) {
+                onStage("Uploading stub flasher...")
+                uploadEsp32Stub()
+                onStage("Switching to high-speed flashing...")
+                changeBaud(STUB_FLASH_BAUD_RATE)
+            }
+
             onStage("Configuring flash access...")
             flashSpiAttach()
 
@@ -93,12 +101,13 @@ class Esp32Flasher(
                 Thread.sleep(POST_SYNC_SETTLE_MS)
             }
             onStage("Writing firmware...")
-            flashBegin(firmware.size, offset)
+            val flashWriteSize = if (useStub) STUB_FLASH_WRITE_SIZE else FLASH_WRITE_SIZE
+            flashBegin(firmware.size, offset, flashWriteSize)
 
             var written = 0
             var sequence = 0
             while (written < firmware.size) {
-                val blockLength = minOf(FLASH_WRITE_SIZE, firmware.size - written)
+                val blockLength = minOf(flashWriteSize, firmware.size - written)
                 val block = firmware.copyOfRange(written, written + blockLength)
                 flashBlock(block, sequence)
                 written += blockLength
@@ -296,6 +305,97 @@ class Esp32Flasher(
         log("ROM SYNC drain complete after $drained extra reply/replies.")
     }
 
+    private fun uploadEsp32Stub() {
+        log("Uploading ESP32 stub flasher text segment (${Esp32StubFlasher.text.size} bytes).")
+        uploadStubSegment(Esp32StubFlasher.text, Esp32StubFlasher.TEXT_START)
+        log("Uploading ESP32 stub flasher data segment (${Esp32StubFlasher.data.size} bytes).")
+        uploadStubSegment(Esp32StubFlasher.data, Esp32StubFlasher.DATA_START)
+        log("Starting ESP32 stub flasher at 0x${Esp32StubFlasher.ENTRY.toString(16)}.")
+        startStubFlasher()
+    }
+
+    private fun uploadStubSegment(data: ByteArray, offset: Long) {
+        val blocks = (data.size + ESP_RAM_BLOCK - 1) / ESP_RAM_BLOCK
+        val begin = ByteArray(16)
+        writeIntLe(begin, 0, data.size)
+        writeIntLe(begin, 4, blocks)
+        writeIntLe(begin, 8, ESP_RAM_BLOCK)
+        writeIntLe(begin, 12, offset.toInt())
+        checkCommand(
+            description = "enter RAM download mode",
+            op = OP_MEM_BEGIN,
+            data = begin,
+            timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS,
+        )
+        for (sequence in 0 until blocks) {
+            val start = sequence * ESP_RAM_BLOCK
+            val end = minOf(start + ESP_RAM_BLOCK, data.size)
+            val block = data.copyOfRange(start, end)
+            val params = ByteArray(16 + block.size)
+            writeIntLe(params, 0, block.size)
+            writeIntLe(params, 4, sequence)
+            block.copyInto(params, destinationOffset = 16)
+            checkCommand(
+                description = "write stub segment block $sequence",
+                op = OP_MEM_DATA,
+                data = params,
+                checksum = checksum(block),
+                timeoutMs = 5_000,
+            )
+        }
+    }
+
+    private fun startStubFlasher() {
+        resetInput()
+        val params = ByteArray(8)
+        writeIntLe(params, 0, 0)
+        writeIntLe(params, 4, Esp32StubFlasher.ENTRY.toInt())
+        val packet = ByteArrayOutputStream(8 + params.size).apply {
+            write(0x00)
+            write(OP_MEM_END)
+            writeShortLe(params.size)
+            writeIntLe(0)
+            write(params)
+        }.toByteArray()
+        transport.write(SlipCodec.encode(packet), WRITE_TIMEOUT_MS)
+
+        val deadline = nowMs() + STUB_GREETING_TIMEOUT_MS
+        val greeting = ByteArrayOutputStream()
+        val buffer = ByteArray(256)
+        while (nowMs() < deadline) {
+            val remaining = (deadline - nowMs()).toInt().coerceAtLeast(1)
+            val count = transport.read(buffer, remaining.coerceAtMost(MAX_READ_TIMEOUT_MS))
+            if (count <= 0) continue
+            greeting.write(buffer, 0, count)
+            if (greeting.toString(Charsets.US_ASCII.name()).contains("OHAI")) {
+                log("ESP32 stub flasher started (OHAI received).")
+                resetInput()
+                return
+            }
+        }
+        throw IOException(
+            "ESP32 stub flasher did not start. Expected OHAI greeting, got: " +
+                greeting.toString(Charsets.US_ASCII.name()).take(80),
+        )
+    }
+
+    private fun changeBaud(newBaudRate: Int) {
+        val oldBaudRate = transport.currentBaudRate
+        val params = ByteArray(8)
+        writeIntLe(params, 0, newBaudRate)
+        writeIntLe(params, 4, oldBaudRate)
+        checkCommand(
+            description = "change stub baud rate",
+            op = OP_CHANGE_BAUD,
+            data = params,
+            timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS,
+        )
+        transport.setBaudRate(newBaudRate)
+        Thread.sleep(100)
+        resetInput()
+        log("Stub flasher baud rate: $oldBaudRate -> $newBaudRate.")
+    }
+
     private fun flashSpiAttach() {
         var lastError: Throwable? = null
         for (attempt in 0 until SPI_ATTACH_ATTEMPTS) {
@@ -304,11 +404,13 @@ class Esp32Flasher(
                     "(timeout=${SPI_ATTACH_TIMEOUT_MS} ms)...",
             )
             try {
-                // hspi_arg = 0, followed by the ROM-only "is legacy" byte field.
+                // The ROM takes hspi_arg plus a 4-byte "is legacy" field.
+                // The stub accepts only the 4-byte hspi_arg and rejects the
+                // extended ROM payload with status=1.
                 checkCommand(
                     description = "enable SPI flash",
                     op = OP_SPI_ATTACH,
-                    data = ByteArray(8),
+                    data = ByteArray(if (useStub) 4 else 8),
                     timeoutMs = SPI_ATTACH_TIMEOUT_MS,
                 )
                 log("SPI flash access enabled.")
@@ -381,14 +483,15 @@ class Esp32Flasher(
         }
     }
 
-    private fun flashBegin(size: Int, offset: Int) {
-        val numBlocks = (size + FLASH_WRITE_SIZE - 1) / FLASH_WRITE_SIZE
-        val params = ByteArray(if (supportsEncryptedFlash) 20 else 16)
+    private fun flashBegin(size: Int, offset: Int, writeSize: Int) {
+        val numBlocks = (size + writeSize - 1) / writeSize
+        val includeEncryptedFlag = supportsEncryptedFlash || useStub
+        val params = ByteArray(if (includeEncryptedFlag) 20 else 16)
         writeIntLe(params, 0, size)
         writeIntLe(params, 4, numBlocks)
-        writeIntLe(params, 8, FLASH_WRITE_SIZE)
+        writeIntLe(params, 8, writeSize)
         writeIntLe(params, 12, offset)
-        if (supportsEncryptedFlash) {
+        if (includeEncryptedFlag) {
             writeIntLe(params, 16, 0)
         }
 
@@ -593,8 +696,12 @@ class Esp32Flasher(
         private const val OP_FLASH_BEGIN = 0x02
         private const val OP_FLASH_DATA = 0x03
         private const val OP_FLASH_END = 0x04
+        private const val OP_MEM_BEGIN = 0x05
+        private const val OP_MEM_END = 0x06
+        private const val OP_MEM_DATA = 0x07
         private const val OP_SYNC = 0x08
         private const val OP_SPI_ATTACH = 0x0D
+        private const val OP_CHANGE_BAUD = 0x0F
         private const val OP_ERASE_REGION = 0xD1
 
         private const val RESPONSE_DIRECTION = 0x01
@@ -603,6 +710,10 @@ class Esp32Flasher(
         private const val CHECKSUM_MAGIC = 0xEF
 
         private const val FLASH_WRITE_SIZE = 0x400
+        private const val STUB_FLASH_WRITE_SIZE = 0x4000
+        private const val ESP_RAM_BLOCK = 0x1800
+        private const val STUB_FLASH_BAUD_RATE = 460_800
+        private const val STUB_GREETING_TIMEOUT_MS = 5_000L
         private const val FLASH_BLOCK_ATTEMPTS = 3
         private const val WRITE_TIMEOUT_MS = 5_000
         private const val DEFAULT_COMMAND_TIMEOUT_MS = 5_000

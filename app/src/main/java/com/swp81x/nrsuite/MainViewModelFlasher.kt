@@ -4,6 +4,8 @@ import android.hardware.usb.UsbDevice
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.swp81x.nrsuite.core.flasher.Esp32Flasher
+import com.swp81x.nrsuite.core.flasher.FirmwareFlashDevicePhase
+import com.swp81x.nrsuite.core.flasher.FirmwareFlashDeviceState
 import com.swp81x.nrsuite.core.flasher.UsbSerialFlasherTransport
 import com.swp81x.nrsuite.core.flasher.looksLikeTinyUsbFirmware
 import com.swp81x.nrsuite.core.flasher.recommendedEsp32ResetMode
@@ -145,6 +147,10 @@ internal fun MainViewModel.selectFirmwareTargetImpl(device: UsbDevice) {
         "Firmware flash target: ${entry.displayName}" +
             (targetChip?.let { " ($it)" } ?: ""),
     )
+    if (_firmwareManualRecovery.value && _firmwareFlashUri.value != null) {
+        appendLog("Bootloader target selected; starting manual no-reset flash.", tag = "flasher")
+        flashManualFirmwareNowImpl()
+    }
 }
 
 internal fun MainViewModel.armManualFirmwareRecoveryImpl(targetChip: String) {
@@ -156,13 +162,18 @@ internal fun MainViewModel.armManualFirmwareRecoveryImpl(targetChip: String) {
     _firmwareManualRecovery.value = true
     _firmwareFlashStatus.value =
         "Manual bootloader armed. Hold BOOT, unplug/replug USB, release BOOT. " +
-            "The flash will start when the device appears."
+            "Then select the bootloader device from Target device; flashing starts automatically."
     appendLog("Manual bootloader recovery armed for $targetChip.", tag = "flasher")
 }
 
 internal fun MainViewModel.disarmManualFirmwareRecoveryImpl() {
     _firmwareManualRecovery.value = false
     manualRecoveryTargetChip = null
+    if (!_firmwareFlashing.value &&
+        _firmwareFlashDeviceState.value?.phase == FirmwareFlashDevicePhase.FLASHING
+    ) {
+        _firmwareFlashDeviceState.value = null
+    }
     appendLog("Manual bootloader recovery disarmed.", tag = "flasher")
 }
 
@@ -224,14 +235,15 @@ internal fun MainViewModel.flashManualFirmwareWithResetImpl() {
 
 internal fun MainViewModel.tryManualFirmwareFlashOnAttachImpl() {
     if (!_firmwareManualRecovery.value) return
-    val entry = _devices.value.firstOrNull { usbManager.hasPermission(it.device) }
-    if (entry != null) {
-        _firmwareTargetDevice.value = entry
-        appendLog("Bootloader device detected; starting manual flash.", tag = "flasher")
-        flashManualFirmwareNowImpl()
+    val entry = _devices.value.firstOrNull { candidate ->
+        usbManager.deviceList.values.any { it.deviceId == candidate.device.deviceId }
+    } ?: _devices.value.firstOrNull()
+    _firmwareFlashStatus.value = if (entry != null) {
+        "ROM bootloader device detected. Select the previous device from Target device " +
+            "to start flashing automatically."
     } else {
-        _firmwareFlashStatus.value =
-            "Bootloader device detected. Grant USB permission to continue flashing."
+        "Waiting for the ROM bootloader device. Hold BOOT, unplug/replug, then select it " +
+            "from Target device."
     }
 }
 
@@ -294,6 +306,12 @@ internal fun MainViewModel.startFirmwareFlashImpl(
         return
     }
 
+    val targetFingerprint = deviceFingerprintImpl(entry.device)
+    _firmwareFlashDeviceState.value = FirmwareFlashDeviceState(
+        deviceId = entry.device.deviceId,
+        fingerprint = targetFingerprint,
+        phase = FirmwareFlashDevicePhase.FLASHING,
+    )
     _firmwareFlashing.value = true
     _firmwareFlashProgress.value = 0
     _firmwareFlashStatus.value = "Reading firmware image..."
@@ -313,7 +331,6 @@ internal fun MainViewModel.startFirmwareFlashImpl(
             }
 
             _firmwareFlashStatus.value = "Stopping active modules..."
-            val targetFingerprint = deviceFingerprintImpl(entry.device)
             if (targetFingerprint == activeDeviceFingerprint) {
                 stopActiveOperations()
             }
@@ -393,6 +410,7 @@ internal fun MainViewModel.startFirmwareFlashImpl(
                     driver = entry.driver,
                     onLog = { message -> appendLog(message, tag = "flasher") },
                 ),
+                useStub = firmwareHardwareChip(targetChip) == "ESP32",
                 supportsEncryptedFlash = firmwareHardwareChip(targetChip) in setOf(
                     "ESP32-S2",
                     "ESP32-S3",
@@ -430,6 +448,9 @@ internal fun MainViewModel.startFirmwareFlashImpl(
             }
 
             _firmwareFlashProgress.value = 100
+            _firmwareFlashDeviceState.value = _firmwareFlashDeviceState.value?.copy(
+                phase = FirmwareFlashDevicePhase.FLASHED,
+            )
             _firmwareFlashStatus.value = "Flash complete. The device is rebooting; reconnect after it disappears."
             appendLog("Firmware flash complete (${bytes.size} bytes at 0x0).", level = LogLevel.SUCCESS)
             addHistory("firmware", "Flashed ${bytes.size} bytes at 0x0", HistoryLevel.SUCCESS)
@@ -443,6 +464,7 @@ internal fun MainViewModel.startFirmwareFlashImpl(
             refreshDevices()
         } catch (t: Throwable) {
             _firmwareFlashProgress.value = 0
+            _firmwareFlashDeviceState.value = null
             val reason = t.message ?: t.javaClass.simpleName
             _firmwareFlashStatus.value = "Flash failed: $reason"
             appendLog("Firmware flash failed: $reason", level = LogLevel.ERROR)

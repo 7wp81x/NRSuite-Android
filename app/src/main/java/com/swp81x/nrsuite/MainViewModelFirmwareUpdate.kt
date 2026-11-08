@@ -41,6 +41,39 @@ internal fun MainViewModel.downloadFirmwareUpdateForCurrentDeviceImpl() {
     downloadFirmwareAssetImpl(release.tag, asset.name)
 }
 
+internal fun MainViewModel.prepareFirmwareAssetSelectionImpl(
+    releaseTag: String,
+    assetName: String,
+) {
+    if (_firmwareFlashing.value) return
+    val release = _firmwareReleases.value.firstOrNull { it.tag == releaseTag } ?: return
+    val asset = release.assets.firstOrNull { it.name == assetName } ?: return
+    val destination = NrSuiteDownloadManager.destinationFile(
+        app,
+        "updates/firmware/${sanitizeFirmwareName(releaseTag)}-${sanitizeFirmwareName(asset.name)}",
+    )
+    val exists = destination.exists() && destination.length() > 0L
+    if (exists) {
+        if (_firmwareFlashName.value != destination.name) {
+            downloadedFirmwarePath = destination.absolutePath
+            selectDownloadedFirmwareImpl(destination)
+        }
+        val current = _firmwareAssetDownload.value
+        if (current !is FirmwareAssetDownloadState.Downloaded ||
+            current.fileName != destination.name
+        ) {
+            _firmwareAssetDownload.value = FirmwareAssetDownloadState.Downloaded(destination.name)
+        }
+    } else {
+        val current = _firmwareAssetDownload.value
+        if (current is FirmwareAssetDownloadState.Downloaded &&
+            current.fileName != destination.name
+        ) {
+            _firmwareAssetDownload.value = FirmwareAssetDownloadState.Idle
+        }
+    }
+}
+
 internal fun MainViewModel.downloadFirmwareAssetImpl(
     releaseTag: String,
     assetName: String,

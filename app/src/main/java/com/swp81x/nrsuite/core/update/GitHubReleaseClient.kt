@@ -31,12 +31,18 @@ sealed interface GitHubReleaseResult {
 }
 
 object GitHubReleaseClient {
-    suspend fun fetchLatest(repo: String, etag: String?): GitHubReleaseResult {
+    suspend fun fetchLatest(
+        repo: String,
+        etag: String?,
+        includeAlphaBeta: Boolean = true,
+    ): GitHubReleaseResult {
         return when (val result = fetchReleases(repo, etag)) {
             is GitHubReleasesResult.Success -> {
-                val latest = result.releases.maxWithOrNull { left, right ->
-                    VersionComparator.compare(left.tag, right.tag)
-                } ?: return GitHubReleaseResult.NotModified
+                val latest = result.releases
+                    .filter { includeAlphaBeta || !it.isAlphaOrBetaRelease() }
+                    .maxWithOrNull { left, right ->
+                        VersionComparator.compare(left.tag, right.tag)
+                    } ?: return GitHubReleaseResult.NotModified
                 GitHubReleaseResult.Success(latest, result.etag)
             }
             GitHubReleasesResult.NotModified -> GitHubReleaseResult.NotModified

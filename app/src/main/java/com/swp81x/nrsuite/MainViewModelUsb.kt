@@ -1,6 +1,7 @@
 package com.swp81x.nrsuite
 
 import android.hardware.usb.UsbDevice
+import com.swp81x.nrsuite.core.flasher.FirmwareFlashDevicePhase
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
@@ -17,6 +18,7 @@ import org.json.JSONObject
 internal fun MainViewModel.refreshDevicesImpl() {
     val found = UsbSerialDeviceCatalog.list(usbManager)
     _devices.value = found
+    reconcileFirmwareFlashDeviceStateWithAttachedDevices()
 
     val busyDeviceIds = (deviceSessions + idleDeviceSessions).values
         .map { it.device.device.deviceId }
@@ -93,6 +95,26 @@ internal fun MainViewModel.refreshDevicesImpl() {
             } ?: badUsbTarget
         }
     }
+}
+
+/**
+ * A native-USB ESP32 can re-enumerate under a new Android device id while the
+ * flash is still running. If exactly one supported device is attached and the
+ * current flash state no longer matches it, move the state to that device so
+ * the Home/Devices row keeps its Flashing/Flashed feedback across the reboot.
+ */
+private fun MainViewModel.reconcileFirmwareFlashDeviceStateWithAttachedDevices() {
+    val flashState = _firmwareFlashDeviceState.value ?: return
+    val devices = _devices.value
+    if (devices.isEmpty()) return
+    if (devices.any { flashState.matches(it.device.deviceId, deviceFingerprintImpl(it.device)) }) {
+        return
+    }
+    val replacement = devices.singleOrNull() ?: return
+    _firmwareFlashDeviceState.value = flashState.copy(
+        deviceId = replacement.device.deviceId,
+        fingerprint = deviceFingerprintImpl(replacement.device),
+    )
 }
 
 internal fun MainViewModel.onUsbDeviceAttachedImpl(device: UsbDevice?) {
@@ -173,6 +195,17 @@ internal fun MainViewModel.deviceFingerprintImpl(device: UsbDevice): String {
 
 internal fun MainViewModel.onUsbDeviceDetachedImpl(device: UsbDevice) {
     clearPermissionRequestImpl(device.deviceId)
+    // Keep the row in Flashing/Flashed during bootloader/re-enumeration
+    // transients while the flash operation is still finishing. Once the app has
+    // fully completed the operation, the next physical detach clears the result
+    // so the next attach returns to a normal Connect.
+    if (!_firmwareFlashing.value) {
+        val flashState = _firmwareFlashDeviceState.value
+        val detachedFingerprint = runCatching { deviceFingerprintImpl(device) }.getOrNull().orEmpty()
+        if (flashState?.matches(device.deviceId, detachedFingerprint) == true) {
+            _firmwareFlashDeviceState.value = null
+        }
+    }
     firmwareTargetChipHints.remove(device.deviceId)
     usbAttachPromptJobs.remove(device.deviceId)?.cancel()
     _usbAttachPrompts.update { prompts ->
@@ -244,9 +277,6 @@ internal fun MainViewModel.onPermissionResultImpl(device: UsbDevice, granted: Bo
         if (reallyGranted) {
             refreshDevicesImpl()
             selectFirmwareTargetImpl(device)
-            if (_firmwareManualRecovery.value) {
-                flashManualFirmwareNowImpl()
-            }
         }
         return
     }

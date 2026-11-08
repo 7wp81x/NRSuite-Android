@@ -19,7 +19,7 @@ import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
 import com.swp81x.nrsuite.core.wpa.EvilTwinResult
 import com.swp81x.nrsuite.core.wpa.WpaHandshake
-import com.swp81x.nrsuite.core.wpa.WpaHandshakeParser
+import com.swp81x.nrsuite.core.wpa.WpaHandshakeTracker
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeVerifier
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -108,7 +108,14 @@ internal fun MainViewModel.startPortalImpl(ssid: String, channel: Int, targetBss
         _toastMessage.value = "HTML template or file is required."
         return
     }
-    startPortalInternalImpl(ssid, channel, targetBssid, _portalHtmlUri.value, "portal")
+    startPortalInternalImpl(
+        ssid = ssid,
+        channel = channel,
+        targetBssid = targetBssid,
+        htmlUri = _portalHtmlUri.value,
+        mode = "portal",
+        saveEvilTwinPcap = true,
+    )
 }
 
 internal fun MainViewModel.startEvilTwinImpl(ssid: String, channel: Int, targetBssid: String) {
@@ -117,10 +124,24 @@ internal fun MainViewModel.startEvilTwinImpl(ssid: String, channel: Int, targetB
         _toastMessage.value = "HTML template or file is required."
         return
     }
-    startPortalInternalImpl(ssid, channel, targetBssid, _evilTwinHtmlUri.value, "evil_twin")
+    startPortalInternalImpl(
+        ssid = ssid,
+        channel = channel,
+        targetBssid = targetBssid,
+        htmlUri = _evilTwinHtmlUri.value,
+        mode = "evil_twin",
+        saveEvilTwinPcap = _evilTwinSavePcap.value,
+    )
 }
 
-internal fun MainViewModel.startPortalInternalImpl(ssid: String, channel: Int, targetBssid: String, htmlUri: Uri?, mode: String) {
+internal fun MainViewModel.startPortalInternalImpl(
+    ssid: String,
+    channel: Int,
+    targetBssid: String,
+    htmlUri: Uri?,
+    mode: String,
+    saveEvilTwinPcap: Boolean,
+) {
     val activeSession = session
     if (activeSession == null) {
         appendLog("Connect to a device before starting the portal.")
@@ -295,33 +316,39 @@ internal fun MainViewModel.startPortalInternalImpl(ssid: String, channel: Int, t
 
         if (cleanBssid.isNotBlank()) {
             portalPcapJob?.cancel()
-            runCatching { portalPcapWriter?.close() }
-            portalPcapWriter = null
-            portalPcapFile = null
+            portalPcapJob = null
+            finalizePortalCaptureImpl(export = true)
             _evilTwinCapturePath.value = null
+            portalCaptureRequiresCompleteHandshake = mode == "evil_twin"
+            portalCaptureHandshakeComplete = false
 
-            val captureDir = File(app.filesDir, "EvilTwin")
-            if (captureDir.exists() || captureDir.mkdirs()) {
-                val macName = cleanBssid.replace(":", "").uppercase()
-                val captureFile = File(captureDir, "${macName}_eviltwin_${System.currentTimeMillis()}.pcap")
-                portalPcapWriter = runCatching { PcapWriter(captureFile) }.getOrNull()
-                portalPcapFile = captureFile
-                _evilTwinCapturePath.value = captureFile.absolutePath
-                synchronized(credentialLock) {
-                    activeCredentialSession = activeCredentialSession?.copy(
-                        pcapPath = captureFile.absolutePath,
-                    )
+            val shouldWritePcap = mode != "evil_twin" || saveEvilTwinPcap
+            if (shouldWritePcap) {
+                val captureDir = File(app.filesDir, "EvilTwin")
+                if (captureDir.exists() || captureDir.mkdirs()) {
+                    val macName = cleanBssid.replace(":", "").uppercase()
+                    val captureFile = File(captureDir, "${macName}_eviltwin_${System.currentTimeMillis()}.pcap")
+                    portalPcapWriter = runCatching { PcapWriter(captureFile) }.getOrNull()
+                    portalPcapFile = captureFile
+                    _evilTwinCapturePath.value = captureFile.absolutePath
+                    synchronized(credentialLock) {
+                        activeCredentialSession = activeCredentialSession?.copy(
+                            pcapPath = captureFile.absolutePath,
+                        )
+                    }
+                    if (portalPcapWriter != null) {
+                        appendLog("Evil Twin capture: ${captureFile.absolutePath}")
+                    } else {
+                        appendLog("Could not create Evil Twin PCAP capture file.")
+                    }
                 }
-                if (portalPcapWriter != null) {
-                    appendLog("Evil Twin capture: ${captureFile.absolutePath}")
-                } else {
-                    appendLog("Could not create Evil Twin PCAP capture file.")
-                }
+            } else {
+                appendLog("Evil Twin PCAP saving disabled.")
             }
 
             val captureHandshake = EapolHandshake()
-            val wpaHandshake = WpaHandshake()
-            var handshakeWasComplete = false
+            val wpaHandshakeTracker = WpaHandshakeTracker()
+            var lastCompleteSignature: String? = null
             portalPcapJob = scope.launch(Dispatchers.IO) {
                 try {
                     activeSession.pcap.collect { frame ->
@@ -329,13 +356,23 @@ internal fun MainViewModel.startPortalInternalImpl(ssid: String, channel: Int, t
                             portalPcapWriter?.writePacket(frame)
                             EapolParser.parse(frame, captureHandshake)
                             _portalHandshake.value = captureHandshake.copy()
-                            WpaHandshakeParser.parse(frame, wpaHandshake)
-                            _portalWpaHandshake.value = wpaHandshake.copyHandshake()
 
-                            val completeNow = wpaHandshake.isComplete
-                            if (completeNow != handshakeWasComplete) {
-                                handshakeWasComplete = completeNow
-                                verifyEvilTwinPasswordsImpl()
+                            // Track M1/M2 per BSSID+station so clients, retries,
+                            // and interleaved EAPOL exchanges cannot corrupt one
+                            // shared handshake state.
+                            val update = wpaHandshakeTracker.onFrame(frame)
+                            update.completeHandshake?.let { complete ->
+                                portalCaptureHandshakeComplete = true
+                                val signature = complete.captureSignature()
+                                if (signature != lastCompleteSignature) {
+                                    lastCompleteSignature = signature
+                                    _portalWpaHandshake.value = complete
+                                    appendLog("Evil Twin handshake capture complete.")
+                                    // A later, better M1/M2 pair must be allowed to
+                                    // replace an earlier bad capture, so re-check
+                                    // candidates that previously showed INCORRECT.
+                                    verifyEvilTwinPasswordsImpl(forceReevaluate = true)
+                                }
                             }
                         }.onFailure { error ->
                             appendLog("Evil Twin capture parse/write error: ${error.message}")
@@ -519,7 +556,7 @@ internal fun MainViewModel.clearEvilTwinPasswordsImpl() {
     _evilTwinResults.value = emptyList()
 }
 
-internal fun MainViewModel.verifyEvilTwinPasswordsImpl() {
+internal fun MainViewModel.verifyEvilTwinPasswordsImpl(forceReevaluate: Boolean = false) {
     val handshake = _portalWpaHandshake.value
     val ssid = _evilTwinMetrics.value.ssid.ifBlank { _portalSsid.value }
     val finalStatuses = setOf(
@@ -533,7 +570,7 @@ internal fun MainViewModel.verifyEvilTwinPasswordsImpl() {
         val password = captured.value
         val existing = previousByPassword[password]?.status
         val status = when {
-            existing in finalStatuses -> existing!!
+            !forceReevaluate && existing in finalStatuses -> existing!!
             !handshake.isComplete -> EvilTwinResult.Status.PENDING
             password.length !in 8..63 -> EvilTwinResult.Status.INVALID_LENGTH
             WpaHandshakeVerifier.verify(handshake, ssid, password) -> EvilTwinResult.Status.CORRECT
@@ -620,8 +657,53 @@ internal fun MainViewModel.portalLogImpl(message: String) {
     }
 }
 
+/**
+ * Close the current portal capture and keep it only when it is complete.
+ *
+ * Evil Twin captures exist to support WPA Cracker analysis. Exporting a
+ * header-only or partial handshake produces a file that looks valid but has no
+ * usable M1/M2 pair, so incomplete captures are deleted rather than persisted.
+ */
+internal fun MainViewModel.finalizePortalCaptureImpl(export: Boolean = true): File? {
+    val capture = portalPcapFile
+    val requiresCompleteHandshake = portalCaptureRequiresCompleteHandshake
+    val hasCompleteHandshake = portalCaptureHandshakeComplete
+
+    runCatching { portalPcapWriter?.close() }
+    portalPcapWriter = null
+    portalPcapFile = null
+    portalCaptureRequiresCompleteHandshake = false
+    portalCaptureHandshakeComplete = false
+
+    if (capture == null) return null
+
+    if (requiresCompleteHandshake && !hasCompleteHandshake) {
+        runCatching { capture.delete() }
+        _evilTwinCapturePath.value = null
+        synchronized(credentialLock) {
+            activeCredentialSession = activeCredentialSession?.copy(pcapPath = null)
+        }
+        appendLog("Discarded incomplete Evil Twin handshake capture.")
+        return null
+    }
+
+    if (!capture.exists() || capture.length() == 0L) {
+        runCatching { capture.delete() }
+        _evilTwinCapturePath.value = null
+        return null
+    }
+
+    if (export) {
+        exportPcapToRootIfConfigured(capture)
+    }
+    return capture
+}
+
 internal fun MainViewModel.stopPortalImpl() {
     if (_portalStopping.value) return
+    portalPcapJob?.cancel()
+    portalPcapJob = null
+    val savedCapture = finalizePortalCaptureImpl(export = true)
     finishActiveCredentialSession()
     if (!_portalRunning.value) {
         _portalStarting.value = false
@@ -631,13 +713,6 @@ internal fun MainViewModel.stopPortalImpl() {
     _portalStopping.value = true
     portalStatusJob?.cancel()
     portalStatusJob = null
-    portalPcapJob?.cancel()
-    portalPcapJob = null
-    val savedCapture = portalPcapFile
-    runCatching { portalPcapWriter?.close() }
-    portalPcapWriter = null
-    portalPcapFile = null
-    exportPcapToRootIfConfigured(savedCapture)
 
     val activeSession = session
     scope.launch {
@@ -684,6 +759,10 @@ internal fun MainViewModel.startPortalStatusPollingImpl(activeSession: NrSession
 internal fun MainViewModel.stopLocalPortalImpl(sendStop: Boolean = true) {
     portalStatusJob?.cancel()
     portalStatusJob = null
+    portalPcapJob?.cancel()
+    portalPcapJob = null
+    finalizePortalCaptureImpl(export = true)
+    finishActiveCredentialSession()
     if (!_portalRunning.value) {
         _portalStarting.value = false
         _portalStopping.value = false
@@ -700,4 +779,20 @@ internal fun MainViewModel.stopLocalPortalImpl(sendStop: Boolean = true) {
             }
         }
     }
+}
+
+private fun WpaHandshake.captureSignature(): String {
+    fun ByteArray?.hexKey(): String =
+        this?.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xFF) }.orEmpty()
+
+    return listOf(
+        bssid.hexKey(),
+        station.hexKey(),
+        aNonce.hexKey(),
+        sNonce.hexKey(),
+        mic.hexKey(),
+        m1ReplayCounter?.toString().orEmpty(),
+        m2ReplayCounter?.toString().orEmpty(),
+        keyDescriptorVersion.toString(),
+    ).joinToString("|")
 }

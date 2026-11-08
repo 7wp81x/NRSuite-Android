@@ -31,6 +31,8 @@ import com.swp81x.nrsuite.ui.theme.LogColorInfo
 import com.swp81x.nrsuite.ui.theme.LogColorSuccess
 import com.swp81x.nrsuite.ui.theme.LogColorUsb
 import com.swp81x.nrsuite.ui.components.IrModuleConfigRow
+import com.swp81x.nrsuite.core.flasher.FirmwareFlashDevicePhase
+import com.swp81x.nrsuite.core.flasher.FirmwareFlashDeviceState
 import com.swp81x.nrsuite.core.terminal.TerminalShortcut
 import com.swp81x.nrsuite.core.terminal.terminalShortcutParameterNames
 import com.swp81x.nrsuite.ui.components.NrCompactPrimaryButton
@@ -230,6 +232,7 @@ internal fun ConnectionStatusIndicator(
 @Composable
 internal fun HomeTabContent(
     connectionState: ConnectionState,
+    activeFingerprint: String?,
     permissionRevision: Int,
     devices: List<UsbSerialDevice>,
     deviceConnectionStates: Map<String, ConnectionState>,
@@ -246,6 +249,7 @@ internal fun HomeTabContent(
     appUpdateDownload: AppUpdateDownloadState,
     firmwareUpdate: FirmwareUpdateInfo?,
     firmwareAssetDownload: FirmwareAssetDownloadState,
+    firmwareFlashDeviceState: FirmwareFlashDeviceState?,
     terminalShortcuts: List<TerminalShortcut>,
     showTerminalLauncherCard: Boolean,
     onOpenShortcuts: () -> Unit,
@@ -267,6 +271,7 @@ internal fun HomeTabContent(
 ) {
     HomeScreen(
         connectionState = connectionState,
+        activeFingerprint = activeFingerprint,
         permissionRevision = permissionRevision,
         devices = devices,
         deviceConnectionStates = deviceConnectionStates,
@@ -283,6 +288,7 @@ internal fun HomeTabContent(
         appUpdateDownload = appUpdateDownload,
         firmwareUpdate = firmwareUpdate,
         firmwareAssetDownload = firmwareAssetDownload,
+        firmwareFlashDeviceState = firmwareFlashDeviceState,
         terminalShortcuts = terminalShortcuts,
         showTerminalLauncherCard = showTerminalLauncherCard,
         onOpenShortcuts = onOpenShortcuts,
@@ -307,6 +313,7 @@ internal fun HomeTabContent(
 @Composable
 internal fun HomeScreen(
     connectionState: ConnectionState,
+    activeFingerprint: String?,
     permissionRevision: Int,
     devices: List<UsbSerialDevice>,
     deviceConnectionStates: Map<String, ConnectionState>,
@@ -323,6 +330,7 @@ internal fun HomeScreen(
     appUpdateDownload: AppUpdateDownloadState,
     firmwareUpdate: FirmwareUpdateInfo?,
     firmwareAssetDownload: FirmwareAssetDownloadState,
+    firmwareFlashDeviceState: FirmwareFlashDeviceState?,
     terminalShortcuts: List<TerminalShortcut> = emptyList(),
     showTerminalLauncherCard: Boolean = true,
     onOpenShortcuts: () -> Unit = {},
@@ -393,6 +401,7 @@ internal fun HomeScreen(
         item {
             DashboardDeviceCard(
                 state = connectionState,
+                activeFingerprint = activeFingerprint,
                 devices = devices,
                 deviceConnectionStates = deviceConnectionStates,
                 deviceFingerprint = deviceFingerprint,
@@ -401,6 +410,7 @@ internal fun HomeScreen(
                 usbManager = usbManager,
                 usbConnectBusy = usbConnectBusy,
                 permissionRevision = permissionRevision,
+                firmwareFlashDeviceState = firmwareFlashDeviceState,
                 onRefreshDevices = onRefreshDevices,
                 onConnect = onConnect,
                 onDisconnect = onDisconnect,
@@ -1057,6 +1067,7 @@ private fun IrDatabaseCategoryCard(
 @Composable
 internal fun DashboardDeviceCard(
     state: ConnectionState,
+    activeFingerprint: String?,
     devices: List<UsbSerialDevice>,
     deviceConnectionStates: Map<String, ConnectionState>,
     deviceFingerprint: (UsbDevice) -> String,
@@ -1065,6 +1076,7 @@ internal fun DashboardDeviceCard(
     usbManager: UsbManager,
     usbConnectBusy: Boolean,
     permissionRevision: Int,
+    firmwareFlashDeviceState: FirmwareFlashDeviceState?,
     onRefreshDevices: () -> Unit,
     onConnect: (UsbDevice) -> Unit,
     onDisconnect: () -> Unit,
@@ -1076,6 +1088,12 @@ internal fun DashboardDeviceCard(
 ) {
     @Suppress("UNUSED_EXPRESSION")
     permissionRevision
+    val activeFlashPhase = firmwareFlashDeviceState?.let { flash ->
+        devices.firstOrNull { device ->
+            deviceFingerprint(device.device) == activeFingerprint &&
+                flash.matches(device.device.deviceId, deviceFingerprint(device.device))
+        }?.let { flash.phase }
+    }
     val accent = when (state) {
         ConnectionState.Disconnected -> StatusAmber
         ConnectionState.Connecting -> StatusAmber
@@ -1201,11 +1219,31 @@ internal fun DashboardDeviceCard(
                         modifier = Modifier.padding(top = 8.dp),
                     )
                     Spacer(Modifier.height(10.dp))
-                    NrSecondaryButton(
-                        text = "Disconnect",
-                        onClick = onDisconnect,
-                        compact = true,
-                    )
+                    when (activeFlashPhase) {
+                        FirmwareFlashDevicePhase.FLASHING -> {
+                            NrSecondaryButton(
+                                text = "Flashing...",
+                                onClick = {},
+                                compact = true,
+                                enabled = false,
+                            )
+                        }
+                        FirmwareFlashDevicePhase.FLASHED -> {
+                            NrSecondaryButton(
+                                text = "Flashed",
+                                onClick = {},
+                                compact = true,
+                                enabled = false,
+                            )
+                        }
+                        null -> {
+                            NrSecondaryButton(
+                                text = "Disconnect",
+                                onClick = onDisconnect,
+                                compact = true,
+                            )
+                        }
+                    }
                 }
 
                 is ConnectionState.Failed -> {
@@ -1238,13 +1276,17 @@ internal fun DashboardDeviceCard(
                 )
                 Spacer(Modifier.height(2.dp))
                 devices.take(3).forEach { device ->
+                    val fingerprint = deviceFingerprint(device.device)
                     HomeDeviceRow(
                         entry = device,
                         hasPermission = usbManager.hasPermission(device.device),
-                        state = deviceConnectionStates[deviceFingerprint(device.device)],
+                        state = deviceConnectionStates[fingerprint],
                         pendingPermission = device.device.deviceId in pendingPermissionRequests,
-                        disconnecting = deviceFingerprint(device.device) in disconnectingFingerprints,
+                        disconnecting = fingerprint in disconnectingFingerprints,
                         connectEnabled = !usbConnectBusy,
+                        firmwareFlashPhase = firmwareFlashDeviceState
+                            ?.takeIf { it.matches(device.device.deviceId, fingerprint) }
+                            ?.phase,
                         onConnect = { onConnect(device.device) },
                     )
                 }
@@ -1268,30 +1310,40 @@ private fun HomeDeviceRow(
     pendingPermission: Boolean,
     disconnecting: Boolean,
     connectEnabled: Boolean,
+    firmwareFlashPhase: FirmwareFlashDevicePhase?,
     onConnect: () -> Unit,
 ) {
-    val statusText = when {
-        disconnecting -> "Disconnecting..."
-        state is ConnectionState.Connected -> "Connected"
-        state is ConnectionState.Connecting -> "Connecting..."
-        state is ConnectionState.Diagnosing -> "Diagnosing..."
-        pendingPermission -> "Permission requested"
-        state is ConnectionState.Failed -> "Connection failed"
-        hasPermission -> "Ready to connect"
-        else -> "USB permission required"
+    val statusText = when (firmwareFlashPhase) {
+        FirmwareFlashDevicePhase.FLASHING -> "Flashing firmware..."
+        FirmwareFlashDevicePhase.FLASHED -> "Replug required"
+        null -> when {
+            disconnecting -> "Disconnecting..."
+            state is ConnectionState.Connected -> "Connected"
+            state is ConnectionState.Connecting -> "Connecting..."
+            state is ConnectionState.Diagnosing -> "Diagnosing..."
+            pendingPermission -> "Permission requested"
+            state is ConnectionState.Failed -> "Connection failed"
+            hasPermission -> "Ready to connect"
+            else -> "USB permission required"
+        }
     }
-    val statusColor = when {
-        disconnecting -> StatusAmber
-        state is ConnectionState.Connected -> StatusGreen
-        state is ConnectionState.Connecting -> StatusAmber
-        state is ConnectionState.Diagnosing -> StatusAmber
-        pendingPermission -> StatusAmber
-        state is ConnectionState.Failed -> StatusRed
-        else -> NrOnSurfaceVariant
+    val statusColor = when (firmwareFlashPhase) {
+        FirmwareFlashDevicePhase.FLASHING,
+        FirmwareFlashDevicePhase.FLASHED,
+        -> StatusAmber
+        null -> when {
+            disconnecting -> StatusAmber
+            state is ConnectionState.Connected -> StatusGreen
+            state is ConnectionState.Connecting -> StatusAmber
+            state is ConnectionState.Diagnosing -> StatusAmber
+            pendingPermission -> StatusAmber
+            state is ConnectionState.Failed -> StatusRed
+            else -> NrOnSurfaceVariant
+        }
     }
-    val buttonEnabled = connectEnabled && !pendingPermission && !disconnecting &&
-        state !is ConnectionState.Connected && state !is ConnectionState.Connecting &&
-        state !is ConnectionState.Diagnosing
+    val buttonEnabled = firmwareFlashPhase == null && connectEnabled && !pendingPermission &&
+        !disconnecting && state !is ConnectionState.Connected &&
+        state !is ConnectionState.Connecting && state !is ConnectionState.Diagnosing
 
     Row(
         modifier = Modifier
@@ -1326,11 +1378,15 @@ private fun HomeDeviceRow(
         }
         Spacer(Modifier.width(12.dp))
         NrCompactPrimaryButton(
-            text = when {
-                pendingPermission -> "Waiting…"
-                state is ConnectionState.Connected -> "Connected"
-                state is ConnectionState.Connecting -> "Connecting…"
-                else -> "Connect"
+            text = when (firmwareFlashPhase) {
+                FirmwareFlashDevicePhase.FLASHING -> "Flashing..."
+                FirmwareFlashDevicePhase.FLASHED -> "Flashed"
+                null -> when {
+                    pendingPermission -> "Waiting…"
+                    state is ConnectionState.Connected -> "Connected"
+                    state is ConnectionState.Connecting -> "Connecting…"
+                    else -> "Connect"
+                }
             },
             onClick = onConnect,
             enabled = buttonEnabled,

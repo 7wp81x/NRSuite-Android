@@ -20,9 +20,13 @@ class UsbSerialFlasherTransport(
     private var port: UsbSerialPort? = null
     private var dtrState = false
     private var rtsState = false
+    private var activeBaudRate = baudRate
 
     override val isOpen: Boolean
         get() = port?.isOpen == true
+
+    override val currentBaudRate: Int
+        get() = activeBaudRate
 
     override fun open() {
         if (isOpen) return
@@ -48,6 +52,7 @@ class UsbSerialFlasherTransport(
                 UsbSerialPort.STOPBITS_1,
                 UsbSerialPort.PARITY_NONE,
             )
+            activeBaudRate = baudRate
             // Put the auto-reset circuit into esptool's idle state before any
             // reset sequence. Raise IO0 first, then EN, so opening the port
             // cannot leave the chip held in reset or download mode.
@@ -68,6 +73,18 @@ class UsbSerialFlasherTransport(
         port = openedPort
         val elapsedMs = (System.nanoTime() / 1_000_000L) - startedMs
         onLog("USB serial port open/config completed in ${elapsedMs} ms at $baudRate baud; DTR=false RTS=false.")
+    }
+
+    override fun setBaudRate(baudRate: Int) {
+        val activePort = port ?: throw IOException("Serial port is not open")
+        activePort.setParameters(
+            baudRate,
+            UsbSerialPort.DATABITS_8,
+            UsbSerialPort.STOPBITS_1,
+            UsbSerialPort.PARITY_NONE,
+        )
+        activeBaudRate = baudRate
+        onLog("USB serial baud rate changed to $baudRate.")
     }
 
     override fun read(buffer: ByteArray, timeoutMs: Int): Int {
@@ -112,5 +129,6 @@ class UsbSerialFlasherTransport(
         connection = null
         dtrState = false
         rtsState = false
+        activeBaudRate = baudRate
     }
 }

@@ -59,6 +59,7 @@ import com.swp81x.nrsuite.core.hid.PinBruteforceUiState
 import com.swp81x.nrsuite.core.flasher.UsbSerialFlasherTransport
 import com.swp81x.nrsuite.core.eapol.EapolParser
 import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.flasher.FirmwareFlashDeviceState
 import com.swp81x.nrsuite.core.history.HistoryEntry
 import com.swp81x.nrsuite.core.ir.IrCommonButton
 import com.swp81x.nrsuite.core.ir.IrDatabaseDownloader
@@ -186,6 +187,8 @@ internal data class DeviceSession(
  */
 internal enum class WifiScanDestination { WIFI, TARGETS, CHANNEL_ANALYZER, WPS, WPS_ATTEMPT_TARGETS }
 
+internal const val PREF_EVIL_TWIN_SAVE_PCAP = "evil_twin_save_pcap"
+
 class MainViewModel(internal val app: Application) {
     internal val scope = CoroutineScope(
         SupervisorJob() +
@@ -201,6 +204,7 @@ class MainViewModel(internal val app: Application) {
     internal val usbOperationMutex = Mutex()
 
     internal val autoHandshake = AutoHandshakeRuntime()
+    val pwnModeQueueState get() = autoHandshake.pwnQueueState
 
     internal val usbManager =
         app.getSystemService(Context.USB_SERVICE) as UsbManager
@@ -236,6 +240,10 @@ class MainViewModel(internal val app: Application) {
     internal val _portalDnsHijackEnabled = MutableStateFlow(true)
     val portalDnsHijackEnabled: StateFlow<Boolean> =
         _portalDnsHijackEnabled.asStateFlow()
+
+    internal val _evilTwinSavePcap =
+        MutableStateFlow(preferences.getBoolean(PREF_EVIL_TWIN_SAVE_PCAP, false))
+    val evilTwinSavePcap: StateFlow<Boolean> = _evilTwinSavePcap.asStateFlow()
 
     internal val _actionError = MutableStateFlow<String?>(null)
     val actionError: StateFlow<String?> = _actionError.asStateFlow()
@@ -422,6 +430,12 @@ class MainViewModel(internal val app: Application) {
     internal val _firmwareFlashStatus = MutableStateFlow<String?>(null)
     val firmwareFlashStatus: StateFlow<String?> = _firmwareFlashStatus.asStateFlow()
 
+    internal val _firmwareFlashDeviceState =
+        MutableStateFlow<FirmwareFlashDeviceState?>(null)
+    val firmwareFlashDeviceState:
+        StateFlow<FirmwareFlashDeviceState?> =
+        _firmwareFlashDeviceState.asStateFlow()
+
     internal var lastFirmwareNotificationUpdateMs = 0L
     internal var lastFirmwareNotificationProgress = -1
 
@@ -458,6 +472,11 @@ class MainViewModel(internal val app: Application) {
         preferences.getBoolean(PREF_AUTO_UPDATE_CHECK, true),
     )
     val autoUpdateCheck: StateFlow<Boolean> = _autoUpdateCheck.asStateFlow()
+
+    internal val _excludeBetaReleases = MutableStateFlow(
+        preferences.getBoolean(PREF_EXCLUDE_BETA_RELEASES, false),
+    )
+    val excludeBetaReleases: StateFlow<Boolean> = _excludeBetaReleases.asStateFlow()
 
     private val _themeMode = MutableStateFlow(loadThemeMode())
     val themeMode: StateFlow<NrThemeMode> = _themeMode.asStateFlow()
@@ -1025,6 +1044,9 @@ class MainViewModel(internal val app: Application) {
     internal var portalPcapJob: Job? = null
     internal var portalPcapWriter: PcapWriter? = null
     internal var portalPcapFile: File? = null
+    internal var portalCaptureRequiresCompleteHandshake: Boolean = false
+    @Volatile
+    internal var portalCaptureHandshakeComplete: Boolean = false
     private val exportedCapturePaths = mutableSetOf<String>()
 
     internal var portalStatusJob: Job? = null
@@ -1458,6 +1480,11 @@ class MainViewModel(internal val app: Application) {
         _portalDnsHijackEnabled.value = enabled
     }
 
+    fun setEvilTwinSavePcap(enabled: Boolean) {
+        _evilTwinSavePcap.value = enabled
+        preferences.edit().putBoolean(PREF_EVIL_TWIN_SAVE_PCAP, enabled).apply()
+    }
+
     fun clearMacLookup() {
         _macLookupResult.value = null
     }
@@ -1886,6 +1913,8 @@ class MainViewModel(internal val app: Application) {
 
     fun setAutoUpdateCheck(enabled: Boolean) = this.setAutoUpdateCheckImpl(enabled)
 
+    fun setExcludeBetaReleases(enabled: Boolean) = this.setExcludeBetaReleasesImpl(enabled)
+
     fun setThemeMode(mode: NrThemeMode) {
         _themeMode.value = mode
         preferences.edit().putString(PREF_THEME_MODE, mode.name).apply()
@@ -1909,6 +1938,9 @@ class MainViewModel(internal val app: Application) {
 
     fun downloadFirmwareAsset(releaseTag: String, assetName: String) =
         this.downloadFirmwareAssetImpl(releaseTag, assetName)
+
+    fun prepareFirmwareAssetSelection(releaseTag: String, assetName: String) =
+        this.prepareFirmwareAssetSelectionImpl(releaseTag, assetName)
     fun downloadFirmwareUpdate() = this.downloadFirmwareUpdateForCurrentDeviceImpl()
     fun prepareFirmwareFlasherForUpdate() = this.prepareFirmwareFlasherForUpdateImpl()
     fun prepareFirmwareFlasherForDiagnostic(chip: String?, deviceId: Int? = null) =
@@ -1961,13 +1993,14 @@ class MainViewModel(internal val app: Application) {
     ) = this.startFirmwareFlashImpl(targetChip, skipReset, eraseBeforeFlash)
 
     internal fun stopActiveOperations() {
+        portalPcapJob?.cancel()
+        portalPcapJob = null
+        finalizePortalCaptureImpl(export = true)
         finishActiveCredentialSession()
         beaconStatusJob?.cancel()
         beaconStatusJob = null
         portalStatusJob?.cancel()
         portalStatusJob = null
-        portalPcapJob?.cancel()
-        portalPcapJob = null
         pcapJob?.cancel()
         pcapJob = null
         sniffDeauthJob?.cancel()
@@ -2048,11 +2081,6 @@ class MainViewModel(internal val app: Application) {
         this.clearBleRealtimeStateImpl()
         _portalMode.value = null
 
-        val captureToExport = portalPcapFile
-        runCatching { portalPcapWriter?.close() }
-        portalPcapWriter = null
-        portalPcapFile = null
-        exportPcapToRootIfConfigured(captureToExport)
         runCatching { pcapWriter?.close() }
         pcapWriter = null
         _evilTwinCapturePath.value = null
@@ -2442,8 +2470,10 @@ class MainViewModel(internal val app: Application) {
     fun setPwnModeEnabled(enabled: Boolean) = this.setPwnModeEnabledImpl(enabled)
 
     fun addPwnPassword(password: String) = this.addPwnPasswordImpl(password)
+    fun importPwnWordlist(uri: Uri) = this.importPwnWordlistImpl(uri)
 
     fun removePwnPassword(password: String) = this.removePwnPasswordImpl(password)
+    fun clearPwnPasswords() = this.clearPwnPasswordsImpl()
 
     fun deleteCapturedHandshake(entry: CapturedHandshakeEntry) = this.deleteCapturedHandshakeImpl(entry)
 

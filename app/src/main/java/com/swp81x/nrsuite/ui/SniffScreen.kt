@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
@@ -519,7 +520,7 @@ private fun ConfigZone(
                         ) {
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    text = "Handshake-only capture",
+                                    text = "4-way Handshake-only capture",
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
                                 Text(
@@ -726,7 +727,7 @@ private fun ResultZone(
                     )
                     Text(
                         text = if (handshakeOnly) {
-                            "Handshake-only capture mode"
+                            "4-way Handshake-only capture mode"
                         } else {
                             "All 802.11 packets"
                         },
@@ -838,20 +839,40 @@ private fun HandshakeMilestone(
     modifier: Modifier = Modifier,
 ) {
     val color = if (present) StatusGreen else NrOnSurfaceVariant
-    Text(
-        text = "$label ${if (present) "✓" else "—"}",
-        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-        fontWeight = FontWeight.SemiBold,
-        color = color,
-        textAlign = TextAlign.Center,
+    Row(
         modifier = modifier
             .background(
                 if (present) StatusGreen.copy(alpha = 0.12f) else NrSurfaceVariant,
                 RoundedCornerShape(8.dp),
             )
             .border(0.5.dp, if (present) StatusGreen.copy(alpha = 0.45f) else NrOutline, RoundedCornerShape(8.dp))
-            .padding(vertical = 7.dp),
-    )
+            .padding(horizontal = 4.dp, vertical = 7.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            fontWeight = FontWeight.SemiBold,
+            color = color,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.width(4.dp))
+        if (present) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = StatusGreen,
+                modifier = Modifier.size(14.dp),
+            )
+        } else {
+            Text(
+                text = "—",
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = NrOnSurfaceVariant,
+            )
+        }
+    }
 }
 
 private fun formatCaptureSize(bytes: Long): String = when {

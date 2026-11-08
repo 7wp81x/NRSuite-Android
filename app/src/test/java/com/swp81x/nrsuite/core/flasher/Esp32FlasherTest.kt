@@ -29,6 +29,100 @@ class Esp32FlasherTest {
     }
 
     @Test
+    fun `esp32 stub path uploads runs and switches baud`() {
+        val transport = FakeFlasherTransport()
+        val flasher = Esp32Flasher(
+            transport,
+            supportsEncryptedFlash = false,
+            useStub = true,
+        )
+
+        flasher.flash(
+            firmware = ByteArray(8) { it.toByte() },
+            offset = 0,
+            resetMode = Esp32Flasher.ResetMode.NONE,
+        )
+
+        assertEquals(
+            listOf(0x08, 0x05, 0x07, 0x05, 0x07, 0x06, 0x0F, 0x0D, 0x02, 0x03, 0x04),
+            transport.writtenOps(),
+        )
+        assertEquals(460_800, transport.currentBaudRate)
+    }
+
+    @Test
+    fun `esp32 stub command payloads match stub protocol`() {
+        val transport = FakeFlasherTransport()
+        val flasher = Esp32Flasher(
+            transport,
+            supportsEncryptedFlash = false,
+            useStub = true,
+        )
+
+        flasher.flash(
+            firmware = ByteArray(0x4001) { (it and 0xFF).toByte() },
+            offset = 0,
+            resetMode = Esp32Flasher.ResetMode.NONE,
+        )
+
+        val commands = transport.writtenCommands()
+        val memBegins = commands.filter { it.op == 0x05 }
+        assertEquals(2, memBegins.size)
+        assertEquals(Esp32StubFlasher.text.size, readIntLe(memBegins[0].data, 0))
+        assertEquals(0x1800, readIntLe(memBegins[0].data, 8))
+        assertEquals(Esp32StubFlasher.TEXT_START.toInt(), readIntLe(memBegins[0].data, 12))
+        assertEquals(Esp32StubFlasher.data.size, readIntLe(memBegins[1].data, 0))
+        assertEquals(Esp32StubFlasher.DATA_START.toInt(), readIntLe(memBegins[1].data, 12))
+
+        val memEnd = commands.single { it.op == 0x06 }
+        assertEquals(8, memEnd.data.size)
+        assertEquals(0, readIntLe(memEnd.data, 0))
+        assertEquals(Esp32StubFlasher.ENTRY.toInt(), readIntLe(memEnd.data, 4))
+
+        val baudChange = commands.single { it.op == 0x0F }
+        assertEquals(8, baudChange.data.size)
+        assertEquals(460_800, readIntLe(baudChange.data, 0))
+        assertEquals(115_200, readIntLe(baudChange.data, 4))
+
+        // The ROM consumes a 4-byte hspi_arg plus a 4-byte legacy flag, while
+        // the ESP32 stub consumes only hspi_arg. Sending 8 bytes in stub mode
+        // produced SPI_ATTACH status=0x01 on hardware.
+        val spiAttach = commands.single { it.op == 0x0D }
+        assertEquals(4, spiAttach.data.size)
+
+        val flashBegin = commands.single { it.op == 0x02 }
+        assertEquals(20, flashBegin.data.size)
+        assertEquals(0x4001, readIntLe(flashBegin.data, 0))
+        assertEquals(2, readIntLe(flashBegin.data, 4))
+        assertEquals(0x4000, readIntLe(flashBegin.data, 8))
+        assertEquals(0, readIntLe(flashBegin.data, 12))
+        assertEquals(0, readIntLe(flashBegin.data, 16))
+
+        val flashBlocks = commands.filter { it.op == 0x03 }
+        assertEquals(2, flashBlocks.size)
+        assertEquals(0x4000, readIntLe(flashBlocks[0].data, 0))
+        assertEquals(0x0001, readIntLe(flashBlocks[1].data, 0))
+    }
+
+    @Test
+    fun `no-stub command payloads retain rom protocol sizes`() {
+        val transport = FakeFlasherTransport()
+        val flasher = Esp32Flasher(transport, supportsEncryptedFlash = false)
+
+        flasher.flash(
+            firmware = ByteArray(8) { it.toByte() },
+            offset = 0,
+            resetMode = Esp32Flasher.ResetMode.NONE,
+        )
+
+        val commands = transport.writtenCommands()
+        assertEquals(8, commands.single { it.op == 0x0D }.data.size)
+        val flashBegin = commands.single { it.op == 0x02 }
+        assertEquals(16, flashBegin.data.size)
+        assertEquals(0x400, readIntLe(flashBegin.data, 8))
+    }
+
+    @Test
     fun `can opt into region erase when requested`() {
         val transport = FakeFlasherTransport()
         val flasher = Esp32Flasher(transport, supportsEncryptedFlash = false)
@@ -220,6 +314,8 @@ class Esp32FlasherTest {
     private class FakeFlasherTransport : FlasherTransport {
         override var isOpen: Boolean = false
             private set
+        override var currentBaudRate: Int = 115_200
+            private set
 
         val writtenPackets = mutableListOf<ByteArray>()
         val extraResponseOpsOnWrite = mutableMapOf<Int, MutableList<Int>>()
@@ -234,6 +330,10 @@ class Esp32FlasherTest {
 
         override fun open() {
             isOpen = true
+        }
+
+        override fun setBaudRate(baudRate: Int) {
+            currentBaudRate = baudRate
         }
 
         override fun close() {
@@ -268,6 +368,10 @@ class Esp32FlasherTest {
             extraResponseOpsOnWrite.remove(op)
                 ?.forEach { extraOp -> appendResponse(extraOp) }
             appendResponse(op)
+            if (op == 0x06) {
+                // MEM_END starts the stub, which emits a raw OHAI greeting.
+                input = input + "OHAI".toByteArray(Charsets.US_ASCII)
+            }
         }
 
         override fun flushInput() {
@@ -293,6 +397,16 @@ class Esp32FlasherTest {
             SlipDecoder().feed(encoded).first()[1].toInt() and 0xFF
         }
 
+        fun writtenCommands(): List<DecodedCommand> = writtenPackets.map { encoded ->
+            val frame = SlipDecoder().feed(encoded).first()
+            val payloadLength = (frame[2].toInt() and 0xFF) or
+                ((frame[3].toInt() and 0xFF) shl 8)
+            DecodedCommand(
+                op = frame[1].toInt() and 0xFF,
+                data = frame.copyOfRange(8, 8 + payloadLength),
+            )
+        }
+
         private fun appendResponse(op: Int) {
             val payload = byteArrayOf(0x00, 0x00)
             val frame = byteArrayOf(
@@ -306,4 +420,15 @@ class Esp32FlasherTest {
             input = input + encoded
         }
     }
+
+    private data class DecodedCommand(
+        val op: Int,
+        val data: ByteArray,
+    )
+
+    private fun readIntLe(source: ByteArray, offset: Int): Int =
+        (source[offset].toInt() and 0xFF) or
+            ((source[offset + 1].toInt() and 0xFF) shl 8) or
+            ((source[offset + 2].toInt() and 0xFF) shl 16) or
+            ((source[offset + 3].toInt() and 0xFF) shl 24)
 }

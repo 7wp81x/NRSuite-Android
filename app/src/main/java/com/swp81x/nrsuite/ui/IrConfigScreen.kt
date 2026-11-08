@@ -21,7 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -394,8 +394,9 @@ fun IrConfigScreen(
                             }
                             !gpioChanged && selectedTxGpio >= 0 && selectedRxGpio >= 0 -> {
                                 Icon(
-                                    imageVector = Icons.Default.Check,
+                                    imageVector = Icons.Default.CheckCircle,
                                     contentDescription = null,
+                                    tint = StatusGreen,
                                     modifier = Modifier.size(18.dp),
                                 )
                                 Spacer(Modifier.width(6.dp))
@@ -514,7 +515,12 @@ fun IrConfigScreen(
                             color = StatusAmber,
                         )
                     }
-                    if (irDatabaseState.running) {
+                    // A manual rescan reports detailed file progress through scanProgress.
+                    // Do not also render the generic database-phase bar for the same
+                    // INDEXING operation, otherwise the screen shows two progress bars.
+                    val showDatabaseProgress = irDatabaseState.running &&
+                        !(irDatabaseState.phase == IrDatabasePhase.INDEXING && scanProgress != null)
+                    if (showDatabaseProgress) {
                         Spacer(Modifier.height(6.dp))
                         when (irDatabaseState.phase) {
                             IrDatabasePhase.DOWNLOADING -> {

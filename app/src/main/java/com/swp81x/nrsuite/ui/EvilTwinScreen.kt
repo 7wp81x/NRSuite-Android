@@ -21,10 +21,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Wifi
@@ -39,6 +43,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableIntStateOf
@@ -102,6 +107,8 @@ fun EvilTwinScreen(
     onFirmwareNoticeEnabledChange: (Boolean) -> Unit = {},
     dnsHijackEnabled: Boolean = true,
     onDnsHijackEnabledChange: (Boolean) -> Unit = {},
+    saveHandshakePcap: Boolean = true,
+    onSaveHandshakePcapChange: (Boolean) -> Unit = {},
     handshake: EapolHandshake,
     results: List<EvilTwinResult>,
     metrics: PortalSessionMetrics = PortalSessionMetrics(),
@@ -315,6 +322,31 @@ fun EvilTwinScreen(
                         },
                     )
                     Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = "Save 4-way handshake PCAP",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                text = "Off by default to avoid filling storage. " +
+                                    "Password verification still runs in memory; enable " +
+                                    "only when you need a PCAP for later analysis.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NrOnSurfaceVariant,
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = saveHandshakePcap,
+                            onCheckedChange = onSaveHandshakePcapChange,
+                            enabled = !running,
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
                     HtmlUploadSection(
                         selectedName = selectedHtmlName,
                         selectedSizeBytes = selectedHtmlSize,
@@ -363,12 +395,6 @@ fun EvilTwinScreen(
                     )
                 } else {
                     results.reversed().forEach { result ->
-                        val statusSymbol = when (result.status) {
-                            EvilTwinResult.Status.CORRECT -> "✓"
-                            EvilTwinResult.Status.INCORRECT -> "✗"
-                            EvilTwinResult.Status.PENDING -> "–"
-                            EvilTwinResult.Status.INVALID_LENGTH -> "!"
-                        }
                         val statusColor = when (result.status) {
                             EvilTwinResult.Status.CORRECT -> StatusGreen
                             EvilTwinResult.Status.INCORRECT -> MaterialTheme.colorScheme.error
@@ -381,12 +407,34 @@ fun EvilTwinScreen(
                                 .padding(vertical = 3.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                text = "[${result.timestamp}] ${result.password}  :  $statusSymbol",
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                color = statusColor,
+                            Row(
                                 modifier = Modifier.weight(1f),
-                            )
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = "[${result.timestamp}] ${result.password}",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                    color = statusColor,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = when (result.status) {
+                                        EvilTwinResult.Status.CORRECT -> Icons.Default.CheckCircle
+                                        EvilTwinResult.Status.INCORRECT -> Icons.Default.ErrorOutline
+                                        EvilTwinResult.Status.PENDING -> Icons.Default.Schedule
+                                        EvilTwinResult.Status.INVALID_LENGTH -> Icons.Default.WarningAmber
+                                    },
+                                    contentDescription = when (result.status) {
+                                        EvilTwinResult.Status.CORRECT -> "Correct password"
+                                        EvilTwinResult.Status.INCORRECT -> "Incorrect password"
+                                        EvilTwinResult.Status.PENDING -> "Pending verification"
+                                        EvilTwinResult.Status.INVALID_LENGTH -> "Invalid password length"
+                                    },
+                                    tint = statusColor,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
                             IconButton(
                                 onClick = { clipboard.copyWithToast(context, result.password, "Password copied") },
                             ) {
@@ -605,11 +653,24 @@ private fun EapolBadge(label: String, captured: Boolean) {
         shape = RoundedCornerShape(8.dp),
         border = BorderStroke(0.5.dp, if (captured) StatusGreen else NrOutline),
     ) {
-        Text(
-            text = if (captured) "$label ✓" else label,
+        Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-            color = if (captured) StatusGreen else NrOnSurfaceVariant,
-        )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = if (captured) StatusGreen else NrOnSurfaceVariant,
+            )
+            if (captured) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "Captured",
+                    tint = StatusGreen,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
     }
 }

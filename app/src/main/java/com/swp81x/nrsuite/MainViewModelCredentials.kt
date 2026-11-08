@@ -51,6 +51,38 @@ private data class CrackerWordlistStream(
     val totalBytes: Long,
 )
 
+/**
+ * Resolve a user-facing document name for SAF URIs.
+ *
+ * Some providers return opaque document IDs such as `msf:1000` from
+ * Uri.lastPathSegment instead of a filename. Prefer OpenableColumns.DISPLAY_NAME
+ * and reject known provider-internal identifiers so the UI never shows them.
+ */
+internal fun selectDocumentDisplayName(
+    suppliedName: String?,
+    queriedName: String?,
+    uriLastPathSegment: String?,
+    fallback: String,
+): String {
+    return sequenceOf(suppliedName, queriedName, uriLastPathSegment)
+        .mapNotNull { value ->
+            val trimmed = value?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val normalized = trimmed.lowercase()
+            if (normalized.startsWith("msf:") ||
+                normalized.startsWith("primary:") ||
+                normalized.startsWith("raw:") ||
+                normalized.startsWith("content:") ||
+                normalized.startsWith("document:")
+            ) {
+                null
+            } else {
+                trimmed.substringAfterLast('/').takeIf { it.isNotBlank() }
+            }
+        }
+        .firstOrNull()
+        ?: fallback
+}
+
 private class CountingInputStream(input: InputStream) : FilterInputStream(input) {
     val bytesRead = AtomicLong(0L)
 
@@ -494,7 +526,12 @@ internal fun MainViewModel.setCrackerCustomPcapImpl(uri: Uri, name: String?) {
     _crackerSelectedSession.value = null
     _crackerSelectedCapturedPath.value = null
     _crackerCustomPcapUri.value = uri
-    _crackerCustomPcapName.value = name ?: uri.lastPathSegment ?: "capture.pcap"
+    _crackerCustomPcapName.value = selectDocumentDisplayName(
+        suppliedName = name,
+        queriedName = queryDocumentDisplayNameImpl(uri),
+        uriLastPathSegment = uri.lastPathSegment,
+        fallback = "capture.pcap",
+    )
     _crackerImported22000Uri.value = null
     _crackerImported22000Name.value = null
     _crackerManualMode.value = false
@@ -560,7 +597,12 @@ internal fun MainViewModel.setCrackerImported22000Impl(uri: Uri, name: String?) 
     _crackerCustomPcapUri.value = null
     _crackerCustomPcapName.value = null
     _crackerImported22000Uri.value = uri
-    _crackerImported22000Name.value = name ?: uri.lastPathSegment ?: "handshakes.22000"
+    _crackerImported22000Name.value = selectDocumentDisplayName(
+        suppliedName = name,
+        queriedName = queryDocumentDisplayNameImpl(uri),
+        uriLastPathSegment = uri.lastPathSegment,
+        fallback = "handshakes.22000",
+    )
     _crackerManualMode.value = false
     _crackerManualSsid.value = ""
     _crackerTargets.value = emptyList()
@@ -690,9 +732,12 @@ internal fun MainViewModel.selectAllCrackerTargetsImpl(selected: Boolean) {
 
 internal fun MainViewModel.setCrackerWordlistImpl(uri: Uri, name: String?) {
     if (_crackerRunning.value) return
-    val cleanName = name?.takeIf { it.isNotBlank() }
-        ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
-        ?: "wordlist.txt"
+    val cleanName = selectDocumentDisplayName(
+        suppliedName = name,
+        queriedName = queryDocumentDisplayNameImpl(uri),
+        uriLastPathSegment = uri.lastPathSegment,
+        fallback = "wordlist.txt",
+    )
     _crackerWordlist.value = CrackerWordlistOption(uri, cleanName)
     _crackerTargets.update { targets ->
         targets.map {

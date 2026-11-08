@@ -49,6 +49,9 @@ public final class TerminalView extends View {
     private static boolean TERMINAL_VIEW_KEY_LOGGING_ENABLED = false;
 
     /** The currently displayed terminal session, whose emulator is {@link #mEmulator}. */
+    private long mLastImeTextAtMs = 0L;
+    private String mLastImeText = "";
+
     public TerminalSession mTermSession;
     /** Our terminal emulator whose session is {@link #mTermSession}. */
     public TerminalEmulator mEmulator;
@@ -313,6 +316,106 @@ public final class TerminalView extends View {
         return true;
     }
 
+    /**
+     * Paste the current Android clipboard into the terminal using the same
+     * normalization and bracketed-paste handling as the long-press paste path.
+     */
+    public void pasteFromClipboard() {
+        ClipboardManager clipboardManager =
+            (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboardManager == null) return;
+        ClipData clipData = clipboardManager.getPrimaryClip();
+        if (clipData == null || clipData.getItemCount() == 0) return;
+        ClipData.Item clipItem = clipData.getItemAt(0);
+        if (clipItem == null) return;
+        CharSequence text = clipItem.coerceToText(getContext());
+        if (!TextUtils.isEmpty(text)) pasteText(text.toString());
+    }
+
+    public void pasteText(String text) {
+        if (mEmulator != null) {
+            mEmulator.paste(text);
+        } else if (mTermSession != null) {
+            mTermSession.write(text);
+        }
+    }
+
+    /**
+     * IMEs can report the same segment through both commitText() and
+     * finishComposingText(). Clipboard-picker IMEs in particular may emit
+     * several text segments in quick succession. Suppress only an immediate
+     * duplicate multi-character segment so one clipboard selection is not
+     * replayed more than once, while preserving intentional repeated typing.
+     */
+    private void sendImeText(CharSequence text) {
+        if (text == null || text.length() == 0) return;
+        String value = text.toString();
+        long now = SystemClock.uptimeMillis();
+        if (value.length() > 1 &&
+            value.equals(mLastImeText) &&
+            now - mLastImeTextAtMs < 180L) {
+            return;
+        }
+        mLastImeText = value;
+        mLastImeTextAtMs = now;
+        sendTextToTerminal(value);
+    }
+
+    private void sendTextToTerminal(CharSequence text) {
+        stopTextSelectionMode();
+        final int textLengthInChars = text.length();
+        for (int i = 0; i < textLengthInChars; i++) {
+            char firstChar = text.charAt(i);
+            int codePoint;
+            if (Character.isHighSurrogate(firstChar)) {
+                if (++i < textLengthInChars) {
+                    codePoint = Character.toCodePoint(firstChar, text.charAt(i));
+                } else {
+                    codePoint = TerminalEmulator.UNICODE_REPLACEMENT_CHAR;
+                }
+            } else {
+                codePoint = firstChar;
+            }
+
+            // Check onKeyDown() for details.
+            if (mClient.readShiftKey())
+                codePoint = Character.toUpperCase(codePoint);
+
+            boolean ctrlHeld = false;
+            if (codePoint <= 31 && codePoint != 27) {
+                if (codePoint == '\n') {
+                    // The AOSP keyboard and descendants seems to send \n as text when the enter key is pressed,
+                    // instead of a key event like most other keyboard apps. A terminal expects \r for the enter
+                    // key (although when icrnl is enabled this doesn't make a difference - run 'stty -icrnl' to
+                    // check the behaviour).
+                    codePoint = '\r';
+                }
+
+                // E.g. penti keyboard for ctrl input.
+                ctrlHeld = true;
+                switch (codePoint) {
+                    case 31:
+                        codePoint = '_';
+                        break;
+                    case 30:
+                        codePoint = '^';
+                        break;
+                    case 29:
+                        codePoint = ']';
+                        break;
+                    case 28:
+                        codePoint = '\\';
+                        break;
+                    default:
+                        codePoint += 96;
+                        break;
+                }
+            }
+
+            inputCodePoint(KEY_EVENT_SOURCE_SOFT_KEYBOARD, codePoint, ctrlHeld, false);
+        }
+    }
+
     @Override
     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
         // Ensure that inputType is only set if TerminalView is selected view with the keyboard and
@@ -349,14 +452,28 @@ public final class TerminalView extends View {
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN;
 
         return new BaseInputConnection(this, true) {
+            private final StringBuilder pendingComposition = new StringBuilder();
+
+            @Override
+            public boolean setComposingText(CharSequence text, int newCursorPosition) {
+                if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) {
+                    mClient.logInfo(LOG_TAG, "IME: setComposingText(\"" + text + "\", " + newCursorPosition + ")");
+                }
+                // TerminalView has no editable text document. Keeping the
+                // composition locally avoids stale BaseInputConnection
+                // content being replayed by clipboard-picker IMEs.
+                pendingComposition.setLength(0);
+                if (text != null) pendingComposition.append(text);
+                return true;
+            }
 
             @Override
             public boolean finishComposingText() {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) mClient.logInfo(LOG_TAG, "IME: finishComposingText()");
-                super.finishComposingText();
-
-                sendTextToTerminal(getEditable());
-                getEditable().clear();
+                if (pendingComposition.length() > 0) {
+                    sendImeText(pendingComposition.toString());
+                    pendingComposition.setLength(0);
+                }
                 return true;
             }
 
@@ -365,14 +482,30 @@ public final class TerminalView extends View {
                 if (TERMINAL_VIEW_KEY_LOGGING_ENABLED) {
                     mClient.logInfo(LOG_TAG, "IME: commitText(\"" + text + "\", " + newCursorPosition + ")");
                 }
-                super.commitText(text, newCursorPosition);
-
-                if (mEmulator == null) return true;
-
-                Editable content = getEditable();
-                sendTextToTerminal(content);
-                content.clear();
+                String committedText = text == null ? "" : text.toString();
+                if (committedText.isEmpty() && pendingComposition.length() > 0) {
+                    committedText = pendingComposition.toString();
+                }
+                pendingComposition.setLength(0);
+                if (mEmulator != null && !committedText.isEmpty()) {
+                    sendImeText(committedText);
+                }
                 return true;
+            }
+
+            @Override
+            public boolean setComposingRegion(int start, int end) {
+                pendingComposition.setLength(0);
+                return true;
+            }
+
+            @Override
+            public boolean performContextMenuAction(int id) {
+                if (id == android.R.id.paste) {
+                    pasteFromClipboard();
+                    return true;
+                }
+                return false;
             }
 
             @Override
@@ -383,63 +516,7 @@ public final class TerminalView extends View {
                 // The stock Samsung keyboard with 'Auto check spelling' enabled sends leftLength > 1.
                 KeyEvent deleteKey = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL);
                 for (int i = 0; i < leftLength; i++) sendKeyEvent(deleteKey);
-                return super.deleteSurroundingText(leftLength, rightLength);
-            }
-
-            void sendTextToTerminal(CharSequence text) {
-                stopTextSelectionMode();
-                final int textLengthInChars = text.length();
-                for (int i = 0; i < textLengthInChars; i++) {
-                    char firstChar = text.charAt(i);
-                    int codePoint;
-                    if (Character.isHighSurrogate(firstChar)) {
-                        if (++i < textLengthInChars) {
-                            codePoint = Character.toCodePoint(firstChar, text.charAt(i));
-                        } else {
-                            // At end of string, with no low surrogate following the high:
-                            codePoint = TerminalEmulator.UNICODE_REPLACEMENT_CHAR;
-                        }
-                    } else {
-                        codePoint = firstChar;
-                    }
-
-                    // Check onKeyDown() for details.
-                    if (mClient.readShiftKey())
-                        codePoint = Character.toUpperCase(codePoint);
-
-                    boolean ctrlHeld = false;
-                    if (codePoint <= 31 && codePoint != 27) {
-                        if (codePoint == '\n') {
-                            // The AOSP keyboard and descendants seems to send \n as text when the enter key is pressed,
-                            // instead of a key event like most other keyboard apps. A terminal expects \r for the enter
-                            // key (although when icrnl is enabled this doesn't make a difference - run 'stty -icrnl' to
-                            // check the behaviour).
-                            codePoint = '\r';
-                        }
-
-                        // E.g. penti keyboard for ctrl input.
-                        ctrlHeld = true;
-                        switch (codePoint) {
-                            case 31:
-                                codePoint = '_';
-                                break;
-                            case 30:
-                                codePoint = '^';
-                                break;
-                            case 29:
-                                codePoint = ']';
-                                break;
-                            case 28:
-                                codePoint = '\\';
-                                break;
-                            default:
-                                codePoint += 96;
-                                break;
-                        }
-                    }
-
-                    inputCodePoint(KEY_EVENT_SOURCE_SOFT_KEYBOARD, codePoint, ctrlHeld, false);
-                }
+                return true;
             }
 
         };
@@ -783,13 +860,20 @@ public final class TerminalView extends View {
             stopTextSelectionMode();
         }
 
+        if (keyCode == KeyEvent.KEYCODE_PASTE) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                pasteFromClipboard();
+            }
+            return true;
+        }
+
         if (mClient.onKeyDown(keyCode, event, mTermSession)) {
             invalidate();
             return true;
         } else if (event.isSystem() && (!mClient.shouldBackButtonBeMappedToEscape() || keyCode != KeyEvent.KEYCODE_BACK)) {
             return super.onKeyDown(keyCode, event);
         } else if (event.getAction() == KeyEvent.ACTION_MULTIPLE && keyCode == KeyEvent.KEYCODE_UNKNOWN) {
-            mTermSession.write(event.getCharacters());
+            sendImeText(event.getCharacters());
             return true;
         } else if (keyCode == KeyEvent.KEYCODE_LANGUAGE_SWITCH) {
             return super.onKeyDown(keyCode, event);

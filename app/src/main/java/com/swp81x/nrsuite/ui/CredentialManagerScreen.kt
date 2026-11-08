@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
@@ -551,23 +552,37 @@ private fun CredentialSessionCard(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                text = if (compactCredential) {
-                                    credential.value
-                                } else {
-                                    "[${credential.capturedAt}] ${credential.value}  :  ✓"
-                                },
-                                style = if (compactCredential) {
-                                    MaterialTheme.typography.titleMedium.copy(
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                } else {
-                                    MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
-                                },
-                                color = StatusGreen,
+                            Row(
                                 modifier = Modifier.weight(1f),
-                            )
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = if (compactCredential) {
+                                        credential.value
+                                    } else {
+                                        "[${credential.capturedAt}] ${credential.value}"
+                                    },
+                                    style = if (compactCredential) {
+                                        MaterialTheme.typography.titleMedium.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                    } else {
+                                        MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
+                                    },
+                                    color = StatusGreen,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (!compactCredential) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = "Correct password",
+                                        tint = StatusGreen,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            }
                             IconButton(onClick = { onCopyPassword(credential.value) }) {
                                 Icon(
                                     imageVector = Icons.Default.ContentCopy,

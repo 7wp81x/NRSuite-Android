@@ -16,6 +16,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Classify release channel
+        id: release_channel
+        run: |
+          set -eu
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          case "$TAG" in
+            *-alpha*) CHANNEL=alpha; PRERELEASE=true ;;
+            *-beta*)  CHANNEL=beta;  PRERELEASE=true ;;
+            *-rc*)    CHANNEL=rc;    PRERELEASE=true ;;
+            *)        CHANNEL=stable; PRERELEASE=false ;;
+          esac
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "ERROR: unsupported release tag: $TAG" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "Release version=$VERSION channel=$CHANNEL prerelease=$PRERELEASE"
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -54,12 +75,16 @@ jobs:
         run: chmod +x gradlew
 
       - name: Validate app version against release tag
+        env:
+          RELEASE_VERSION: ${{ steps.release_channel.outputs.version }}
+          RELEASE_CHANNEL: ${{ steps.release_channel.outputs.channel }}
         run: |
           set -eu
-          TAG="${GITHUB_REF_NAME#v}"
+          TAG="$RELEASE_VERSION"
           VERSION_NAME=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts | head -1)
           VERSION_CODE=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts | head -1)
           echo "Tag: $TAG"
+          echo "Channel: $RELEASE_CHANNEL"
           echo "App versionName: $VERSION_NAME"
           echo "App versionCode: $VERSION_CODE"
           if [ "$VERSION_NAME" != "$TAG" ]; then
@@ -85,12 +110,14 @@ jobs:
           "$APKSIGNER" verify --verbose app/build/outputs/apk/release/app-release.apk
 
       - name: Prepare release assets
+        env:
+          RELEASE_VERSION: ${{ steps.release_channel.outputs.version }}
+          RELEASE_CHANNEL: ${{ steps.release_channel.outputs.channel }}
         run: |
           set -eu
-          VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk \
-            "dist/NRSuite-Android-${VERSION}-release.apk"
+            "dist/NRSuite-Android-${RELEASE_VERSION}-${RELEASE_CHANNEL}.apk"
           cd dist
           sha256sum NRSuite-Android-*.apk > checksums.txt
           cat checksums.txt
@@ -99,8 +126,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/NRSuite-Android-*-release.apk
+            dist/NRSuite-Android-*.apk
             dist/checksums.txt
-          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+          prerelease: ${{ steps.release_channel.outputs.prerelease == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

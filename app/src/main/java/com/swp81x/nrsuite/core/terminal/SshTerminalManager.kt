@@ -27,6 +27,7 @@ import java.io.OutputStream
 import java.security.MessageDigest
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -366,14 +367,21 @@ internal class SshTerminalManager(
         if (command.isBlank()) return
         when (runMode) {
             TerminalShortcutRunMode.CURRENT_SESSION -> {
-                val session = managedSessions[activeSessionId]?.terminalSession
-                    ?: managedSessions.values.lastOrNull()?.terminalSession
-                session?.write(if (execute) command + "\r" else command)
+                val session = managedSessions[activeSessionId]
+                    ?: managedSessions.values.lastOrNull()
+                if (execute) {
+                    session?.writeInjectedCommand(command)
+                } else {
+                    session?.writeInjectedInput("  $command")
+                }
             }
             TerminalShortcutRunMode.INSERT_ONLY -> {
-                val session = managedSessions[activeSessionId]?.terminalSession
-                    ?: managedSessions.values.lastOrNull()?.terminalSession
-                session?.write(command)
+                val session = managedSessions[activeSessionId]
+                    ?: managedSessions.values.lastOrNull()
+                // Keep the text visible so the user can review/edit it, but show
+                // the leading spaces that keep the eventual command out of
+                // shells configured with HISTCONTROL=ignorespace.
+                session?.writeInjectedInput("  $command")
             }
             TerminalShortcutRunMode.NEW_SESSION -> newSession(command, false)
             TerminalShortcutRunMode.NEW_TEMPORARY_SESSION -> newSession(command, true)
@@ -613,7 +621,7 @@ internal class SshTerminalManager(
             // while bashrc/profile scripts are still initializing. Fall back after
             // five seconds for shells that produce no initial output.
             withTimeoutOrNull(5_000L) { managed.startupReady.await() }
-            managed.terminalSession.write(commandLine + "\r")
+            managed.writeInjectedCommand(commandLine, suppressEcho = true)
         }
     }
 
@@ -749,13 +757,30 @@ internal class SshTerminalManager(
     ) {
         val startupReady = CompletableDeferred<Unit>()
         private var readerJob: Job? = null
+        private var writerJob: Job? = null
         private var output: OutputStream? = null
         private var gracefulCloseRequested = false
+        private val commandEchoFilter = TerminalCommandEchoFilter()
+        private val writeQueue = Channel<ByteArray>(Channel.UNLIMITED)
+
+        fun writeInjectedCommand(command: String, suppressEcho: Boolean = false) {
+            // A leading space pair is honoured by shells configured with
+            // HISTCONTROL=ignorespace/ignoreboth. NRSuite always injects
+            // commands with it so generated wrappers and shortcut commands do
+            // not pollute the user's shell history.
+            val injected = "  $command"
+            if (suppressEcho) commandEchoFilter.expect(injected)
+            terminalSession.write(injected + "\r")
+        }
+
+        fun writeInjectedInput(text: String) {
+            terminalSession.write(text)
+        }
 
         fun requestGracefulClose() {
             if (gracefulCloseRequested) return
             gracefulCloseRequested = true
-            terminalSession.write("exit\r")
+            writeInjectedCommand("exit", suppressEcho = true)
             scope.launch {
                 delay(1_500)
                 if (managedSessions[id] === this@ManagedTerminalSession) {
@@ -775,14 +800,14 @@ internal class SshTerminalManager(
             terminalSession.setExternalTransport(
                 object : TerminalSession.ExternalTerminalTransport {
                     override fun write(data: ByteArray, offset: Int, count: Int) {
-                        scope.launch(Dispatchers.IO) {
-                            writeMutex.withLock {
-                                runCatching {
-                                    output?.write(data, offset, count)
-                                    output?.flush()
-                                }
-                            }
-                        }
+                        if (count <= 0) return
+                        // Copy immediately because the terminal emulator may
+                        // reuse its input buffer. A single ordered queue is
+                        // required: one coroutine per character can acquire the
+                        // write mutex out of order during a paste and scramble
+                        // the input that reaches the SSH PTY.
+                        val copy = data.copyOfRange(offset, offset + count)
+                        writeQueue.trySend(copy)
                     }
 
                     override fun resize(
@@ -809,6 +834,16 @@ internal class SshTerminalManager(
                 },
             )
             output = runCatching { channel.outputStream }.getOrNull()
+            writerJob = scope.launch(Dispatchers.IO) {
+                for (chunk in writeQueue) {
+                    writeMutex.withLock {
+                        runCatching {
+                            output?.write(chunk)
+                            output?.flush()
+                        }
+                    }
+                }
+            }
             val input: InputStream = runCatching { channel.inputStream }.getOrNull() ?: return
             readerJob = scope.launch(Dispatchers.IO) {
                 val buffer = ByteArray(8192)
@@ -818,7 +853,10 @@ internal class SshTerminalManager(
                         if (read < 0) break
                         if (read > 0) {
                             if (!startupReady.isCompleted) startupReady.complete(Unit)
-                            terminalSession.feedOutput(buffer, 0, read)
+                            val filtered = commandEchoFilter.process(buffer, 0, read)
+                            if (filtered.isNotEmpty()) {
+                                terminalSession.feedOutput(filtered, 0, filtered.size)
+                            }
                         }
                     }
                     if (isActive) {
@@ -837,6 +875,9 @@ internal class SshTerminalManager(
         fun close(message: String) {
             readerJob?.cancel()
             readerJob = null
+            writeQueue.close()
+            writerJob?.cancel()
+            writerJob = null
             terminalSession.markDisconnected(message)
             runCatching { output?.close() }
             output = null
@@ -877,7 +918,14 @@ internal class SshTerminalManager(
                 ?.getItemAt(0)
                 ?.coerceToText(context)
                 ?.toString()
-            if (!text.isNullOrEmpty()) session?.write(text)
+            if (!text.isNullOrEmpty()) {
+                val emulator = session?.getEmulator()
+                if (emulator != null) {
+                    emulator.paste(text)
+                } else {
+                    session?.write(text)
+                }
+            }
         }
 
         override fun onBell(session: TerminalSession) = Unit

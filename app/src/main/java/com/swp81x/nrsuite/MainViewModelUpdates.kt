@@ -9,11 +9,13 @@ import com.swp81x.nrsuite.core.update.GitHubReleaseResult
 import com.swp81x.nrsuite.core.update.GitHubReleasesResult
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.update.VersionComparator
+import com.swp81x.nrsuite.core.update.isAlphaOrBetaRelease
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
 internal const val PREF_AUTO_UPDATE_CHECK = "auto_update_check"
+internal const val PREF_EXCLUDE_BETA_RELEASES = "exclude_beta_releases"
 
 private const val PREF_APP_RELEASE = "update_app_release"
 private const val PREF_FW_RELEASE = "update_fw_release"
@@ -28,7 +30,7 @@ private const val FIRMWARE_REPO = "7wp81x/nrsuite-firmware"
 private const val UPDATE_CHECK_INTERVAL_MS = 60L * 60L * 1000L
 
 internal fun MainViewModel.initUpdateChecksImpl() {
-    _firmwareReleases.value = readReleases(PREF_FW_RELEASES)
+    _firmwareReleases.value = visibleReleases(readReleases(PREF_FW_RELEASES))
     refreshUpdateUiState()
     checkForUpdatesImpl(force = false)
 }
@@ -39,6 +41,21 @@ internal fun MainViewModel.setAutoUpdateCheckImpl(enabled: Boolean) {
     if (enabled) {
         checkForUpdatesImpl(force = false)
     }
+}
+
+internal fun MainViewModel.setExcludeBetaReleasesImpl(enabled: Boolean) {
+    if (_excludeBetaReleases.value == enabled) return
+    _excludeBetaReleases.value = enabled
+    preferences.edit()
+        .putBoolean(PREF_EXCLUDE_BETA_RELEASES, enabled)
+        // A cached ETag may return 304 for the old release set. Clear both
+        // validators so the new filter is evaluated against a fresh response.
+        .remove(PREF_APP_ETAG)
+        .remove(PREF_FW_ETAG)
+        .apply()
+    _firmwareReleases.value = visibleReleases(readReleases(PREF_FW_RELEASES))
+    refreshUpdateUiState()
+    checkForUpdatesImpl(force = true)
 }
 
 internal fun MainViewModel.checkForUpdatesImpl(force: Boolean = false) {
@@ -81,7 +98,11 @@ internal fun MainViewModel.checkForUpdatesImpl(force: Boolean = false) {
 
 private suspend fun MainViewModel.fetchAppRelease(): GitHubReleaseResult {
     val etag = preferences.getString(PREF_APP_ETAG, null)
-    val result = GitHubReleaseClient.fetchLatest(APP_REPO, etag)
+    val result = GitHubReleaseClient.fetchLatest(
+        repo = APP_REPO,
+        etag = etag,
+        includeAlphaBeta = !_excludeBetaReleases.value,
+    )
     when (result) {
         is GitHubReleaseResult.Success -> {
             preferences.edit()
@@ -102,7 +123,7 @@ private suspend fun MainViewModel.fetchFirmwareRelease(): GitHubReleaseResult {
     val etag = preferences.getString(PREF_FW_ETAG, null)
     return when (val result = GitHubReleaseClient.fetchReleases(FIRMWARE_REPO, etag)) {
         is GitHubReleasesResult.Success -> {
-            val releases = result.releases.sortedWith { left, right ->
+            val releases = visibleReleases(result.releases).sortedWith { left, right ->
                 VersionComparator.compare(right.tag, left.tag)
             }
             _firmwareReleases.value = releases
@@ -126,7 +147,7 @@ private suspend fun MainViewModel.fetchFirmwareRelease(): GitHubReleaseResult {
 private fun MainViewModel.refreshUpdateUiState() {
     refreshAppUpdateDownloadStateImpl()
     val installedVersion = installedAppVersion()
-    val latestApp = readRelease(PREF_APP_RELEASE)
+    val latestApp = readRelease(PREF_APP_RELEASE)?.takeIf { isReleaseVisible(it) }
     _appUpdate.value = if (
         latestApp != null && VersionComparator.isNewer(latestApp.tag, installedVersion)
     ) {
@@ -136,7 +157,7 @@ private fun MainViewModel.refreshUpdateUiState() {
     }
 
     val connectedFirmware = currentFirmwareVersion()
-    val latestFirmware = readRelease(PREF_FW_RELEASE)
+    val latestFirmware = readRelease(PREF_FW_RELEASE)?.takeIf { isReleaseVisible(it) }
     _firmwareUpdate.value = if (
         connectedFirmware != null &&
         latestFirmware != null &&
@@ -154,6 +175,16 @@ private fun MainViewModel.installedAppVersion(): String = runCatching {
 
 private fun MainViewModel.currentFirmwareVersion(): String? =
     (session?.state?.value as? ConnectionState.Connected)?.firmwareVersion
+
+private fun MainViewModel.isReleaseVisible(release: ReleaseInfo): Boolean =
+    !_excludeBetaReleases.value || !release.isAlphaOrBetaRelease()
+
+private fun MainViewModel.visibleReleases(releases: List<ReleaseInfo>): List<ReleaseInfo> =
+    if (_excludeBetaReleases.value) {
+        releases.filterNot { it.isAlphaOrBetaRelease() }
+    } else {
+        releases
+    }
 
 private fun MainViewModel.readRelease(key: String): ReleaseInfo? {
     val raw = preferences.getString(key, null)?.takeIf { it.isNotBlank() } ?: return null

@@ -5,7 +5,10 @@ import com.swp81x.nrsuite.core.handshake.CapturedHandshakeEntry
 import com.swp81x.nrsuite.core.handshake.CrackSource
 import com.swp81x.nrsuite.core.handshake.HandshakeCrackStatus
 import com.swp81x.nrsuite.core.handshake.PwnModeState
+import com.swp81x.nrsuite.core.handshake.PwnModeQueueUiState
 import com.swp81x.nrsuite.core.handshake.PwnModeStore
+import com.swp81x.nrsuite.core.handshake.PwnVerificationRequest
+import com.swp81x.nrsuite.core.handshake.slicePwnWordlist
 import com.swp81x.nrsuite.core.handshake.AutoHandshakeConfig
 import com.swp81x.nrsuite.core.handshake.AutoHandshakeFeedEntry
 import com.swp81x.nrsuite.core.handshake.AutoHandshakePhase
@@ -28,7 +31,12 @@ import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wpa.WpaHandshake
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeTracker
 import com.swp81x.nrsuite.core.wpa.WpaHandshakeVerifier
+import android.net.Uri
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -38,6 +46,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -45,12 +60,19 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+private const val PWN_WORDLIST_MAX_BYTES = 5 * 1024 * 1024
+private val PWN_VERIFY_PARALLELISM = Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
+
 internal class AutoHandshakeRuntime {
     val uiState = MutableStateFlow(AutoHandshakeUiState())
     val sessions = MutableStateFlow<List<AutoHandshakeSession>>(emptyList())
     val feed = MutableStateFlow<List<AutoHandshakeFeedEntry>>(emptyList())
     val pwnMode = MutableStateFlow(PwnModeState())
     val captures = MutableStateFlow<List<CapturedHandshakeEntry>>(emptyList())
+    val pwnVerificationQueue = Channel<PwnVerificationRequest>(Channel.UNLIMITED)
+    val pwnQueueState = MutableStateFlow(PwnModeQueueUiState())
+    val pwnPendingBssids = ConcurrentHashMap.newKeySet<String>()
+    var pwnQueueJob: Job? = null
 
     var job: Job? = null
     var pcapJob: Job? = null
@@ -287,6 +309,7 @@ private fun MainViewModel.savePwnModeState(state: PwnModeState) {
 internal fun MainViewModel.setPwnModeEnabledImpl(enabled: Boolean) {
     val current = autoHandshake.pwnMode.value
     savePwnModeState(current.copy(enabled = enabled))
+    if (!enabled) stopPwnVerificationQueueImpl()
     addAutoHandshakeFeed(
         if (enabled) "Pwn Mode enabled." else "Pwn Mode disabled.",
         LogLevel.INFO,
@@ -296,6 +319,13 @@ internal fun MainViewModel.setPwnModeEnabledImpl(enabled: Boolean) {
 internal fun MainViewModel.addPwnPasswordImpl(password: String) {
     val clean = password.trim()
     if (clean.isEmpty()) return
+    if (clean.length !in 8..63) {
+        addAutoHandshakeFeed(
+            "Pwn Mode passwords must be 8-63 characters for WPA/WPA2.",
+            LogLevel.ERROR,
+        )
+        return
+    }
     val current = autoHandshake.pwnMode.value
     if (current.passwords.size >= PwnModeStore.MAX_PASSWORDS) {
         addAutoHandshakeFeed(
@@ -305,7 +335,16 @@ internal fun MainViewModel.addPwnPasswordImpl(password: String) {
         return
     }
     if (current.passwords.any { it == clean }) return
-    savePwnModeState(current.copy(passwords = current.passwords + clean))
+    savePwnModeState(
+        current.copy(
+            passwords = current.passwords + clean,
+            wordlistName = null,
+            sourceLineCount = 0,
+            rejectedLineCount = 0,
+            duplicateLineCount = 0,
+            truncated = false,
+        ),
+    )
     addAutoHandshakeFeed("Pwn Mode password added (${current.passwords.size + 1}).")
 }
 
@@ -315,6 +354,117 @@ internal fun MainViewModel.removePwnPasswordImpl(password: String) {
     if (updated.size == current.passwords.size) return
     savePwnModeState(current.copy(passwords = updated))
     addAutoHandshakeFeed("Pwn Mode password removed (${updated.size} remaining).")
+}
+
+internal fun MainViewModel.importPwnWordlistImpl(uri: Uri) {
+    scope.launch(Dispatchers.IO) {
+        val result = runCatching {
+            val displayName = queryDocumentDisplayNameImpl(uri)
+                ?: uri.lastPathSegment?.substringAfterLast('/')
+                ?: "wordlist.txt"
+            if (!displayName.endsWith(".txt", ignoreCase = true)) {
+                error("Select a .txt wordlist. Other file types are not accepted.")
+            }
+            val mimeType = app.contentResolver.getType(uri)
+            if (mimeType != null &&
+                !mimeType.startsWith("text/", ignoreCase = true) &&
+                !mimeType.equals("application/octet-stream", ignoreCase = true)
+            ) {
+                error("The selected file is not a text wordlist.")
+            }
+            val bytes = app.contentResolver.openInputStream(uri)?.use { input ->
+                readWordlistBytes(input, PWN_WORDLIST_MAX_BYTES)
+            } ?: error("Could not open the selected wordlist.")
+            if (bytes.isEmpty()) error("The selected wordlist is empty.")
+            if (bytes.any { byte ->
+                    val value = byte.toInt() and 0xFF
+                    (value in 0..8) || (value in 11..12) || (value in 14..31) || value == 127
+                }
+            ) {
+                error("The selected file contains binary or unsupported control characters.")
+            }
+            val text = runCatching {
+                Charsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes))
+                    .toString()
+            }.getOrElse {
+                error("The selected file is not valid UTF-8 text.")
+            }
+            slicePwnWordlist(text.lineSequence(), PwnModeStore.MAX_PASSWORDS) to displayName
+        }
+        withContext(Dispatchers.Main) {
+            result.onSuccess { (imported, displayName) ->
+                if (imported.passwords.isEmpty()) {
+                    addAutoHandshakeFeed(
+                        "Pwn Mode wordlist import rejected all lines. " +
+                            "Use WPA passphrases between 8 and 63 characters.",
+                        LogLevel.ERROR,
+                    )
+                    return@onSuccess
+                }
+                val current = autoHandshake.pwnMode.value
+                savePwnModeState(
+                    current.copy(
+                        passwords = imported.passwords,
+                        wordlistName = displayName,
+                        sourceLineCount = imported.sourceLines,
+                        rejectedLineCount = imported.rejectedLines,
+                        duplicateLineCount = imported.duplicateLines,
+                        truncated = imported.truncated,
+                    ),
+                )
+                addAutoHandshakeFeed(
+                    "Pwn Mode imported ${imported.passwords.size}/${imported.sourceLines} valid line(s) " +
+                        "from $displayName" +
+                        if (imported.truncated) {
+                            " (limit ${PwnModeStore.MAX_PASSWORDS})."
+                        } else {
+                            "."
+                        },
+                    LogLevel.INFO,
+                )
+            }.onFailure { error ->
+                addAutoHandshakeFeed(
+                    "Pwn Mode wordlist import failed: ${error.message ?: "unknown error"}.",
+                    LogLevel.ERROR,
+                )
+            }
+        }
+    }
+}
+
+internal fun MainViewModel.clearPwnPasswordsImpl() {
+    val current = autoHandshake.pwnMode.value
+    if (current.passwords.isEmpty() && current.wordlistName == null) return
+    savePwnModeState(
+        current.copy(
+            passwords = emptyList(),
+            wordlistName = null,
+            sourceLineCount = 0,
+            rejectedLineCount = 0,
+            duplicateLineCount = 0,
+            truncated = false,
+        ),
+    )
+    addAutoHandshakeFeed("Pwn Mode password list cleared.")
+}
+
+private fun readWordlistBytes(input: InputStream, maxBytes: Int): ByteArray {
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(8192)
+    var total = 0
+    while (true) {
+        val read = input.read(buffer)
+        if (read < 0) break
+        total += read
+        if (total > maxBytes) {
+            error("Wordlist is larger than the ${maxBytes / (1024 * 1024)} MB limit.")
+        }
+        output.write(buffer, 0, read)
+    }
+    return output.toByteArray()
 }
 
 private fun MainViewModel.refreshCapturedHandshakes() {
@@ -336,7 +486,7 @@ internal fun MainViewModel.resetNrugochiStatsImpl() {
     addAutoHandshakeFeed("Capture statistics reset.")
 }
 
-private suspend fun MainViewModel.checkPwnModeForCapture(
+private fun MainViewModel.enqueuePwnModeVerification(
     handshake: WpaHandshake?,
     ssid: String,
     entry: CapturedHandshakeEntry,
@@ -351,34 +501,139 @@ private suspend fun MainViewModel.checkPwnModeForCapture(
         return
     }
 
-    val match = withContext(Dispatchers.Default) {
-        state.passwords.firstOrNull { password ->
-            runCatching {
-                WpaHandshakeVerifier.verify(handshake, ssid, password)
-            }.getOrDefault(false)
+    val key = entry.bssid.uppercase()
+    if (!autoHandshake.pwnPendingBssids.add(key)) {
+        addAutoHandshakeFeed("Pwn Mode check already queued for ${entry.bssid}.")
+        return
+    }
+    val request = PwnVerificationRequest(
+        handshake = handshake,
+        ssid = ssid,
+        entry = entry,
+    )
+    if (autoHandshake.pwnVerificationQueue.trySend(request).isFailure) {
+        autoHandshake.pwnPendingBssids.remove(key)
+        addAutoHandshakeFeed("Pwn Mode queue is unavailable.", LogLevel.ERROR)
+        return
+    }
+    addAutoHandshakeFeed("Pwn Mode queued check for ${entry.bssid}.")
+    updatePwnQueueState()
+    ensurePwnVerificationWorker()
+}
+
+private fun MainViewModel.ensurePwnVerificationWorker() {
+    if (autoHandshake.pwnQueueJob?.isActive == true) return
+    autoHandshake.pwnQueueJob = scope.launch(Dispatchers.Default) {
+        try {
+            for (request in autoHandshake.pwnVerificationQueue) {
+                processPwnVerificationRequest(request)
+            }
+        } finally {
+            autoHandshake.pwnQueueJob = null
+            updatePwnQueueState()
         }
     }
-
-    val updated = if (match != null) {
-        entry.copy(
-            status = HandshakeCrackStatus.CRACKED,
-            password = match,
-            crackSource = CrackSource.PWN_MODE,
-        )
-    } else {
-        entry.copy(status = HandshakeCrackStatus.FAILED)
-    }
-    runCatching { pwnModeStore().upsertCapture(updated) }
-    refreshCapturedHandshakes()
-    addAutoHandshakeFeed(
-        if (match != null) {
-            "Pwn Mode cracked ${entry.bssid}."
-        } else {
-            "Pwn Mode checked ${entry.bssid}: no match."
-        },
-        if (match != null) LogLevel.SUCCESS else LogLevel.INFO,
-    )
 }
+
+private suspend fun MainViewModel.processPwnVerificationRequest(request: PwnVerificationRequest) {
+    val key = request.entry.bssid.uppercase()
+    try {
+        val state = autoHandshake.pwnMode.value
+        if (!state.enabled || state.passwords.isEmpty()) return
+        val passwords = state.passwords
+        var match: String? = null
+        var checked = 0
+        var nextProgressFeed = 100
+
+        while (checked < passwords.size && match == null) {
+            currentCoroutineContext().ensureActive()
+            if (!autoHandshake.pwnMode.value.enabled) {
+                addAutoHandshakeFeed("Pwn Mode queue cancelled because Pwn Mode was disabled.")
+                return
+            }
+            val endExclusive = minOf(checked + PWN_VERIFY_PARALLELISM, passwords.size)
+            val batch = passwords.subList(checked, endExclusive)
+            val results = coroutineScope {
+                batch.map { password ->
+                    async(Dispatchers.Default) {
+                        currentCoroutineContext().ensureActive()
+                        WpaHandshakeVerifier.verify(request.handshake, request.ssid, password)
+                    }
+                }.awaitAll()
+            }
+            val matchIndex = results.indexOfFirst { it }
+            if (matchIndex >= 0) match = batch[matchIndex]
+            checked = endExclusive
+            autoHandshake.pwnQueueState.value = PwnModeQueueUiState(
+                active = true,
+                queued = autoHandshake.pwnPendingBssids.size,
+                currentCandidate = checked,
+                totalCandidates = passwords.size,
+                currentBssid = request.entry.bssid,
+                queuedBssids = autoHandshake.pwnPendingBssids.toSet(),
+            )
+            if (checked >= nextProgressFeed) {
+                addAutoHandshakeFeed(
+                    "Pwn Mode checking ${request.entry.bssid}: $checked/${passwords.size}.",
+                )
+                nextProgressFeed += 100
+            }
+            yield()
+        }
+
+        val updated = if (match != null) {
+            request.entry.copy(
+                status = HandshakeCrackStatus.CRACKED,
+                password = match,
+                crackSource = CrackSource.PWN_MODE,
+            )
+        } else {
+            request.entry.copy(status = HandshakeCrackStatus.FAILED)
+        }
+        withContext(Dispatchers.IO) {
+            runCatching { pwnModeStore().upsertCapture(updated) }
+            autoHandshake.captures.value = runCatching {
+                pwnModeStore().loadCaptures()
+            }.getOrDefault(autoHandshake.captures.value)
+        }
+        addAutoHandshakeFeed(
+            if (match != null) {
+                "Pwn Mode cracked ${request.entry.bssid} after $checked candidate(s)."
+            } else {
+                "Pwn Mode checked ${request.entry.bssid}: no match in $checked candidate(s)."
+            },
+            if (match != null) LogLevel.SUCCESS else LogLevel.INFO,
+        )
+    } finally {
+        autoHandshake.pwnPendingBssids.remove(key)
+        updatePwnQueueState()
+    }
+}
+
+private fun MainViewModel.updatePwnQueueState() {
+    val activeState = autoHandshake.pwnQueueState.value
+    autoHandshake.pwnQueueState.value = activeState.copy(
+        active = autoHandshake.pwnQueueJob?.isActive == true,
+        queued = autoHandshake.pwnPendingBssids.size,
+        queuedBssids = autoHandshake.pwnPendingBssids.toSet(),
+    )
+    if (autoHandshake.pwnPendingBssids.isEmpty() &&
+        autoHandshake.pwnQueueJob?.isActive != true
+    ) {
+        autoHandshake.pwnQueueState.value = PwnModeQueueUiState()
+    }
+}
+
+internal fun MainViewModel.stopPwnVerificationQueueImpl() {
+    autoHandshake.pwnQueueJob?.cancel()
+    autoHandshake.pwnQueueJob = null
+    while (autoHandshake.pwnVerificationQueue.tryReceive().isSuccess) {
+        // Drain queued captures without verifying them.
+    }
+    autoHandshake.pwnPendingBssids.clear()
+    autoHandshake.pwnQueueState.value = PwnModeQueueUiState()
+}
+
 
 internal fun MainViewModel.deleteCapturedHandshakeImpl(entry: CapturedHandshakeEntry) {
     runCatching { pwnModeStore().deleteCapture(entry) }
@@ -427,6 +682,7 @@ internal fun MainViewModel.markNrugochiCrackFailedImpl() {
 }
 
 internal fun MainViewModel.startAutoHandshakeImpl(config: AutoHandshakeConfig) {
+    stopPwnVerificationQueueImpl()
     val activeSession = session
     if (activeSession == null) {
         appendLog("Connect to a device before starting NRuGochi.")
@@ -475,6 +731,7 @@ internal fun MainViewModel.startAutoHandshakeImpl(config: AutoHandshakeConfig) {
 }
 
 internal fun MainViewModel.stopAutoHandshakeImpl() {
+    stopPwnVerificationQueueImpl()
     if (autoHandshake.stopInProgress) return
     if (autoHandshake.job == null && !autoHandshake.uiState.value.running) return
 
@@ -723,6 +980,7 @@ private suspend fun MainViewModel.runNrugochiLoop(
         publishAutoHandshake(AutoHandshakePhase.FAILED, model, null, model.lastError)
         addAutoHandshakeFeed("NRuGochi failed: ${model.lastError}", LogLevel.ERROR)
     } finally {
+        stopPwnVerificationQueueImpl()
         withContext(NonCancellable + Dispatchers.IO) {
             stopAutoHandshakeRadio(activeSession)
         }
@@ -1124,7 +1382,7 @@ private suspend fun MainViewModel.applyNrugochiChannelResults(
                 )
                 runCatching { pwnModeStore().upsertCapture(captureEntry) }
                 refreshCapturedHandshakes()
-                checkPwnModeForCapture(
+                enqueuePwnModeVerification(
                     handshake = completedHandshakes[key] ?: completedHandshakes[bssid.uppercase()],
                     ssid = target.target.ssid,
                     entry = captureEntry,
@@ -1196,7 +1454,7 @@ private suspend fun MainViewModel.applyNrugochiChannelResults(
                 )
                 runCatching { pwnModeStore().upsertCapture(captureEntry) }
                 refreshCapturedHandshakes()
-                checkPwnModeForCapture(
+                enqueuePwnModeVerification(
                     handshake = completedHandshakes[bssid.uppercase()],
                     ssid = "",
                     entry = captureEntry,

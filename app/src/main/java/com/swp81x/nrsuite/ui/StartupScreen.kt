@@ -55,10 +55,10 @@ fun StartupScreen() {
         Text(
             text = "Developed by 7wp81x",
             style = MaterialTheme.typography.labelSmall,
-            color = NrOnSurfaceVariant.copy(alpha = 0.7f),
+            color = NrOnSurfaceVariant.copy(alpha = 0.82f),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 28.dp),
+                .padding(bottom = 56.dp),
         )
     }
 }

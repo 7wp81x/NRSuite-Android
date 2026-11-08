@@ -35,6 +35,7 @@ internal fun DeviceScreenRoute(
     val firmwareUpdate by viewModel.firmwareUpdate.collectAsState()
     val firmwareReleases by viewModel.firmwareReleases.collectAsState()
     val firmwareAssetDownload by viewModel.firmwareAssetDownload.collectAsState()
+    val firmwareFlashDeviceState by viewModel.firmwareFlashDeviceState.collectAsState()
     val deviceRestarting by viewModel.deviceRestarting.collectAsState()
 
     DeviceScreen(
@@ -46,6 +47,7 @@ internal fun DeviceScreenRoute(
         pendingPermissionRequests = pendingPermissionRequests,
         disconnectingFingerprints = disconnectingFingerprints,
         usbManager = usbManager,
+        firmwareFlashDeviceState = firmwareFlashDeviceState,
         firmwareUpdate = firmwareUpdate,
         firmwareReleases = firmwareReleases,
         firmwareAssetDownload = firmwareAssetDownload,

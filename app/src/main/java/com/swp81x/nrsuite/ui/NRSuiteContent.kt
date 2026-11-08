@@ -211,6 +211,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val firmwareFlashName by viewModel.firmwareFlashName.collectAsState()
     val firmwareFlashSize by viewModel.firmwareFlashSize.collectAsState()
     val firmwareFlashing by viewModel.firmwareFlashing.collectAsState()
+    val firmwareFlashDeviceState by viewModel.firmwareFlashDeviceState.collectAsState()
     val firmwareFlashProgress by viewModel.firmwareFlashProgress.collectAsState()
     val firmwareFlashStatus by viewModel.firmwareFlashStatus.collectAsState()
     val firmwareTargetDevice by viewModel.firmwareTargetDevice.collectAsState()
@@ -361,6 +362,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val ld2450 by viewModel.ld2450.collectAsState()
     val rfid by viewModel.rfid.collectAsState()
     val autoUpdateCheck by viewModel.autoUpdateCheck.collectAsState()
+    val excludeBetaReleases by viewModel.excludeBetaReleases.collectAsState()
     val appUpdate by viewModel.appUpdate.collectAsState()
     val appUpdateDownload by viewModel.appUpdateDownload.collectAsState()
     val firmwareUpdate by viewModel.firmwareUpdate.collectAsState()
@@ -429,6 +431,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val autoHandshakeSessions by viewModel.autoHandshake.sessions.collectAsState()
     val autoHandshakeFeed by viewModel.autoHandshake.feed.collectAsState()
     val pwnModeState by viewModel.autoHandshake.pwnMode.collectAsState()
+    val pwnModeQueueState by viewModel.pwnModeQueueState.collectAsState()
     val capturedHandshakes by viewModel.autoHandshake.captures.collectAsState()
 
     LaunchedEffect(toastMessage) {
@@ -1666,6 +1669,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     sessions = autoHandshakeSessions,
                     feed = autoHandshakeFeed,
                     pwnMode = pwnModeState,
+                    pwnModeQueueState = pwnModeQueueState,
                     captures = capturedHandshakes,
                     onStart = viewModel::startAutoHandshake,
                     onStop = viewModel::stopAutoHandshake,
@@ -1675,6 +1679,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     onPwnModeEnabledChange = viewModel::setPwnModeEnabled,
                     onAddPwnPassword = viewModel::addPwnPassword,
                     onRemovePwnPassword = viewModel::removePwnPassword,
+                    onImportPwnWordlist = viewModel::importPwnWordlist,
+                    onClearPwnPasswords = viewModel::clearPwnPasswords,
                     onCrackCapture = { entry ->
                         viewModel.openCaptureInCracker(entry)
                         activeModuleId = "wpa_cracker"
@@ -2469,6 +2475,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                     firmwareAssetDownload = firmwareAssetDownload,
                     firmwareManualRecovery = firmwareManualRecovery,
                     autoUpdateCheck = autoUpdateCheck,
+                    excludeBetaReleases = excludeBetaReleases,
                     updateCheckInProgress = updateCheckInProgress,
                     appUpdate = appUpdate,
                     appUpdateDownload = appUpdateDownload,
@@ -2546,6 +2553,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
 
             selectedTab == AppTab.HOME -> HomeTabContent(
                 connectionState = connectionState,
+                activeFingerprint = primaryFingerprint,
                 permissionRevision = permissionRevision,
                 devices = devices,
                 deviceConnectionStates = deviceConnectionStates,
@@ -2561,6 +2569,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 appUpdateDownload = appUpdateDownload,
                 firmwareUpdate = firmwareUpdate,
                 firmwareAssetDownload = firmwareAssetDownload,
+                firmwareFlashDeviceState = firmwareFlashDeviceState,
                 terminalShortcuts = terminalShortcuts,
                 showTerminalLauncherCard = terminalSettings.showLauncherOnHome,
                 onOpenShortcuts = {
@@ -2863,6 +2872,7 @@ private fun NRSuiteSettingsRoute(
     firmwareAssetDownload: FirmwareAssetDownloadState,
     firmwareManualRecovery: Boolean,
     autoUpdateCheck: Boolean,
+    excludeBetaReleases: Boolean,
     updateCheckInProgress: Boolean,
     appUpdate: AppUpdateInfo?,
     appUpdateDownload: AppUpdateDownloadState,
@@ -2906,6 +2916,7 @@ private fun NRSuiteSettingsRoute(
         firmwareReleases = firmwareReleases,
         firmwareAssetDownload = firmwareAssetDownload,
         onDownloadFirmwareAsset = viewModel::downloadFirmwareAsset,
+        onPrepareFirmwareAsset = viewModel::prepareFirmwareAssetSelection,
         firmwareManualRecovery = firmwareManualRecovery,
         onArmManualFirmwareRecovery = viewModel::armManualFirmwareRecovery,
         onFlashManualFirmwareNow = viewModel::flashManualFirmwareNow,
@@ -2915,12 +2926,14 @@ private fun NRSuiteSettingsRoute(
         ouiDatabaseProgress = ouiDatabaseProgress,
         onDownloadOuiDatabase = viewModel::downloadOuiDatabase,
         autoUpdateCheck = autoUpdateCheck,
+        excludeBetaReleases = excludeBetaReleases,
         updateCheckInProgress = updateCheckInProgress,
         appUpdate = appUpdate,
         appUpdateDownload = appUpdateDownload,
         firmwareUpdate = firmwareUpdate,
         updateError = updateError,
         onAutoUpdateCheckChange = viewModel::setAutoUpdateCheck,
+        onExcludeBetaReleasesChange = viewModel::setExcludeBetaReleases,
         onCheckForUpdates = { viewModel.checkForUpdates(force = true) },
         onAutoCheckForUpdates = { viewModel.checkForUpdates(force = false) },
         onDownloadAppUpdate = viewModel::downloadAppUpdate,

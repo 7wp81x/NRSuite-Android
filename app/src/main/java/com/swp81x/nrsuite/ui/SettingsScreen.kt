@@ -142,6 +142,7 @@ import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
 import com.swp81x.nrsuite.core.update.SUPPORTED_FIRMWARE_CHIPS
 import com.swp81x.nrsuite.core.update.firmwareChipFromAssetName
 import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
+import com.swp81x.nrsuite.core.update.isAlphaOrBetaRelease
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
@@ -199,6 +200,7 @@ internal fun SettingsScreen(
     firmwareReleases: List<ReleaseInfo> = emptyList(),
     firmwareAssetDownload: FirmwareAssetDownloadState = FirmwareAssetDownloadState.Idle,
     onDownloadFirmwareAsset: (releaseTag: String, assetName: String) -> Unit = { _, _ -> },
+    onPrepareFirmwareAsset: (releaseTag: String, assetName: String) -> Unit = { _, _ -> },
     ouiRules: List<OuiRule> = emptyList(),
     onAddOuiRule: (ouiPrefix: String, label: String, action: OuiRuleAction) -> Unit = { _, _, _ -> },
     onDeleteOuiRule: (id: String) -> Unit = {},
@@ -206,12 +208,14 @@ internal fun SettingsScreen(
     ouiDatabaseProgress: Float? = null,
     onDownloadOuiDatabase: () -> Unit = {},
     autoUpdateCheck: Boolean = true,
+    excludeBetaReleases: Boolean = false,
     updateCheckInProgress: Boolean = false,
     appUpdate: AppUpdateInfo? = null,
     appUpdateDownload: AppUpdateDownloadState = AppUpdateDownloadState.Idle,
     firmwareUpdate: FirmwareUpdateInfo? = null,
     updateError: String? = null,
     onAutoUpdateCheckChange: (Boolean) -> Unit = {},
+    onExcludeBetaReleasesChange: (Boolean) -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
     onAutoCheckForUpdates: () -> Unit = {},
     onDownloadAppUpdate: () -> Unit = {},
@@ -230,6 +234,13 @@ internal fun SettingsScreen(
         runCatching {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
         }.getOrNull() ?: "unknown"
+    }
+    val availableFirmwareReleases = remember(firmwareReleases, excludeBetaReleases) {
+        if (excludeBetaReleases) {
+            firmwareReleases.filterNot { it.isAlphaOrBetaRelease() }
+        } else {
+            firmwareReleases
+        }
     }
     val accent = MaterialTheme.colorScheme.primary
     val connectedInfo = connectionState as? ConnectionState.Connected
@@ -321,11 +332,25 @@ internal fun SettingsScreen(
             firmwareSourceRemote = true
         }
     }
-    LaunchedEffect(firmwareReleases, selectedTargetChip) {
+    LaunchedEffect(
+        firmwareSourceRemote,
+        selectedFirmwareReleaseTag,
+        selectedFirmwareAssetName,
+        firmwareFlashing,
+    ) {
+        if (firmwareSourceRemote && !firmwareFlashing) {
+            val tag = selectedFirmwareReleaseTag
+            val asset = selectedFirmwareAssetName
+            if (!tag.isNullOrBlank() && !asset.isNullOrBlank()) {
+                onPrepareFirmwareAsset(tag, asset)
+            }
+        }
+    }
+    LaunchedEffect(availableFirmwareReleases, selectedTargetChip) {
         val compatibleReleases = if (selectedTargetChip.isBlank()) {
-            firmwareReleases
+            availableFirmwareReleases
         } else {
-            firmwareReleases.filter {
+            availableFirmwareReleases.filter {
                 it.compatibleFirmwareAssets(selectedTargetChip).isNotEmpty()
             }
         }
@@ -347,6 +372,7 @@ internal fun SettingsScreen(
     LaunchedEffect(devices) {
         if (devices.size == 1 &&
             selectedFlashTarget == null &&
+            !firmwareManualRecovery &&
             usbManager.hasPermission(devices[0].device)
         ) {
             onSelectFlashTarget(devices[0].device)
@@ -475,6 +501,12 @@ internal fun SettingsScreen(
                         names = flashDeviceIds,
                         enabled = !firmwareFlashing,
                         sortNames = false,
+                        selectedSupportingTextColor = when {
+                            selectedFlashTarget == null && devices.isNotEmpty() -> StatusGreen
+                            selectedFlashTarget != null &&
+                                usbManager.hasPermission(selectedFlashTarget.device) -> StatusGreen
+                            else -> StatusAmber
+                        },
                         itemLabel = { id ->
                             devices.firstOrNull { it.device.deviceId.toString() == id }
                                 ?.displayName ?: "Unknown USB device"
@@ -606,7 +638,7 @@ internal fun SettingsScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    } else if (firmwareReleases.isEmpty()) {
+                    } else if (availableFirmwareReleases.isEmpty()) {
                         Text(
                             text = "No firmware releases cached yet.",
                             style = MaterialTheme.typography.bodySmall,
@@ -628,7 +660,7 @@ internal fun SettingsScreen(
                             )
                         }
                     } else {
-                        val selectedRelease = firmwareReleases.firstOrNull {
+                        val selectedRelease = availableFirmwareReleases.firstOrNull {
                             it.tag == selectedFirmwareReleaseTag
                         }
                         val allAssets = selectedRelease?.assets.orEmpty()
@@ -646,12 +678,12 @@ internal fun SettingsScreen(
                         SavedItemDropdown(
                             label = "Firmware version",
                             selectedName = selectedRelease?.tag,
-                            names = firmwareReleases.map { it.tag },
+                            names = availableFirmwareReleases.map { it.tag },
                             enabled = !firmwareFlashing,
                             sortNames = false,
                             itemSupportingText = { tag ->
-                                val release = firmwareReleases.firstOrNull { it.tag == tag }
-                                val isLatest = tag == firmwareReleases.firstOrNull()?.tag
+                                val release = availableFirmwareReleases.firstOrNull { it.tag == tag }
+                                val isLatest = tag == availableFirmwareReleases.firstOrNull()?.tag
                                 val compatible = release
                                     ?.compatibleFirmwareAssets(selectedTargetChip)
                                     ?.isNotEmpty() == true
@@ -940,25 +972,19 @@ internal fun SettingsScreen(
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 text = "Hold BOOT, tap RESET (or unplug/replug while holding BOOT), " +
-                                    "then release BOOT. The no-reset flash starts when the device appears.",
+                                    "then release BOOT. Select the previous device from the Target " +
+                                    "device dropdown above. Flashing starts automatically once it is selected.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = NrOnSurfaceVariant,
                             )
                             Spacer(Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                NrPrimaryButton(
-                                    text = "Flash now",
-                                    onClick = onFlashManualFirmwareNow,
-                                    enabled = !firmwareFlashing,
-                                    compact = true,
-                                )
-                                NrQuietButton(
-                                    text = "Cancel",
-                                    onClick = onDisarmManualFirmwareRecovery,
-                                    enabled = !firmwareFlashing,
-                                    compact = true,
-                                )
-                            }
+                            Text(
+                                text = "Select the previous device",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = StatusGreen,
+                            )
+                            Spacer(Modifier.height(4.dp))
                             NrQuietButton(
                                 text = "Try automatic DTR/RTS reset instead",
                                 onClick = onFlashManualFirmwareWithReset,
@@ -992,6 +1018,7 @@ internal fun SettingsScreen(
         UpdatesCard(
             currentVersion = currentAppVersion,
             autoUpdateCheck = autoUpdateCheck,
+            excludeBetaReleases = excludeBetaReleases,
             updateCheckInProgress = updateCheckInProgress,
             appUpdate = appUpdate,
             appUpdateDownload = appUpdateDownload,
@@ -999,6 +1026,7 @@ internal fun SettingsScreen(
             firmwareAssetDownload = firmwareAssetDownload,
             updateError = updateError,
             onAutoUpdateCheckChange = onAutoUpdateCheckChange,
+            onExcludeBetaReleasesChange = onExcludeBetaReleasesChange,
             onCheckForUpdates = onCheckForUpdates,
             onDownloadAppUpdate = onDownloadAppUpdate,
             onInstallAppUpdate = onInstallAppUpdate,
@@ -1299,6 +1327,7 @@ private fun OuiRuleRow(
 private fun UpdatesCard(
     currentVersion: String,
     autoUpdateCheck: Boolean,
+    excludeBetaReleases: Boolean,
     updateCheckInProgress: Boolean,
     appUpdate: AppUpdateInfo?,
     appUpdateDownload: AppUpdateDownloadState,
@@ -1306,6 +1335,7 @@ private fun UpdatesCard(
     firmwareAssetDownload: FirmwareAssetDownloadState,
     updateError: String?,
     onAutoUpdateCheckChange: (Boolean) -> Unit,
+    onExcludeBetaReleasesChange: (Boolean) -> Unit,
     onCheckForUpdates: () -> Unit,
     onDownloadAppUpdate: () -> Unit,
     onInstallAppUpdate: () -> Unit,
@@ -1342,6 +1372,28 @@ private fun UpdatesCard(
                 Switch(
                     checked = autoUpdateCheck,
                     onCheckedChange = onAutoUpdateCheckChange,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Receive beta updates", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = "Include alpha and beta releases alongside RC and stable " +
+                            "releases in app and firmware update checks.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Switch(
+                    checked = !excludeBetaReleases,
+                    onCheckedChange = { receiveBetaUpdates ->
+                        onExcludeBetaReleasesChange(!receiveBetaUpdates)
+                    },
                 )
             }
 
