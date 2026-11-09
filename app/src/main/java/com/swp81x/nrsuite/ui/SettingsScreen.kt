@@ -145,6 +145,7 @@ import com.swp81x.nrsuite.core.update.firmwareBoardFamilyForId
 import com.swp81x.nrsuite.core.update.firmwareBoardFamilyForTarget
 import com.swp81x.nrsuite.core.update.firmwareBoardProfileForTarget
 import com.swp81x.nrsuite.core.update.firmwareBoardProfilesForFamily
+import com.swp81x.nrsuite.core.update.firmwareAssetsForFamily
 import com.swp81x.nrsuite.core.update.firmwareChipFromAssetName
 import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
 import com.swp81x.nrsuite.core.update.firmwareHardwareChip
@@ -603,67 +604,11 @@ internal fun SettingsScreen(
                         selectedFirmwareAssetName = null
                     },
                 )
-                Spacer(Modifier.height(8.dp))
-                val familyProfiles = selectedBoardFamily
-                    ?.let { firmwareBoardProfilesForFamily(it.id) }
-                    .orEmpty()
-                SavedItemDropdown(
-                    label = "Board variant",
-                    selectedName = selectedBoardProfile?.id,
-                    selectedDisplayName = selectedBoardProfile?.displayName
-                        ?: "Select a board variant",
-                    names = familyProfiles.map { it.id },
-                    enabled = !firmwareFlashing && familyProfiles.isNotEmpty(),
-                    sortNames = false,
-                    selectedSupportingTextColor = when {
-                        selectedBoardProfile != null -> StatusGreen
-                        else -> StatusAmber
-                    },
-                    itemLabel = { id -> familyProfiles.firstOrNull { it.id == id }?.displayName ?: id },
-                    itemSupportingText = { id ->
-                        familyProfiles.firstOrNull { it.id == id }?.let { profile ->
-                            buildString {
-                                append(profile.flashDescription)
-                                append(" · ")
-                                append(profile.psramDescription)
-                                if (!profile.validated) append(" · experimental")
-                                if (!profile.releaseAvailable) append(" · no release asset yet")
-                            }
-                        }.orEmpty()
-                    },
-                    onSelect = { id ->
-                        val profile = familyProfiles.firstOrNull { it.id == id }
-                            ?: return@SavedItemDropdown
-                        selectedTargetChip = profile.firmwareTarget
-                        selectedFirmwareAssetName = null
-                    },
+                Text(
+                    text = "Selecting a target board family filters the available firmware assets.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = NrOnSurfaceVariant,
                 )
-                selectedBoardProfile?.let { profile ->
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "Partition: ${profile.partitionDescription}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                    if (profile.universalSafeFallback) {
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            text = "Safe fallback. Boots on larger flash layouts but does not use " +
-                                "extra flash or PSRAM.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = NrOnSurfaceVariant,
-                        )
-                    }
-                    if (!profile.releaseAvailable) {
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            text = "No matching release asset yet. Use a local firmware file " +
-                                "for this experimental profile.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusAmber,
-                        )
-                    }
-                }
                 connectedInfo?.let { reported ->
                     Spacer(Modifier.height(6.dp))
                     val flashText = reported.flashSize
@@ -737,6 +682,10 @@ internal fun SettingsScreen(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
+                    BoardProfileInfo(
+                        firmwareChipFromFirmwareName(firmwareFileName)
+                            ?.let { firmwareBoardProfileForTarget(it) },
+                    )
                     Spacer(Modifier.height(8.dp))
                     if (firmwareFileName == null) {
                         NrPrimaryButton(
@@ -803,13 +752,11 @@ internal fun SettingsScreen(
                             it.tag == selectedFirmwareReleaseTag
                         }
                         val allAssets = selectedRelease?.assets.orEmpty()
-                        val compatibleAssets = selectedRelease
-                            ?.compatibleFirmwareAssets(selectedTargetChip)
-                            .orEmpty()
-                        // The target dropdown doubles as the remote target-chip
-                        // selector, so expose every firmware asset in the release.
-                        // Selecting one commits the chip encoded in its filename.
-                        val assetCandidates = allAssets
+                        val selectedFamilyId = selectedBoardFamily?.id
+                        val assetCandidates = firmwareAssetsForFamily(
+                            assets = allAssets,
+                            family = selectedBoardFamily,
+                        )
                         val selectedAsset = assetCandidates.firstOrNull {
                             it.name == selectedFirmwareAssetName
                         }
@@ -843,16 +790,20 @@ internal fun SettingsScreen(
 
                         Spacer(Modifier.height(8.dp))
                         SavedItemDropdown(
-                            label = "Firmware asset",
+                            label = "Firmware asset / board variant",
                             selectedName = selectedAsset?.name,
                             selectedDisplayName = selectedAsset?.let { asset ->
-                                firmwareChipFromAssetName(asset.name) ?: "Select firmware asset"
+                                firmwareChipFromAssetName(asset.name)
+                                    ?.let { firmwareBoardProfileForTarget(it)?.displayName ?: it }
+                                    ?: "Select firmware asset"
                             },
                             names = assetCandidates.map { it.name },
                             enabled = !firmwareFlashing && assetCandidates.isNotEmpty(),
                             sortNames = false,
                             itemLabel = { name ->
-                                firmwareChipFromAssetName(name) ?: "Unknown target chip"
+                                firmwareChipFromAssetName(name)
+                                    ?.let { firmwareBoardProfileForTarget(it)?.displayName ?: it }
+                                    ?: "Unknown board variant"
                             },
                             itemSupportingText = { name -> name },
                             onSelect = { name ->
@@ -861,21 +812,31 @@ internal fun SettingsScreen(
                             },
                         )
 
-                        if (assetCandidates.isEmpty()) {
+                        if (selectedFamilyId == null) {
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "This release has no firmware assets.",
+                                text = "Select a target board family first.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = StatusAmber,
                             )
-                        } else if (selectedTargetChip.isBlank() || selectedAsset == null) {
+                        } else if (assetCandidates.isEmpty()) {
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                text = "Select a firmware asset; its chip becomes the flash target chip.",
+                                text = "This release has no firmware assets for " +
+                                    "${selectedBoardFamily?.displayName ?: "the selected family"}.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StatusAmber,
+                            )
+                        } else if (selectedAsset == null) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Select a firmware asset; its variant also selects the " +
+                                    "board profile.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = StatusAmber,
                             )
                         }
+                        BoardProfileInfo(selectedBoardProfile)
 
                         Spacer(Modifier.height(8.dp))
                         val downloadState = firmwareAssetDownload
@@ -1436,6 +1397,44 @@ private fun OuiRuleRow(
                     onClick = { confirmDelete = false },
                 )
             },
+        )
+    }
+}
+
+@Composable
+private fun BoardProfileInfo(profile: com.swp81x.nrsuite.core.update.FirmwareBoardProfile?) {
+    if (profile == null) return
+    Spacer(Modifier.height(8.dp))
+    Text(
+        text = profile.displayName,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+    )
+    Text(
+        text = "${profile.flashDescription} · ${profile.psramDescription}",
+        style = MaterialTheme.typography.bodySmall,
+        color = NrOnSurfaceVariant,
+    )
+    Text(
+        text = "Partition: ${profile.partitionDescription}",
+        style = MaterialTheme.typography.bodySmall,
+        color = NrOnSurfaceVariant,
+    )
+    Text(
+        text = if (profile.validated) {
+            "Status: Supported · hardware validated"
+        } else {
+            "Status: Experimental · hardware validation pending"
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = if (profile.validated) StatusGreen else StatusAmber,
+    )
+    if (profile.universalSafeFallback) {
+        Text(
+            text = "Safe fallback. Boots on larger flash layouts but does not use " +
+                "extra flash or PSRAM.",
+            style = MaterialTheme.typography.bodySmall,
+            color = NrOnSurfaceVariant,
         )
     }
 }

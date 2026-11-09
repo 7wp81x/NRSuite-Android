@@ -96,6 +96,25 @@ class FirmwareAssetsTest {
     }
 
     @Test
+    fun firmwareAssetsAreFilteredToOneBoardFamily() {
+        val assets = listOf(
+            ReleaseAsset("nrsuite-esp32s3.bin", "https://example.invalid/s3.bin"),
+            ReleaseAsset("nrsuite-esp32s3-n16r8.bin", "https://example.invalid/n16r8.bin"),
+            ReleaseAsset("nrsuite-esp32c5.bin", "https://example.invalid/c5.bin"),
+            ReleaseAsset("nrsuite-esp32classic.bin", "https://example.invalid/classic.bin"),
+        )
+        assertEquals(
+            listOf("nrsuite-esp32s3.bin", "nrsuite-esp32s3-n16r8.bin"),
+            firmwareAssetsForFamily(assets, FirmwareBoardFamily.ESP32_S3).map { it.name },
+        )
+        assertEquals(
+            listOf("nrsuite-esp32c5.bin"),
+            firmwareAssetsForFamily(assets, FirmwareBoardFamily.ESP32_C5).map { it.name },
+        )
+        assertTrue(firmwareAssetsForFamily(assets, null).isEmpty())
+    }
+
+    @Test
     fun boardProfilesMapToDistinctFirmwareTargets() {
         val s3 = firmwareBoardFamilyForId("esp32-s3")
         assertEquals("ESP32-S3", s3?.universalTarget)

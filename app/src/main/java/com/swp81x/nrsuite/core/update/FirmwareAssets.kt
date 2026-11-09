@@ -287,8 +287,8 @@ val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
         psramDescription = "8 MB PSRAM",
         partitionDescription = "Experimental layout pending release",
         expectsPsram = true,
-        releaseAvailable = false,
-        validated = false,
+        releaseAvailable = true,
+        validated = true,
     ),
     FirmwareBoardProfile(
         id = "esp32-s3-n8r8",
@@ -299,8 +299,8 @@ val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
         psramDescription = "8 MB PSRAM",
         partitionDescription = "Experimental layout pending release",
         expectsPsram = true,
-        releaseAvailable = false,
-        validated = false,
+        releaseAvailable = true,
+        validated = true,
     ),
     FirmwareBoardProfile(
         id = "esp32-s3-n16",
@@ -310,8 +310,8 @@ val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
         flashDescription = "16 MB flash",
         psramDescription = "No PSRAM",
         partitionDescription = "Experimental layout pending release",
-        releaseAvailable = false,
-        validated = false,
+        releaseAvailable = true,
+        validated = true,
     ),
     FirmwareBoardProfile(
         id = "esp32-s3-n16r8",
@@ -322,8 +322,8 @@ val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
         psramDescription = "8 MB PSRAM",
         partitionDescription = "8 MB application + 8 MB FAT",
         expectsPsram = true,
-        releaseAvailable = false,
-        validated = false,
+        releaseAvailable = true,
+        validated = true,
     ),
 )
 
@@ -346,3 +346,15 @@ fun firmwareBoardProfileForTarget(target: String?): FirmwareBoardProfile? {
 
 fun firmwareBoardFamilyForTarget(target: String?): FirmwareBoardFamily? =
     firmwareBoardProfileForTarget(target)?.family
+
+
+fun firmwareAssetsForFamily(
+    assets: List<ReleaseAsset>,
+    family: FirmwareBoardFamily?,
+): List<ReleaseAsset> {
+    if (family == null) return emptyList()
+    return assets.filter { asset ->
+        val target = firmwareChipFromAssetName(asset.name)
+        firmwareBoardFamilyForTarget(target) == family
+    }
+}
