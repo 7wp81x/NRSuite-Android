@@ -195,6 +195,19 @@ internal fun MainViewModel.deviceFingerprintImpl(device: UsbDevice): String {
 
 internal fun MainViewModel.onUsbDeviceDetachedImpl(device: UsbDevice) {
     clearPermissionRequestImpl(device.deviceId)
+    val serialMonitorDevice = _serialMonitorSelected.value?.device
+    val serialMonitorSelectionMatches = serialMonitorDevice?.deviceId == device.deviceId ||
+        serialMonitorDevice?.deviceName == device.deviceName
+    if (serialMonitorOwnsDeviceImpl(device) || serialMonitorSelectionMatches) {
+        stopSerialMonitorImpl()
+        _serialMonitorSelected.value = null
+        _serialMonitorError.value = "USB serial device disconnected."
+        appendLog(
+            "Serial Monitor stopped because ${device.productName ?: device.deviceName} detached.",
+            level = LogLevel.ERROR,
+            tag = "USB",
+        )
+    }
     // Keep the row in Flashing/Flashed during bootloader/re-enumeration
     // transients while the flash operation is still finishing. Once the app has
     // fully completed the operation, the next physical detach clears the result
@@ -332,6 +345,13 @@ internal fun MainViewModel.connectImpl(device: UsbDevice) {
 
     val fingerprint = deviceFingerprintImpl(entry.device)
     val previousPrimary = activeDeviceFingerprint
+
+    if (serialMonitorOwnsDeviceImpl(entry.device)) {
+        val message = "Close Serial Monitor before connecting the NRSuite session."
+        appendLog(message, level = LogLevel.ERROR, tag = "USB")
+        _toastMessage.value = message
+        return
+    }
 
     if (fingerprint in _disconnectingFingerprints.value) {
         appendLog("${entry.displayName} is still disconnecting; try again in a moment.", tag = "USB")

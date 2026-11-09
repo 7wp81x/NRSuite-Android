@@ -18,6 +18,16 @@ import kotlinx.coroutines.withContext
 // Raw USB serial monitor. This is intentionally independent of NrSession /
 // BridgeProtocol so it can be used with any ESP32 or USB-UART firmware.
 
+internal fun MainViewModel.serialMonitorOwnsDeviceImpl(device: UsbDevice): Boolean {
+    val monitorDevice = _serialMonitorSelected.value?.device ?: return false
+    val active = _serialMonitorConnected.value ||
+        _serialMonitorConnecting.value ||
+        serialMonitorTransport != null
+    if (!active) return false
+    return monitorDevice.deviceId == device.deviceId ||
+        monitorDevice.deviceName == device.deviceName
+}
+
 data class SerialLogLine(
     val timestamp: String,
     val text: String,

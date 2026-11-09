@@ -5,7 +5,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,9 +20,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -54,6 +53,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -63,14 +63,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.SerialLogLine
-import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
-import com.swp81x.nrsuite.ui.theme.LogColorError
-import com.swp81x.nrsuite.ui.theme.LogColorInfo
-import com.swp81x.nrsuite.ui.theme.LogColorSuccess
-import com.swp81x.nrsuite.ui.theme.LogColorUsb
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -124,14 +119,14 @@ fun SerialMonitorScreen(
     }
 
     val context = LocalContext.current
-    val logListState = rememberLazyListState()
-    val logTextForCopy = remember(logLines) {
-        logLines.joinToString("\n") { "[${it.timestamp}] ${it.text}" }
-    }
+    val logVerticalScroll = rememberScrollState()
+    val logText = remember(logLines, hexMode) { formatSerialLogText(logLines, hexMode) }
+    val logTextForCopy = logText
 
-    LaunchedEffect(logLines.size) {
+    LaunchedEffect(logLines.size, hexMode) {
         if (logLines.isNotEmpty()) {
-            logListState.animateScrollToItem(logLines.lastIndex)
+            withFrameNanos { }
+            logVerticalScroll.scrollTo(logVerticalScroll.maxValue)
         }
     }
 
@@ -178,9 +173,8 @@ fun SerialMonitorScreen(
         SerialMonitorLogCard(
             modifier = Modifier.weight(1f),
             logLines = logLines,
-            hexMode = hexMode,
-            logTextForCopy = logTextForCopy,
-            logListState = logListState,
+            logText = logText,
+            logVerticalScroll = logVerticalScroll,
             inputText = inputText,
             lineEnding = lineEnding,
             connected = connected,
@@ -434,9 +428,8 @@ private fun SerialMonitorConnectionCard(
 private fun SerialMonitorLogCard(
     modifier: Modifier = Modifier,
     logLines: List<SerialLogLine>,
-    hexMode: Boolean,
-    logTextForCopy: String,
-    logListState: androidx.compose.foundation.lazy.LazyListState,
+    logText: String,
+    logVerticalScroll: ScrollState,
     inputText: String,
     lineEnding: String,
     connected: Boolean,
@@ -484,6 +477,8 @@ private fun SerialMonitorLogCard(
                     .fillMaxWidth()
                     .weight(1f)
                     .background(Color.Black)
+                    .verticalScroll(logVerticalScroll)
+                    .horizontalScroll(logHorizontalScroll)
                     .padding(8.dp),
             ) {
                 if (logLines.isEmpty()) {
@@ -494,40 +489,14 @@ private fun SerialMonitorLogCard(
                     )
                 } else {
                     SelectionContainer {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            state = logListState,
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            items(logLines) { line ->
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(logHorizontalScroll),
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = "[${line.timestamp}]",
-                                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                            color = NrOnSurfaceVariant,
-                                            maxLines = 1,
-                                            softWrap = false,
-                                        )
-                                        Text(
-                                            text = if (hexMode) line.text.toByteArray().joinToString(" ") {
-                                                "%02X".format(it.toInt() and 0xFF)
-                                            } else {
-                                                line.text
-                                            },
-                                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                            color = logLevelColor(line.level),
-                                            maxLines = 1,
-                                            softWrap = false,
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        Text(
+                            text = logText,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                            ),
+                            color = NrOnSurfaceVariant,
+                            softWrap = false,
+                        )
                     }
                 }
             }
@@ -576,6 +545,18 @@ private fun SerialMonitorLogCard(
         }
     }
 }
+
+private fun formatSerialLogText(logLines: List<SerialLogLine>, hexMode: Boolean): String =
+    logLines.joinToString("\n") { line ->
+        val body = if (hexMode) {
+            line.text.toByteArray().joinToString(" ") { byte ->
+                "%02X".format(byte.toInt() and 0xFF)
+            }
+        } else {
+            line.text
+        }
+        "[${line.timestamp}] $body"
+    }
 
 @Composable
 private fun DropdownField(
@@ -633,12 +614,4 @@ private fun DropdownField(
             content = menuContent,
         )
     }
-}
-
-@Composable
-private fun logLevelColor(level: LogLevel): Color = when (level) {
-    LogLevel.ERROR -> LogColorError
-    LogLevel.SUCCESS -> LogColorSuccess
-    LogLevel.USB -> LogColorUsb
-    LogLevel.INFO -> LogColorInfo
 }

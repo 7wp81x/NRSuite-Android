@@ -52,7 +52,8 @@
         <service
             android:name=".service.UsbOwnerService"
             android:exported="false"
-            android:process=":usb" />
+            android:process=":usb"
+            android:stopWithTask="false" />
 
         <service
             android:name=".service.WpaCrackerForegroundService"

@@ -239,6 +239,7 @@ internal fun HomeTabContent(
     deviceFingerprint: (UsbDevice) -> String,
     pendingPermissionRequests: Set<Int>,
     disconnectingFingerprints: Set<String>,
+    serialMonitorBusyDeviceId: Int? = null,
     usbManager: UsbManager,
     modules: List<ModuleCardSpec>,
     listState: LazyListState,
@@ -278,6 +279,7 @@ internal fun HomeTabContent(
         deviceFingerprint = deviceFingerprint,
         pendingPermissionRequests = pendingPermissionRequests,
         disconnectingFingerprints = disconnectingFingerprints,
+        serialMonitorBusyDeviceId = serialMonitorBusyDeviceId,
         usbManager = usbManager,
         modules = modules,
         listState = listState,
@@ -320,6 +322,7 @@ internal fun HomeScreen(
     deviceFingerprint: (UsbDevice) -> String,
     pendingPermissionRequests: Set<Int>,
     disconnectingFingerprints: Set<String>,
+    serialMonitorBusyDeviceId: Int? = null,
     usbManager: UsbManager,
     modules: List<ModuleCardSpec>,
     listState: LazyListState,
@@ -409,6 +412,7 @@ internal fun HomeScreen(
                 disconnectingFingerprints = disconnectingFingerprints,
                 usbManager = usbManager,
                 usbConnectBusy = usbConnectBusy,
+                serialMonitorBusyDeviceId = serialMonitorBusyDeviceId,
                 permissionRevision = permissionRevision,
                 firmwareFlashDeviceState = firmwareFlashDeviceState,
                 onRefreshDevices = onRefreshDevices,
@@ -1075,6 +1079,7 @@ internal fun DashboardDeviceCard(
     disconnectingFingerprints: Set<String>,
     usbManager: UsbManager,
     usbConnectBusy: Boolean,
+    serialMonitorBusyDeviceId: Int?,
     permissionRevision: Int,
     firmwareFlashDeviceState: FirmwareFlashDeviceState?,
     onRefreshDevices: () -> Unit,
@@ -1283,6 +1288,7 @@ internal fun DashboardDeviceCard(
                         state = deviceConnectionStates[fingerprint],
                         pendingPermission = device.device.deviceId in pendingPermissionRequests,
                         disconnecting = fingerprint in disconnectingFingerprints,
+                        serialMonitorBusy = serialMonitorBusyDeviceId == device.device.deviceId,
                         connectEnabled = !usbConnectBusy,
                         firmwareFlashPhase = firmwareFlashDeviceState
                             ?.takeIf { it.matches(device.device.deviceId, fingerprint) }
@@ -1309,6 +1315,7 @@ private fun HomeDeviceRow(
     state: ConnectionState?,
     pendingPermission: Boolean,
     disconnecting: Boolean,
+    serialMonitorBusy: Boolean,
     connectEnabled: Boolean,
     firmwareFlashPhase: FirmwareFlashDevicePhase?,
     onConnect: () -> Unit,
@@ -1318,6 +1325,7 @@ private fun HomeDeviceRow(
         FirmwareFlashDevicePhase.FLASHED -> "Replug required"
         null -> when {
             disconnecting -> "Disconnecting..."
+            serialMonitorBusy -> "Serial Monitor active"
             state is ConnectionState.Connected -> "Connected"
             state is ConnectionState.Connecting -> "Connecting..."
             state is ConnectionState.Diagnosing -> "Diagnosing..."
@@ -1333,6 +1341,7 @@ private fun HomeDeviceRow(
         -> StatusAmber
         null -> when {
             disconnecting -> StatusAmber
+            serialMonitorBusy -> StatusNeutral
             state is ConnectionState.Connected -> StatusGreen
             state is ConnectionState.Connecting -> StatusAmber
             state is ConnectionState.Diagnosing -> StatusAmber
@@ -1342,7 +1351,7 @@ private fun HomeDeviceRow(
         }
     }
     val buttonEnabled = firmwareFlashPhase == null && connectEnabled && !pendingPermission &&
-        !disconnecting && state !is ConnectionState.Connected &&
+        !disconnecting && !serialMonitorBusy && state !is ConnectionState.Connected &&
         state !is ConnectionState.Connecting && state !is ConnectionState.Diagnosing
 
     Row(
@@ -1382,6 +1391,7 @@ private fun HomeDeviceRow(
                 FirmwareFlashDevicePhase.FLASHING -> "Flashing..."
                 FirmwareFlashDevicePhase.FLASHED -> "Flashed"
                 null -> when {
+                    serialMonitorBusy -> "Busy"
                     pendingPermission -> "Waiting…"
                     state is ConnectionState.Connected -> "Connected"
                     state is ConnectionState.Connecting -> "Connecting…"

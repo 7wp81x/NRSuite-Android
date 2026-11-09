@@ -427,6 +427,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val serialMonitorLineEnding by viewModel.serialMonitorLineEnding.collectAsState()
     val serialMonitorBlockingMessage by viewModel.serialMonitorBlockingMessage.collectAsState()
     val serialMonitorError by viewModel.serialMonitorError.collectAsState()
+    val serialMonitorBusyDeviceId = serialMonitorSelected?.device?.deviceId?.takeIf {
+        serialMonitorConnected || serialMonitorConnecting
+    }
     val autoHandshakeState by viewModel.autoHandshake.uiState.collectAsState()
     val autoHandshakeSessions by viewModel.autoHandshake.sessions.collectAsState()
     val autoHandshakeFeed by viewModel.autoHandshake.feed.collectAsState()
@@ -2560,6 +2563,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 deviceFingerprint = { viewModel.deviceFingerprintImpl(it) },
                 pendingPermissionRequests = pendingPermissionRequests,
                 disconnectingFingerprints = disconnectingFingerprints,
+                serialMonitorBusyDeviceId = serialMonitorBusyDeviceId,
                 usbManager = usbManager,
                 modules = liveModules,
                 listState = homeListState,
