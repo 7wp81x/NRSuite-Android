@@ -126,6 +126,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.swp81x.nrsuite.BuildConfig
 import com.swp81x.nrsuite.MainViewModel
 import com.swp81x.nrsuite.NrSuiteApplication
 import com.swp81x.nrsuite.core.defense.OuiRule
@@ -1467,6 +1468,13 @@ private fun UpdatesCard(
     ) {
         Column(Modifier.padding(14.dp)) {
             Text("Updates", fontWeight = FontWeight.SemiBold)
+            if (BuildConfig.MOCK_RELEASE_DATA) {
+                Text(
+                    text = "MOCK RELEASE DATA — GitHub API checks are disabled",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = StatusAmber,
+                )
+            }
             Text(
                 text = "App version $currentVersion",
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),

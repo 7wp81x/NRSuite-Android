@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite
 
+import com.swp81x.nrsuite.BuildConfig
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.update.AppUpdateInfo
@@ -7,6 +8,7 @@ import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
 import com.swp81x.nrsuite.core.update.GitHubReleaseClient
 import com.swp81x.nrsuite.core.update.GitHubReleaseResult
 import com.swp81x.nrsuite.core.update.GitHubReleasesResult
+import com.swp81x.nrsuite.core.update.MockReleaseData
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.update.VersionComparator
 import com.swp81x.nrsuite.core.update.isAlphaOrBetaRelease
@@ -33,10 +35,24 @@ private const val FIRMWARE_REPO = "7wp81x/nrsuite-firmware"
 private const val UPDATE_CHECK_INTERVAL_MS = 60L * 60L * 1000L
 
 internal fun MainViewModel.initUpdateChecksImpl() {
-    _firmwareReleases.value = visibleReleases(readReleases(PREF_FW_RELEASES))
+    _firmwareReleases.value = visibleReleases(firmwareReleaseMetadata())
     refreshUpdateUiState()
+    if (BuildConfig.MOCK_RELEASE_DATA) {
+        appendLog(
+            "Using MOCK release data (${MockReleaseData.APP_TAG}); GitHub API checks are disabled.",
+            level = LogLevel.INFO,
+            tag = "update",
+        )
+    }
     checkForUpdatesImpl(force = false)
 }
+
+private fun MainViewModel.firmwareReleaseMetadata(): List<ReleaseInfo> =
+    if (BuildConfig.MOCK_RELEASE_DATA) {
+        MockReleaseData.firmwareReleases()
+    } else {
+        readReleases(PREF_FW_RELEASES)
+    }
 
 internal fun MainViewModel.setAutoUpdateCheckImpl(enabled: Boolean) {
     _autoUpdateCheck.value = enabled
@@ -56,7 +72,7 @@ internal fun MainViewModel.setExcludeBetaReleasesImpl(enabled: Boolean) {
         .remove(PREF_APP_ETAG)
         .remove(PREF_FW_ETAG)
         .apply()
-    _firmwareReleases.value = visibleReleases(readReleases(PREF_FW_RELEASES))
+    _firmwareReleases.value = visibleReleases(firmwareReleaseMetadata())
     refreshUpdateUiState()
     checkForUpdatesImpl(force = true)
 }
@@ -100,6 +116,11 @@ internal fun MainViewModel.checkForUpdatesImpl(force: Boolean = false) {
 }
 
 private suspend fun MainViewModel.fetchAppRelease(): GitHubReleaseResult {
+    if (BuildConfig.MOCK_RELEASE_DATA) {
+        val release = MockReleaseData.appRelease()
+        appendLog("App update check: using mock ${release.tag}", tag = "update")
+        return GitHubReleaseResult.Success(release, etag = null)
+    }
     val etag = preferences.getString(PREF_APP_ETAG, null)
     val result = GitHubReleaseClient.fetchLatest(
         repo = APP_REPO,
@@ -123,6 +144,15 @@ private suspend fun MainViewModel.fetchAppRelease(): GitHubReleaseResult {
 }
 
 private suspend fun MainViewModel.fetchFirmwareRelease(): GitHubReleaseResult {
+    if (BuildConfig.MOCK_RELEASE_DATA) {
+        val releases = visibleReleases(MockReleaseData.firmwareReleases()).sortedWith { left, right ->
+            VersionComparator.compare(right.tag, left.tag)
+        }
+        _firmwareReleases.value = releases
+        val latest = releases.firstOrNull() ?: return GitHubReleaseResult.NotModified
+        appendLog("Firmware update check: using mock ${latest.tag}", tag = "update")
+        return GitHubReleaseResult.Success(latest, etag = null)
+    }
     val etag = preferences.getString(PREF_FW_ETAG, null)
     return when (val result = GitHubReleaseClient.fetchReleases(FIRMWARE_REPO, etag)) {
         is GitHubReleasesResult.Success -> {
@@ -150,7 +180,11 @@ private suspend fun MainViewModel.fetchFirmwareRelease(): GitHubReleaseResult {
 private fun MainViewModel.refreshUpdateUiState() {
     refreshAppUpdateDownloadStateImpl()
     val installedVersion = installedAppVersion()
-    val latestApp = readRelease(PREF_APP_RELEASE)?.takeIf { isReleaseVisible(it) }
+    val latestApp = if (BuildConfig.MOCK_RELEASE_DATA) {
+        MockReleaseData.appRelease().takeIf { isReleaseVisible(it) }
+    } else {
+        readRelease(PREF_APP_RELEASE)?.takeIf { isReleaseVisible(it) }
+    }
     _appUpdate.value = if (
         latestApp != null && VersionComparator.isNewer(latestApp.tag, installedVersion)
     ) {
@@ -160,7 +194,13 @@ private fun MainViewModel.refreshUpdateUiState() {
     }
 
     val connectedFirmware = currentFirmwareVersion()
-    val latestFirmware = readRelease(PREF_FW_RELEASE)?.takeIf { isReleaseVisible(it) }
+    val latestFirmware = if (BuildConfig.MOCK_RELEASE_DATA) {
+        MockReleaseData.firmwareReleases()
+            .filter { isReleaseVisible(it) }
+            .maxWithOrNull { left, right -> VersionComparator.compare(left.tag, right.tag) }
+    } else {
+        readRelease(PREF_FW_RELEASE)?.takeIf { isReleaseVisible(it) }
+    }
     _firmwareUpdate.value = if (
         connectedFirmware != null &&
         latestFirmware != null &&

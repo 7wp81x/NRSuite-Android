@@ -24,6 +24,10 @@ val usbVerboseIo = providers.gradleProperty("nrsuite.usbVerboseIo")
     .orElse("false")
     .get()
     .toBooleanStrictOrNull() ?: false
+val mockReleaseData = providers.gradleProperty("nrsuite.mockReleaseData")
+    .orElse("false")
+    .get()
+    .toBooleanStrictOrNull() ?: false
 
 plugins {
     alias(libs.plugins.android.application)
@@ -39,7 +43,12 @@ android {
     ndkVersion = "30.0.16248370"
 
     defaultConfig {
-        applicationId = "com.swp81x.nrsuite"
+        applicationId = if (mockReleaseData) {
+            "com.swp81x.nrsuite.mock"
+        } else {
+            "com.swp81x.nrsuite"
+        }
+        manifestPlaceholders["appLabel"] = if (mockReleaseData) "NRSuite Mock" else "NRSuite"
         minSdk = 26
         targetSdk = 36
         versionCode = 13
@@ -49,6 +58,7 @@ android {
 
         buildConfigField("String", "UART_BULK_BACKEND", "\"$uartBulkBackend\"")
         buildConfigField("boolean", "USB_VERBOSE_IO", usbVerboseIo.toString())
+        buildConfigField("boolean", "MOCK_RELEASE_DATA", mockReleaseData.toString())
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
