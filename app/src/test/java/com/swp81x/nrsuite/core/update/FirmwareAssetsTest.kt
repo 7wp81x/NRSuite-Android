@@ -132,6 +132,86 @@ class FirmwareAssetsTest {
     }
 
     @Test
+    fun firmwareTargetRegistryAssetNamesMatchAndroidBoardProfiles() {
+        val expectedAssets = mapOf(
+            "rc-nrsuite-esp32s3.bin" to "ESP32-S3",
+            "rc-nrsuite-esp32s3-n4r2.bin" to "ESP32-S3 (PSRAM)",
+            "rc-nrsuite-esp32s3-n4r8.bin" to "ESP32-S3 (N4R8)",
+            "rc-nrsuite-esp32s3-n8r8.bin" to "ESP32-S3 (N8R8)",
+            "rc-nrsuite-esp32s3-n16.bin" to "ESP32-S3 (N16)",
+            "rc-nrsuite-esp32s3-n16r8.bin" to "ESP32-S3 (N16R8)",
+            "rc-nrsuite-esp32c5.bin" to "ESP32-C5",
+            "rc-nrsuite-esp32c5-n8r4.bin" to "ESP32-C5 (N8R4)",
+            "rc-nrsuite-esp32c5-n16r4.bin" to "ESP32-C5 (N16R4)",
+            "rc-nrsuite-esp32c3.bin" to "ESP32-C3",
+            "rc-nrsuite-esp32s2.bin" to "ESP32-S2",
+            "rc-nrsuite-esp32classic.bin" to "ESP32",
+        )
+
+        expectedAssets.forEach { (assetName, expectedTarget) ->
+            assertEquals(expectedTarget, firmwareChipFromAssetName(assetName))
+            val profile = firmwareBoardProfileForTarget(expectedTarget)
+            assertTrue("missing board profile for $expectedTarget", profile != null)
+            val otherFamily = when (profile!!.family) {
+                FirmwareBoardFamily.ESP32_S3 -> FirmwareBoardFamily.ESP32_C5
+                FirmwareBoardFamily.ESP32_C5 -> FirmwareBoardFamily.ESP32_S3
+                else -> null
+            }
+            if (otherFamily != null) {
+                assertTrue(
+                    "asset leaked across board families: $assetName",
+                    firmwareAssetsForFamily(
+                        listOf(ReleaseAsset(assetName, "https://example.invalid/$assetName")),
+                        otherFamily,
+                    ).isEmpty(),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun s3ProfilesAndC5ExperimentalProfilesMatchFirmwarePartitionDecisions() {
+        val s3Profiles = firmwareBoardProfilesForFamily("esp32-s3")
+        assertEquals(
+            listOf(
+                "ESP32-S3",
+                "ESP32-S3 (PSRAM)",
+                "ESP32-S3 (N4R8)",
+                "ESP32-S3 (N8R8)",
+                "ESP32-S3 (N16)",
+                "ESP32-S3 (N16R8)",
+            ),
+            s3Profiles.map { it.firmwareTarget },
+        )
+        assertTrue(s3Profiles.all { it.validated })
+        assertEquals(
+            "3 MB application + 1 MB FAT",
+            s3Profiles.first { it.id == "esp32-s3-n4r2" }.partitionDescription,
+        )
+        assertEquals(
+            "4 MB application + ~3.9 MB FAT",
+            s3Profiles.first { it.id == "esp32-s3-n8r8" }.partitionDescription,
+        )
+        assertEquals(
+            "6 MB application + ~9.9 MB FAT",
+            s3Profiles.first { it.id == "esp32-s3-n16" }.partitionDescription,
+        )
+        assertEquals(
+            "6 MB application + ~9.9 MB FAT",
+            s3Profiles.first { it.id == "esp32-s3-n16r8" }.partitionDescription,
+        )
+
+        val c5Profiles = firmwareBoardProfilesForFamily("esp32-c5")
+        assertEquals(3, c5Profiles.size)
+        val c5N8R4 = c5Profiles.first { it.id == "esp32-c5-n8r4" }
+        val c5N16R4 = c5Profiles.first { it.id == "esp32-c5-n16r4" }
+        assertFalse(c5N8R4.validated)
+        assertFalse(c5N16R4.validated)
+        assertEquals("ESP32-C5", firmwareHardwareChip(c5N8R4.firmwareTarget))
+        assertEquals("ESP32-C5", firmwareHardwareChip(c5N16R4.firmwareTarget))
+    }
+
+    @Test
     fun psramDevicePrefersPsramAssetAndFallsBackToBaseS3() {
         val release = ReleaseInfo(
             tag = "v1.0.0",

@@ -12,7 +12,7 @@ package com.swp81x.nrsuite.core.update
  */
 internal object MockReleaseData {
     const val APP_TAG = "v1.0.0-rc.3"
-    const val FIRMWARE_TAG = "v1.0.0-rc.3"
+    const val FIRMWARE_TAG = "v1.0.0-rc.2"
 
     private fun asset(name: String): ReleaseAsset = ReleaseAsset(
         name = name,
@@ -27,6 +27,7 @@ internal object MockReleaseData {
         asset("rc-nrsuite-esp32s2-$tag.bin"),
         asset("rc-nrsuite-esp32s3-$tag.bin"),
         asset("rc-nrsuite-esp32s3-psram-$tag.bin"),
+        asset("rc-nrsuite-esp32s3-n4r2-$tag.bin"),
         asset("rc-nrsuite-esp32s3-n4r8-$tag.bin"),
         asset("rc-nrsuite-esp32s3-n8r8-$tag.bin"),
         asset("rc-nrsuite-esp32s3-n16-$tag.bin"),
@@ -59,7 +60,7 @@ internal object MockReleaseData {
     fun firmwareReleases(): List<ReleaseInfo> = listOf(
         ReleaseInfo(
             tag = FIRMWARE_TAG,
-            name = "NRSuite Firmware 1.0.0-rc.3 (mock)",
+            name = "NRSuite Firmware 1.0.0-rc.2 (mock)",
             htmlUrl = "https://example.invalid/NRSuite-firmware/releases/tag/$FIRMWARE_TAG",
             downloadUrl = null,
             apkUrl = null,
@@ -67,16 +68,20 @@ internal object MockReleaseData {
             assets = firmwareAssets(FIRMWARE_TAG),
         ),
         ReleaseInfo(
-            tag = "v1.0.0-rc.2",
-            name = "NRSuite Firmware 1.0.0-rc.2 (mock)",
-            htmlUrl = "https://example.invalid/NRSuite-firmware/releases/tag/v1.0.0-rc.2",
+            tag = "v1.0.0-rc.1",
+            name = "NRSuite Firmware 1.0.0-rc.1 (mock)",
+            htmlUrl = "https://example.invalid/NRSuite-firmware/releases/tag/v1.0.0-rc.1",
             downloadUrl = null,
             apkUrl = null,
             publishedAt = "2026-11-01T12:00:00Z",
-            assets = firmwareAssets("v1.0.0-rc.2").filterNot {
-                it.name.contains("-n16") || it.name.contains("-n8r8") ||
-                    it.name.contains("-n4r8") || it.name.contains("c5-n")
-            },
+            assets = listOf(
+                asset("rc-nrsuite-esp32classic-v1.0.0-rc.1.bin"),
+                asset("rc-nrsuite-esp32c3-v1.0.0-rc.1.bin"),
+                asset("rc-nrsuite-esp32c5-v1.0.0-rc.1.bin"),
+                asset("rc-nrsuite-esp32s2-v1.0.0-rc.1.bin"),
+                asset("rc-nrsuite-esp32s3-v1.0.0-rc.1.bin"),
+                asset("rc-nrsuite-esp32s3-psram-v1.0.0-rc.1.bin"),
+            ),
         ),
         ReleaseInfo(
             tag = "v1.0.0-beta.3.2.0",

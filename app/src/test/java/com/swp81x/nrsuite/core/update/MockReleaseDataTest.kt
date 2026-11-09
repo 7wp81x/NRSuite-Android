@@ -11,7 +11,7 @@ class MockReleaseDataTest {
         val release = MockReleaseData.firmwareReleases().first()
         val targets = release.assets.mapNotNull { firmwareChipFromAssetName(it.name) }.toSet()
 
-        assertTrue(targets.contains("ESP32-S3 (N4R2)".let { "ESP32-S3 (PSRAM)" }))
+        assertTrue(targets.contains("ESP32-S3 (PSRAM)"))
         assertTrue(targets.contains("ESP32-S3 (N4R8)"))
         assertTrue(targets.contains("ESP32-S3 (N8R8)"))
         assertTrue(targets.contains("ESP32-S3 (N16)"))
@@ -22,7 +22,7 @@ class MockReleaseDataTest {
 
     @Test
     fun `mock latest firmware is the rc release`() {
-        assertEquals("v1.0.0-rc.3", MockReleaseData.latestFirmwareRelease().tag)
+        assertEquals("v1.0.0-rc.2", MockReleaseData.latestFirmwareRelease().tag)
         assertEquals("v1.0.0-rc.3", MockReleaseData.appRelease().tag)
         assertNotNull(MockReleaseData.appRelease().apkUrl)
     }
@@ -31,7 +31,7 @@ class MockReleaseDataTest {
     fun `mock release filtering keeps beta and rc ordering testable`() {
         val tags = MockReleaseData.firmwareReleases().map { it.tag }
         assertTrue(tags.contains("v1.0.0-beta.3.2.0"))
+        assertTrue(tags.contains("v1.0.0-rc.1"))
         assertTrue(tags.contains("v1.0.0-rc.2"))
-        assertTrue(tags.contains("v1.0.0-rc.3"))
     }
 }
