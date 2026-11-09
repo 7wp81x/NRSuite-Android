@@ -100,6 +100,7 @@ fun EvilTwinScreen(
     running: Boolean,
     starting: Boolean = false,
     stopping: Boolean = false,
+    captureActive: Boolean = true,
     scanning: Boolean,
     networks: List<JSONObject>,
     allowedChannels: List<Int> = emptyList(),
@@ -204,17 +205,28 @@ fun EvilTwinScreen(
                     StatusIndicator(
                         label = when {
                             !connected -> "No device connected"
+                            running && !captureActive -> "Evil Twin running · capture unavailable"
                             running -> "Evil Twin running"
                             results.isNotEmpty() -> "Stopped"
                             else -> "Capturing handshake"
                         },
                         color = when {
                             !connected -> StatusNeutral
+                            running && !captureActive -> StatusAmber
                             running -> StatusGreen
                             results.isNotEmpty() -> StatusInfo
                             else -> StatusNeutral
                         },
                     )
+                    if (running && !captureActive) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "The AP is running, but packet capture is not active. " +
+                                "Stop and retry before relying on handshake results.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         EapolBadge("M1", handshake.m1)

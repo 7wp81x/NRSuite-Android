@@ -57,7 +57,7 @@ import com.swp81x.nrsuite.core.sensors.Ld2450UiState
 import com.swp81x.nrsuite.core.rfid.RfidUiState
 import com.swp81x.nrsuite.core.hid.PinBruteforceUiState
 import com.swp81x.nrsuite.core.flasher.UsbSerialFlasherTransport
-import com.swp81x.nrsuite.core.eapol.EapolParser
+import com.swp81x.nrsuite.core.eapol.EapolHandshakeTracker
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.flasher.FirmwareFlashDeviceState
 import com.swp81x.nrsuite.core.history.HistoryEntry
@@ -97,6 +97,7 @@ import com.swp81x.nrsuite.core.oui.OuiDatabaseRepository
 import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.pcap.PcapReader
 import com.swp81x.nrsuite.core.portal.PortalSessionMetrics
+import com.swp81x.nrsuite.core.portal.extractCaptivePassword
 import com.swp81x.nrsuite.core.portal.PortalVisitor
 import com.swp81x.nrsuite.core.portal.mergePortalVisitor
 import com.swp81x.nrsuite.core.pcap.PcapWriter
@@ -842,6 +843,9 @@ class MainViewModel(internal val app: Application) {
 
     internal val _portalStopping = MutableStateFlow(false)
     val portalStopping: StateFlow<Boolean> = _portalStopping.asStateFlow()
+
+    internal val _portalCaptureActive = MutableStateFlow(false)
+    val portalCaptureActive: StateFlow<Boolean> = _portalCaptureActive.asStateFlow()
 
     internal val _portalHtmlSize = MutableStateFlow(0)
     val portalHtmlSize: StateFlow<Int> = _portalHtmlSize.asStateFlow()
@@ -2023,6 +2027,7 @@ class MainViewModel(internal val app: Application) {
         _portalRunning.value = false
         _portalStarting.value = false
         _portalStopping.value = false
+        _portalCaptureActive.value = false
         _portalHtmlUploading.value = false
         _evilTwinHtmlUploading.value = false
         _sniffing.value = false
@@ -2814,6 +2819,21 @@ class MainViewModel(internal val app: Application) {
                                     userAgent.ifBlank { "unknown" }
                             )
                         }
+                        "portal_sta_count" -> {
+                            val clients = event.optInt("clients", 0).coerceAtLeast(0)
+                            if (_portalMode.value == "evil_twin") {
+                                _evilTwinMetrics.update {
+                                    it.copy(clientsAssociated = clients)
+                                }
+                            } else {
+                                _portalMetrics.update {
+                                    it.copy(clientsAssociated = clients)
+                                }
+                            }
+                            this@MainViewModel.portalLogImpl(
+                                "SoftAP clients connected: $clients"
+                            )
+                        }
                         "portal_dns_hijack" -> {
                             val clientIp = event.optString("client_ip", "unknown")
                             val destination = event.optString("destination", "unknown")
@@ -2858,9 +2878,7 @@ class MainViewModel(internal val app: Application) {
                                 details[key] = data.optString(key)
                             }
 
-                            val submittedPassword = data?.optString("password").orEmpty().ifBlank {
-                                data?.optString("pass").orEmpty()
-                            }
+                            val submittedPassword = extractCaptivePassword(data)
                             if (submittedPassword.isNotBlank() && _portalMode.value == "evil_twin") {
                                 appendLog("Captured password candidate (${submittedPassword.length} chars).")
                                 val capturedAt = java.time.LocalTime.now()
@@ -2904,19 +2922,16 @@ class MainViewModel(internal val app: Application) {
                             }
                         }
                         "client_associated" -> {
-                            if (_portalMode.value == "evil_twin") {
-                                _evilTwinMetrics.update {
-                                    it.copy(clientsAssociated = it.clientsAssociated + 1)
-                                }
-                            } else {
-                                _portalMetrics.update {
-                                    it.copy(clientsAssociated = it.clientsAssociated + 1)
-                                }
-                            }
+                            // This event is filtered to the real target BSSID. It
+                            // is useful context for deauth/reconnect activity but
+                            // must not change the SoftAP client count; that count is
+                            // reported by portal_sta_count.
                             val client = event.optString("client")
                             val rssi = event.optInt("rssi")
-                            appendLog("Client associated: $client ($rssi dBm).")
-                            this@MainViewModel.portalLogImpl("Client associated: $client ($rssi dBm)")
+                            appendLog("Target client associated: $client ($rssi dBm).")
+                            this@MainViewModel.portalLogImpl(
+                                "Target client associated: $client ($rssi dBm)"
+                            )
                             updateForegroundService()
                         }
                         "deauth_stats" -> {

@@ -6,7 +6,7 @@ import com.swp81x.nrsuite.core.credentials.CredentialSession
 import com.swp81x.nrsuite.core.credentials.CredentialSource
 import com.swp81x.nrsuite.core.credentials.CredentialStatus
 import com.swp81x.nrsuite.core.eapol.EapolHandshake
-import com.swp81x.nrsuite.core.eapol.EapolParser
+import com.swp81x.nrsuite.core.eapol.EapolHandshakeTracker
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
@@ -149,6 +149,7 @@ internal fun MainViewModel.startPortalInternalImpl(
     }
     if (_portalRunning.value || _portalStarting.value) return
     _portalStarting.value = true
+    _portalCaptureActive.value = false
     if (!ensureRadioIdle(if (mode == "evil_twin") "Evil Twin" else "Captive Portal")) {
         _portalStarting.value = false
         return
@@ -160,6 +161,7 @@ internal fun MainViewModel.startPortalInternalImpl(
     if (cleanBssid.isNotBlank() && !MainViewModel.MAC_PATTERN.matches(cleanBssid)) {
         appendLog("Invalid target BSSID: $cleanBssid")
         _portalStarting.value = false
+        _portalMode.value = null
         return
     }
 
@@ -180,6 +182,7 @@ internal fun MainViewModel.startPortalInternalImpl(
     val safeChannel = normalizeWifiChannel(channel)
     if (!ensureWifiChannelAllowed(safeChannel, if (mode == "evil_twin") "Evil Twin" else "Captive Portal")) {
         _portalStarting.value = false
+        _portalMode.value = null
         return
     }
     _portalSsid.value = cleanSsid
@@ -266,17 +269,31 @@ internal fun MainViewModel.startPortalInternalImpl(
                 "softap_start_failed" ->
                     "The access point failed to start on channel $safeChannel. " +
                         "Try another allowed channel."
+                "capture_start_failed" ->
+                    "The access point started, but packet capture could not start. " +
+                        "Stop and retry, or check firmware heap/storage state."
                 else -> response?.optString("msg")?.takeIf { it.isNotBlank() } ?: "timeout"
             }
             renderedHtmlFile.delete()
             appendLog("Failed to start portal: $errorMessage")
             portalLogImpl("Portal start failed: $errorMessage")
             _toastMessage.value = errorMessage
+            _portalCaptureActive.value = false
             _portalMode.value = null
             return@launch
         }
 
         _portalRunning.value = true
+        _portalCaptureActive.value = response.optBoolean(
+            "capture_active",
+            cleanBssid.isNotBlank(),
+        )
+        if (!response.optBoolean("dns_up", true)) {
+            appendLog(
+                "Portal DNS server did not report ready; captive page detection may be slow.",
+                level = LogLevel.ERROR,
+            )
+        }
         updateForegroundService()
         _portalHtmlSize.value = 0
         if (mode == "evil_twin") {
@@ -346,7 +363,7 @@ internal fun MainViewModel.startPortalInternalImpl(
                 appendLog("Evil Twin PCAP saving disabled.")
             }
 
-            val captureHandshake = EapolHandshake()
+            val eapolHandshakeTracker = EapolHandshakeTracker()
             val wpaHandshakeTracker = WpaHandshakeTracker()
             var lastCompleteSignature: String? = null
             portalPcapJob = scope.launch(Dispatchers.IO) {
@@ -354,8 +371,19 @@ internal fun MainViewModel.startPortalInternalImpl(
                     activeSession.pcap.collect { frame ->
                         runCatching {
                             portalPcapWriter?.writePacket(frame)
-                            EapolParser.parse(frame, captureHandshake)
-                            _portalHandshake.value = captureHandshake.copy()
+
+                            // Track all four EAPOL messages per BSSID+station so
+                            // the UI badges cannot mix different exchanges.
+                            val eapolUpdate = eapolHandshakeTracker.onFrame(frame)
+                            if (eapolUpdate.handshake != null &&
+                                (activePortalTargetBssid.isBlank() ||
+                                    eapolUpdate.bssid.equals(
+                                        activePortalTargetBssid,
+                                        ignoreCase = true,
+                                    ))
+                            ) {
+                                _portalHandshake.value = eapolUpdate.handshake.copy()
+                            }
 
                             // Track M1/M2 per BSSID+station so clients, retries,
                             // and interleaved EAPOL exchanges cannot corrupt one
@@ -708,6 +736,7 @@ internal fun MainViewModel.stopPortalImpl() {
     if (!_portalRunning.value) {
         _portalStarting.value = false
         _portalStopping.value = false
+        _portalCaptureActive.value = false
         return
     }
     _portalStopping.value = true
@@ -732,6 +761,7 @@ internal fun MainViewModel.stopPortalImpl() {
             _portalRunning.value = false
             _portalStopping.value = false
             _portalStarting.value = false
+            _portalCaptureActive.value = false
             _portalMode.value = null
             updateForegroundService()
         }
@@ -750,6 +780,10 @@ internal fun MainViewModel.startPortalStatusPollingImpl(activeSession: NrSession
             if (response.optBoolean("ok")) {
                 _portalRunning.value = response.optBoolean("running", _portalRunning.value)
                 _portalHtmlSize.value = response.optInt("html_size", _portalHtmlSize.value)
+                _portalCaptureActive.value = response.optBoolean(
+                    "capture_active",
+                    _portalCaptureActive.value,
+                )
                 htmlCompleteFlowImpl().value = response.optBoolean("html_complete", htmlCompleteFlowImpl().value)
             }
         }
@@ -771,6 +805,7 @@ internal fun MainViewModel.stopLocalPortalImpl(sendStop: Boolean = true) {
     _portalRunning.value = false
     _portalStopping.value = false
     _portalStarting.value = false
+    _portalCaptureActive.value = false
     if (sendStop) {
         val current = session
         if (current != null) {

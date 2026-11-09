@@ -91,6 +91,7 @@ internal fun EvilTwinModuleRoute(
     val starting by viewModel.portalStarting.collectAsState()
     val stopping by viewModel.portalStopping.collectAsState()
     val mode by viewModel.portalMode.collectAsState()
+    val captureActive by viewModel.portalCaptureActive.collectAsState()
     val handshake by viewModel.portalHandshake.collectAsState()
     val results by viewModel.evilTwinResults.collectAsState()
     val metrics by viewModel.evilTwinMetrics.collectAsState()
@@ -113,6 +114,7 @@ internal fun EvilTwinModuleRoute(
         running = running && mode == "evil_twin",
         starting = starting && mode == "evil_twin",
         stopping = stopping && mode == "evil_twin",
+        captureActive = captureActive,
         scanning = scanning,
         networks = networks,
         allowedChannels = allowedChannels,
