@@ -27,8 +27,32 @@ private data class FirmwareChipAssetMatcher(
 // Specific chips/variants must be checked before their base-chip fallback.
 private val FIRMWARE_CHIP_ASSET_MATCHERS = listOf(
     FirmwareChipAssetMatcher(
+        "ESP32-S3 (N16R8)",
+        listOf("esp32s3-n16r8", "esp32-s3-n16r8", "esp32s3n16r8"),
+    ),
+    FirmwareChipAssetMatcher(
+        "ESP32-S3 (N8R8)",
+        listOf("esp32s3-n8r8", "esp32-s3-n8r8", "esp32s3n8r8"),
+    ),
+    FirmwareChipAssetMatcher(
+        "ESP32-S3 (N4R8)",
+        listOf("esp32s3-n4r8", "esp32-s3-n4r8", "esp32s3n4r8"),
+    ),
+    FirmwareChipAssetMatcher(
+        "ESP32-S3 (N16)",
+        listOf("esp32s3-n16", "esp32-s3-n16", "esp32s3n16"),
+    ),
+    FirmwareChipAssetMatcher(
         FIRMWARE_TARGET_ESP32_S3_PSRAM,
-        listOf("esp32s3-psram", "esp32-s3-psram", "esp32s3psram"),
+        listOf("esp32s3-psram", "esp32-s3-psram", "esp32s3psram", "esp32s3-n4r2", "esp32-s3-n4r2"),
+    ),
+    FirmwareChipAssetMatcher(
+        "ESP32-C5 (N16R4)",
+        listOf("esp32c5-n16r4", "esp32-c5-n16r4", "esp32c5n16r4"),
+    ),
+    FirmwareChipAssetMatcher(
+        "ESP32-C5 (N8R4)",
+        listOf("esp32c5-n8r4", "esp32-c5-n8r4", "esp32c5n8r4"),
     ),
     FirmwareChipAssetMatcher("ESP32-C5", listOf("esp32c5", "esp32-c5")),
     FirmwareChipAssetMatcher("ESP32-C3", listOf("esp32c3", "esp32-c3")),
@@ -67,7 +91,15 @@ fun firmwareChipFromFirmwareName(name: String?): String? =
 
 /** Base hardware family used for ROM flashing and encrypted-flash support. */
 fun firmwareHardwareChip(target: String?): String? = when (target) {
-    FIRMWARE_TARGET_ESP32_S3_PSRAM -> FIRMWARE_TARGET_ESP32_S3
+    FIRMWARE_TARGET_ESP32_S3_PSRAM,
+    "ESP32-S3 (N4R8)",
+    "ESP32-S3 (N8R8)",
+    "ESP32-S3 (N16)",
+    "ESP32-S3 (N16R8)",
+    -> FIRMWARE_TARGET_ESP32_S3
+    "ESP32-C5 (N8R4)",
+    "ESP32-C5 (N16R4)",
+    -> "ESP32-C5"
     else -> target
 }
 
@@ -127,3 +159,190 @@ fun ReleaseInfo.compatibleFirmwareAssetsForDevice(
         .flatMap { target -> compatibleFirmwareAssets(target) }
         .distinctBy { it.name }
 }
+
+enum class FirmwareBoardFamily(
+    val id: String,
+    val displayName: String,
+    val universalTarget: String,
+) {
+    ESP32("esp32", "ESP32", "ESP32"),
+    ESP32_C3("esp32-c3", "ESP32-C3", "ESP32-C3"),
+    ESP32_C5("esp32-c5", "ESP32-C5", "ESP32-C5"),
+    ESP32_S2("esp32-s2", "ESP32-S2", "ESP32-S2"),
+    ESP32_S3("esp32-s3", "ESP32-S3", "ESP32-S3"),
+}
+
+/**
+ * A selectable, validated board layout profile.
+ *
+ * These are deliberately not free-form flash/PSRAM combinations. The selected
+ * profile determines the firmware target string, partition layout, and which
+ * release asset names are considered compatible.
+ */
+data class FirmwareBoardProfile(
+    val id: String,
+    val family: FirmwareBoardFamily,
+    val displayName: String,
+    val firmwareTarget: String,
+    val flashDescription: String,
+    val psramDescription: String,
+    val partitionDescription: String,
+    val universalSafeFallback: Boolean = false,
+    val expectsPsram: Boolean = false,
+    val releaseAvailable: Boolean = true,
+    val validated: Boolean = true,
+)
+
+val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
+    FirmwareBoardProfile(
+        id = "esp32-universal",
+        family = FirmwareBoardFamily.ESP32,
+        displayName = "Universal / Safe fallback",
+        firmwareTarget = "ESP32",
+        flashDescription = "4 MB flash",
+        psramDescription = "No PSRAM",
+        partitionDescription = "3 MB application + 1 MB FAT",
+        universalSafeFallback = true,
+    ),
+    FirmwareBoardProfile(
+        id = "esp32-c3-universal",
+        family = FirmwareBoardFamily.ESP32_C3,
+        displayName = "Universal / Safe fallback",
+        firmwareTarget = "ESP32-C3",
+        flashDescription = "4 MB flash",
+        psramDescription = "No PSRAM",
+        partitionDescription = "3 MB application + 768 KB SPIFFS + portal",
+        universalSafeFallback = true,
+    ),
+    FirmwareBoardProfile(
+        id = "esp32-c5-universal",
+        family = FirmwareBoardFamily.ESP32_C5,
+        displayName = "Universal / Safe fallback",
+        firmwareTarget = "ESP32-C5",
+        flashDescription = "4 MB flash",
+        psramDescription = "No PSRAM",
+        partitionDescription = "3 MB application + 768 KB SPIFFS + portal",
+        universalSafeFallback = true,
+    ),
+    FirmwareBoardProfile(
+        id = "esp32-c5-n8r4",
+        family = FirmwareBoardFamily.ESP32_C5,
+        displayName = "ESP32-C5 N8R4",
+        firmwareTarget = "ESP32-C5 (N8R4)",
+        flashDescription = "8 MB flash",
+        psramDescription = "4 MB PSRAM",
+        partitionDescription = "Experimental layout pending release",
+        expectsPsram = true,
+        releaseAvailable = false,
+        validated = false,
+    ),
+    FirmwareBoardProfile(
+        id = "esp32-c5-n16r4",
+        family = FirmwareBoardFamily.ESP32_C5,
+        displayName = "ESP32-C5 N16R4",
+        firmwareTarget = "ESP32-C5 (N16R4)",
+        flashDescription = "16 MB flash",
+        psramDescription = "4 MB PSRAM",
+        partitionDescription = "Experimental layout pending release",
+        expectsPsram = true,
+        releaseAvailable = false,
+        validated = false,
+    ),
+    FirmwareBoardProfile(
+        id = "esp32-s2-universal",
+        family = FirmwareBoardFamily.ESP32_S2,
+        displayName = "Universal / Safe fallback",
+        firmwareTarget = "ESP32-S2",
+        flashDescription = "4 MB flash",
+        psramDescription = "No PSRAM",
+        partitionDescription = "3 MB application + 1 MB FAT",
+        universalSafeFallback = true,
+    ),
+    FirmwareBoardProfile(
+        id = "esp32-s3-universal",
+        family = FirmwareBoardFamily.ESP32_S3,
+        displayName = "Universal / Safe fallback",
+        firmwareTarget = "ESP32-S3",
+        flashDescription = "4 MB flash",
+        psramDescription = "No PSRAM assumption",
+        partitionDescription = "3 MB application + 1 MB FAT",
+        universalSafeFallback = true,
+    ),
+    FirmwareBoardProfile(
+        id = "esp32-s3-n4r2",
+        family = FirmwareBoardFamily.ESP32_S3,
+        displayName = "ESP32-S3 N4R2",
+        firmwareTarget = "ESP32-S3 (PSRAM)",
+        flashDescription = "4 MB flash",
+        psramDescription = "2 MB PSRAM",
+        partitionDescription = "3 MB application + 1 MB FAT",
+        expectsPsram = true,
+    ),
+    FirmwareBoardProfile(
+        id = "esp32-s3-n4r8",
+        family = FirmwareBoardFamily.ESP32_S3,
+        displayName = "ESP32-S3 N4R8",
+        firmwareTarget = "ESP32-S3 (N4R8)",
+        flashDescription = "4 MB flash",
+        psramDescription = "8 MB PSRAM",
+        partitionDescription = "Experimental layout pending release",
+        expectsPsram = true,
+        releaseAvailable = false,
+        validated = false,
+    ),
+    FirmwareBoardProfile(
+        id = "esp32-s3-n8r8",
+        family = FirmwareBoardFamily.ESP32_S3,
+        displayName = "ESP32-S3 N8R8",
+        firmwareTarget = "ESP32-S3 (N8R8)",
+        flashDescription = "8 MB flash",
+        psramDescription = "8 MB PSRAM",
+        partitionDescription = "Experimental layout pending release",
+        expectsPsram = true,
+        releaseAvailable = false,
+        validated = false,
+    ),
+    FirmwareBoardProfile(
+        id = "esp32-s3-n16",
+        family = FirmwareBoardFamily.ESP32_S3,
+        displayName = "ESP32-S3 N16",
+        firmwareTarget = "ESP32-S3 (N16)",
+        flashDescription = "16 MB flash",
+        psramDescription = "No PSRAM",
+        partitionDescription = "Experimental layout pending release",
+        releaseAvailable = false,
+        validated = false,
+    ),
+    FirmwareBoardProfile(
+        id = "esp32-s3-n16r8",
+        family = FirmwareBoardFamily.ESP32_S3,
+        displayName = "ESP32-S3 N16R8",
+        firmwareTarget = "ESP32-S3 (N16R8)",
+        flashDescription = "16 MB flash",
+        psramDescription = "8 MB PSRAM",
+        partitionDescription = "8 MB application + 8 MB FAT",
+        expectsPsram = true,
+        releaseAvailable = false,
+        validated = false,
+    ),
+)
+
+fun firmwareBoardProfilesForFamily(familyId: String): List<FirmwareBoardProfile> =
+    FIRMWARE_BOARD_PROFILES.filter { it.family.id == familyId }
+
+fun firmwareBoardFamilyForId(id: String): FirmwareBoardFamily? =
+    FIRMWARE_BOARD_FAMILIES.firstOrNull { it.id == id }
+
+val FIRMWARE_BOARD_FAMILIES: List<FirmwareBoardFamily> =
+    FirmwareBoardFamily.entries.sortedBy { it.displayName }
+
+fun firmwareBoardProfileForTarget(target: String?): FirmwareBoardProfile? {
+    val normalized = target?.trim().orEmpty()
+    if (normalized.isBlank()) return null
+    return FIRMWARE_BOARD_PROFILES.firstOrNull {
+        it.firmwareTarget.equals(normalized, ignoreCase = true)
+    }
+}
+
+fun firmwareBoardFamilyForTarget(target: String?): FirmwareBoardFamily? =
+    firmwareBoardProfileForTarget(target)?.family

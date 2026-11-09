@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.core.update
 
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -80,6 +81,35 @@ class FirmwareAssetsTest {
         )
         assertTrue(firmwareAssetMatchesChip("nrsuite-esp32c5.bin", "ESP32-C5"))
         assertFalse(firmwareAssetMatchesChip("nrsuite-esp32c3.bin", "ESP32-C5"))
+    }
+
+    @Test
+    fun recognizesS3FlashAndPsramVariantsBeforeGenericS3() {
+        assertEquals("ESP32-S3 (N16R8)", firmwareChipFromAssetName("nrsuite-esp32s3-n16r8-v1.0.0.bin"))
+        assertEquals("ESP32-S3 (N8R8)", firmwareChipFromAssetName("rc-nrsuite-esp32-s3-n8r8-v1.0.0-rc.1.bin"))
+        assertEquals("ESP32-S3 (N4R8)", firmwareChipFromAssetName("beta-nrsuite-esp32s3-n4r8.bin"))
+        assertEquals("ESP32-S3 (N16)", firmwareChipFromAssetName("nrsuite-esp32s3-n16.bin"))
+        assertEquals("ESP32-S3 (PSRAM)", firmwareChipFromAssetName("nrsuite-esp32s3-psram.bin"))
+        assertEquals("ESP32-S3", firmwareChipFromAssetName("nrsuite-esp32s3.bin"))
+        assertEquals("ESP32-C5 (N16R4)", firmwareChipFromAssetName("nrsuite-esp32c5-n16r4.bin"))
+        assertEquals("ESP32-C5", firmwareChipFromAssetName("nrsuite-esp32c5.bin"))
+    }
+
+    @Test
+    fun boardProfilesMapToDistinctFirmwareTargets() {
+        val s3 = firmwareBoardFamilyForId("esp32-s3")
+        assertEquals("ESP32-S3", s3?.universalTarget)
+        val profiles = firmwareBoardProfilesForFamily("esp32-s3")
+        assertEquals(6, profiles.size)
+        assertEquals(
+            "ESP32-S3 (N16R8)",
+            profiles.firstOrNull { it.id == "esp32-s3-n16r8" }?.firmwareTarget,
+        )
+        assertEquals(
+            s3,
+            firmwareBoardFamilyForTarget("ESP32-S3 (N16R8)"),
+        )
+        assertNull(firmwareBoardProfileForTarget("ESP32-S3 (unknown)"))
     }
 
     @Test

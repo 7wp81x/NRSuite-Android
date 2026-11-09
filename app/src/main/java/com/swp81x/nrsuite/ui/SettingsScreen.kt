@@ -139,9 +139,14 @@ import com.swp81x.nrsuite.core.update.AppUpdateDownloadState
 import com.swp81x.nrsuite.core.update.FirmwareUpdateInfo
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
-import com.swp81x.nrsuite.core.update.SUPPORTED_FIRMWARE_CHIPS
+import com.swp81x.nrsuite.core.update.FIRMWARE_BOARD_FAMILIES
+import com.swp81x.nrsuite.core.update.firmwareBoardFamilyForId
+import com.swp81x.nrsuite.core.update.firmwareBoardFamilyForTarget
+import com.swp81x.nrsuite.core.update.firmwareBoardProfileForTarget
+import com.swp81x.nrsuite.core.update.firmwareBoardProfilesForFamily
 import com.swp81x.nrsuite.core.update.firmwareChipFromAssetName
 import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
+import com.swp81x.nrsuite.core.update.firmwareHardwareChip
 import com.swp81x.nrsuite.core.update.isAlphaOrBetaRelease
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.ui.components.ModuleCard
@@ -292,24 +297,40 @@ internal fun SettingsScreen(
             }
             flashTargetIdentity != previousFlashTargetIdentity -> {
                 previousFlashTargetIdentity = flashTargetIdentity
-                selectedTargetChip = selectedFlashTargetChip?.takeIf { it.isNotBlank() } ?: ""
+                selectedTargetChip = selectedFlashTargetChip
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { target ->
+                        firmwareBoardFamilyForTarget(target)?.universalTarget ?: target
+                    }
+                    ?: ""
                 selectedFirmwareAssetName = null
             }
             !selectedFlashTargetChip.isNullOrBlank() &&
-                !selectedFlashTargetChip.equals(selectedTargetChip, ignoreCase = true) -> {
+                firmwareBoardFamilyForTarget(selectedFlashTargetChip) !=
+                firmwareBoardFamilyForTarget(selectedTargetChip) -> {
                 // The selected bootloader target later identified its chip.
-                selectedTargetChip = selectedFlashTargetChip
+                // Keep the safe universal profile for that family; never infer
+                // a specific flash/PSRAM variant from the running image alone.
+                selectedTargetChip = firmwareBoardFamilyForTarget(selectedFlashTargetChip)
+                    ?.universalTarget
+                    ?: selectedFlashTargetChip
                 selectedFirmwareAssetName = null
             }
         }
     }
+    val selectedBoardProfile = firmwareBoardProfileForTarget(selectedTargetChip)
+    val selectedBoardFamily = selectedBoardProfile?.family
     val selectedImageChip = localFirmwareChip
     val targetChipMismatch = selectedImageChip != null &&
         selectedTargetChip.isNotBlank() &&
         !selectedImageChip.equals(selectedTargetChip, ignoreCase = true)
+    val selectedHardwareChip = firmwareHardwareChip(selectedTargetChip)
+    val reportedHardwareChip = firmwareHardwareChip(selectedFlashTargetChip)
     val connectedChipMismatch = !selectedFlashTargetChip.isNullOrBlank() &&
         selectedTargetChip.isNotBlank() &&
-        !selectedFlashTargetChip.equals(selectedTargetChip, ignoreCase = true)
+        !selectedHardwareChip.isNullOrBlank() &&
+        !reportedHardwareChip.isNullOrBlank() &&
+        !selectedHardwareChip.equals(reportedHardwareChip, ignoreCase = true)
     val expectedRemoteFirmwareFile = selectedFirmwareReleaseTag
         ?.takeIf { it.isNotBlank() }
         ?.let { releaseTag ->
@@ -553,6 +574,123 @@ internal fun SettingsScreen(
                                 )
                             }
                         }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+
+                Text(
+                    text = "Target board",
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(6.dp))
+                SavedItemDropdown(
+                    label = "Family",
+                    selectedName = selectedBoardFamily?.id,
+                    selectedDisplayName = selectedBoardFamily?.displayName ?: "Select a board family",
+                    names = FIRMWARE_BOARD_FAMILIES.map { it.id },
+                    enabled = !firmwareFlashing,
+                    sortNames = false,
+                    itemLabel = { id -> firmwareBoardFamilyForId(id)?.displayName ?: id },
+                    itemSupportingText = { id ->
+                        firmwareBoardProfilesForFamily(id).size.let { count ->
+                            "$count profile(s)"
+                        }
+                    },
+                    onSelect = { id ->
+                        val family = firmwareBoardFamilyForId(id) ?: return@SavedItemDropdown
+                        selectedTargetChip = family.universalTarget
+                        selectedFirmwareAssetName = null
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                val familyProfiles = selectedBoardFamily
+                    ?.let { firmwareBoardProfilesForFamily(it.id) }
+                    .orEmpty()
+                SavedItemDropdown(
+                    label = "Board variant",
+                    selectedName = selectedBoardProfile?.id,
+                    selectedDisplayName = selectedBoardProfile?.displayName
+                        ?: "Select a board variant",
+                    names = familyProfiles.map { it.id },
+                    enabled = !firmwareFlashing && familyProfiles.isNotEmpty(),
+                    sortNames = false,
+                    selectedSupportingTextColor = when {
+                        selectedBoardProfile != null -> StatusGreen
+                        else -> StatusAmber
+                    },
+                    itemLabel = { id -> familyProfiles.firstOrNull { it.id == id }?.displayName ?: id },
+                    itemSupportingText = { id ->
+                        familyProfiles.firstOrNull { it.id == id }?.let { profile ->
+                            buildString {
+                                append(profile.flashDescription)
+                                append(" · ")
+                                append(profile.psramDescription)
+                                if (!profile.validated) append(" · experimental")
+                                if (!profile.releaseAvailable) append(" · no release asset yet")
+                            }
+                        }.orEmpty()
+                    },
+                    onSelect = { id ->
+                        val profile = familyProfiles.firstOrNull { it.id == id }
+                            ?: return@SavedItemDropdown
+                        selectedTargetChip = profile.firmwareTarget
+                        selectedFirmwareAssetName = null
+                    },
+                )
+                selectedBoardProfile?.let { profile ->
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Partition: ${profile.partitionDescription}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                    if (profile.universalSafeFallback) {
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = "Safe fallback. Boots on larger flash layouts but does not use " +
+                                "extra flash or PSRAM.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                    if (!profile.releaseAvailable) {
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = "No matching release asset yet. Use a local firmware file " +
+                                "for this experimental profile.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
+                        )
+                    }
+                }
+                connectedInfo?.let { reported ->
+                    Spacer(Modifier.height(6.dp))
+                    val flashText = reported.flashSize
+                        ?.let { "${it / (1024L * 1024L)} MB flash" }
+                        ?: "flash size unknown"
+                    val psramText = when {
+                        reported.psramTotal == null -> "PSRAM unknown"
+                        reported.psramTotal <= 0L -> "PSRAM not initialized"
+                        else -> "${reported.psramTotal / (1024L * 1024L)} MB PSRAM"
+                    }
+                    Text(
+                        text = "Current firmware reports: ${reported.chip ?: "unknown chip"} · " +
+                            "$flashText · $psramText",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = NrOnSurfaceVariant,
+                    )
+                    if (selectedBoardProfile?.expectsPsram == true &&
+                        reported.psramTotal != null &&
+                        reported.psramTotal <= 0L
+                    ) {
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = "Selected profile expects PSRAM, but the running firmware " +
+                                "reports none. The current image may not enable PSRAM; confirm " +
+                                "the physical module before flashing.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
+                        )
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -823,28 +961,6 @@ internal fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = StatusRed,
                         )
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "Expected target chip",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        SUPPORTED_FIRMWARE_CHIPS.forEach { option ->
-                            NrFilterChip(
-                                selected = selectedTargetChip == option,
-                                onClick = { selectedTargetChip = option },
-                                enabled = !firmwareFlashing,
-                                label = option,
-                            )
-                        }
                     }
                 }
                 Spacer(Modifier.height(6.dp))
