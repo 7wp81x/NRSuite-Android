@@ -100,6 +100,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import com.swp81x.nrsuite.core.history.HistoryLevel
@@ -593,21 +594,12 @@ internal fun SettingsScreen(
                     enabled = !firmwareFlashing,
                     sortNames = false,
                     itemLabel = { id -> firmwareBoardFamilyForId(id)?.displayName ?: id },
-                    itemSupportingText = { id ->
-                        firmwareBoardProfilesForFamily(id).size.let { count ->
-                            "$count profile(s)"
-                        }
-                    },
+                    showItemCount = false,
                     onSelect = { id ->
                         val family = firmwareBoardFamilyForId(id) ?: return@SavedItemDropdown
                         selectedTargetChip = family.universalTarget
                         selectedFirmwareAssetName = null
                     },
-                )
-                Text(
-                    text = "Selecting a target board family filters the available firmware assets.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
                 )
                 connectedInfo?.let { reported ->
                     Spacer(Modifier.height(6.dp))
@@ -794,7 +786,9 @@ internal fun SettingsScreen(
                             selectedName = selectedAsset?.name,
                             selectedDisplayName = selectedAsset?.let { asset ->
                                 firmwareChipFromAssetName(asset.name)
-                                    ?.let { firmwareBoardProfileForTarget(it)?.displayName ?: it }
+                                    ?.let {
+                                        firmwareBoardProfileForTarget(it)?.variantLabel ?: it
+                                    }
                                     ?: "Select firmware asset"
                             },
                             names = assetCandidates.map { it.name },
@@ -802,7 +796,9 @@ internal fun SettingsScreen(
                             sortNames = false,
                             itemLabel = { name ->
                                 firmwareChipFromAssetName(name)
-                                    ?.let { firmwareBoardProfileForTarget(it)?.displayName ?: it }
+                                    ?.let {
+                                        firmwareBoardProfileForTarget(it)?.variantLabel ?: it
+                                    }
                                     ?: "Unknown board variant"
                             },
                             itemSupportingText = { name -> name },
@@ -1405,37 +1401,52 @@ private fun OuiRuleRow(
 private fun BoardProfileInfo(profile: com.swp81x.nrsuite.core.update.FirmwareBoardProfile?) {
     if (profile == null) return
     Spacer(Modifier.height(8.dp))
-    Text(
-        text = profile.displayName,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-    )
-    Text(
-        text = "${profile.flashDescription} · ${profile.psramDescription}",
-        style = MaterialTheme.typography.bodySmall,
-        color = NrOnSurfaceVariant,
-    )
-    Text(
-        text = "Partition: ${profile.partitionDescription}",
-        style = MaterialTheme.typography.bodySmall,
-        color = NrOnSurfaceVariant,
-    )
-    Text(
-        text = if (profile.validated) {
-            "Status: Supported · hardware validated"
-        } else {
-            "Status: Experimental · hardware validation pending"
-        },
-        style = MaterialTheme.typography.bodySmall,
-        color = if (profile.validated) StatusGreen else StatusAmber,
-    )
-    if (profile.universalSafeFallback) {
-        Text(
-            text = "Safe fallback. Boots on larger flash layouts but does not use " +
-                "extra flash or PSRAM.",
-            style = MaterialTheme.typography.bodySmall,
-            color = NrOnSurfaceVariant,
-        )
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = NrSurfaceVariant),
+        border = BorderStroke(0.5.dp, NrOutline),
+        shape = RoundedCornerShape(10.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = profile.variantLabel,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                if (!profile.validated) {
+                    Surface(
+                        color = StatusAmber.copy(alpha = 0.10f),
+                        shape = RoundedCornerShape(99.dp),
+                        border = BorderStroke(0.5.dp, StatusAmber.copy(alpha = 0.45f)),
+                    ) {
+                        Text(
+                            text = "Experimental",
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = StatusAmber,
+                        )
+                    }
+                }
+            }
+            Text(
+                text = "${profile.flashDescription} · ${profile.psramDescription}",
+                style = MaterialTheme.typography.bodySmall,
+                color = NrOnSurfaceVariant,
+            )
+            Text(
+                text = "Partition: ${profile.partitionDescription}",
+                style = MaterialTheme.typography.bodySmall,
+                color = NrOnSurfaceVariant,
+            )
+        }
     }
 }
 

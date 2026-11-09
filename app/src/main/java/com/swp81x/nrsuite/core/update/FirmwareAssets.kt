@@ -191,7 +191,14 @@ data class FirmwareBoardProfile(
     val expectsPsram: Boolean = false,
     val releaseAvailable: Boolean = true,
     val validated: Boolean = true,
-)
+) {
+    /** Family is already shown in the Target board dropdown. */
+    val variantLabel: String
+        get() = displayName
+            .removePrefix(family.displayName)
+            .trim()
+            .ifBlank { displayName }
+}
 
 val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
     FirmwareBoardProfile(
@@ -285,7 +292,7 @@ val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
         firmwareTarget = "ESP32-S3 (N4R8)",
         flashDescription = "4 MB flash",
         psramDescription = "8 MB PSRAM",
-        partitionDescription = "Experimental layout pending release",
+        partitionDescription = "3 MB application + 1 MB FAT",
         expectsPsram = true,
         releaseAvailable = true,
         validated = true,
@@ -297,7 +304,7 @@ val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
         firmwareTarget = "ESP32-S3 (N8R8)",
         flashDescription = "8 MB flash",
         psramDescription = "8 MB PSRAM",
-        partitionDescription = "Experimental layout pending release",
+        partitionDescription = "4 MB application + ~3.9 MB FAT",
         expectsPsram = true,
         releaseAvailable = true,
         validated = true,
@@ -309,7 +316,7 @@ val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
         firmwareTarget = "ESP32-S3 (N16)",
         flashDescription = "16 MB flash",
         psramDescription = "No PSRAM",
-        partitionDescription = "Experimental layout pending release",
+        partitionDescription = "6 MB application + ~9.9 MB FAT",
         releaseAvailable = true,
         validated = true,
     ),
