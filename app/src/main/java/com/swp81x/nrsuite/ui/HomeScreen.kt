@@ -123,8 +123,10 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -178,6 +180,8 @@ import java.util.Locale
 import com.swp81x.nrsuite.core.log.LogEntry
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.ui.theme.LogBgError
+
+internal val LocalSerialMonitorBusyDeviceId = compositionLocalOf<Int?> { null }
 
 @Composable
 internal fun ConnectionStatusIndicator(
@@ -239,7 +243,6 @@ internal fun HomeTabContent(
     deviceFingerprint: (UsbDevice) -> String,
     pendingPermissionRequests: Set<Int>,
     disconnectingFingerprints: Set<String>,
-    serialMonitorBusyDeviceId: Int? = null,
     usbManager: UsbManager,
     modules: List<ModuleCardSpec>,
     listState: LazyListState,
@@ -279,7 +282,6 @@ internal fun HomeTabContent(
         deviceFingerprint = deviceFingerprint,
         pendingPermissionRequests = pendingPermissionRequests,
         disconnectingFingerprints = disconnectingFingerprints,
-        serialMonitorBusyDeviceId = serialMonitorBusyDeviceId,
         usbManager = usbManager,
         modules = modules,
         listState = listState,
@@ -322,7 +324,6 @@ internal fun HomeScreen(
     deviceFingerprint: (UsbDevice) -> String,
     pendingPermissionRequests: Set<Int>,
     disconnectingFingerprints: Set<String>,
-    serialMonitorBusyDeviceId: Int? = null,
     usbManager: UsbManager,
     modules: List<ModuleCardSpec>,
     listState: LazyListState,
@@ -412,7 +413,6 @@ internal fun HomeScreen(
                 disconnectingFingerprints = disconnectingFingerprints,
                 usbManager = usbManager,
                 usbConnectBusy = usbConnectBusy,
-                serialMonitorBusyDeviceId = serialMonitorBusyDeviceId,
                 permissionRevision = permissionRevision,
                 firmwareFlashDeviceState = firmwareFlashDeviceState,
                 onRefreshDevices = onRefreshDevices,
@@ -1079,7 +1079,6 @@ internal fun DashboardDeviceCard(
     disconnectingFingerprints: Set<String>,
     usbManager: UsbManager,
     usbConnectBusy: Boolean,
-    serialMonitorBusyDeviceId: Int?,
     permissionRevision: Int,
     firmwareFlashDeviceState: FirmwareFlashDeviceState?,
     onRefreshDevices: () -> Unit,
@@ -1093,6 +1092,7 @@ internal fun DashboardDeviceCard(
 ) {
     @Suppress("UNUSED_EXPRESSION")
     permissionRevision
+    val serialMonitorBusyDeviceId = LocalSerialMonitorBusyDeviceId.current
     val activeFlashPhase = firmwareFlashDeviceState?.let { flash ->
         devices.firstOrNull { device ->
             deviceFingerprint(device.device) == activeFingerprint &&

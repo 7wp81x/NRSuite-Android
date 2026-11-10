@@ -106,6 +106,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -599,16 +600,26 @@ fun NRSuiteApp() {
         (appContext as NrSuiteApplication).controller
     }
     val themeMode by viewModel.themeMode.collectAsState()
+    val serialMonitorSelected by viewModel.serialMonitorSelected.collectAsState()
+    val serialMonitorConnected by viewModel.serialMonitorConnected.collectAsState()
+    val serialMonitorConnecting by viewModel.serialMonitorConnecting.collectAsState()
+    val serialMonitorBusyDeviceId = serialMonitorSelected?.device?.deviceId?.takeIf {
+        serialMonitorConnected || serialMonitorConnecting
+    }
     var showStartup by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(900)
         showStartup = false
     }
     NRSuiteTheme(mode = themeMode) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            NRSuiteContent(viewModel = viewModel)
-            if (showStartup) {
-                StartupScreen()
+        CompositionLocalProvider(
+            LocalSerialMonitorBusyDeviceId provides serialMonitorBusyDeviceId,
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                NRSuiteContent(viewModel = viewModel)
+                if (showStartup) {
+                    StartupScreen()
+                }
             }
         }
     }
