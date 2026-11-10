@@ -134,18 +134,18 @@ class FirmwareAssetsTest {
     @Test
     fun firmwareTargetRegistryAssetNamesMatchAndroidBoardProfiles() {
         val expectedAssets = mapOf(
-            "rc-nrsuite-esp32s3.bin" to "ESP32-S3",
-            "rc-nrsuite-esp32s3-n4r2.bin" to "ESP32-S3 (PSRAM)",
-            "rc-nrsuite-esp32s3-n4r8.bin" to "ESP32-S3 (N4R8)",
-            "rc-nrsuite-esp32s3-n8r8.bin" to "ESP32-S3 (N8R8)",
-            "rc-nrsuite-esp32s3-n16.bin" to "ESP32-S3 (N16)",
-            "rc-nrsuite-esp32s3-n16r8.bin" to "ESP32-S3 (N16R8)",
-            "rc-nrsuite-esp32c5.bin" to "ESP32-C5",
-            "rc-nrsuite-esp32c5-n8r4.bin" to "ESP32-C5 (N8R4)",
-            "rc-nrsuite-esp32c5-n16r4.bin" to "ESP32-C5 (N16R4)",
-            "rc-nrsuite-esp32c3.bin" to "ESP32-C3",
-            "rc-nrsuite-esp32s2.bin" to "ESP32-S2",
-            "rc-nrsuite-esp32classic.bin" to "ESP32",
+            "nrsuite-esp32s3.bin" to "ESP32-S3",
+            "nrsuite-esp32s3-psram.bin" to "ESP32-S3 (PSRAM)",
+            "nrsuite-esp32s3-n4r8.bin" to "ESP32-S3 (N4R8)",
+            "nrsuite-esp32s3-n8r8.bin" to "ESP32-S3 (N8R8)",
+            "nrsuite-esp32s3-n16.bin" to "ESP32-S3 (N16)",
+            "nrsuite-esp32s3-n16r8.bin" to "ESP32-S3 (N16R8)",
+            "nrsuite-esp32c5.bin" to "ESP32-C5",
+            "nrsuite-esp32c5-n8r4.bin" to "ESP32-C5 (N8R4)",
+            "nrsuite-esp32c5-n16r4.bin" to "ESP32-C5 (N16R4)",
+            "nrsuite-esp32c3.bin" to "ESP32-C3",
+            "nrsuite-esp32s2.bin" to "ESP32-S2",
+            "nrsuite-esp32classic.bin" to "ESP32",
         )
 
         expectedAssets.forEach { (assetName, expectedTarget) ->
@@ -209,6 +209,26 @@ class FirmwareAssetsTest {
         assertFalse(c5N16R4.validated)
         assertEquals("ESP32-C5", firmwareHardwareChip(c5N8R4.firmwareTarget))
         assertEquals("ESP32-C5", firmwareHardwareChip(c5N16R4.firmwareTarget))
+    }
+
+    @Test
+    fun boardProfileLabelsUseUnambiguousUniversalNames() {
+        val s3Profiles = firmwareBoardProfilesForFamily("esp32-s3")
+        assertEquals(
+            listOf(
+                "Universal",
+                "Universal (PSRAM)",
+                "N4R8",
+                "N8R8",
+                "N16",
+                "N16R8",
+            ),
+            s3Profiles.map { it.variantLabel },
+        )
+        assertEquals(
+            "Universal",
+            firmwareBoardProfilesForFamily("esp32-c5").first().variantLabel,
+        )
     }
 
     @Test

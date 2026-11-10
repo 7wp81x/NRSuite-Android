@@ -204,7 +204,7 @@ val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
     FirmwareBoardProfile(
         id = "esp32-universal",
         family = FirmwareBoardFamily.ESP32,
-        displayName = "Universal / Safe fallback",
+        displayName = "Universal",
         firmwareTarget = "ESP32",
         flashDescription = "4 MB flash",
         psramDescription = "No PSRAM",
@@ -214,7 +214,7 @@ val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
     FirmwareBoardProfile(
         id = "esp32-c3-universal",
         family = FirmwareBoardFamily.ESP32_C3,
-        displayName = "Universal / Safe fallback",
+        displayName = "Universal",
         firmwareTarget = "ESP32-C3",
         flashDescription = "4 MB flash",
         psramDescription = "No PSRAM",
@@ -224,7 +224,7 @@ val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
     FirmwareBoardProfile(
         id = "esp32-c5-universal",
         family = FirmwareBoardFamily.ESP32_C5,
-        displayName = "Universal / Safe fallback",
+        displayName = "Universal",
         firmwareTarget = "ESP32-C5",
         flashDescription = "4 MB flash",
         psramDescription = "No PSRAM",
@@ -258,7 +258,7 @@ val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
     FirmwareBoardProfile(
         id = "esp32-s2-universal",
         family = FirmwareBoardFamily.ESP32_S2,
-        displayName = "Universal / Safe fallback",
+        displayName = "Universal",
         firmwareTarget = "ESP32-S2",
         flashDescription = "4 MB flash",
         psramDescription = "No PSRAM",
@@ -268,7 +268,7 @@ val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
     FirmwareBoardProfile(
         id = "esp32-s3-universal",
         family = FirmwareBoardFamily.ESP32_S3,
-        displayName = "Universal / Safe fallback",
+        displayName = "Universal",
         firmwareTarget = "ESP32-S3",
         flashDescription = "4 MB flash",
         psramDescription = "No PSRAM assumption",
@@ -278,7 +278,7 @@ val FIRMWARE_BOARD_PROFILES: List<FirmwareBoardProfile> = listOf(
     FirmwareBoardProfile(
         id = "esp32-s3-n4r2",
         family = FirmwareBoardFamily.ESP32_S3,
-        displayName = "ESP32-S3 N4R2",
+        displayName = "Universal (PSRAM)",
         firmwareTarget = "ESP32-S3 (PSRAM)",
         flashDescription = "4 MB flash",
         psramDescription = "2 MB PSRAM",

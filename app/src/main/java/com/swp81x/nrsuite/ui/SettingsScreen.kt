@@ -665,18 +665,10 @@ internal fun SettingsScreen(
                         style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                         color = if (firmwareFileName == null) StatusAmber else NrOnSurface,
                     )
-                    if (firmwareFileName != null) {
-                        Text(
-                            text = firmwareFileName,
-                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                            color = NrOnSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
                     BoardProfileInfo(
-                        firmwareChipFromFirmwareName(firmwareFileName)
+                        profile = firmwareChipFromFirmwareName(firmwareFileName)
                             ?.let { firmwareBoardProfileForTarget(it) },
+                        fileName = firmwareFileName,
                     )
                     Spacer(Modifier.height(8.dp))
                     if (firmwareFileName == null) {
@@ -801,7 +793,6 @@ internal fun SettingsScreen(
                                     }
                                     ?: "Unknown board variant"
                             },
-                            itemSupportingText = { name -> name },
                             onSelect = { name ->
                                 selectedFirmwareAssetName = name
                                 firmwareChipFromAssetName(name)?.let { selectedTargetChip = it }
@@ -832,7 +823,7 @@ internal fun SettingsScreen(
                                 color = StatusAmber,
                             )
                         }
-                        BoardProfileInfo(selectedBoardProfile)
+                        BoardProfileInfo(selectedBoardProfile, selectedAsset?.name)
 
                         Spacer(Modifier.height(8.dp))
                         val downloadState = firmwareAssetDownload
@@ -1398,7 +1389,10 @@ private fun OuiRuleRow(
 }
 
 @Composable
-private fun BoardProfileInfo(profile: com.swp81x.nrsuite.core.update.FirmwareBoardProfile?) {
+private fun BoardProfileInfo(
+    profile: com.swp81x.nrsuite.core.update.FirmwareBoardProfile?,
+    fileName: String?,
+) {
     if (profile == null) return
     Spacer(Modifier.height(8.dp))
     Card(
@@ -1416,12 +1410,16 @@ private fun BoardProfileInfo(profile: com.swp81x.nrsuite.core.update.FirmwareBoa
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = profile.variantLabel,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
+                    text = fileName?.takeIf { it.isNotBlank() } ?: profile.variantLabel,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                    fontWeight = FontWeight.Medium,
+                    color = NrOnSurface,
                     modifier = Modifier.weight(1f),
                 )
                 if (!profile.validated) {
+                    Spacer(Modifier.width(6.dp))
                     Surface(
                         color = StatusAmber.copy(alpha = 0.10f),
                         shape = RoundedCornerShape(99.dp),

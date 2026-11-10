@@ -18,6 +18,12 @@ class MockReleaseDataTest {
         assertTrue(targets.contains("ESP32-S3 (N16R8)"))
         assertTrue(targets.contains("ESP32-C5 (N8R4)"))
         assertTrue(targets.contains("ESP32-C5 (N16R4)"))
+        assertEquals(
+            1,
+            release.assets.count {
+                firmwareChipFromAssetName(it.name) == "ESP32-S3 (PSRAM)"
+            },
+        )
     }
 
     @Test

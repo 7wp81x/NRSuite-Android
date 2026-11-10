@@ -20,20 +20,19 @@ internal object MockReleaseData {
         contentType = "application/octet-stream",
     )
 
-    private fun firmwareAssets(tag: String): List<ReleaseAsset> = listOf(
-        asset("rc-nrsuite-esp32classic-$tag.bin"),
-        asset("rc-nrsuite-esp32c3-$tag.bin"),
-        asset("rc-nrsuite-esp32c5-$tag.bin"),
-        asset("rc-nrsuite-esp32s2-$tag.bin"),
-        asset("rc-nrsuite-esp32s3-$tag.bin"),
-        asset("rc-nrsuite-esp32s3-psram-$tag.bin"),
-        asset("rc-nrsuite-esp32s3-n4r2-$tag.bin"),
-        asset("rc-nrsuite-esp32s3-n4r8-$tag.bin"),
-        asset("rc-nrsuite-esp32s3-n8r8-$tag.bin"),
-        asset("rc-nrsuite-esp32s3-n16-$tag.bin"),
-        asset("rc-nrsuite-esp32s3-n16r8-$tag.bin"),
-        asset("rc-nrsuite-esp32c5-n8r4-$tag.bin"),
-        asset("rc-nrsuite-esp32c5-n16r4-$tag.bin"),
+    private fun firmwareAssets(): List<ReleaseAsset> = listOf(
+        asset("nrsuite-esp32classic.bin"),
+        asset("nrsuite-esp32c3.bin"),
+        asset("nrsuite-esp32c5.bin"),
+        asset("nrsuite-esp32s2.bin"),
+        asset("nrsuite-esp32s3.bin"),
+        asset("nrsuite-esp32s3-psram.bin"),
+        asset("nrsuite-esp32s3-n4r8.bin"),
+        asset("nrsuite-esp32s3-n8r8.bin"),
+        asset("nrsuite-esp32s3-n16.bin"),
+        asset("nrsuite-esp32s3-n16r8.bin"),
+        asset("nrsuite-esp32c5-n8r4.bin"),
+        asset("nrsuite-esp32c5-n16r4.bin"),
     )
 
     fun appRelease(): ReleaseInfo = ReleaseInfo(
@@ -65,7 +64,7 @@ internal object MockReleaseData {
             downloadUrl = null,
             apkUrl = null,
             publishedAt = "2026-11-09T12:00:00Z",
-            assets = firmwareAssets(FIRMWARE_TAG),
+            assets = firmwareAssets(),
         ),
         ReleaseInfo(
             tag = "v1.0.0-rc.1",
