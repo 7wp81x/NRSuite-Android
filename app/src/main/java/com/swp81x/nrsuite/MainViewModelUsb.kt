@@ -137,6 +137,11 @@ internal fun MainViewModel.onUsbDeviceAttachedImpl(device: UsbDevice?) {
         } else {
             _devices.value.firstOrNull()
         } ?: return@launch
+
+        // Serial Monitor owns the device exclusively while connected. A prompt
+        // for the same device would incorrectly offer a second connection.
+        if (serialMonitorOwnsDeviceImpl(entry.device)) return@launch
+
         val now = System.currentTimeMillis()
         val lastPromptAt = lastUsbAttachPromptAtByDevice[entry.device.deviceId] ?: 0L
         if (now - lastPromptAt < USB_ATTACH_PROMPT_COOLDOWN_MS) return@launch

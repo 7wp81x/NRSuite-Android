@@ -1147,8 +1147,19 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         )) ||
         (activeModuleId == null && selectedCategory == null &&
             selectedTab in setOf(AppTab.HOME, AppTab.DEVICES, AppTab.TERMINAL))
+    val serialMonitorOwnedDeviceId = serialMonitorSelected?.device?.deviceId?.takeIf {
+        serialMonitorConnected || serialMonitorConnecting
+    }
+    val visibleUsbAttachPrompts = usbAttachPrompts.filterNot {
+        it.deviceId == serialMonitorOwnedDeviceId
+    }
     LaunchedEffect(suppressUsbAttachPrompt) {
         if (suppressUsbAttachPrompt) viewModel.dismissUsbAttachPrompt()
+    }
+    LaunchedEffect(serialMonitorOwnedDeviceId) {
+        if (serialMonitorOwnedDeviceId != null) {
+            viewModel.dismissUsbAttachPrompt(serialMonitorOwnedDeviceId)
+        }
     }
 
     var terminalAppOpenAutoconnectAttempted by rememberSaveable { mutableStateOf(false) }
@@ -1293,7 +1304,7 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 if (!suppressUsbAttachPrompt) {
-                    usbAttachPrompts.takeLast(3).forEach { prompt ->
+                    visibleUsbAttachPrompts.takeLast(3).forEach { prompt ->
                         UsbAttachPromptCard(
                             prompt = prompt,
                             onConnect = {
@@ -1311,9 +1322,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                             },
                         )
                     }
-                    if (usbAttachPrompts.size > 3) {
+                    if (visibleUsbAttachPrompts.size > 3) {
                         Text(
-                            text = "+${usbAttachPrompts.size - 3} more USB device(s) detected",
+                            text = "+${visibleUsbAttachPrompts.size - 3} more USB device(s) detected",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),

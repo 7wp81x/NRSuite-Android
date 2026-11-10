@@ -90,6 +90,8 @@ internal fun MainViewModel.startSerialMonitorImpl(device: UsbSerialDevice, baudR
         return
     }
 
+    dismissUsbAttachPrompt(device.device.deviceId)
+
     _serialMonitorSelected.value = device
     _serialMonitorBaud.value = baudRate
     _serialMonitorBlockingMessage.value = null
