@@ -551,8 +551,36 @@ internal fun MainViewModel.handleWpsPixieLiveEventImpl(event: JSONObject) {
                 )
             }
             if (!stopped) {
+                val rxDiagnostics = buildList {
+                    fun addInt(key: String, label: String? = null) {
+                        if (event.has(key)) {
+                            add("${label ?: key}=${event.optInt(key)}")
+                        }
+                    }
+                    addInt("rx_eapol_seen", "eapol_seen")
+                    addInt("rx_eapol_queued", "eapol_queued")
+                    addInt("rx_eapol_dropped", "eapol_dropped")
+                    addInt("rx_eapol_parsed", "eapol_parsed")
+                    addInt("rx_m1", "m1")
+                    addInt("rx_m3", "m3")
+                    addInt("rx_m5", "m5")
+                    addInt("rx_m7", "m7")
+                    addInt("m3_retries", "m3_retries")
+                    addInt("last_rx_eap_id", "last_eap_id")
+                    addInt("last_rx_wps_message", "last_wps_msg")
+                    addInt("last_rx_eapol_len", "last_eapol_len")
+                    event.optString("station_mac").takeIf { it.isNotBlank() }?.let {
+                        add("station_mac=$it")
+                    }
+                }.joinToString(", ")
                 logWpsPixieLive("ERROR: $message")
-                appendLog("WPS Pixie: $message", level = LogLevel.ERROR)
+                if (rxDiagnostics.isNotBlank()) {
+                    logWpsPixieLive("WPS RX diagnostics: $rxDiagnostics")
+                }
+                appendLog(
+                    "WPS Pixie: $message" + if (rxDiagnostics.isBlank()) "" else " [$rxDiagnostics]",
+                    level = LogLevel.ERROR,
+                )
             } else {
                 logWpsPixieLive(message)
             }

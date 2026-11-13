@@ -804,19 +804,19 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     }
 
     val folderPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree(),
-    ) { uri: Uri? ->
+        contract = OpenDocumentTreeWithFlags(),
+    ) { selection: TreeUriSelection? ->
         rootDirectoryPickerActive = false
-        if (uri != null) {
-            viewModel.setExportDirectory(uri)
+        if (selection != null) {
+            viewModel.setExportDirectory(selection.uri, selection.grantFlags)
         }
     }
 
     val wifiCaptureFolderPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree(),
-    ) { uri: Uri? ->
-        if (uri != null) {
-            viewModel.setWifiCaptureDirectory(uri)
+        contract = OpenDocumentTreeWithFlags(),
+    ) { selection: TreeUriSelection? ->
+        if (selection != null) {
+            viewModel.setWifiCaptureDirectory(selection.uri, selection.grantFlags)
         }
     }
 
@@ -1347,9 +1347,15 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                             text = "NRSuite needs a writable root folder for PCAP captures, logs, " +
                                 "DuckyScripts, portal exports, and IR files. Android grants access " +
                                 "through the system folder picker; there is no broad storage permission " +
-                                "to enable in Android Settings. Choose a folder now, or tap Later and " +
-                                "grant access from Settings when needed.",
+                                "to enable in Android Settings.",
                             color = NrOnSurfaceVariant,
+                        )
+                        Text(
+                            text = "Create or select a dedicated subfolder such as " +
+                                "Documents/NRSuite. Android may block internal-storage root, " +
+                                "Download, Android/data, and Android/obb.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StatusAmber,
                         )
                         storageAccessIssue?.let { issue ->
                             Text(

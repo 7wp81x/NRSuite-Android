@@ -1604,17 +1604,36 @@ class MainViewModel(internal val app: Application) {
         _requiresRootDirectory.value = false
     }
 
-    fun setExportDirectory(uri: Uri) {
+    fun setExportDirectory(uri: Uri, grantFlags: Int = 0) {
         val resolver = app.contentResolver
-        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        val grantError = runCatching {
-            resolver.takePersistableUriPermission(uri, flags)
-        }.exceptionOrNull()
-        val accessIssue = if (grantError != null) {
-            "Android did not retain access to the selected folder. " +
-                "Choose it again from the system folder picker."
-        } else {
-            validateTreeAccess(uri)
+        val requestedFlags = grantFlags and (
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+        val authority = uri.authority ?: "unknown provider"
+        appendLog(
+            "Storage picker selected $authority (grants=0x${requestedFlags.toString(16)}).",
+        )
+        val accessIssue = when {
+            requestedFlags and Intent.FLAG_GRANT_READ_URI_PERMISSION == 0 -> {
+                "Android did not grant read access to the selected folder. " +
+                    "Create or select a writable subfolder such as Documents/NRSuite."
+            }
+            else -> {
+                val grantError = runCatching {
+                    resolver.takePersistableUriPermission(uri, requestedFlags)
+                }.exceptionOrNull()
+                if (grantError != null) {
+                    appendLog(
+                        "Persistable folder grant failed: " +
+                            "${grantError.javaClass.simpleName}: ${grantError.message}",
+                        level = LogLevel.ERROR,
+                    )
+                    "Android did not retain permission for $authority. " +
+                        "Try Documents/NRSuite or a different file provider."
+                } else {
+                    validateTreeAccess(uri, requireWrite = true)
+                }
+            }
         }
         if (accessIssue != null) {
             clearStoredExportDirectory(accessIssue)
@@ -1639,7 +1658,7 @@ class MainViewModel(internal val app: Application) {
         val accessIssue = if (uri == null) {
             "The stored NRSuite root folder is invalid. Choose it again."
         } else {
-            validateTreeAccess(uri)
+            validateTreeAccess(uri, requireWrite = true)
         }
         if (accessIssue != null) {
             clearStoredExportDirectory(accessIssue)
@@ -1668,7 +1687,7 @@ class MainViewModel(internal val app: Application) {
             appendLog(issue, level = LogLevel.ERROR)
             return false
         }
-        val issue = validateTreeAccess(uri)
+        val issue = validateTreeAccess(uri, requireWrite = true)
         if (issue != null) {
             clearStoredExportDirectory(issue)
             _requiresRootDirectory.value = true
@@ -1680,15 +1699,23 @@ class MainViewModel(internal val app: Application) {
         return true
     }
 
-    private fun validateTreeAccess(uri: Uri): String? {
-        val persisted = app.contentResolver.persistedUriPermissions.any { permission ->
-            permission.uri == uri &&
-                permission.isReadPermission &&
-                permission.isWritePermission
+    private fun validateTreeAccess(uri: Uri, requireWrite: Boolean): String? {
+        val persisted = app.contentResolver.persistedUriPermissions.firstOrNull { permission ->
+            permission.uri == uri
         }
-        if (!persisted) {
-            return "NRSuite no longer has persistent access to its root folder. " +
-                "Open Settings and grant folder access again."
+        if (persisted == null) {
+            return "Android did not return a persistent folder grant for " +
+                "${uri.authority ?: "the selected provider"}. " +
+                "Create or select a subfolder such as Documents/NRSuite " +
+                "and choose it again from the picker."
+        }
+        if (!persisted.isReadPermission) {
+            return "The selected folder grant is missing read access. " +
+                "Choose the folder again and allow access."
+        }
+        if (requireWrite && !persisted.isWritePermission) {
+            return "The selected folder is read-only for NRSuite. " +
+                "Choose a writable folder such as Documents/NRSuite."
         }
         val root = runCatching { DocumentFile.fromTreeUri(app, uri) }.getOrNull()
             ?: return "The selected NRSuite root folder is no longer available. Choose it again."
@@ -1698,7 +1725,7 @@ class MainViewModel(internal val app: Application) {
         if (!root.canRead()) {
             return "NRSuite cannot read the selected root folder. Grant folder access again."
         }
-        if (!root.canWrite()) {
+        if (requireWrite && !root.canWrite()) {
             return "NRSuite cannot write to the selected root folder. Choose a writable folder."
         }
         return null
@@ -1713,7 +1740,7 @@ class MainViewModel(internal val app: Application) {
         _wifiCaptureDirectoryName.value = null
     }
 
-    fun setWifiCaptureDirectory(uri: Uri?) {
+    fun setWifiCaptureDirectory(uri: Uri?, grantFlags: Int = 0) {
         if (uri == null) {
             _wifiCaptureDirectory.value = null
             _wifiCaptureDirectoryName.value = null
@@ -1722,8 +1749,28 @@ class MainViewModel(internal val app: Application) {
             return
         }
         val resolver = app.contentResolver
-        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        runCatching { resolver.takePersistableUriPermission(uri, flags) }
+        val requestedFlags = grantFlags and (
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+        val issue = if (requestedFlags and Intent.FLAG_GRANT_READ_URI_PERMISSION == 0) {
+            "Android did not grant read access to the WiFi capture folder."
+        } else {
+            runCatching {
+                resolver.takePersistableUriPermission(uri, requestedFlags)
+            }.exceptionOrNull()?.let { error ->
+                appendLog(
+                    "WiFi capture folder grant failed: " +
+                        "${error.javaClass.simpleName}: ${error.message}",
+                    level = LogLevel.ERROR,
+                )
+                "Android did not retain permission for the WiFi capture folder."
+            } ?: validateTreeAccess(uri, requireWrite = true)
+        }
+        if (issue != null) {
+            _toastMessage.value = issue
+            appendLog(issue, level = LogLevel.ERROR)
+            return
+        }
         _wifiCaptureDirectory.value = uri
         _wifiCaptureDirectoryName.value = displayNameForTreeUri(uri)
         preferences.edit().putString(PREF_WIFI_CAPTURE_DIRECTORY, uri.toString()).apply()
