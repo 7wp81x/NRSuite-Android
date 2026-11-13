@@ -368,15 +368,24 @@ internal fun MainViewModel.startWpsPixieLiveAttemptImpl(
             val code = response?.optString("error").orEmpty().ifBlank {
                 response?.optString("msg").orEmpty()
             }
+            val memoryDetail = buildString {
+                if (response?.has("free_heap") == true) {
+                    append(" free_heap=${response.optInt("free_heap")}")
+                }
+                if (response?.has("largest_block") == true) {
+                    append(" largest_block=${response.optInt("largest_block")}")
+                }
+            }.trim()
             val message = when (code) {
                 "softap_start_failed" -> "Firmware could not start the hidden WPS helper SoftAP."
                 "apsta_failed" -> "Firmware could not enable Wi-Fi AP+STA mode."
                 "set_channel_failed" -> "Firmware could not tune to the target channel."
                 "wps_pixie_not_supported" -> "This firmware build does not support WPS Pixie Dust."
                 "wps_pixie_busy" -> "A WPS Pixie attempt is already running."
+                "wps_pixie_queue_failed" -> "Firmware could not allocate the WPS receive queue."
                 "" -> "No command response from firmware."
                 else -> code
-            }
+            } + if (memoryDetail.isBlank()) "" else " [$memoryDetail]"
             _wpsPixieLive.update { it.copy(running = false, error = message, stage = "error") }
             appendLog("WPS Pixie attempt failed to start: $message", level = LogLevel.ERROR)
         }
@@ -569,6 +578,12 @@ internal fun MainViewModel.handleWpsPixieLiveEventImpl(event: JSONObject) {
                     addInt("last_rx_eap_id", "last_eap_id")
                     addInt("last_rx_wps_message", "last_wps_msg")
                     addInt("last_rx_eapol_len", "last_eapol_len")
+                    addInt("rx_eapol_unparsed", "eapol_unparsed")
+                    addInt("last_unparsed_eap_code", "unparsed_eap_code")
+                    addInt("last_unparsed_eap_type", "unparsed_eap_type")
+                    addInt("m2_tx_count", "m2_tx")
+                    addInt("last_m2_len", "m2_len")
+                    addInt("last_m2_eap_id", "m2_eap_id")
                     event.optString("station_mac").takeIf { it.isNotBlank() }?.let {
                         add("station_mac=$it")
                     }
