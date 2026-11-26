@@ -50,6 +50,8 @@ class TinyUsbBootloaderTest {
     private class FakeTriggerTransport : FlasherTransport {
         override var isOpen: Boolean = false
             private set
+        override var currentBaudRate: Int = 115_200
+            private set
 
         var opened = false
         var closed = false
@@ -65,6 +67,10 @@ class TinyUsbBootloaderTest {
         override fun close() {
             closed = true
             isOpen = false
+        }
+
+        override fun setBaudRate(baudRate: Int) {
+            currentBaudRate = baudRate
         }
 
         override fun read(buffer: ByteArray, timeoutMs: Int): Int = 0

@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -66,10 +67,13 @@ import com.swp81x.nrsuite.WpsPixieLiveUiState
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import com.swp81x.nrsuite.core.wps.WpsPinSource
+import com.swp81x.nrsuite.core.wps.filterWpsPixieTargets
+import com.swp81x.nrsuite.core.wps.isActionableWpsPixieTarget
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -118,7 +122,7 @@ fun WpsPixieLiveScreen(
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
-    val displayedTargets = state.targets.filter { !state.wpsOnly || it.wps }
+    val displayedTargets = filterWpsPixieTargets(state.targets, state.wpsOnly)
     val selected = state.selectedTarget
     val candidatePinValid =
         (state.candidatePin.length == 4 || state.candidatePin.length == 8) &&
@@ -241,8 +245,7 @@ fun WpsPixieLiveScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = if (state.running) StatusRed else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (state.running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 Icon(
                     imageVector = if (state.running) Icons.Default.Stop else Icons.Default.PlayArrow,
@@ -365,7 +368,7 @@ private fun TargetConfigCard(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onScan, enabled = connected && !scanning && !running) {
@@ -509,7 +512,7 @@ private fun TargetConfigCard(
                                 vendor = target.vendor,
                                 ouiWhitelisted = target.ouiWhitelisted,
                                 ouiBlacklisted = target.ouiBlacklisted,
-                                enabled = !running && target.wps,
+                                enabled = !running && !scanning && isActionableWpsPixieTarget(target),
                                 onClick = { onSelectTarget(target) },
                                 modifier = Modifier.padding(vertical = 3.dp),
                             )

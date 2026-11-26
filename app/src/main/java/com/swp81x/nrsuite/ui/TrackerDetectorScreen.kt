@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.core.ble.MAX_TRACKER_OBSERVATIONS
 import com.swp81x.nrsuite.core.ble.TrackerObservation
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -101,12 +102,6 @@ fun TrackerDetectorScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Use only on devices and environments you are authorized to assess.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = StatusAmber,
-                    )
                 }
             }
 
@@ -129,8 +124,7 @@ fun TrackerDetectorScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = if (scanning) StatusRed else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (scanning) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 Icon(
                     imageVector = if (scanning) Icons.Default.Stop else Icons.Default.PlayArrow,
@@ -179,7 +173,7 @@ private fun TrackerStatusCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
-        border = BorderStroke(0.5.dp, if (scanning) MaterialTheme.colorScheme.primary else NrOutline),
+        border = BorderStroke(0.5.dp, NrOutline),
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -203,7 +197,7 @@ private fun TrackerStatusCard(
                     )
                     Text(
                         text = when {
-                            !connected -> "Connect a device to begin"
+                            !connected -> ""
                             scanning -> "Watching BLE advertisements · $trackerCount candidate(s)"
                             else -> "Start BLE scan to monitor for trackers"
                         },

@@ -6,6 +6,7 @@ import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.wps.BssidLockSnapshot
 import com.swp81x.nrsuite.core.wps.WpsLockAccessPoint
 import com.swp81x.nrsuite.core.wps.WpsLockObservationSource
+import com.swp81x.nrsuite.core.wps.shouldRetryWpsTargetScan
 import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -37,22 +38,24 @@ internal fun MainViewModel.startWpsLockScanImpl() {
     wpsLockScanJob = scope.launch(Dispatchers.IO) {
         var success = false
         try {
-            val args = JSONObject().apply {
-                put("band", "auto")
-                put("dwell_ms", 120)
-            }
-            val response = activeSession.sendCommand(
-                "WPS_LOCK_SCAN",
-                args,
-                timeoutMs = 45_000,
-            )
-            if (response?.optBoolean("ok") == true) {
+            val scan = runWpsLockScanWithRecovery(activeSession, destination = null)
+            val visibleCount = _wpsLockDetector.value.accessPoints.size
+            if (scan.response?.optBoolean("ok") == true) {
                 success = true
-                val count = response.optInt("count", _wpsLockDetector.value.accessPoints.size)
-                appendLog("WPS Lock Detector: scan complete ($count WPS AP(s)).")
+                if (shouldRetryWpsTargetScan(scan.reportedCount, scan.receivedCount)) {
+                    appendLog(
+                        "WPS Lock Detector: scan returned ${scan.reportedCount} WPS AP(s) but only " +
+                            "${scan.receivedCount} complete result(s) arrived" +
+                            (scan.transportError?.let { " ($it)" } ?: "") +
+                            "; kept $visibleCount partial AP(s).",
+                        level = LogLevel.ERROR,
+                    )
+                } else {
+                    appendLog("WPS Lock Detector: scan complete (${scan.reportedCount} WPS AP(s)).")
+                }
             } else {
-                val message = response?.optString("msg")?.takeIf { it.isNotBlank() }
-                    ?: response?.optString("error")?.takeIf { it.isNotBlank() }
+                val message = scan.response?.optString("msg")?.takeIf { it.isNotBlank() }
+                    ?: scan.response?.optString("error")?.takeIf { it.isNotBlank() }
                     ?: "scan timed out"
                 _wpsLockDetector.update { it.copy(error = message) }
                 appendLog("WPS Lock Detector: scan failed: $message", level = LogLevel.ERROR)
@@ -77,12 +80,44 @@ internal fun MainViewModel.startWpsLockScanImpl() {
     }
 }
 
-internal fun MainViewModel.handleWpsLockApEventImpl(event: JSONObject) {
+internal fun MainViewModel.handleWpsLockApEventImpl(
+    event: JSONObject,
+    destination: WifiScanDestination? = wifiScanDestination,
+    allowNonWps: Boolean = false,
+) {
     val bssid = event.optString("bssid").trim().uppercase()
     val channel = event.optInt("channel", 0)
     if (bssid.isBlank() || channel <= 0) return
     val vendor = ouiDatabaseRepository.lookup(bssid)?.vendor
     val ouiRule = matchOuiRule(bssid, _ouiRules.value)
+
+    // WPS_LOCK_SCAN is WPS-only by default. WPS Pixie may explicitly request
+    // non-WPS records so its WPS-only filter can be switched off. Those rows
+    // are display-only candidates and are never passed into WPS lock state.
+    if (!event.optBoolean("wps", true)) {
+        if (!allowNonWps) return
+        val nonWpsTarget = NetworkTarget(
+            ssid = event.optString("ssid").ifBlank { "(hidden)" },
+            bssid = bssid,
+            channel = channel,
+            rssi = event.optInt("rssi", -127),
+            security = event.optString("security", "?"),
+            wps = false,
+            vendor = vendor,
+            ouiWhitelisted = ouiRule?.action == OuiRuleAction.WHITELIST,
+            ouiBlacklisted = ouiRule?.action == OuiRuleAction.BLACKLIST,
+        )
+        if (destination == WifiScanDestination.WPS) {
+            _wpsPixieLive.update { state ->
+                state.copy(
+                    targets = (state.targets.filterNot {
+                        it.bssid.equals(bssid, ignoreCase = true)
+                    } + nonWpsTarget).sortedByDescending { it.rssi },
+                )
+            }
+        }
+        return
+    }
     val ap = WpsLockAccessPoint(
         ssid = event.optString("ssid").ifBlank { "(hidden)" },
         bssid = bssid,
@@ -107,10 +142,10 @@ internal fun MainViewModel.handleWpsLockApEventImpl(event: JSONObject) {
             } + ap).sortedByDescending { it.rssi },
         )
     }
-    if (wifiScanDestination == WifiScanDestination.WPS) {
+    if (destination == WifiScanDestination.WPS) {
         observeWpsLockScanTargetImpl(ap)
     }
-    if (wifiScanDestination == WifiScanDestination.WPS_ATTEMPT_TARGETS) {
+    if (destination == WifiScanDestination.WPS_ATTEMPT_TARGETS) {
         val target = NetworkTarget(
             ssid = ap.ssid,
             bssid = ap.bssid,

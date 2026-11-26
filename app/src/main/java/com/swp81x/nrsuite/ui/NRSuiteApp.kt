@@ -84,7 +84,6 @@ import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -107,6 +106,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -133,6 +133,7 @@ import com.swp81x.nrsuite.ui.components.ModuleCard
 import com.swp81x.nrsuite.ui.components.ModuleCardSpec
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.theme.NRSuiteTheme
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
@@ -152,7 +153,8 @@ import com.swp81x.nrsuite.ui.theme.LogBgError
 
 internal enum class AppTab(val label: String) {
     HOME("Home"),
-    MODULES("Modules"),
+    DEVICES("Devices"),
+    TERMINAL("Terminal"),
     LOGS("Logs"),
 }
 
@@ -463,20 +465,6 @@ internal val modules = listOf(
         available = true,
     ),
 
-    // Hidden/experimental: retained for future unlocked-host or mesh HID work.
-    // Android/iOS lock screens generally ignore BLE HID input, so this module is
-    // intentionally not exposed in the normal module grid.
-    ModuleCardSpec(
-        id = "ble_pin_bruteforce",
-        title = "BLE HID PIN Bruteforce",
-        description = "Experimental BLE HID PIN range and wordlist testing with live controls.",
-        icon = Icons.Default.Bluetooth,
-        category = "HID",
-        radio = "BLE",
-        available = false,
-        statusLabel = "Experimental / hidden",
-    ),
-
     ModuleCardSpec(
         id = "ble",
         title = "BLE HID",
@@ -597,15 +585,29 @@ fun NRSuiteApp() {
     val viewModel = remember(appContext) {
         (appContext as NrSuiteApplication).controller
     }
+    val themeMode by viewModel.themeMode.collectAsState()
+    val accentColor by viewModel.accentColor.collectAsState()
+    val serialMonitorSelected by viewModel.serialMonitorSelected.collectAsState()
+    val serialMonitorConnected by viewModel.serialMonitorConnected.collectAsState()
+    val serialMonitorConnecting by viewModel.serialMonitorConnecting.collectAsState()
+    val serialMonitorBusyDeviceId = serialMonitorSelected?.device?.deviceId?.takeIf {
+        serialMonitorConnected || serialMonitorConnecting
+    }
     var showStartup by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(900)
         showStartup = false
     }
-    Box(modifier = Modifier.fillMaxSize()) {
-        NRSuiteContent(viewModel = viewModel)
-        if (showStartup) {
-            StartupScreen()
+    NRSuiteTheme(mode = themeMode, accentColor = accentColor) {
+        CompositionLocalProvider(
+            LocalSerialMonitorBusyDeviceId provides serialMonitorBusyDeviceId,
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                NRSuiteContent(viewModel = viewModel)
+                if (showStartup) {
+                    StartupScreen()
+                }
+            }
         }
     }
 }

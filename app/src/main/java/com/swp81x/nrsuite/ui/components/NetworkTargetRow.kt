@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -34,6 +35,7 @@ import com.swp81x.nrsuite.ui.theme.StatusRed
 import com.swp81x.nrsuite.ui.util.ouiStatusColor
 import com.swp81x.nrsuite.ui.util.securityColor
 import com.swp81x.nrsuite.ui.util.signalQualityColor
+import com.swp81x.nrsuite.ui.util.signalQualityLabel
 
 enum class TargetSelectionControl {
     RADIO,
@@ -90,11 +92,29 @@ fun NetworkTargetRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(
-                    text = ssid.ifBlank { "(hidden)" },
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = ssid.ifBlank { "(hidden)" },
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (wps) {
+                        Spacer(Modifier.width(6.dp))
+                        NetworkStatusBadge(text = "WPS", color = wpsColor)
+                    }
+                    if (wpsLockState != null) {
+                        Spacer(Modifier.width(4.dp))
+                        val (label, color) = when (wpsLockState) {
+                            WpsLockState.LOCKED -> "WPS LOCKED" to StatusRed
+                            WpsLockState.LIKELY_UNLOCKED -> "LIKELY UNLOCKED" to StatusGreen
+                            WpsLockState.UNKNOWN -> "WPS UNKNOWN" to NrOnSurfaceVariant
+                        }
+                        NetworkStatusBadge(text = label, color = color)
+                    }
+                }
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = bssid,
@@ -103,7 +123,7 @@ fun NetworkTargetRow(
                     maxLines = 1,
                 )
                 Text(
-                    text = "ch $channel · ${bandForWifiChannel(channel).label}  ·  $rssi dBm",
+                    text = "ch $channel · ${bandForWifiChannel(channel).label} · $rssi dBm · ${signalQualityLabel(rssi)}",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = signalTint,
                     maxLines = 1,
@@ -122,20 +142,8 @@ fun NetworkTargetRow(
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                             color = ouiTint,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                    }
-                    if (wps) {
-                        Spacer(Modifier.width(6.dp))
-                        NetworkStatusBadge(text = "WPS", color = wpsColor)
-                    }
-                    if (wpsLockState != null) {
-                        Spacer(Modifier.width(6.dp))
-                        val (label, color) = when (wpsLockState) {
-                            WpsLockState.LOCKED -> "WPS LOCKED" to StatusRed
-                            WpsLockState.LIKELY_UNLOCKED -> "LIKELY UNLOCKED" to StatusGreen
-                            WpsLockState.UNKNOWN -> "WPS LOCK UNKNOWN" to NrOnSurfaceVariant
-                        }
-                        NetworkStatusBadge(text = label, color = color)
                     }
                 }
             }

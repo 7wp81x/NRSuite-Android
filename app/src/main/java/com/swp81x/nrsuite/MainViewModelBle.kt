@@ -4,7 +4,10 @@ import android.net.Uri
 import com.swp81x.nrsuite.core.history.HistoryLevel
 import com.swp81x.nrsuite.core.log.LogLevel
 import com.swp81x.nrsuite.core.notifications.NrSuiteNotifications
+import com.swp81x.nrsuite.core.session.BleHidHeapFailure
+import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
+import com.swp81x.nrsuite.core.session.parseBleHidHeapFailure
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -34,7 +37,7 @@ internal fun MainViewModel.startBleImpl(advertiseName: String) {
         appendLog("Connect to a device before starting BLE HID.")
         return
     }
-    if (_bleAdvertising.value) return
+    if (_bleSessionActive.value || _bleAdvertising.value || _bleConnected.value) return
     val activeWifi = activeRadioLabel(includeBle = false)
     if (activeWifi != null) {
         appendLog(
@@ -53,7 +56,10 @@ internal fun MainViewModel.startBleImpl(advertiseName: String) {
             timeoutMs = 8_000,
         )
         if (response?.optBoolean("ok") == true) {
+            _bleLowHeapWarning.value = null
             _bleAdvertising.value = true
+            _bleSessionActive.value = true
+            _bleLinkConnected.value = false
             _bleConnected.value = false
             _blePeer.value = ""
             clearBleRealtimeStateImpl()
@@ -62,16 +68,42 @@ internal fun MainViewModel.startBleImpl(advertiseName: String) {
             appendLog("BLE HID advertising started.")
             addHistory("ble", "BLE HID advertising started as '$name'", HistoryLevel.SUCCESS)
         } else {
-            appendLog("Failed to start BLE HID: ${response?.optString("msg") ?: "timeout or unsupported"}")
+            val message = response?.optString("msg").orEmpty().ifBlank { "timeout or unsupported" }
+            val structuredHeapFailure =
+                response?.optString("error") == "insufficient_heap_for_ble_hid"
+            val parsedHeapFailure = parseBleHidHeapFailure(message)
+            if (structuredHeapFailure || parsedHeapFailure != null) {
+                val connected = _connectionState.value as? ConnectionState.Connected
+                val failure = BleHidHeapFailure(
+                    freeHeap = response?.optionalLong("heap")
+                        ?: parsedHeapFailure?.freeHeap
+                        ?: connected?.heapFree,
+                    largestBlock = response?.optionalLong("heap_max_alloc")
+                        ?: parsedHeapFailure?.largestBlock
+                        ?: connected?.heapMaxAlloc,
+                    message = message,
+                )
+                _bleLowHeapWarning.value = failure
+                appendLog(
+                    "BLE HID refused: insufficient heap " +
+                        "(free=${failure.freeHeap ?: "unknown"}, " +
+                        "largest=${failure.largestBlock ?: "unknown"}).",
+                    level = LogLevel.ERROR,
+                )
+            } else {
+                appendLog("Failed to start BLE HID: $message", level = LogLevel.ERROR)
+            }
         }
     }
 }
 
 internal fun MainViewModel.stopBleImpl() {
-    if (!_bleAdvertising.value && !_bleConnected.value) return
+    if (!_bleSessionActive.value && !_bleAdvertising.value && !_bleConnected.value) return
     bleStatusJob?.cancel()
     bleStatusJob = null
     _bleAdvertising.value = false
+    _bleSessionActive.value = false
+    _bleLinkConnected.value = false
     _bleConnected.value = false
     _blePeer.value = ""
     clearBleRealtimeStateImpl()
@@ -314,7 +346,9 @@ internal suspend fun MainViewModel.runBleScriptImpl(activeSession: NrSession, sc
 internal fun MainViewModel.startBleStatusPollingImpl(activeSession: NrSession) {
     bleStatusJob?.cancel()
     bleStatusJob = scope.launch {
-        while (isActive && (_bleAdvertising.value || _bleConnected.value)) {
+        // Poll for the full HID session, not just advertising/authenticated
+        // states. During pairing the GAP link exists while both can be false.
+        while (isActive && _bleSessionActive.value) {
             delay(2_000)
             val response = runCatching {
                 activeSession.sendCommand("BLE_STATUS", timeoutMs = 4_000)
@@ -322,9 +356,16 @@ internal fun MainViewModel.startBleStatusPollingImpl(activeSession: NrSession) {
             if (response.optBoolean("ok")) {
                 val wasConnected = _bleConnected.value
                 val nowConnected = response.optBoolean("connected", _bleConnected.value)
+                val nowLinked = response.optBoolean("linked", false)
                 val peer = response.optString("peer", "")
                 _bleAdvertising.value = response.optBoolean("advertising", _bleAdvertising.value)
+                _bleLinkConnected.value = nowLinked
                 _bleConnected.value = nowConnected
+                _bleSessionActive.value = if (response.has("active")) {
+                    response.optBoolean("active", true)
+                } else {
+                    true
+                }
                 _blePeer.value = peer
                 if (!wasConnected && nowConnected) {
                     NrSuiteNotifications.notifyBleConnected(app, peer)
@@ -334,3 +375,6 @@ internal fun MainViewModel.startBleStatusPollingImpl(activeSession: NrSession) {
         }
     }
 }
+
+private fun JSONObject.optionalLong(key: String): Long? =
+    if (has(key) && !isNull(key)) optLong(key) else null

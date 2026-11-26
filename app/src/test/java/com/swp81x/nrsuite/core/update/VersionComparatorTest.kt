@@ -27,6 +27,17 @@ class VersionComparatorTest {
     }
 
     @Test
+    fun releaseCandidateOrdering() {
+        assertTrue(VersionComparator.isNewer("1.0.0-rc.1", "1.0.0-beta.3.2.0"))
+        assertTrue(VersionComparator.isNewer("1.0.0-rc.2", "1.0.0-rc.1"))
+        assertTrue(VersionComparator.isNewer("1.0.0-rc.2.1", "1.0.0-rc.2"))
+        assertTrue(VersionComparator.isNewer("1.0.0-rc.3.1", "1.0.0-rc.3"))
+        assertTrue(VersionComparator.isNewer("1.0.0", "1.0.0-rc.1"))
+        assertFalse(VersionComparator.isNewer("1.0.0-rc.1", "1.0.0"))
+        assertTrue(VersionComparator.isNewer("v1.0.0-rc.1", "1.0.0-beta.3.2.0"))
+    }
+
+    @Test
     fun leadingVAndBuildMetadataIgnored() {
         assertTrue(VersionComparator.isNewer("v1.2.0+42", "1.1.9"))
     }

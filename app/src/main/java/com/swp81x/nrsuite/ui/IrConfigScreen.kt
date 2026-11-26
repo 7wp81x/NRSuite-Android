@@ -21,7 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -73,6 +73,7 @@ fun IrConfigScreen(
     backend: IrTransmitBackend,
     loopIntervalMs: Int,
     exportDirectoryName: String,
+    storageAccessIssue: String? = null,
     remoteCount: Int,
     importing: Boolean,
     scanProgress: IrScanProgress?,
@@ -393,8 +394,9 @@ fun IrConfigScreen(
                             }
                             !gpioChanged && selectedTxGpio >= 0 && selectedRxGpio >= 0 -> {
                                 Icon(
-                                    imageVector = Icons.Default.Check,
+                                    imageVector = Icons.Default.CheckCircle,
                                     contentDescription = null,
+                                    tint = StatusGreen,
                                     modifier = Modifier.size(18.dp),
                                 )
                                 Spacer(Modifier.width(6.dp))
@@ -440,6 +442,13 @@ fun IrConfigScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = if (rootConfigured) NrOnSurfaceVariant else StatusAmber,
                 )
+                if (storageAccessIssue != null) {
+                    Text(
+                        text = storageAccessIssue,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StatusAmber,
+                    )
+                }
                 Text(
                     text = "Storage: NRSuite/IR/Database/Flipper-IRDB",
                     style = MaterialTheme.typography.bodySmall,
@@ -506,7 +515,12 @@ fun IrConfigScreen(
                             color = StatusAmber,
                         )
                     }
-                    if (irDatabaseState.running) {
+                    // A manual rescan reports detailed file progress through scanProgress.
+                    // Do not also render the generic database-phase bar for the same
+                    // INDEXING operation, otherwise the screen shows two progress bars.
+                    val showDatabaseProgress = irDatabaseState.running &&
+                        !(irDatabaseState.phase == IrDatabasePhase.INDEXING && scanProgress != null)
+                    if (showDatabaseProgress) {
                         Spacer(Modifier.height(6.dp))
                         when (irDatabaseState.phase) {
                             IrDatabasePhase.DOWNLOADING -> {
@@ -592,14 +606,14 @@ fun IrConfigScreen(
                         onClick = {
                             Toast.makeText(
                                 context,
-                                "Choose the NRSuite root directory first.",
+                                "Choose a writable NRSuite root folder in the system picker.",
                                 Toast.LENGTH_SHORT,
                             ).show()
                             onChooseRootDirectory()
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Choose NRSuite root")
+                        Text("Grant storage access")
                     }
                     Spacer(Modifier.height(6.dp))
                 } else if (databaseRunning) {
@@ -652,7 +666,16 @@ fun IrConfigScreen(
                     enabled = rootConfigured && !databaseRunning && !importing,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(if (importing) "Scanning..." else "Rescan IR library")
+                    if (importing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Scanning...")
+                    } else {
+                        Text("Rescan IR library")
+                    }
                 }
                 Spacer(Modifier.height(6.dp))
                 OutlinedButton(

@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,6 +40,8 @@ fun SavedItemDropdown(
     itemLabel: (String) -> String = { it },
     itemSupportingText: (String) -> String? = { null },
     sortNames: Boolean = true,
+    selectedSupportingTextColor: Color = NrOnSurfaceVariant,
+    showItemCount: Boolean = true,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -69,16 +72,21 @@ fun SavedItemDropdown(
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                     )
-                    Text(
-                        text = when {
-                            !hasItems -> "No saved items"
-                            selectedName != null ->
-                                itemSupportingText(selectedName) ?: "$label · ${sortedNames.size} saved"
-                            else -> "$label · ${sortedNames.size} saved"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
+                    val supportingText = when {
+                        !hasItems -> "No saved items"
+                        selectedName != null ->
+                            itemSupportingText(selectedName)
+                                ?: if (showItemCount) "$label · ${sortedNames.size} saved" else null
+                        showItemCount -> "$label · ${sortedNames.size} saved"
+                        else -> null
+                    }
+                    supportingText?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (hasItems) selectedSupportingTextColor else NrOnSurfaceVariant,
+                        )
+                    }
                 }
                 Icon(
                     imageVector = Icons.Default.ArrowDropDown,

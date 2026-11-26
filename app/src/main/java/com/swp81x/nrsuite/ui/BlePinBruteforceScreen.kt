@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -59,6 +60,7 @@ import com.swp81x.nrsuite.core.hid.BlePinAttemptRecord
 import com.swp81x.nrsuite.core.hid.BlePinBruteforceSource
 import com.swp81x.nrsuite.core.hid.BlePinBruteforceUiState
 import com.swp81x.nrsuite.ui.components.NrFilterChip
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -211,8 +213,7 @@ fun BlePinBruteforceScreen(
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
                 enabled = state.source != null && !state.starting,
-                containerColor = if (state.starting) StatusAmber else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (state.starting) NrStatusAction.PAUSE else NrStatusAction.START,
             ) {
                 if (state.starting) {
                     CircularProgressIndicator(
@@ -230,8 +231,7 @@ fun BlePinBruteforceScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
-                containerColor = StatusRed,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = NrStatusAction.STOP,
             ) {
                 Icon(Icons.Default.Stop, contentDescription = "Stop BLE PIN bruteforce")
             }
@@ -523,7 +523,7 @@ private fun ConfigCard(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Spacer(Modifier.height(8.dp))
                 if (state.configured && state.state in setOf("ready", "running", "paused")) {
                     Text(
@@ -614,7 +614,7 @@ private fun ConfigCard(
                 TextButton(onClick = onToggleAdvanced, enabled = controlsEnabled) {
                     Text(if (advancedExpanded) "Hide advanced" else "Advanced options")
                 }
-                if (advancedExpanded) {
+                NrAnimatedVisibility(visible = advancedExpanded) {
                     NumericField("Persist every N attempts", state.persistEvery.toString(), controlsEnabled) {
                         onPersistEveryChange(it.toIntOrNull() ?: state.persistEvery)
                     }

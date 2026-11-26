@@ -9,6 +9,26 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+// A/B switch for external UART-bridge bulk I/O:
+//   native (default) = libusb fd handoff used by the beta.3.1.x hotfix
+//   java             = usb-serial-for-android UsbDeviceConnection bulk path
+// Override for a test build with: -Pnrsuite.uartBulkBackend=java
+val uartBulkBackend = providers.gradleProperty("nrsuite.uartBulkBackend")
+    .orElse("native")
+    .get()
+    .lowercase()
+require(uartBulkBackend == "native" || uartBulkBackend == "java") {
+    "nrsuite.uartBulkBackend must be 'native' or 'java', was '$uartBulkBackend'"
+}
+val usbVerboseIo = providers.gradleProperty("nrsuite.usbVerboseIo")
+    .orElse("false")
+    .get()
+    .toBooleanStrictOrNull() ?: false
+val mockReleaseData = providers.gradleProperty("nrsuite.mockReleaseData")
+    .orElse("false")
+    .get()
+    .toBooleanStrictOrNull() ?: false
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -23,13 +43,22 @@ android {
     ndkVersion = "30.0.16248370"
 
     defaultConfig {
-        applicationId = "com.swp81x.nrsuite"
-        minSdk = 26
+        applicationId = if (mockReleaseData) {
+            "com.swp81x.nrsuite.mock"
+        } else {
+            "com.swp81x.nrsuite"
+        }
+        manifestPlaceholders["appLabel"] = if (mockReleaseData) "NRSuite Mock" else "NRSuite"
+        minSdk = 24
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.0.0-beta.3.1.2"
+        versionCode = 16
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "UART_BULK_BACKEND", "\"$uartBulkBackend\"")
+        buildConfigField("boolean", "USB_VERBOSE_IO", usbVerboseIo.toString())
+        buildConfigField("boolean", "MOCK_RELEASE_DATA", mockReleaseData.toString())
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
@@ -37,7 +66,7 @@ android {
 
         externalNativeBuild {
             ndkBuild {
-                arguments += "APP_PLATFORM=android-26"
+                arguments += "APP_PLATFORM=android-24"
             }
         }
     }
@@ -74,6 +103,7 @@ android {
         }
     }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
@@ -81,6 +111,7 @@ android {
         jvmTarget = "11"
     }
     buildFeatures {
+        buildConfig = true
         compose = true
         aidl = true
     }
@@ -94,6 +125,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.zxing.core)
+    implementation(libs.ssh.jsch)
+    implementation(libs.bouncycastle.bcprov)
     implementation(libs.usb.serial) {
         // The JitPack POM asks for Kotlin stdlib 2.2.x. This project uses Kotlin 2.0.21;
         // the serial library itself is Java, so exclude the transitive stdlib.
@@ -106,6 +139,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     testImplementation(libs.junit)
     testImplementation(libs.json)
     androidTestImplementation(libs.androidx.junit)

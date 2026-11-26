@@ -8,8 +8,11 @@ package com.swp81x.nrsuite.core.flasher
  */
 interface FlasherTransport {
     val isOpen: Boolean
+    val currentBaudRate: Int
 
     fun open()
+
+    fun setBaudRate(baudRate: Int)
 
     fun close()
 

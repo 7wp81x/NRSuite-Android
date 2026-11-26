@@ -10,6 +10,8 @@ import com.swp81x.nrsuite.core.defense.RogueApCategory
 import com.swp81x.nrsuite.core.defense.matchOuiRule
 import com.swp81x.nrsuite.core.defense.securityRank
 import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.log.LogLevel
+import com.swp81x.nrsuite.core.wifi.NetworkTarget
 import java.util.UUID
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
@@ -35,18 +37,17 @@ private data class ObservedAp(
     val wps: Boolean,
 )
 
-private fun JSONObject.toObservedAp(): ObservedAp? {
-    val ssid = optString("ssid").trim()
-    if (ssid.isBlank()) return null
-    val bssid = optString("bssid").trim().uppercase()
-    if (bssid.isBlank()) return null
+private fun NetworkTarget.toObservedAp(): ObservedAp? {
+    val cleanSsid = ssid.trim()
+    val cleanBssid = bssid.trim().uppercase()
+    if (cleanSsid.isBlank() || cleanBssid.isBlank()) return null
     return ObservedAp(
-        ssid = ssid,
-        bssid = bssid,
-        channel = optInt("channel", 0),
-        rssi = optInt("rssi", -100),
-        security = optString("security", "?"),
-        wps = optBoolean("wps"),
+        ssid = cleanSsid,
+        bssid = cleanBssid,
+        channel = channel,
+        rssi = rssi,
+        security = security,
+        wps = wps,
     )
 }
 
@@ -144,19 +145,28 @@ internal fun MainViewModel.stopRogueApDetectorImpl() {
 
 private suspend fun MainViewModel.performRogueApScan(activeSession: com.swp81x.nrsuite.core.session.NrSession) {
     _rogueApScanning.value = true
-    _networks.value = emptyList()
-    wifiScanDestination = null
-    val count = runCatching { activeSession.scanWifi(timeoutMs = ROGUE_AP_SCAN_TIMEOUT_MS) }.getOrNull()
+    val scan = collectWifiScanWithRecovery(
+        activeSession = activeSession,
+        timeoutMs = ROGUE_AP_SCAN_TIMEOUT_MS,
+    )
     delay(ROGUE_AP_BASELINE_SETTLE_MS)
     _rogueApScanning.value = false
     _rogueApLastScanAt.value = timeHmNow()
 
+    val count = scan.commandResult
     if (count == null || count < 0) {
         appendLog("Rogue AP scan failed or timed out.")
         return
     }
+    if (count > scan.eventsReceived) {
+        appendLog(
+            "Rogue AP scan recovered ${scan.aps.size} AP(s) from $count reported result(s); " +
+                "partial event delivery.",
+            LogLevel.ERROR,
+        )
+    }
 
-    val observed = _networks.value.mapNotNull { it.toObservedAp() }
+    val observed = scan.aps.mapNotNull { it.toObservedAp() }
     val newAlerts = classifyNearbyDuplicates(observed)
     val alertsByBssid = newAlerts.associateBy { it.bssid }
     _rogueApNearby.value = observed

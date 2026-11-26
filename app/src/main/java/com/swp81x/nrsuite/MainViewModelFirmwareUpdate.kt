@@ -8,8 +8,10 @@ import com.swp81x.nrsuite.core.update.FirmwareAssetDownloadState
 import com.swp81x.nrsuite.core.update.ChecksumUtils
 import com.swp81x.nrsuite.core.update.ReleaseInfo
 import com.swp81x.nrsuite.core.session.ConnectionState
-import com.swp81x.nrsuite.core.update.compatibleFirmwareAssets
+import com.swp81x.nrsuite.core.update.compatibleFirmwareAssetsForDevice
 import com.swp81x.nrsuite.core.update.firmwareChipFromAssetName
+import com.swp81x.nrsuite.core.update.firmwareChipFromFirmwareName
+import com.swp81x.nrsuite.core.update.firmwareTargetForConnectedDevice
 import java.io.File
 import kotlinx.coroutines.launch
 
@@ -18,21 +20,58 @@ internal fun MainViewModel.downloadFirmwareUpdateForCurrentDeviceImpl() {
         appendLog("Connect a device before downloading a firmware update.", level = LogLevel.ERROR)
         return
     }
-    val chip = connected.chip ?: run {
+    val target = firmwareTargetForConnectedDevice(connected.chip, connected.features) ?: run {
         appendLog("Could not determine the connected chip for firmware update.", level = LogLevel.ERROR)
         return
     }
     val release = _firmwareUpdate.value?.latest
-        ?: _firmwareReleases.value.firstOrNull { it.compatibleFirmwareAssets(chip).isNotEmpty() }
+        ?: _firmwareReleases.value.firstOrNull {
+            it.compatibleFirmwareAssetsForDevice(connected.chip, connected.features).isNotEmpty()
+        }
         ?: run {
-            appendLog("No firmware release is available for $chip.", level = LogLevel.ERROR)
+            appendLog("No firmware release is available for $target.", level = LogLevel.ERROR)
             return
         }
-    val asset = release.compatibleFirmwareAssets(chip).firstOrNull() ?: run {
-        appendLog("No firmware asset matches $chip in ${release.tag}.", level = LogLevel.ERROR)
+    val asset = release
+        .compatibleFirmwareAssetsForDevice(connected.chip, connected.features)
+        .firstOrNull() ?: run {
+        appendLog("No firmware asset matches $target in ${release.tag}.", level = LogLevel.ERROR)
         return
     }
     downloadFirmwareAssetImpl(release.tag, asset.name)
+}
+
+internal fun MainViewModel.prepareFirmwareAssetSelectionImpl(
+    releaseTag: String,
+    assetName: String,
+) {
+    if (_firmwareFlashing.value) return
+    val release = _firmwareReleases.value.firstOrNull { it.tag == releaseTag } ?: return
+    val asset = release.assets.firstOrNull { it.name == assetName } ?: return
+    val destination = NrSuiteDownloadManager.destinationFile(
+        app,
+        "updates/firmware/${sanitizeFirmwareName(releaseTag)}-${sanitizeFirmwareName(asset.name)}",
+    )
+    val exists = destination.exists() && destination.length() > 0L
+    if (exists) {
+        if (_firmwareFlashName.value != destination.name) {
+            downloadedFirmwarePath = destination.absolutePath
+            selectDownloadedFirmwareImpl(destination)
+        }
+        val current = _firmwareAssetDownload.value
+        if (current !is FirmwareAssetDownloadState.Downloaded ||
+            current.fileName != destination.name
+        ) {
+            _firmwareAssetDownload.value = FirmwareAssetDownloadState.Downloaded(destination.name)
+        }
+    } else {
+        val current = _firmwareAssetDownload.value
+        if (current is FirmwareAssetDownloadState.Downloaded &&
+            current.fileName != destination.name
+        ) {
+            _firmwareAssetDownload.value = FirmwareAssetDownloadState.Idle
+        }
+    }
 }
 
 internal fun MainViewModel.downloadFirmwareAssetImpl(
@@ -114,6 +153,7 @@ internal fun MainViewModel.downloadFirmwareAssetImpl(
                     is DownloadState.Failed -> {
                         _firmwareAssetDownload.value =
                             FirmwareAssetDownloadState.Failed(state.reason)
+                        _toastMessage.value = state.reason
                         appendLog(
                             "Firmware download failed: ${state.reason}",
                             level = LogLevel.ERROR,
@@ -124,6 +164,7 @@ internal fun MainViewModel.downloadFirmwareAssetImpl(
         }.onFailure { error ->
             val message = error.message ?: "Firmware download failed"
             _firmwareAssetDownload.value = FirmwareAssetDownloadState.Failed(message)
+            _toastMessage.value = message
             appendLog("Firmware download failed: $message", level = LogLevel.ERROR)
         }
     }
@@ -134,6 +175,34 @@ internal fun MainViewModel.prepareFirmwareFlasherForUpdateImpl() {
     if (file != null && file.exists() && file.length() > 0L) {
         selectDownloadedFirmwareImpl(file)
     }
+}
+
+internal fun MainViewModel.prepareFirmwareFlasherForDiagnosticImpl(
+    chip: String?,
+    deviceId: Int? = null,
+) {
+    if (deviceId != null && !chip.isNullOrBlank()) {
+        firmwareTargetChipHints[deviceId] = chip
+        _firmwareTargetChip.value = chip
+    }
+    val file = downloadedFirmwarePath?.let(::File)
+    val matchesChip = file != null &&
+        file.exists() &&
+        file.length() > 0L &&
+        !chip.isNullOrBlank() &&
+        firmwareChipFromFirmwareName(file.name) == chip
+    if (matchesChip) {
+        selectDownloadedFirmwareImpl(file!!)
+        return
+    }
+    // Do not let a previously downloaded firmware for another board silently
+    // become the selected image when entering the flasher from a failed
+    // connection diagnostic.
+    _firmwareFlashUri.value = null
+    _firmwareFlashName.value = null
+    _firmwareFlashSize.value = 0
+    _firmwareFlashProgress.value = 0
+    _firmwareFlashStatus.value = null
 }
 
 internal fun MainViewModel.selectDownloadedFirmwareImpl(file: File) {

@@ -2,26 +2,13 @@ package com.swp81x.nrsuite.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 
-fun categoryColor(category: String): Color = when (category) {
-    "Detection" -> CategoryDetectionBlue
-    "Wireless" -> NrAccent
-    "WiFi" -> CategoryWifiViolet
-    "WiFi Recon" -> CategoryDetectionBlue
-    "WiFi Attacks" -> CategoryAttackOrange
-    "WiFi Defense" -> CategoryFirmwareGreen
-    "Tools" -> StatusNeutral
-    "Credentials" -> StatusAmber
-    "HID" -> CategoryHidPurple
-    "Storage" -> CategoryStorageTeal
-    "Firmware" -> CategoryFirmwareGreen
-    "BLE" -> CategoryBleBlue
-    "Sensors" -> CategorySensorsBlue
-    "Mesh" -> CategoryMeshIndigo
-    "IR" -> CategoryIrRose
-    else -> StatusNeutral
-}
+@Composable
+@ReadOnlyComposable
+fun categoryColor(category: String): Color =
+    categoryColor(category, NrTheme.colors.isLight)
 
 /**
  * Applies the category's identity color as the Material primary/secondary color
@@ -33,7 +20,7 @@ fun CategoryAccentTheme(
     category: String?,
     content: @Composable () -> Unit,
 ) {
-    val accent = category?.let(::categoryColor)
+    val accent = category?.let { categoryColor(it) }
     if (accent == null) {
         content()
         return

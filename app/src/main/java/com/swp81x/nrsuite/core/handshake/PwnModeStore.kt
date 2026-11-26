@@ -10,6 +10,54 @@ import org.json.JSONObject
  * Pwn Mode is intentionally limited to a small user-managed password list. The
  * actual verification is done by [com.swp81x.nrsuite.core.wpa.WpaHandshakeVerifier].
  */
+data class PwnWordlistImport(
+    val passwords: List<String>,
+    val sourceLines: Int,
+    val rejectedLines: Int,
+    val duplicateLines: Int,
+    val truncated: Boolean,
+)
+
+/**
+ * Pwn Mode keeps only a bounded slice of an imported wordlist because every
+ * captured handshake is checked against every saved password on-device.
+ */
+fun slicePwnWordlist(
+    lines: Sequence<String>,
+    limit: Int = PwnModeStore.MAX_PASSWORDS,
+): PwnWordlistImport {
+    val passwords = mutableListOf<String>()
+    var sourceLines = 0
+    var rejectedLines = 0
+    var duplicateLines = 0
+    var truncated = false
+    for (line in lines) {
+        val clean = line.trim()
+        if (clean.isEmpty()) continue
+        sourceLines++
+        if (clean.length !in 8..63) {
+            rejectedLines++
+            continue
+        }
+        if (clean in passwords) {
+            duplicateLines++
+            continue
+        }
+        if (passwords.size >= limit) {
+            truncated = true
+            continue
+        }
+        passwords += clean
+    }
+    return PwnWordlistImport(
+        passwords = passwords,
+        sourceLines = sourceLines,
+        rejectedLines = rejectedLines,
+        duplicateLines = duplicateLines,
+        truncated = truncated,
+    )
+}
+
 class PwnModeStore(
     val root: File,
 ) {
@@ -38,6 +86,11 @@ class PwnModeStore(
         return PwnModeState(
             enabled = rootObj.optBoolean("enabled", false),
             passwords = passwords.distinct().take(MAX_PASSWORDS),
+            wordlistName = rootObj.optString("wordlist_name").takeIf { it.isNotBlank() },
+            sourceLineCount = rootObj.optInt("source_line_count", 0),
+            rejectedLineCount = rootObj.optInt("rejected_line_count", 0),
+            duplicateLineCount = rootObj.optInt("duplicate_line_count", 0),
+            truncated = rootObj.optBoolean("truncated", false),
         )
     }
 
@@ -46,6 +99,11 @@ class PwnModeStore(
         ensureDirs()
         val obj = JSONObject().apply {
             put("enabled", state.enabled)
+            put("wordlist_name", state.wordlistName ?: "")
+            put("source_line_count", state.sourceLineCount)
+            put("rejected_line_count", state.rejectedLineCount)
+            put("duplicate_line_count", state.duplicateLineCount)
+            put("truncated", state.truncated)
             put("passwords", JSONArray().apply {
                 state.passwords.take(MAX_PASSWORDS).forEach { put(it) }
             })
@@ -140,6 +198,6 @@ class PwnModeStore(
     }
 
     companion object {
-        const val MAX_PASSWORDS = 10
+        const val MAX_PASSWORDS = 1000
     }
 }

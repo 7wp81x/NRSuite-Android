@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -60,11 +61,13 @@ import com.swp81x.nrsuite.core.hid.PinBruteforceMode
 import com.swp81x.nrsuite.core.hid.PinBruteforceSource
 import com.swp81x.nrsuite.core.hid.PinBruteforceUiState
 import com.swp81x.nrsuite.ui.components.NrFilterChip
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
+import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
 
 @Composable
@@ -126,8 +129,6 @@ fun PinBruteforceScreen(
         ) {
             StatusCard(state, connected = connected, onDisarm = onStop)
             Spacer(Modifier.height(10.dp))
-            WarningCard()
-            Spacer(Modifier.height(10.dp))
             ConfigCard(
                 connected = connected,
                 state = state,
@@ -188,8 +189,7 @@ fun PinBruteforceScreen(
                     .align(Alignment.BottomEnd)
                     .padding(16.dp),
                 enabled = connected && !state.starting,
-                containerColor = if (state.running) StatusRed else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (state.running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 if (state.starting) {
                     CircularProgressIndicator(
@@ -262,14 +262,14 @@ private fun StatusCard(
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "PIN Bruteforce",
+                        text = "Session status",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
                         text = if (connected) "Device connected" else "Device not connected",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (connected) StatusGreen else StatusRed,
+                        color = if (connected) StatusGreen else StatusNeutral,
                     )
                     Text(
                         text = "State: ${state.state} · ${state.mode.wireName}",
@@ -345,28 +345,6 @@ private fun StatusValue(label: String, value: String) {
 }
 
 @Composable
-private fun WarningCard() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = NrSurface),
-        border = BorderStroke(0.5.dp, StatusAmber),
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Row(Modifier.padding(14.dp)) {
-            Icon(Icons.Default.WarningAmber, contentDescription = null, tint = StatusAmber)
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = "Supervised authorized testing only. Android, Windows, and iOS " +
-                    "devices rate-limit attempts, and some devices erase data after too " +
-                    "many failed PINs. HID cannot confirm success.",
-                style = MaterialTheme.typography.bodySmall,
-                color = NrOnSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
 private fun ConfigCard(
     connected: Boolean,
     state: PinBruteforceUiState,
@@ -427,7 +405,7 @@ private fun ConfigCard(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Spacer(Modifier.height(8.dp))
                 if (state.persistedInNvs && state.state in setOf("armed", "running", "paused")) {
                     Text(
@@ -532,7 +510,7 @@ private fun ConfigCard(
                 TextButton(onClick = onToggleAdvanced, enabled = controlsEnabled) {
                     Text(if (advancedExpanded) "Hide advanced" else "Advanced options")
                 }
-                if (advancedExpanded) {
+                NrAnimatedVisibility(visible = advancedExpanded) {
                     NumericField("Persist every N attempts", state.persistEvery.toString(), controlsEnabled) {
                         onPersistEveryChange(it.toIntOrNull() ?: state.persistEvery)
                     }

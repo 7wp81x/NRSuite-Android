@@ -7,6 +7,10 @@
         android:required="true" />
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <queries>
+        <package android:name="com.termux" />
+    </queries>
     <uses-permission android:name="android.permission.TRANSMIT_IR" />
     <uses-feature
         android:name="android.hardware.consumerir"
@@ -20,19 +24,20 @@
 
     <application
         android:name=".NrSuiteApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
+        android:label="${appLabel}"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.NRSuite">
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/app_name"
-            android:theme="@style/Theme.NRSuite">
+            android:label="${appLabel}"
+            android:theme="@style/Theme.NRSuite"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -47,7 +52,8 @@
         <service
             android:name=".service.UsbOwnerService"
             android:exported="false"
-            android:process=":usb" />
+            android:process=":usb"
+            android:stopWithTask="false" />
 
         <service
             android:name=".service.WpaCrackerForegroundService"

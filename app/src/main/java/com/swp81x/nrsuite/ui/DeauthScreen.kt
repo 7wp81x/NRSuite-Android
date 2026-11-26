@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import org.json.JSONObject
@@ -60,6 +61,7 @@ import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
 import com.swp81x.nrsuite.ui.components.WifiChannelSummaryPill
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
@@ -207,8 +209,8 @@ fun DeauthScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                enabled = running || (!scanning && selectedTargets.isNotEmpty() && validClient),
+                statusAction = if (running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 Icon(
                     imageVector = if (running) Icons.Default.Stop else Icons.Default.PlayArrow,
@@ -347,7 +349,7 @@ private fun ConfigZone(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Column {
                     Spacer(Modifier.height(10.dp))
                     OutlinedButton(
@@ -371,7 +373,7 @@ private fun ConfigZone(
                                 style = MaterialTheme.typography.labelLarge,
                                 modifier = Modifier.weight(1f),
                             )
-                            if (selectedBssids.isNotEmpty() && !running) {
+                            if (selectedBssids.isNotEmpty() && !running && !scanning) {
                                 TextButton(onClick = onClearTargets) {
                                     Text("Clear")
                                 }
@@ -381,7 +383,7 @@ private fun ConfigZone(
                             networks = networks,
                             selectedBssids = selectedBssids,
                             onToggle = onToggleTarget,
-                            enabled = !running,
+                            enabled = !running && !scanning,
                             multiSelect = true,
                         )
                     }
@@ -492,15 +494,6 @@ private fun ConfigZone(
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
-
-                    if (!connected) {
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            text = "Connect a device before starting deauth.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusAmber,
-                        )
-                    }
                 }
             }
         }
@@ -652,15 +645,6 @@ private fun ResultZone(
                 Text(
                     text = "Channel: $activeChannel",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
-                )
-            }
-
-            if (!connected) {
-                Spacer(Modifier.height(24.dp))
-                Text(
-                    text = "Connect a device before starting deauth.",
-                    style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
             }

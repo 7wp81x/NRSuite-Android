@@ -63,7 +63,13 @@ fun ModuleCard(
 ) {
     val statusLabel = module.statusLabel?.takeIf { it.isNotBlank() }
     val attentionLabel = statusLabel?.takeIf {
-        it in setOf("Firmware required", "Not supported", "OUI DB required", "Unavailable")
+        it in setOf(
+            "Firmware required",
+            "Not supported",
+            "Not supported on ESP32-S2",
+            "OUI DB required",
+            "Unavailable",
+        )
     }
 
     Card(
@@ -71,12 +77,20 @@ fun ModuleCard(
             .fillMaxWidth()
             .clickable(enabled = module.available) { onClick() },
         colors = CardDefaults.cardColors(
-            containerColor = if (module.available) NrSurface else NrSurfaceVariant.copy(alpha = 0.55f),
+            containerColor = if (module.available) {
+                NrSurfaceVariant.copy(alpha = 0.58f)
+            } else {
+                NrSurfaceVariant.copy(alpha = 0.32f)
+            },
         ),
         shape = RoundedCornerShape(12.dp),
         border = BorderStroke(
             width = 0.5.dp,
-            color = if (module.available) NrOutline else NrOutline.copy(alpha = 0.45f),
+            color = if (module.available) {
+                NrOutline.copy(alpha = 0.34f)
+            } else {
+                NrOutline.copy(alpha = 0.22f)
+            },
         ),
     ) {
         Row(

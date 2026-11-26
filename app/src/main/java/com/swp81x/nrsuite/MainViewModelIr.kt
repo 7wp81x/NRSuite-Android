@@ -269,26 +269,31 @@ internal fun MainViewModel.importIrFileImpl(uri: Uri) {
 }
 
 internal fun MainViewModel.rescanIrLibraryImpl() {
-    if (_irImporting.value || irScanJob?.isActive == true) return
-    val rootUri = _exportDirectory.value
-    if (rootUri == null) {
-        _irErrorMessage.value = "Set the NRSuite root directory before scanning IR files."
+    if (_irImporting.value || irScanJob?.isActive == true || irDatabaseJob?.isActive == true) return
+    if (!ensureStorageAccessOrPrompt("Unable to scan the IR library.")) {
+        _irErrorMessage.value = _storageAccessIssue.value
+            ?: "Grant NRSuite storage access before scanning IR files."
         return
     }
+    val rootUri = _exportDirectory.value ?: return
     _irImporting.value = true
     _irErrorMessage.value = null
+    _irDatabaseState.value = IrDatabaseUiState(
+        phase = IrDatabasePhase.INDEXING,
+        message = "Scanning IR library...",
+        currentItem = "Discovering IR files...",
+    )
     _irScanProgress.value = IrScanProgress(
         scanned = 0,
         total = 0,
         currentFile = "Discovering IR files...",
     )
-    // The IR category card is driven by IrDatabaseUiState, not the lower-level
-    // IrScanProgress flow used by IR Configuration. Mirror rescan progress into
-    // the database state so both surfaces show the same active operation.
-    _irDatabaseState.value = IrDatabaseUiState(
-        phase = IrDatabasePhase.INDEXING,
-        message = "Scanning IR library...",
-        currentItem = "Discovering IR files...",
+    _toastMessage.value = "Scanning IR library..."
+    IrDatabaseForegroundService.start(app, "Scanning IR library...")
+    updateIrDatabaseNotification(
+        title = "IR library scan",
+        text = "Scanning the IR library...",
+        indeterminate = true,
     )
     irScanJob = scope.launch {
         val startedAt = System.currentTimeMillis()
@@ -323,10 +328,15 @@ internal fun MainViewModel.rescanIrLibraryImpl() {
                 phase = IrDatabasePhase.COMPLETED,
                 extractedFiles = scanned.size,
                 totalFiles = scanned.size,
-                message = "IR library scanned: ${scanned.size} remote(s).",
+                message = "IR library scan complete: ${scanned.size} remote(s) indexed.",
             )
             val elapsedMs = System.currentTimeMillis() - startedAt
             _irStatusMessage.value = "IR library scanned: ${scanned.size} remote(s)."
+            updateIrDatabaseNotification(
+                title = "IR library scan ready",
+                text = "${scanned.size} remote(s) indexed.",
+                indeterminate = false,
+            )
             Log.d("IrRemote", "IR library scan complete: ${scanned.size} remotes in ${elapsedMs} ms")
         } catch (_: CancellationException) {
             _irDatabaseState.value = IrDatabaseUiState(
@@ -334,6 +344,11 @@ internal fun MainViewModel.rescanIrLibraryImpl() {
                 message = "IR library scan cancelled.",
             )
             _irStatusMessage.value = "IR library scan cancelled."
+            updateIrDatabaseNotification(
+                title = "IR library scan cancelled",
+                text = "The scan was cancelled.",
+                indeterminate = false,
+            )
             Log.d("IrRemote", "IR library scan cancelled")
         } catch (t: Throwable) {
             val message = t.message ?: "Could not scan the IR library."
@@ -342,11 +357,17 @@ internal fun MainViewModel.rescanIrLibraryImpl() {
                 errorMessage = message,
             )
             _irErrorMessage.value = message
+            updateIrDatabaseNotification(
+                title = "IR library scan failed",
+                text = message,
+                indeterminate = false,
+            )
             Log.e("IrRemote", "IR library scan failed", t)
         } finally {
             _irImporting.value = false
             _irScanProgress.value = null
             irScanJob = null
+            IrDatabaseForegroundService.stop(app)
         }
     }
 }
@@ -1173,13 +1194,11 @@ internal fun MainViewModel.cancelIrDatabaseOperationImpl() {
 
 private fun MainViewModel.startIrDatabasePipelineImpl(forceDownload: Boolean) {
     if (irDatabaseJob?.isActive == true) return
-    val rootUri = _exportDirectory.value
-    if (rootUri == null) {
-        _requiresRootDirectory.value = true
-        _toastMessage.value = "Choose the NRSuite root directory before downloading Flipper-IRDB."
+    if (!ensureStorageAccessOrPrompt("Unable to download Flipper-IRDB.")) {
         _irDatabaseState.value = IrDatabaseUiState()
         return
     }
+    val rootUri = _exportDirectory.value ?: return
     val cacheDirectory = File(app.cacheDir, "ir_database").apply { mkdirs() }
     val archive = File(cacheDirectory, IR_DATABASE_CACHE_ARCHIVE)
     irDatabaseJob = scope.launch(Dispatchers.IO) {
@@ -1426,13 +1445,11 @@ private suspend fun MainViewModel.extractFlipperDatabaseAndIndex(
 
 internal fun MainViewModel.importIrZipImpl(uri: Uri) {
     if (irDatabaseJob?.isActive == true) return
-    val rootUri = _exportDirectory.value
-    if (rootUri == null) {
-        _requiresRootDirectory.value = true
-        _toastMessage.value = "Choose the NRSuite root directory before importing an IR ZIP."
+    if (!ensureStorageAccessOrPrompt("Unable to import the IR ZIP.")) {
         _irDatabaseState.value = IrDatabaseUiState()
         return
     }
+    val rootUri = _exportDirectory.value ?: return
     irDatabaseJob = scope.launch(Dispatchers.IO) {
         var foregroundStarted = false
         var tempZip: File? = null
@@ -2116,10 +2133,20 @@ internal fun MainViewModel.prepareIrCommonButtonsImpl(
     minRemotes: Int,
 ) {
     val threshold = minRemotes.coerceIn(MIN_IR_COMMON_BUTTON_REMOTES, 100)
+    val current = _irCommonButtonsState.value
+    if (
+        current.category == category &&
+        current.brand == brand &&
+        current.minRemotes == threshold &&
+        (current.loading || current.loaded || current.errorMessage != null)
+    ) {
+        return
+    }
+
     val key = irCommonButtonCacheKey(category, brand, threshold)
     val cached = irCommonButtonCache[key]
-    _irCommonButtonsState.value = if (cached != null) {
-        IrCommonButtonsState(
+    if (cached != null) {
+        _irCommonButtonsState.value = IrCommonButtonsState(
             category = category,
             brand = brand,
             minRemotes = threshold,
@@ -2127,12 +2154,15 @@ internal fun MainViewModel.prepareIrCommonButtonsImpl(
             buttons = cached,
         )
     } else {
-        IrCommonButtonsState(
+        // Changing category, brand, or the occurrence threshold should not
+        // require a second manual "Load" tap. Mark the scope as loading and
+        // build the cache immediately.
+        _irCommonButtonsState.value = IrCommonButtonsState(
             category = category,
             brand = brand,
             minRemotes = threshold,
-            loaded = false,
         )
+        refreshIrCommonButtonsImpl(category, brand, threshold)
     }
 }
 

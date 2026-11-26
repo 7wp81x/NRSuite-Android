@@ -41,8 +41,6 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -57,7 +55,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -77,6 +74,12 @@ import com.swp81x.nrsuite.core.ir.IrRemoteSummary
 import com.swp81x.nrsuite.core.ir.IrSearchCandidate
 import com.swp81x.nrsuite.core.ir.IrSearchRunState
 import com.swp81x.nrsuite.core.ir.IrSearchUiState
+import com.swp81x.nrsuite.ui.components.NrDangerButton
+import com.swp81x.nrsuite.ui.components.NrPrimaryButton
+import com.swp81x.nrsuite.ui.components.NrQuietButton
+import com.swp81x.nrsuite.ui.components.NrSecondaryButton
+import com.swp81x.nrsuite.ui.components.NrStatusAction
+import com.swp81x.nrsuite.ui.components.NrStatusButton
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -201,18 +204,15 @@ fun IrSearchScreen(
                 Spacer(Modifier.height(10.dp))
 
                 Text("Category", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(4.dp))
                 Box {
-                    OutlinedButton(
+                    NrSecondaryButton(
+                        text = category.ifBlank { "Select category" },
                         onClick = { categoryMenu = true },
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !active,
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = NrOnSurfaceVariant,
-                        ),
-                    ) {
-                        Text(category.ifBlank { "Select category" }, modifier = Modifier.weight(1f))
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = "Choose category")
-                    }
+                        leadingIcon = Icons.Default.ArrowDropDown,
+                    )
                     DropdownMenu(expanded = categoryMenu, onDismissRequest = { categoryMenu = false }) {
                         categories.forEach { item ->
                             DropdownMenuItem(
@@ -229,27 +229,19 @@ fun IrSearchScreen(
 
                 Spacer(Modifier.height(8.dp))
                 Text("Brand", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.height(4.dp))
                 Box {
-                    OutlinedButton(
+                    NrSecondaryButton(
+                        text = if (brand == "All brands") {
+                            "All brands"
+                        } else {
+                            "$brand (${brandCounts[brand] ?: 0})"
+                        },
                         onClick = { brandMenu = true },
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !active,
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = NrOnSurfaceVariant,
-                        ),
-                    ) {
-                        Text(
-                            text = if (brand == "All brands") {
-                                "All brands"
-                            } else {
-                                "$brand (${brandCounts[brand] ?: 0})"
-                            },
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = "Choose brand")
-                    }
+                        leadingIcon = Icons.Default.ArrowDropDown,
+                    )
                     DropdownMenu(expanded = brandMenu, onDismissRequest = { brandMenu = false }) {
                         brandOptions.forEach { item ->
                             DropdownMenuItem(
@@ -299,59 +291,64 @@ fun IrSearchScreen(
                 shape = RoundedCornerShape(12.dp),
             ) {
                 Column(Modifier.padding(14.dp)) {
-                    Text("Search settings", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Text("Auto-step / loop interval", style = MaterialTheme.typography.labelMedium)
-                Box {
-                    OutlinedButton(
-                        onClick = { intervalMenu = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !active,
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = NrOnSurfaceVariant,
-                        ),
-                    ) {
-                        Text("$intervalMs ms", modifier = Modifier.weight(1f))
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = "Choose interval")
-                    }
-                    DropdownMenu(expanded = intervalMenu, onDismissRequest = { intervalMenu = false }) {
-                        listOf(500, 750, 1000, 1200, 1500, 2000, 3000, 5000).forEach { item ->
-                            DropdownMenuItem(
-                                text = { Text("$item ms") },
-                                onClick = {
-                                    intervalMs = item
-                                    intervalMenu = false
-                                },
-                            )
-                        }
-                    }
-                }
-                if (selectedButtons.isNotEmpty()) {
+                    Text(
+                        "Search settings",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "Selected: " + selectedButtons.joinToString(", "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
+                        "Auto-step / loop interval",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Box {
+                        NrSecondaryButton(
+                            text = "$intervalMs ms",
+                            onClick = { intervalMenu = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !active,
+                            leadingIcon = Icons.Default.ArrowDropDown,
+                        )
+                        DropdownMenu(
+                            expanded = intervalMenu,
+                            onDismissRequest = { intervalMenu = false },
+                        ) {
+                            listOf(500, 750, 1000, 1200, 1500, 2000, 3000, 5000).forEach { item ->
+                                DropdownMenuItem(
+                                    text = { Text("$item ms") },
+                                    onClick = {
+                                        intervalMs = item
+                                        intervalMenu = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    if (selectedButtons.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Selected: " + selectedButtons.joinToString(", "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    NrPrimaryButton(
+                        text = "Start search",
+                        onClick = {
+                            onStart(category, brand, selectedButtons.toList(), intervalMs)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !active &&
+                            category.isNotBlank() &&
+                            commonButtonsState.loaded &&
+                            selectedButtons.isNotEmpty() &&
+                            !commonButtonsState.loading,
+                        leadingIcon = Icons.Default.PlayArrow,
                     )
                 }
-                Spacer(Modifier.height(12.dp))
-                Button(
-                    onClick = {
-                        onStart(category, brand, selectedButtons.toList(), intervalMs)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !active &&
-                        category.isNotBlank() &&
-                        commonButtonsState.loaded &&
-                        selectedButtons.isNotEmpty() &&
-                        !commonButtonsState.loading,
-                ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Start Searcher")
-                }
             }
-        }
         }
 
         if (active && state.candidates.isNotEmpty()) {
@@ -454,29 +451,29 @@ private fun CommonButtonsCard(
                         color = NrOnSurfaceVariant,
                     )
                 }
-                OutlinedButton(onClick = onRefresh, enabled = enabled && !state.loading) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.width(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Refresh")
-                }
+                NrQuietButton(
+                    text = "Refresh",
+                    onClick = onRefresh,
+                    enabled = enabled && !state.loading,
+                    leadingIcon = Icons.Default.Refresh,
+                    compact = true,
+                )
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = "Minimum remote occurrences",
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Spacer(Modifier.height(4.dp))
             Box {
-                OutlinedButton(
+                NrSecondaryButton(
+                    text = "${minRemotes}+ remotes",
                     onClick = { thresholdMenu = true },
                     enabled = enabled,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = NrOnSurfaceVariant,
-                    ),
-                ) {
-                    Text(
-                        text = "Minimum remote occurrences: ${minRemotes}+",
-                        modifier = Modifier.weight(1f),
-                    )
-                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Choose threshold")
-                }
+                    leadingIcon = Icons.Default.ArrowDropDown,
+                )
                 DropdownMenu(
                     expanded = thresholdMenu,
                     onDismissRequest = { thresholdMenu = false },
@@ -492,6 +489,7 @@ private fun CommonButtonsCard(
                     }
                 }
             }
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = "Lower thresholds expose more buttons and can create broader searches.",
                 style = MaterialTheme.typography.labelSmall,
@@ -516,9 +514,11 @@ private fun CommonButtonsCard(
                     color = NrOnSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
-                Button(onClick = onRefresh, enabled = enabled) {
-                    Text("Load common buttons")
-                }
+                NrSecondaryButton(
+                    text = "Load common buttons",
+                    onClick = onRefresh,
+                    enabled = enabled,
+                )
                 return@Column
             }
 
@@ -695,8 +695,16 @@ private fun FoundCandidatesCard(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        TextButton(onClick = { onOpen(candidate) }) { Text("Open") }
-                        TextButton(onClick = { onRemove(candidate) }) { Text("Remove") }
+                        NrQuietButton(
+                            text = "Open",
+                            onClick = { onOpen(candidate) },
+                            compact = true,
+                        )
+                        NrQuietButton(
+                            text = "Remove",
+                            onClick = { onRemove(candidate) },
+                            compact = true,
+                        )
                     }
                 }
             }
@@ -733,15 +741,20 @@ private fun SearchCandidateCard(
             title = { Text("Stop searching?") },
             text = { Text("This ends the search and returns to the main screen.") },
             confirmButton = {
-                TextButton(
+                NrDangerButton(
+                    text = "Stop",
                     onClick = {
                         confirmStop = false
                         onStop()
                     },
-                ) { Text("Stop", color = StatusRed) }
+                    filled = true,
+                )
             },
             dismissButton = {
-                TextButton(onClick = { confirmStop = false }) { Text("Keep searching") }
+                NrQuietButton(
+                    text = "Keep searching",
+                    onClick = { confirmStop = false },
+                )
             },
         )
     }
@@ -811,14 +824,11 @@ private fun SearchCandidateCard(
                 ) {
                     Icon(Icons.Default.SkipPrevious, contentDescription = "Previous")
                 }
-                Button(
+                NrPrimaryButton(
+                    text = "Send",
                     onClick = onManualSend,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 42.dp),
-                ) {
-                    Text("Send", fontWeight = FontWeight.SemiBold)
-                }
+                    modifier = Modifier.weight(1f),
+                )
                 OutlinedButton(
                     onClick = onNext,
                     modifier = Modifier.heightIn(min = 42.dp),
@@ -829,20 +839,13 @@ private fun SearchCandidateCard(
             Spacer(Modifier.height(8.dp))
 
             // Row 2: loop mode toggle
-            OutlinedButton(
+            NrSecondaryButton(
+                text = if (state.loopingCurrent) "Loop signal · ON" else "Loop signal",
                 onClick = onToggleLoop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 42.dp),
+                modifier = Modifier.fillMaxWidth(),
                 enabled = candidate != null,
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = if (state.loopingCurrent) StatusGreen else MaterialTheme.colorScheme.primary,
-                ),
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.width(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(if (state.loopingCurrent) "Loop signal · ON" else "Loop signal")
-            }
+                leadingIcon = Icons.Default.Refresh,
+            )
             Spacer(Modifier.height(8.dp))
 
             // Row 3: Pause/Resume next to Save (the usual react -> pause -> save flow)
@@ -851,62 +854,50 @@ private fun SearchCandidateCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (state.autoStepping) {
-                    OutlinedButton(
+                    NrStatusButton(
+                        text = "Pause",
+                        status = NrStatusAction.PAUSE,
                         onClick = onPause,
-                        modifier = Modifier.heightIn(min = 42.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusAmber),
-                    ) {
-                        Icon(Icons.Default.Pause, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Pause", maxLines = 1, softWrap = false)
-                    }
+                        leadingIcon = Icons.Default.Pause,
+                        compact = true,
+                    )
                 } else {
-                    OutlinedButton(
+                    NrStatusButton(
+                        text = "Resume",
+                        status = NrStatusAction.RESUME,
                         onClick = onResume,
-                        modifier = Modifier.heightIn(min = 42.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusGreen),
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Resume", maxLines = 1, softWrap = false)
-                    }
+                        leadingIcon = Icons.Default.PlayArrow,
+                        compact = true,
+                    )
                 }
-                Button(
+                NrPrimaryButton(
+                    text = "Save",
                     onClick = onFound,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 42.dp),
+                    modifier = Modifier.weight(1f),
                     enabled = candidate != null,
-                ) {
-                    Icon(Icons.Default.Check, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Save", maxLines = 1, softWrap = false, fontWeight = FontWeight.SemiBold)
-                }
+                    leadingIcon = Icons.Default.Check,
+                    compact = true,
+                )
             }
             Spacer(Modifier.height(8.dp))
 
             // Row 4: open the current candidate's remote (works without saving)
-            OutlinedButton(
+            NrSecondaryButton(
+                text = "Open remote",
                 onClick = { candidate?.let(onOpenCurrent) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 42.dp),
+                modifier = Modifier.fillMaxWidth(),
                 enabled = candidate != null,
-            ) {
-                Text("Open remote")
-            }
+            )
 
             // Stop is rare + ends the session, so it's isolated and confirmed
             Spacer(Modifier.height(4.dp))
-            TextButton(
+            NrDangerButton(
+                text = "Stop search",
                 onClick = { confirmStop = true },
                 modifier = Modifier.align(Alignment.End),
-                colors = ButtonDefaults.textButtonColors(contentColor = StatusRed),
-            ) {
-                Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.width(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Stop search")
-            }
+                leadingIcon = Icons.Default.Stop,
+                compact = true,
+            )
         }
     }
 }

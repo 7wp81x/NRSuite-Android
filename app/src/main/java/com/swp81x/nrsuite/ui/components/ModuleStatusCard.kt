@@ -51,12 +51,7 @@ fun ModuleStatusCard(
         ModuleStatusState.RUNNING -> StatusGreen
         ModuleStatusState.ALERT -> StatusRed
     }
-    val border = when (state) {
-        ModuleStatusState.DISCONNECTED,
-        ModuleStatusState.READY -> BorderStroke(0.5.dp, NrOutline)
-        ModuleStatusState.RUNNING -> BorderStroke(1.dp, StatusGreen)
-        ModuleStatusState.ALERT -> BorderStroke(1.dp, StatusRed)
-    }
+    val border = BorderStroke(0.5.dp, NrOutline)
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -80,11 +75,13 @@ fun ModuleStatusCard(
                         fontWeight = FontWeight.SemiBold,
                         color = if (state == ModuleStatusState.ALERT) StatusRed else Color.Unspecified,
                     )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
+                    if (subtitle.isNotBlank()) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = NrOnSurfaceVariant,
+                        )
+                    }
                     extraContent?.invoke(this)
                 }
             }

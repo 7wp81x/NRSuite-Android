@@ -3,6 +3,10 @@ package com.swp81x.nrsuite
 import android.hardware.usb.UsbDevice
 import android.provider.DocumentsContract
 import com.swp81x.nrsuite.core.log.LogLevel
+import com.swp81x.nrsuite.core.serial.SerialLineDirection
+import com.swp81x.nrsuite.core.serial.SerialLogLine
+import com.swp81x.nrsuite.core.serial.StreamingUtf8Decoder
+import com.swp81x.nrsuite.core.serial.formatSerialLogText
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.core.usb.UsbSerialTransport
 import java.io.IOException
@@ -18,14 +22,19 @@ import kotlinx.coroutines.withContext
 // Raw USB serial monitor. This is intentionally independent of NrSession /
 // BridgeProtocol so it can be used with any ESP32 or USB-UART firmware.
 
-data class SerialLogLine(
-    val timestamp: String,
-    val text: String,
-    val level: LogLevel,
-)
+internal fun MainViewModel.serialMonitorOwnsDeviceImpl(device: UsbDevice): Boolean {
+    val monitorDevice = _serialMonitorSelected.value?.device ?: return false
+    val active = _serialMonitorConnected.value ||
+        _serialMonitorConnecting.value ||
+        serialMonitorTransport != null
+    if (!active) return false
+    return monitorDevice.deviceId == device.deviceId ||
+        monitorDevice.deviceName == device.deviceName
+}
 
 private val SERIAL_LOG_TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
 private const val MAX_SERIAL_MONITOR_LOG_LINES = 5_000
+private const val MAX_SERIAL_MONITOR_LINE_CHARS = 32_768
 
 internal fun MainViewModel.markSerialMonitorPermissionRequestedImpl(device: UsbDevice) {
     serialMonitorPermissionDeviceId = device.deviceId
@@ -58,8 +67,33 @@ internal fun MainViewModel.setSerialMonitorHexModeImpl(enabled: Boolean) {
     _serialMonitorHexMode.value = enabled
 }
 
+internal fun MainViewModel.setSerialMonitorShowTimestampsImpl(enabled: Boolean) {
+    _serialMonitorShowTimestamps.value = enabled
+    preferences.edit().putBoolean(PREF_SERIAL_MONITOR_SHOW_TIMESTAMPS, enabled).apply()
+}
+
+internal fun MainViewModel.setSerialMonitorWrapLinesImpl(enabled: Boolean) {
+    _serialMonitorWrapLines.value = enabled
+    preferences.edit().putBoolean(PREF_SERIAL_MONITOR_WRAP_LINES, enabled).apply()
+}
+
+internal fun MainViewModel.setSerialMonitorFollowOutputImpl(enabled: Boolean) {
+    _serialMonitorFollowOutput.value = enabled
+}
+
+internal fun MainViewModel.setSerialMonitorTextSizeSpImpl(sizeSp: Float) {
+    val normalized = sizeSp.coerceIn(10f, 24f)
+    _serialMonitorTextSizeSp.value = normalized
+    preferences.edit().putFloat(PREF_SERIAL_MONITOR_TEXT_SIZE_SP, normalized).apply()
+}
+
 internal fun MainViewModel.clearSerialMonitorLogImpl() {
-    _serialMonitorLogLines.value = emptyList()
+    synchronized(serialMonitorLogLock) {
+        serialMonitorLineAccumulator.clear()
+        serialMonitorPartialTimestamp = null
+        _serialMonitorPartialLine.value = null
+        _serialMonitorLogLines.value = emptyList()
+    }
 }
 
 internal fun MainViewModel.startSerialMonitorImpl(device: UsbSerialDevice, baudRate: Int) {
@@ -80,6 +114,8 @@ internal fun MainViewModel.startSerialMonitorImpl(device: UsbSerialDevice, baudR
         return
     }
 
+    dismissUsbAttachPrompt(device.device.deviceId)
+
     _serialMonitorSelected.value = device
     _serialMonitorBaud.value = baudRate
     _serialMonitorBlockingMessage.value = null
@@ -95,43 +131,38 @@ internal fun MainViewModel.startSerialMonitorImpl(device: UsbSerialDevice, baudR
             withContext(Dispatchers.Main) {
                 _serialMonitorConnected.value = true
                 _serialMonitorConnecting.value = false
-                appendSerialMonitorLine(
-                    text = "Serial Monitor opened ${device.displayName} @ $baudRate baud.",
-                    level = LogLevel.USB,
-                )
                 appendLog("Serial Monitor opened ${device.displayName} @ $baudRate baud.", level = LogLevel.USB)
             }
 
             val buffer = ByteArray(4096)
+            val decoder = StreamingUtf8Decoder()
+
             while (isActive && transport.isOpen) {
                 val read = try {
                     transport.read(buffer, 250)
                 } catch (error: IOException) {
                     withContext(Dispatchers.Main) {
                         _serialMonitorError.value = "Serial read failed: ${error.message}"
-                        appendSerialMonitorLine(
-                            text = "Serial read failed: ${error.message}",
-                            level = LogLevel.ERROR,
-                        )
+                        appendLog("Serial read failed: ${error.message}", level = LogLevel.ERROR)
                     }
                     break
                 }
                 if (read > 0) {
-                    appendSerialMonitorChunk(String(buffer, 0, read, Charsets.UTF_8))
+                    val decoded = decoder.decode(buffer, 0, read)
+                    if (decoded.isNotEmpty()) {
+                        appendSerialMonitorChunk(decoded)
+                    }
                 }
             }
         } catch (error: Throwable) {
             withContext(Dispatchers.Main) {
                 _serialMonitorError.value = error.message ?: "Serial Monitor failed."
-                appendSerialMonitorLine(
-                    text = "Serial Monitor failed: ${error.message ?: "unknown error"}",
-                    level = LogLevel.ERROR,
-                )
                 appendLog("Serial Monitor failed: ${error.message}", level = LogLevel.ERROR)
             }
         } finally {
             runCatching { transport.close() }
             withContext(Dispatchers.Main) {
+                flushSerialMonitorPartialLine()
                 if (serialMonitorTransport === transport) {
                     serialMonitorTransport = null
                 }
@@ -152,11 +183,11 @@ internal fun MainViewModel.stopSerialMonitorImpl() {
     _serialMonitorConnecting.value = false
     _serialMonitorBlockingMessage.value = null
 
+    flushSerialMonitorPartialLine()
     if (transport != null) {
         scope.launch(Dispatchers.IO) {
             runCatching { transport.close() }
         }
-        appendSerialMonitorLine(text = "Serial Monitor closed.", level = LogLevel.USB)
         appendLog("Serial Monitor closed.", level = LogLevel.USB)
     }
 }
@@ -168,14 +199,19 @@ internal fun MainViewModel.sendSerialMonitorInputImpl() {
         return
     }
 
+    val input = _serialMonitorInput.value
     val ending = when (_serialMonitorLineEnding.value) {
         "LF" -> "\n"
         "CR" -> "\r"
         "CRLF" -> "\r\n"
         else -> ""
     }
-    val payload = (_serialMonitorInput.value + ending).toByteArray(Charsets.UTF_8)
+    val payload = (input + ending).toByteArray(Charsets.UTF_8)
     _serialMonitorInput.value = ""
+
+    if (input.isNotEmpty()) {
+        appendSerialMonitorTransmittedText(input)
+    }
 
     scope.launch(Dispatchers.IO) {
         try {
@@ -183,10 +219,7 @@ internal fun MainViewModel.sendSerialMonitorInputImpl() {
         } catch (error: Throwable) {
             withContext(Dispatchers.Main) {
                 _serialMonitorError.value = "Serial write failed: ${error.message}"
-                appendSerialMonitorLine(
-                    text = "Serial write failed: ${error.message}",
-                    level = LogLevel.ERROR,
-                )
+                appendLog("Serial write failed: ${error.message}", level = LogLevel.ERROR)
             }
         }
     }
@@ -194,7 +227,8 @@ internal fun MainViewModel.sendSerialMonitorInputImpl() {
 
 internal fun MainViewModel.exportSerialMonitorLogImpl() {
     val lines = _serialMonitorLogLines.value
-    if (lines.isEmpty()) {
+    val partialLine = _serialMonitorPartialLine.value
+    if (lines.isEmpty() && partialLine == null) {
         val message = "There is no Serial Monitor log to export."
         _serialMonitorError.value = message
         _toastMessage.value = message
@@ -209,9 +243,12 @@ internal fun MainViewModel.exportSerialMonitorLogImpl() {
         return
     }
 
-    val logText = lines.joinToString(separator = "\n") { line ->
-        "[${line.timestamp}] ${line.text}"
-    }
+    val logText = formatSerialLogText(
+        lines = lines,
+        partialLine = partialLine,
+        showTimestamps = _serialMonitorShowTimestamps.value,
+        hexMode = _serialMonitorHexMode.value,
+    )
 
     scope.launch(Dispatchers.IO) {
         try {
@@ -249,35 +286,85 @@ internal fun MainViewModel.exportSerialMonitorLogImpl() {
 }
 
 private fun MainViewModel.appendSerialMonitorChunk(chunk: String) {
-    val normalized = chunk.replace("\r\n", "\n").replace('\r', '\n')
-    val parts = normalized.split('\n')
-    for ((index, part) in parts.withIndex()) {
-        if (part.isNotEmpty() || index < parts.lastIndex) {
-            appendSerialMonitorLine(text = part)
+    synchronized(serialMonitorLogLock) {
+        val hadPartialLine = serialMonitorLineAccumulator.partialLine().isNotEmpty()
+        val existingTimestamp = serialMonitorPartialTimestamp
+        val completedLines = serialMonitorLineAccumulator.append(chunk)
+        val now = currentSerialTimestamp()
+
+        if (completedLines.isNotEmpty()) {
+            val newLines = completedLines.mapIndexed { index, text ->
+                SerialLogLine(
+                    timestamp = if (index == 0 && hadPartialLine) {
+                        existingTimestamp ?: now
+                    } else {
+                        now
+                    },
+                    text = text,
+                )
+            }
+            _serialMonitorLogLines.update { current ->
+                (current + newLines).takeLast(MAX_SERIAL_MONITOR_LOG_LINES)
+            }
+            serialMonitorPartialTimestamp = null
+        }
+
+        var partialText = serialMonitorLineAccumulator.partialLine()
+        if (partialText.length > MAX_SERIAL_MONITOR_LINE_CHARS) {
+            val timestamp = serialMonitorPartialTimestamp ?: now
+            serialMonitorLineAccumulator.drainPartialLine()
+            _serialMonitorLogLines.update { current ->
+                (current + SerialLogLine(timestamp = timestamp, text = partialText))
+                    .takeLast(MAX_SERIAL_MONITOR_LOG_LINES)
+            }
+            partialText = ""
+        }
+
+        if (partialText.isEmpty()) {
+            serialMonitorPartialTimestamp = null
+            _serialMonitorPartialLine.value = null
+        } else {
+            val timestamp = serialMonitorPartialTimestamp ?: now.also {
+                serialMonitorPartialTimestamp = it
+            }
+            _serialMonitorPartialLine.value = SerialLogLine(
+                timestamp = timestamp,
+                text = partialText,
+            )
         }
     }
 }
 
-private fun MainViewModel.appendSerialMonitorLine(
-    text: String,
-    level: LogLevel = inferSerialLogLevel(text),
-) {
-    val line = SerialLogLine(
-        timestamp = LocalTime.now().format(SERIAL_LOG_TIME_FORMAT),
-        text = text,
-        level = level,
-    )
-    _serialMonitorLogLines.update { current ->
-        (current + line).takeLast(MAX_SERIAL_MONITOR_LOG_LINES)
+private fun MainViewModel.appendSerialMonitorTransmittedText(text: String) {
+    val normalized = text.replace("\r\n", "\n").replace('\r', '\n')
+    val now = currentSerialTimestamp()
+    val lines = normalized.split('\n').map { line ->
+        SerialLogLine(
+            timestamp = now,
+            text = line,
+            direction = SerialLineDirection.TX,
+        )
+    }
+    synchronized(serialMonitorLogLock) {
+        _serialMonitorLogLines.update { current ->
+            (current + lines).takeLast(MAX_SERIAL_MONITOR_LOG_LINES)
+        }
     }
 }
 
-private fun inferSerialLogLevel(text: String): LogLevel {
-    val lower = text.lowercase()
-    return when {
-        "error" in lower || "fail" in lower -> LogLevel.ERROR
-        "success" in lower || "ok" in lower -> LogLevel.SUCCESS
-        "usb" in lower -> LogLevel.USB
-        else -> LogLevel.INFO
+private fun MainViewModel.flushSerialMonitorPartialLine() {
+    synchronized(serialMonitorLogLock) {
+        val text = serialMonitorLineAccumulator.drainPartialLine()
+        if (text.isNotEmpty()) {
+            val timestamp = serialMonitorPartialTimestamp ?: currentSerialTimestamp()
+            _serialMonitorLogLines.update { current ->
+                (current + SerialLogLine(timestamp = timestamp, text = text))
+                    .takeLast(MAX_SERIAL_MONITOR_LOG_LINES)
+            }
+        }
+        serialMonitorPartialTimestamp = null
+        _serialMonitorPartialLine.value = null
     }
 }
+
+private fun currentSerialTimestamp(): String = LocalTime.now().format(SERIAL_LOG_TIME_FORMAT)

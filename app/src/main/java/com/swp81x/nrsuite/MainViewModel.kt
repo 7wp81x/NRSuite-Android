@@ -6,11 +6,18 @@ import android.content.Intent
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.util.Log
 import androidx.core.content.ContextCompat
-import androidx.documentfile.provider.DocumentFile
+import com.swp81x.nrsuite.core.terminal.SshTerminalManager
+import com.swp81x.nrsuite.core.terminal.TerminalConfig
+import com.swp81x.nrsuite.core.terminal.TerminalKeyInfo
+import com.swp81x.nrsuite.core.terminal.TerminalConnectionState
+import com.swp81x.nrsuite.core.terminal.TerminalShortcut
+import com.swp81x.nrsuite.core.terminal.TerminalShortcutStore
+import com.swp81x.nrsuite.core.terminal.TerminalUiSettings
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
 import com.swp81x.nrsuite.core.ble.BleDeviceObservation
 import com.swp81x.nrsuite.core.ble.BleScanOwner
@@ -47,11 +54,14 @@ import com.swp81x.nrsuite.core.hid.BlePinAttemptRecord
 import com.swp81x.nrsuite.core.hid.BlePinBruteforceUiState
 import com.swp81x.nrsuite.core.hid.PinAttemptRecord
 import com.swp81x.nrsuite.core.sensors.Ld2450UiState
+import com.swp81x.nrsuite.core.serial.SerialLineAccumulator
+import com.swp81x.nrsuite.core.serial.SerialLogLine
 import com.swp81x.nrsuite.core.rfid.RfidUiState
 import com.swp81x.nrsuite.core.hid.PinBruteforceUiState
 import com.swp81x.nrsuite.core.flasher.UsbSerialFlasherTransport
-import com.swp81x.nrsuite.core.eapol.EapolParser
+import com.swp81x.nrsuite.core.eapol.EapolHandshakeTracker
 import com.swp81x.nrsuite.core.history.HistoryLevel
+import com.swp81x.nrsuite.core.flasher.FirmwareFlashDeviceState
 import com.swp81x.nrsuite.core.history.HistoryEntry
 import com.swp81x.nrsuite.core.ir.IrCommonButton
 import com.swp81x.nrsuite.core.ir.IrDatabaseDownloader
@@ -89,9 +99,11 @@ import com.swp81x.nrsuite.core.oui.OuiDatabaseRepository
 import com.swp81x.nrsuite.core.oui.OuiDatabaseStatus
 import com.swp81x.nrsuite.core.pcap.PcapReader
 import com.swp81x.nrsuite.core.portal.PortalSessionMetrics
+import com.swp81x.nrsuite.core.portal.extractCaptivePassword
 import com.swp81x.nrsuite.core.portal.PortalVisitor
 import com.swp81x.nrsuite.core.portal.mergePortalVisitor
 import com.swp81x.nrsuite.core.pcap.PcapWriter
+import com.swp81x.nrsuite.core.session.BleHidHeapFailure
 import com.swp81x.nrsuite.core.session.ConnectionState
 import com.swp81x.nrsuite.core.session.NrSession
 import com.swp81x.nrsuite.core.wifi.DetectedSsid
@@ -121,6 +133,8 @@ import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
 import com.swp81x.nrsuite.core.usb.UsbSerialTransport
+import com.swp81x.nrsuite.ui.theme.NrAccentColor
+import com.swp81x.nrsuite.ui.theme.NrThemeMode
 import com.swp81x.nrsuite.service.NrSuiteForegroundService
 import com.swp81x.nrsuite.service.WpaCrackerForegroundService
 import java.io.File
@@ -151,6 +165,13 @@ data class CapturedPassword(
     val capturedAt: String,
 )
 
+data class UsbAttachPrompt(
+    val device: com.swp81x.nrsuite.core.usb.UsbSerialDevice,
+    val hasPermission: Boolean,
+) {
+    val deviceId: Int get() = device.device.deviceId
+}
+
 internal data class DeviceSession(
     val fingerprint: String,
     val device: UsbSerialDevice,
@@ -170,6 +191,11 @@ internal data class DeviceSession(
  */
 internal enum class WifiScanDestination { WIFI, TARGETS, CHANNEL_ANALYZER, WPS, WPS_ATTEMPT_TARGETS }
 
+internal const val PREF_EVIL_TWIN_SAVE_PCAP = "evil_twin_save_pcap"
+internal const val PREF_SERIAL_MONITOR_SHOW_TIMESTAMPS = "serial_monitor_show_timestamps"
+internal const val PREF_SERIAL_MONITOR_WRAP_LINES = "serial_monitor_wrap_lines"
+internal const val PREF_SERIAL_MONITOR_TEXT_SIZE_SP = "serial_monitor_text_size_sp"
+
 class MainViewModel(internal val app: Application) {
     internal val scope = CoroutineScope(
         SupervisorJob() +
@@ -185,17 +211,24 @@ class MainViewModel(internal val app: Application) {
     internal val usbOperationMutex = Mutex()
 
     internal val autoHandshake = AutoHandshakeRuntime()
+    val pwnModeQueueState get() = autoHandshake.pwnQueueState
 
     internal val usbManager =
         app.getSystemService(Context.USB_SERVICE) as UsbManager
     internal val preferences =
         app.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
+    internal val terminalManager = SshTerminalManager(app, scope)
+    internal val terminalShortcutStore = TerminalShortcutStore(app)
+
     internal val _exportDirectory = MutableStateFlow<Uri?>(null)
     val exportDirectory: StateFlow<Uri?> = _exportDirectory.asStateFlow()
 
     private val _exportDirectoryName = MutableStateFlow("Not configured")
     val exportDirectoryName: StateFlow<String> = _exportDirectoryName.asStateFlow()
+
+    internal val _storageAccessIssue = MutableStateFlow<String?>(null)
+    val storageAccessIssue: StateFlow<String?> = _storageAccessIssue.asStateFlow()
 
     internal val _wifiCaptureDirectory = MutableStateFlow<Uri?>(null)
     val wifiCaptureDirectory: StateFlow<Uri?> = _wifiCaptureDirectory.asStateFlow()
@@ -211,14 +244,104 @@ class MainViewModel(internal val app: Application) {
     internal val _portalFirmwareNoticeEnabled = MutableStateFlow(true)
     val portalFirmwareNoticeEnabled: StateFlow<Boolean> =
         _portalFirmwareNoticeEnabled.asStateFlow()
+    internal val _portalDnsHijackEnabled = MutableStateFlow(true)
+    val portalDnsHijackEnabled: StateFlow<Boolean> =
+        _portalDnsHijackEnabled.asStateFlow()
+
+    internal val _evilTwinSavePcap =
+        MutableStateFlow(preferences.getBoolean(PREF_EVIL_TWIN_SAVE_PCAP, false))
+    val evilTwinSavePcap: StateFlow<Boolean> = _evilTwinSavePcap.asStateFlow()
 
     internal val _actionError = MutableStateFlow<String?>(null)
     val actionError: StateFlow<String?> = _actionError.asStateFlow()
     internal val _toastMessage = MutableStateFlow<String?>(null)
     val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
 
+    val terminalState: StateFlow<TerminalConnectionState> get() = terminalManager.state
+    val terminalSessions get() = terminalManager.sessions
+    val terminalSettings: StateFlow<TerminalUiSettings> get() = terminalManager.settings
+    val terminalHasPrivateKey: StateFlow<Boolean> get() = terminalManager.hasPrivateKey
+    val terminalKeyInfo: StateFlow<TerminalKeyInfo?> get() = terminalManager.keyInfo
+    fun savedTerminalHost(): String = terminalManager.savedHost()
+    fun savedTerminalPort(): Int = terminalManager.savedPort()
+    fun savedTerminalUsername(): String = terminalManager.termuxSshUsername()
+    fun savedTerminalConfig(): TerminalConfig? = terminalManager.savedConnectionConfig()
+    fun updateTerminalSettings(settings: TerminalUiSettings) = terminalManager.updateSettings(settings)
+    fun importTerminalPrivateKey(uri: Uri, passphrase: String) =
+        terminalManager.importPrivateKey(uri = uri, publicKeyUri = null, passphrase = passphrase)
+    fun importTerminalPrivateKeyFromRoot(onResult: (Boolean, String) -> Unit) {
+        val rootUri = _exportDirectory.value
+        if (rootUri == null) {
+            onResult(false, "Select the NRSuite root directory first in Settings.")
+            return
+        }
+        scope.launch(Dispatchers.IO) {
+            val file = runCatching {
+                val root = DocumentFile.fromTreeUri(app, rootUri)
+                root?.findFile("nrsuite_ssh_key")
+                    ?: root?.findFile("nrsuite_ssh_key.pem")
+                    ?: root?.findFile("nrsuite_ssh_key.txt")
+            }.getOrNull()
+            if (file == null) {
+                withContext(Dispatchers.Main) {
+                    onResult(false, "No nrsuite_ssh_key found in the NRSuite root.")
+                }
+                return@launch
+            }
+            val root = runCatching { DocumentFile.fromTreeUri(app, rootUri) }.getOrNull()
+            val publicFile = root?.findFile("nrsuite_ssh_key.pub")
+                ?: root?.findFile("nrsuite_ssh_key.pub.txt")
+            withContext(Dispatchers.Main) {
+                terminalManager.importPrivateKey(
+                    uri = file.uri,
+                    publicKeyUri = publicFile?.uri,
+                    passphrase = "",
+                    deleteAfterImport = true,
+                    onResult = onResult,
+                )
+            }
+        }
+    }
+    fun clearTerminalPrivateKey() = terminalManager.clearPrivateKey()
+    fun connectTerminal(config: TerminalConfig) = terminalManager.connect(config)
+    fun disconnectTerminal(message: String? = null) = terminalManager.disconnect(message)
+    fun forceReconnectTerminal() = terminalManager.forceReconnect()
+    fun newTerminalSession() = terminalManager.newSession()
+    fun closeTerminalSession(id: Int) = terminalManager.closeSession(id)
+    fun setActiveTerminalSession(id: Int) = terminalManager.setActiveSession(id)
+    fun isTermuxInstalled(): Boolean = terminalManager.isTermuxInstalled()
+    fun clearTerminalPinnedHostKey() = terminalManager.clearPinnedHostKey()
+    fun trustChangedTerminalHostKeyAndReconnect() = terminalManager.trustChangedHostKeyAndReconnect()
+    fun setTerminalViewUpdateListener(listener: (() -> Unit)?) =
+        terminalManager.setTerminalViewUpdateListener(listener)
+    fun setTerminalColorScheme(
+        palette: IntArray,
+        foreground: Int,
+        background: Int,
+        cursor: Int,
+    ) = terminalManager.applyColorScheme(palette, foreground, background, cursor)
+    val terminalShortcuts get() = terminalShortcutStore.shortcuts
+    val terminalShortcutCategories get() = terminalShortcutStore.categories
+    fun upsertTerminalShortcut(shortcut: TerminalShortcut) =
+        terminalShortcutStore.upsert(shortcut)
+    fun deleteTerminalShortcut(id: Long) = terminalShortcutStore.delete(id)
+    fun addTerminalShortcutCategory(name: String) = terminalShortcutStore.addCategory(name)
+    fun deleteTerminalShortcutCategory(name: String) = terminalShortcutStore.deleteCategory(name)
+    fun renameTerminalShortcutCategory(oldName: String, newName: String) =
+        terminalShortcutStore.renameCategory(oldName, newName)
+    fun runTerminalShortcutCommand(
+        command: String,
+        runMode: com.swp81x.nrsuite.core.terminal.TerminalShortcutRunMode,
+        execute: Boolean,
+    ) = terminalManager.runShortcutCommand(command, runMode, execute)
+
     internal val _devices = MutableStateFlow<List<UsbSerialDevice>>(emptyList())
     val devices: StateFlow<List<UsbSerialDevice>> = _devices.asStateFlow()
+
+    internal val _usbAttachPrompts = MutableStateFlow<List<UsbAttachPrompt>>(emptyList())
+    val usbAttachPrompts: StateFlow<List<UsbAttachPrompt>> = _usbAttachPrompts.asStateFlow()
+    internal val usbAttachPromptJobs = mutableMapOf<Int, Job>()
+    internal val lastUsbAttachPromptAtByDevice = mutableMapOf<Int, Long>()
 
     internal val _serialMonitorSelected = MutableStateFlow<UsbSerialDevice?>(null)
     val serialMonitorSelected: StateFlow<UsbSerialDevice?> = _serialMonitorSelected.asStateFlow()
@@ -235,8 +358,35 @@ class MainViewModel(internal val app: Application) {
     internal val _serialMonitorLogLines = MutableStateFlow<List<SerialLogLine>>(emptyList())
     val serialMonitorLogLines: StateFlow<List<SerialLogLine>> = _serialMonitorLogLines.asStateFlow()
 
+    internal val _serialMonitorPartialLine = MutableStateFlow<SerialLogLine?>(null)
+    val serialMonitorPartialLine: StateFlow<SerialLogLine?> = _serialMonitorPartialLine.asStateFlow()
+
     internal val _serialMonitorHexMode = MutableStateFlow(false)
     val serialMonitorHexMode: StateFlow<Boolean> = _serialMonitorHexMode.asStateFlow()
+
+    internal val _serialMonitorShowTimestamps = MutableStateFlow(
+        preferences.getBoolean(PREF_SERIAL_MONITOR_SHOW_TIMESTAMPS, false),
+    )
+    val serialMonitorShowTimestamps: StateFlow<Boolean> =
+        _serialMonitorShowTimestamps.asStateFlow()
+
+    internal val _serialMonitorWrapLines = MutableStateFlow(
+        preferences.getBoolean(PREF_SERIAL_MONITOR_WRAP_LINES, true),
+    )
+    val serialMonitorWrapLines: StateFlow<Boolean> = _serialMonitorWrapLines.asStateFlow()
+
+    internal val _serialMonitorFollowOutput = MutableStateFlow(true)
+    val serialMonitorFollowOutput: StateFlow<Boolean> =
+        _serialMonitorFollowOutput.asStateFlow()
+
+    internal val _serialMonitorTextSizeSp = MutableStateFlow(
+        (preferences.all[PREF_SERIAL_MONITOR_TEXT_SIZE_SP] as? Number)
+            ?.toFloat()
+            ?.coerceIn(10f, 24f)
+            ?: 12f,
+    )
+    val serialMonitorTextSizeSp: StateFlow<Float> =
+        _serialMonitorTextSizeSp.asStateFlow()
 
     internal val _serialMonitorInput = MutableStateFlow("")
     val serialMonitorInput: StateFlow<String> = _serialMonitorInput.asStateFlow()
@@ -254,6 +404,9 @@ class MainViewModel(internal val app: Application) {
     internal var serialMonitorReadJob: Job? = null
     internal val serialMonitorOperationMutex = Mutex()
     internal var serialMonitorPermissionDeviceId: Int? = null
+    internal val serialMonitorLineAccumulator = SerialLineAccumulator()
+    internal val serialMonitorLogLock = Any()
+    internal var serialMonitorPartialTimestamp: String? = null
     internal var firmwarePermissionDeviceId: Int? = null
 
     internal val _connectionState =
@@ -314,11 +467,26 @@ class MainViewModel(internal val app: Application) {
     internal val _firmwareFlashStatus = MutableStateFlow<String?>(null)
     val firmwareFlashStatus: StateFlow<String?> = _firmwareFlashStatus.asStateFlow()
 
+    internal val _firmwareFlashDeviceState =
+        MutableStateFlow<FirmwareFlashDeviceState?>(null)
+    val firmwareFlashDeviceState:
+        StateFlow<FirmwareFlashDeviceState?> =
+        _firmwareFlashDeviceState.asStateFlow()
+
     internal var lastFirmwareNotificationUpdateMs = 0L
     internal var lastFirmwareNotificationProgress = -1
 
     internal val _firmwareTargetDevice = MutableStateFlow<UsbSerialDevice?>(null)
     val firmwareTargetDevice: StateFlow<UsbSerialDevice?> = _firmwareTargetDevice.asStateFlow()
+
+    internal val _firmwareTargetChip = MutableStateFlow<String?>(null)
+    val firmwareTargetChip: StateFlow<String?> = _firmwareTargetChip.asStateFlow()
+
+    internal val _firmwareTargetFirmwareVersion = MutableStateFlow<String?>(null)
+    val firmwareTargetFirmwareVersion: StateFlow<String?> =
+        _firmwareTargetFirmwareVersion.asStateFlow()
+
+    internal val firmwareTargetChipHints = mutableMapOf<Int, String>()
 
     internal val _badUsbTargetDevice = MutableStateFlow<UsbSerialDevice?>(null)
     val badUsbTargetDevice: StateFlow<UsbSerialDevice?> = _badUsbTargetDevice.asStateFlow()
@@ -341,6 +509,23 @@ class MainViewModel(internal val app: Application) {
         preferences.getBoolean(PREF_AUTO_UPDATE_CHECK, true),
     )
     val autoUpdateCheck: StateFlow<Boolean> = _autoUpdateCheck.asStateFlow()
+
+    internal val _excludeBetaReleases = MutableStateFlow(
+        preferences.getBoolean(PREF_EXCLUDE_BETA_RELEASES, DEFAULT_EXCLUDE_BETA_RELEASES),
+    )
+    val excludeBetaReleases: StateFlow<Boolean> = _excludeBetaReleases.asStateFlow()
+
+    private val _themeMode = MutableStateFlow(loadThemeMode())
+    val themeMode: StateFlow<NrThemeMode> = _themeMode.asStateFlow()
+
+    private val _accentColor = MutableStateFlow(loadAccentColor())
+    val accentColor: StateFlow<NrAccentColor> = _accentColor.asStateFlow()
+
+    private val _firmwareOnboardingDismissed = MutableStateFlow(
+        preferences.getBoolean(PREF_FIRMWARE_ONBOARDING_DISMISSED, false),
+    )
+    val firmwareOnboardingDismissed: StateFlow<Boolean> =
+        _firmwareOnboardingDismissed.asStateFlow()
 
     internal val _appUpdate = MutableStateFlow<AppUpdateInfo?>(null)
     val appUpdate: StateFlow<AppUpdateInfo?> = _appUpdate.asStateFlow()
@@ -383,6 +568,7 @@ class MainViewModel(internal val app: Application) {
     internal val _channelAnalyzerNetworks = MutableStateFlow<List<JSONObject>>(emptyList())
     val channelAnalyzerNetworks: StateFlow<List<JSONObject>> = _channelAnalyzerNetworks.asStateFlow()
 
+    @Volatile
     internal var wifiScanDestination: WifiScanDestination? = null
 
     internal val _wifiBand = MutableStateFlow(WifiBand.AUTO)
@@ -580,6 +766,7 @@ class MainViewModel(internal val app: Application) {
     internal val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
     internal val wifiScanEventsReceived = java.util.concurrent.atomic.AtomicInteger(0)
+    internal val wpsLockEventsReceived = java.util.concurrent.atomic.AtomicInteger(0)
 
     internal val _sniffing = MutableStateFlow(false)
     val sniffing: StateFlow<Boolean> = _sniffing.asStateFlow()
@@ -695,6 +882,9 @@ class MainViewModel(internal val app: Application) {
 
     internal val _portalStopping = MutableStateFlow(false)
     val portalStopping: StateFlow<Boolean> = _portalStopping.asStateFlow()
+
+    internal val _portalCaptureActive = MutableStateFlow(false)
+    val portalCaptureActive: StateFlow<Boolean> = _portalCaptureActive.asStateFlow()
 
     internal val _portalHtmlSize = MutableStateFlow(0)
     val portalHtmlSize: StateFlow<Int> = _portalHtmlSize.asStateFlow()
@@ -897,6 +1087,9 @@ class MainViewModel(internal val app: Application) {
     internal var portalPcapJob: Job? = null
     internal var portalPcapWriter: PcapWriter? = null
     internal var portalPcapFile: File? = null
+    internal var portalCaptureRequiresCompleteHandshake: Boolean = false
+    @Volatile
+    internal var portalCaptureHandshakeComplete: Boolean = false
     private val exportedCapturePaths = mutableSetOf<String>()
 
     internal var portalStatusJob: Job? = null
@@ -958,6 +1151,18 @@ class MainViewModel(internal val app: Application) {
 
     internal val _bleAdvertising = MutableStateFlow(false)
     val bleAdvertising: StateFlow<Boolean> = _bleAdvertising.asStateFlow()
+
+    internal val _bleSessionActive = MutableStateFlow(false)
+    val bleSessionActive: StateFlow<Boolean> = _bleSessionActive.asStateFlow()
+
+    internal val _bleLinkConnected = MutableStateFlow(false)
+    val bleLinkConnected: StateFlow<Boolean> = _bleLinkConnected.asStateFlow()
+
+    internal val _bleLowHeapWarning = MutableStateFlow<BleHidHeapFailure?>(null)
+    val bleLowHeapWarning: StateFlow<BleHidHeapFailure?> = _bleLowHeapWarning.asStateFlow()
+
+    internal val _deviceRestarting = MutableStateFlow(false)
+    val deviceRestarting: StateFlow<Boolean> = _deviceRestarting.asStateFlow()
 
     internal val _bleConnected = MutableStateFlow(false)
     val bleConnected: StateFlow<Boolean> = _bleConnected.asStateFlow()
@@ -1314,6 +1519,15 @@ class MainViewModel(internal val app: Application) {
         _portalFirmwareNoticeEnabled.value = enabled
     }
 
+    fun setPortalDnsHijackEnabled(enabled: Boolean) {
+        _portalDnsHijackEnabled.value = enabled
+    }
+
+    fun setEvilTwinSavePcap(enabled: Boolean) {
+        _evilTwinSavePcap.value = enabled
+        preferences.edit().putBoolean(PREF_EVIL_TWIN_SAVE_PCAP, enabled).apply()
+    }
+
     fun clearMacLookup() {
         _macLookupResult.value = null
     }
@@ -1429,10 +1643,46 @@ class MainViewModel(internal val app: Application) {
         _requiresRootDirectory.value = false
     }
 
-    fun setExportDirectory(uri: Uri) {
+    fun setExportDirectory(uri: Uri, grantFlags: Int = 0) {
         val resolver = app.contentResolver
-        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        runCatching { resolver.takePersistableUriPermission(uri, flags) }
+        val requestedFlags = grantFlags and (
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+        val authority = uri.authority ?: "unknown provider"
+        appendLog(
+            "Storage picker selected $authority (grants=0x${requestedFlags.toString(16)}).",
+        )
+        val accessIssue = when {
+            requestedFlags and Intent.FLAG_GRANT_READ_URI_PERMISSION == 0 -> {
+                "Android did not grant read access to the selected folder. " +
+                    "Create or select a writable subfolder such as Documents/NRSuite."
+            }
+            else -> {
+                val grantError = runCatching {
+                    resolver.takePersistableUriPermission(uri, requestedFlags)
+                }.exceptionOrNull()
+                if (grantError != null) {
+                    appendLog(
+                        "Persistable folder grant failed: " +
+                            "${grantError.javaClass.simpleName}: ${grantError.message}",
+                        level = LogLevel.ERROR,
+                    )
+                    "Android did not retain permission for $authority. " +
+                        "Try Documents/NRSuite or a different file provider."
+                } else {
+                    validateTreeAccess(uri, requireWrite = true)
+                }
+            }
+        }
+        if (accessIssue != null) {
+            clearStoredExportDirectory(accessIssue)
+            _requiresRootDirectory.value = true
+            _toastMessage.value = accessIssue
+            appendLog(accessIssue, level = LogLevel.ERROR)
+            return
+        }
+
+        _storageAccessIssue.value = null
         _exportDirectory.value = uri
         preferences.edit().putString(PREF_EXPORT_DIRECTORY, uri.toString()).apply()
         _exportDirectoryName.value = displayNameForTreeUri(uri)
@@ -1443,13 +1693,93 @@ class MainViewModel(internal val app: Application) {
 
     private fun loadExportDirectory() {
         val stored = preferences.getString(PREF_EXPORT_DIRECTORY, null) ?: return
-        val uri = runCatching { Uri.parse(stored) }.getOrNull() ?: return
+        val uri = runCatching { Uri.parse(stored) }.getOrNull()
+        val accessIssue = if (uri == null) {
+            "The stored NRSuite root folder is invalid. Choose it again."
+        } else {
+            validateTreeAccess(uri, requireWrite = true)
+        }
+        if (accessIssue != null) {
+            clearStoredExportDirectory(accessIssue)
+            _requiresRootDirectory.value = true
+            appendLog(accessIssue, level = LogLevel.ERROR)
+            return
+        }
+        _storageAccessIssue.value = null
         _exportDirectory.value = uri
-        _exportDirectoryName.value = displayNameForTreeUri(uri)
+        _exportDirectoryName.value = displayNameForTreeUri(uri!!)
         ensureRootStructure(uri)
     }
 
-    fun setWifiCaptureDirectory(uri: Uri?) {
+    /**
+     * Validate the URI grant and folder access before operations that depend on
+     * SAF-backed storage. This must be rechecked because persisted grants can be
+     * lost after restore, provider changes, or system permission reset.
+     */
+    internal fun ensureStorageAccessOrPrompt(message: String): Boolean {
+        val uri = _exportDirectory.value
+        if (uri == null) {
+            val issue = "$message Choose the NRSuite root folder from Settings."
+            _storageAccessIssue.value = issue
+            _requiresRootDirectory.value = true
+            _toastMessage.value = issue
+            appendLog(issue, level = LogLevel.ERROR)
+            return false
+        }
+        val issue = validateTreeAccess(uri, requireWrite = true)
+        if (issue != null) {
+            clearStoredExportDirectory(issue)
+            _requiresRootDirectory.value = true
+            _toastMessage.value = issue
+            appendLog(issue, level = LogLevel.ERROR)
+            return false
+        }
+        _storageAccessIssue.value = null
+        return true
+    }
+
+    private fun validateTreeAccess(uri: Uri, requireWrite: Boolean): String? {
+        val persisted = app.contentResolver.persistedUriPermissions.firstOrNull { permission ->
+            permission.uri == uri
+        }
+        if (persisted == null) {
+            return "Android did not return a persistent folder grant for " +
+                "${uri.authority ?: "the selected provider"}. " +
+                "Create or select a subfolder such as Documents/NRSuite " +
+                "and choose it again from the picker."
+        }
+        if (!persisted.isReadPermission) {
+            return "The selected folder grant is missing read access. " +
+                "Choose the folder again and allow access."
+        }
+        if (requireWrite && !persisted.isWritePermission) {
+            return "The selected folder is read-only for NRSuite. " +
+                "Choose a writable folder such as Documents/NRSuite."
+        }
+        val root = runCatching { DocumentFile.fromTreeUri(app, uri) }.getOrNull()
+            ?: return "The selected NRSuite root folder is no longer available. Choose it again."
+        if (!root.exists()) {
+            return "The selected NRSuite root folder was removed or is unavailable. Choose it again."
+        }
+        if (!root.canRead()) {
+            return "NRSuite cannot read the selected root folder. Grant folder access again."
+        }
+        if (requireWrite && !root.canWrite()) {
+            return "NRSuite cannot write to the selected root folder. Choose a writable folder."
+        }
+        return null
+    }
+
+    private fun clearStoredExportDirectory(issue: String) {
+        preferences.edit().remove(PREF_EXPORT_DIRECTORY).apply()
+        _exportDirectory.value = null
+        _exportDirectoryName.value = "Not configured"
+        _storageAccessIssue.value = issue
+        _wifiCaptureDirectory.value = null
+        _wifiCaptureDirectoryName.value = null
+    }
+
+    fun setWifiCaptureDirectory(uri: Uri?, grantFlags: Int = 0) {
         if (uri == null) {
             _wifiCaptureDirectory.value = null
             _wifiCaptureDirectoryName.value = null
@@ -1458,8 +1788,28 @@ class MainViewModel(internal val app: Application) {
             return
         }
         val resolver = app.contentResolver
-        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        runCatching { resolver.takePersistableUriPermission(uri, flags) }
+        val requestedFlags = grantFlags and (
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+        val issue = if (requestedFlags and Intent.FLAG_GRANT_READ_URI_PERMISSION == 0) {
+            "Android did not grant read access to the WiFi capture folder."
+        } else {
+            runCatching {
+                resolver.takePersistableUriPermission(uri, requestedFlags)
+            }.exceptionOrNull()?.let { error ->
+                appendLog(
+                    "WiFi capture folder grant failed: " +
+                        "${error.javaClass.simpleName}: ${error.message}",
+                    level = LogLevel.ERROR,
+                )
+                "Android did not retain permission for the WiFi capture folder."
+            } ?: validateTreeAccess(uri, requireWrite = true)
+        }
+        if (issue != null) {
+            _toastMessage.value = issue
+            appendLog(issue, level = LogLevel.ERROR)
+            return
+        }
         _wifiCaptureDirectory.value = uri
         _wifiCaptureDirectoryName.value = displayNameForTreeUri(uri)
         preferences.edit().putString(PREF_WIFI_CAPTURE_DIRECTORY, uri.toString()).apply()
@@ -1532,7 +1882,22 @@ class MainViewModel(internal val app: Application) {
         preferences.edit().putString(PREF_HISTORY, array.toString()).apply()
     }
 
-    fun onUsbDeviceAttached() = this.onUsbDeviceAttachedImpl()
+    fun onUsbDeviceAttached(device: UsbDevice? = null) = this.onUsbDeviceAttachedImpl(device)
+    fun dismissUsbAttachPrompt(deviceId: Int? = null) {
+        if (deviceId == null) {
+            usbAttachPromptJobs.values.forEach { it.cancel() }
+            usbAttachPromptJobs.clear()
+            _usbAttachPrompts.value = emptyList()
+        } else {
+            usbAttachPromptJobs.remove(deviceId)?.cancel()
+            _usbAttachPrompts.value = _usbAttachPrompts.value.filterNot {
+                it.deviceId == deviceId
+            }
+        }
+    }
+
+    fun switchActiveDevice(device: UsbDevice): Boolean =
+        this.switchActiveDeviceImpl(device)
 
 
     fun onUsbDeviceDetached(device: UsbDevice) = this.onUsbDeviceDetachedImpl(device)
@@ -1542,9 +1907,15 @@ class MainViewModel(internal val app: Application) {
     fun onPermissionResult(device: UsbDevice, granted: Boolean) = this.onPermissionResultImpl(device, granted)
 
     fun connect(device: UsbDevice) = this.connectImpl(device)
+    fun refreshDeviceStatus(device: UsbDevice) = this.refreshDeviceStatusImpl(device)
     fun markPermissionRequested(device: UsbDevice) = this.markPermissionRequestedImpl(device)
     fun clearPermissionRequest(deviceId: Int) = this.clearPermissionRequestImpl(deviceId)
     fun disconnectDevice(device: UsbDevice) = this.disconnectDeviceImpl(device)
+    fun stopModulesForMemory() = this.stopModulesForMemoryImpl()
+    fun restartEsp32() = this.restartEsp32Impl()
+    fun dismissBleLowHeapWarning() {
+        _bleLowHeapWarning.value = null
+    }
 
     fun scanWifi() = this.scanWifiImpl()
     fun scanWifiForTargets() = this.scanWifiForTargetsImpl()
@@ -1631,6 +2002,33 @@ class MainViewModel(internal val app: Application) {
     fun handleRfidDisconnected() = this.handleRfidDisconnectedImpl()
 
     fun setAutoUpdateCheck(enabled: Boolean) = this.setAutoUpdateCheckImpl(enabled)
+
+    fun setExcludeBetaReleases(enabled: Boolean) = this.setExcludeBetaReleasesImpl(enabled)
+
+    fun setThemeMode(mode: NrThemeMode) {
+        _themeMode.value = mode
+        preferences.edit().putString(PREF_THEME_MODE, mode.name).apply()
+    }
+
+    fun setAccentColor(accentColor: NrAccentColor) {
+        _accentColor.value = accentColor
+        preferences.edit().putString(PREF_ACCENT_COLOR, accentColor.name).apply()
+    }
+
+    fun dismissFirmwareOnboarding() {
+        _firmwareOnboardingDismissed.value = true
+        preferences.edit().putBoolean(PREF_FIRMWARE_ONBOARDING_DISMISSED, true).apply()
+    }
+
+    private fun loadThemeMode(): NrThemeMode {
+        val stored = preferences.getString(PREF_THEME_MODE, null) ?: return NrThemeMode.DARK
+        return runCatching { NrThemeMode.valueOf(stored) }.getOrDefault(NrThemeMode.DARK)
+    }
+
+    private fun loadAccentColor(): NrAccentColor {
+        val stored = preferences.getString(PREF_ACCENT_COLOR, null) ?: return NrAccentColor.LIME
+        return runCatching { NrAccentColor.valueOf(stored) }.getOrDefault(NrAccentColor.LIME)
+    }
     fun checkForUpdates(force: Boolean = false) = this.checkForUpdatesImpl(force)
     fun clearUpdateError() {
         _updateError.value = null
@@ -1640,8 +2038,13 @@ class MainViewModel(internal val app: Application) {
 
     fun downloadFirmwareAsset(releaseTag: String, assetName: String) =
         this.downloadFirmwareAssetImpl(releaseTag, assetName)
+
+    fun prepareFirmwareAssetSelection(releaseTag: String, assetName: String) =
+        this.prepareFirmwareAssetSelectionImpl(releaseTag, assetName)
     fun downloadFirmwareUpdate() = this.downloadFirmwareUpdateForCurrentDeviceImpl()
     fun prepareFirmwareFlasherForUpdate() = this.prepareFirmwareFlasherForUpdateImpl()
+    fun prepareFirmwareFlasherForDiagnostic(chip: String?, deviceId: Int? = null) =
+        this.prepareFirmwareFlasherForDiagnosticImpl(chip, deviceId)
     fun armManualFirmwareRecovery(targetChip: String) =
         this.armManualFirmwareRecoveryImpl(targetChip)
     fun flashManualFirmwareNow() = this.flashManualFirmwareNowImpl()
@@ -1690,13 +2093,14 @@ class MainViewModel(internal val app: Application) {
     ) = this.startFirmwareFlashImpl(targetChip, skipReset, eraseBeforeFlash)
 
     internal fun stopActiveOperations() {
+        portalPcapJob?.cancel()
+        portalPcapJob = null
+        finalizePortalCaptureImpl(export = true)
         finishActiveCredentialSession()
         beaconStatusJob?.cancel()
         beaconStatusJob = null
         portalStatusJob?.cancel()
         portalStatusJob = null
-        portalPcapJob?.cancel()
-        portalPcapJob = null
         pcapJob?.cancel()
         pcapJob = null
         sniffDeauthJob?.cancel()
@@ -1719,6 +2123,7 @@ class MainViewModel(internal val app: Application) {
         _portalRunning.value = false
         _portalStarting.value = false
         _portalStopping.value = false
+        _portalCaptureActive.value = false
         _portalHtmlUploading.value = false
         _evilTwinHtmlUploading.value = false
         _sniffing.value = false
@@ -1741,6 +2146,8 @@ class MainViewModel(internal val app: Application) {
         _deauthDetectorCurrentHopChannel.value = null
         _deauthDetectorFramesPerSecond.value = 0
         _bleAdvertising.value = false
+        _bleSessionActive.value = false
+        _bleLinkConnected.value = false
         _bleConnected.value = false
         _bleScriptRunning.value = false
         _pinBruteforce.update { it.copy(state = "paused", starting = false) }
@@ -1775,11 +2182,6 @@ class MainViewModel(internal val app: Application) {
         this.clearBleRealtimeStateImpl()
         _portalMode.value = null
 
-        val captureToExport = portalPcapFile
-        runCatching { portalPcapWriter?.close() }
-        portalPcapWriter = null
-        portalPcapFile = null
-        exportPcapToRootIfConfigured(captureToExport)
         runCatching { pcapWriter?.close() }
         pcapWriter = null
         _evilTwinCapturePath.value = null
@@ -1998,6 +2400,18 @@ class MainViewModel(internal val app: Application) {
 
     fun setSerialMonitorHexMode(enabled: Boolean) = this.setSerialMonitorHexModeImpl(enabled)
 
+    fun setSerialMonitorShowTimestamps(enabled: Boolean) =
+        this.setSerialMonitorShowTimestampsImpl(enabled)
+
+    fun setSerialMonitorWrapLines(enabled: Boolean) =
+        this.setSerialMonitorWrapLinesImpl(enabled)
+
+    fun setSerialMonitorFollowOutput(enabled: Boolean) =
+        this.setSerialMonitorFollowOutputImpl(enabled)
+
+    fun setSerialMonitorTextSizeSp(sizeSp: Float) =
+        this.setSerialMonitorTextSizeSpImpl(sizeSp)
+
     fun clearSerialMonitorLog() = this.clearSerialMonitorLogImpl()
 
     fun startSerialMonitor(device: UsbSerialDevice, baudRate: Int) = this.startSerialMonitorImpl(device, baudRate)
@@ -2169,8 +2583,10 @@ class MainViewModel(internal val app: Application) {
     fun setPwnModeEnabled(enabled: Boolean) = this.setPwnModeEnabledImpl(enabled)
 
     fun addPwnPassword(password: String) = this.addPwnPasswordImpl(password)
+    fun importPwnWordlist(uri: Uri) = this.importPwnWordlistImpl(uri)
 
     fun removePwnPassword(password: String) = this.removePwnPasswordImpl(password)
+    fun clearPwnPasswords() = this.clearPwnPasswordsImpl()
 
     fun deleteCapturedHandshake(entry: CapturedHandshakeEntry) = this.deleteCapturedHandshakeImpl(entry)
 
@@ -2182,7 +2598,7 @@ class MainViewModel(internal val app: Application) {
         // BLE HID PIN Bruteforce is hidden/experimental. Do not let stale
         // persisted state from the hidden module block unrelated Wi-Fi
         // modules. Its SDK/state is retained for future reuse only.
-        if (includeBle && (_bleAdvertising.value || _bleConnected.value)) {
+        if (includeBle && (_bleSessionActive.value || _bleAdvertising.value || _bleConnected.value)) {
             return "BLE HID"
         }
         if (includeBle && (_bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value)) {
@@ -2265,6 +2681,8 @@ class MainViewModel(internal val app: Application) {
             _bleScanStarting.value || _bleScanRunning.value || _bleScanStopping.value -> "BLE scanner active"
             _bleProfileRunning.value -> "BLE profile active"
             _bleConnected.value -> "BLE HID connected · ${_blePeer.value.ifBlank { "device" }}"
+            _bleLinkConnected.value -> "BLE HID pairing"
+            _bleSessionActive.value -> "BLE HID active"
             _bleAdvertising.value -> "BLE HID advertising"
             else -> null
         }
@@ -2311,14 +2729,25 @@ class MainViewModel(internal val app: Application) {
         if (activeText != null) {
             intent.action = NrSuiteForegroundService.ACTION_START
             intent.putExtra(NrSuiteForegroundService.EXTRA_TEXT, activeText)
+            val smallIconRes = when {
+                _firmwareFlashing.value -> com.swp81x.nrsuite.R.drawable.ic_stat_firmware
+                _bleSessionActive.value ||
+                    _bleConnected.value ||
+                    _bleAdvertising.value ||
+                    _bleScanStarting.value ||
+                    _bleScanRunning.value ||
+                    _bleScanStopping.value ||
+                    _bleProfileRunning.value -> com.swp81x.nrsuite.R.drawable.ic_stat_ble
+                else -> com.swp81x.nrsuite.R.drawable.ic_stat_nrsuite
+            }
+            intent.putExtra(
+                NrSuiteForegroundService.EXTRA_SMALL_ICON,
+                smallIconRes,
+            )
             if (_firmwareFlashing.value) {
                 intent.putExtra(
                     NrSuiteForegroundService.EXTRA_PROGRESS,
                     _firmwareFlashProgress.value.coerceIn(0, 100),
-                )
-                intent.putExtra(
-                    NrSuiteForegroundService.EXTRA_SMALL_ICON,
-                    com.swp81x.nrsuite.R.drawable.ic_stat_firmware,
                 )
             }
             runCatching {
@@ -2349,6 +2778,7 @@ class MainViewModel(internal val app: Application) {
     internal fun observe(fingerprint: String, session: NrSession) {
         val observers = listOf(
             scope.launch {
+                var wasConnected = false
                 session.state.collect { state ->
                     // A replaced session's observer may still be cancelling.
                     // Never let a stale session overwrite its replacement.
@@ -2361,15 +2791,29 @@ class MainViewModel(internal val app: Application) {
                     }
 
                     when (state) {
-                        is ConnectionState.Connecting -> tracked?.opening = true
+                        is ConnectionState.Connecting -> {
+                            tracked?.opening = true
+                            wasConnected = false
+                        }
                         is ConnectionState.Connected -> {
                             tracked?.opening = false
                             tracked?.openedOnce = true
-                            this@MainViewModel.checkForUpdates()
+                            if (!wasConnected) {
+                                this@MainViewModel.checkForUpdates()
+                            }
+                            wasConnected = true
                         }
-                        is ConnectionState.Failed -> tracked?.opening = false
+                        is ConnectionState.Diagnosing -> {
+                            tracked?.opening = true
+                            wasConnected = false
+                        }
+                        is ConnectionState.Failed -> {
+                            tracked?.opening = false
+                            wasConnected = false
+                        }
                         is ConnectionState.Disconnected -> {
                             tracked?.opening = false
+                            wasConnected = false
                             if (fingerprint == activeDeviceFingerprint) {
                                 this@MainViewModel.handleRfidDisconnectedImpl()
                             }
@@ -2397,6 +2841,18 @@ class MainViewModel(internal val app: Application) {
                 session.logs.collect { appendLog(it) }
             },
             scope.launch {
+                while (isActive) {
+                    delay(5_000)
+                    val tracked = deviceSessions[fingerprint]
+                    if (tracked?.session !== session) break
+                    if (session.state.value !is ConnectionState.Connected) continue
+                    // Scan result transfer must not compete with periodic
+                    // telemetry traffic on the UART bridge.
+                    if (session.isScanOperationActive) continue
+                    runCatching { session.refreshStatus() }
+                }
+            },
+            scope.launch {
                 session.events.collect { event ->
                     if (deviceSessions[fingerprint]?.session !== session) return@collect
                     if (fingerprint != activeDeviceFingerprint) return@collect
@@ -2420,6 +2876,7 @@ class MainViewModel(internal val app: Application) {
                         }
 
                         "wps_lock_ap" -> {
+                            wpsLockEventsReceived.incrementAndGet()
                             this@MainViewModel.handleWpsLockApEventImpl(event)
                         }
 
@@ -2433,61 +2890,7 @@ class MainViewModel(internal val app: Application) {
 
                         "scan_ap" -> {
                             wifiScanEventsReceived.incrementAndGet()
-                            val bssid = event.optString("bssid")
-                            val resolvedSsid = resolvedHiddenSsidByBssid[bssid.uppercase()]
-                            if (event.optString("ssid").isBlank() && !resolvedSsid.isNullOrBlank()) {
-                                event.put("ssid", resolvedSsid)
-                                event.put("hidden_resolved", true)
-                            }
-                            val vendor = ouiDatabaseRepository.lookup(bssid)?.vendor
-                            val ouiRule = matchOuiRule(bssid, _ouiRules.value)
-                            val ouiWhitelisted = ouiRule?.action == OuiRuleAction.WHITELIST
-                            val ouiBlacklisted = ouiRule?.action == OuiRuleAction.BLACKLIST
-                            if (!vendor.isNullOrBlank()) event.put("vendor", vendor)
-                            event.put("oui_whitelisted", ouiWhitelisted)
-                            event.put("oui_blacklisted", ouiBlacklisted)
-
-                            val destination = wifiScanDestination
-                            val updatedList: (List<JSONObject>) -> List<JSONObject> = { current ->
-                                (current.filterNot { it.optString("bssid") == bssid } + event)
-                                    .sortedByDescending { it.optInt("rssi", -999) }
-                            }
-                            when (destination) {
-                                WifiScanDestination.WIFI,
-                                WifiScanDestination.TARGETS -> _networks.update(updatedList)
-                                WifiScanDestination.CHANNEL_ANALYZER -> _channelAnalyzerNetworks.update(updatedList)
-                                WifiScanDestination.WPS,
-                                WifiScanDestination.WPS_ATTEMPT_TARGETS,
-                                null -> Unit
-                            }
-                            val ssid = event.optString("ssid").ifBlank { "(hidden)" }
-                            val target = NetworkTarget(
-                                ssid = ssid,
-                                bssid = bssid,
-                                channel = event.optInt("channel", 0),
-                                rssi = event.optInt("rssi", -100),
-                                security = event.optString("security", "?"),
-                                wps = event.optBoolean("wps"),
-                                vendor = vendor,
-                                ouiWhitelisted = ouiWhitelisted,
-                                ouiBlacklisted = ouiBlacklisted,
-                            )
-                            if (destination == WifiScanDestination.WPS) {
-                                this@MainViewModel.observeWpsScanTargetImpl(target)
-                            } else {
-                                _deauthDetectorTargets.update { current ->
-                                    (current.filterNot { it.bssid.equals(bssid, ignoreCase = true) } + target)
-                                        .sortedByDescending { it.rssi }
-                                }
-                                _deauthDetectorSelectedTarget.update { selected ->
-                                    selected?.takeIf { it.bssid.equals(bssid, ignoreCase = true) } ?: selected
-                                }
-                            }
-                            appendLog(
-                                "AP: $ssid  ${event.optString("bssid")}  " +
-                                    "ch ${event.optInt("channel")}  ${event.optInt("rssi")} dBm  " +
-                                    event.optString("security")
-                            )
+                            this@MainViewModel.handleScanApEventImpl(event)
                         }
                         "portal_viewed" -> {
                             if (_portalMode.value == "evil_twin") {
@@ -2524,6 +2927,42 @@ class MainViewModel(internal val app: Application) {
                                     userAgent.ifBlank { "unknown" }
                             )
                         }
+                        "portal_sta_count" -> {
+                            val clients = event.optInt("clients", 0).coerceAtLeast(0)
+                            if (_portalMode.value == "evil_twin") {
+                                _evilTwinMetrics.update {
+                                    it.copy(clientsAssociated = clients)
+                                }
+                            } else {
+                                _portalMetrics.update {
+                                    it.copy(clientsAssociated = clients)
+                                }
+                            }
+                            this@MainViewModel.portalLogImpl(
+                                "SoftAP clients connected: $clients"
+                            )
+                        }
+                        "portal_dns_hijack" -> {
+                            val clientIp = event.optString("client_ip", "unknown")
+                            val destination = event.optString("destination", "unknown")
+                            val count = event.optInt("count", 0)
+                            val freeHeap = event.optLong("free_heap", -1)
+                            val minFree = event.optLong("heap_min_free", -1)
+                            val largest = event.optLong("heap_max_alloc", -1)
+                            val heapText = if (freeHeap >= 0) {
+                                " | heap=$freeHeap, min=$minFree, largest=$largest"
+                            } else {
+                                ""
+                            }
+                            appendLog(
+                                "Captive DNS hijack response sent to $clientIp " +
+                                    "for query to $destination (count=$count)$heapText."
+                            )
+                            this@MainViewModel.portalLogImpl(
+                                "DNS hijack -> $clientIp | resolver: $destination | " +
+                                    "count: $count$heapText"
+                            )
+                        }
                         "captive_data" -> {
                             if (_portalMode.value == "evil_twin") {
                                 _evilTwinMetrics.update {
@@ -2547,9 +2986,7 @@ class MainViewModel(internal val app: Application) {
                                 details[key] = data.optString(key)
                             }
 
-                            val submittedPassword = data?.optString("password").orEmpty().ifBlank {
-                                data?.optString("pass").orEmpty()
-                            }
+                            val submittedPassword = extractCaptivePassword(data)
                             if (submittedPassword.isNotBlank() && _portalMode.value == "evil_twin") {
                                 appendLog("Captured password candidate (${submittedPassword.length} chars).")
                                 val capturedAt = java.time.LocalTime.now()
@@ -2593,19 +3030,16 @@ class MainViewModel(internal val app: Application) {
                             }
                         }
                         "client_associated" -> {
-                            if (_portalMode.value == "evil_twin") {
-                                _evilTwinMetrics.update {
-                                    it.copy(clientsAssociated = it.clientsAssociated + 1)
-                                }
-                            } else {
-                                _portalMetrics.update {
-                                    it.copy(clientsAssociated = it.clientsAssociated + 1)
-                                }
-                            }
+                            // This event is filtered to the real target BSSID. It
+                            // is useful context for deauth/reconnect activity but
+                            // must not change the SoftAP client count; that count is
+                            // reported by portal_sta_count.
                             val client = event.optString("client")
                             val rssi = event.optInt("rssi")
-                            appendLog("Client associated: $client ($rssi dBm).")
-                            this@MainViewModel.portalLogImpl("Client associated: $client ($rssi dBm)")
+                            appendLog("Target client associated: $client ($rssi dBm).")
+                            this@MainViewModel.portalLogImpl(
+                                "Target client associated: $client ($rssi dBm)"
+                            )
                             updateForegroundService()
                         }
                         "deauth_stats" -> {
@@ -2689,6 +3123,12 @@ class MainViewModel(internal val app: Application) {
                                 ?: "ESP32 IR error."
                         }
                         "ir_tx_done" -> Unit
+                        "mem" -> {
+                            android.util.Log.i(
+                                "NRSuiteFirmwareMem",
+                                "device=$fingerprint $event",
+                            )
+                        }
                         "heartbeat" -> Unit
                     }
                 }
@@ -2968,6 +3408,9 @@ class MainViewModel(internal val app: Application) {
         private const val PREF_WIFI_CAPTURE_DIRECTORY = "wifi_capture_directory_uri"
         private const val PREF_HISTORY = "session_history"
         private const val PREF_RECENT_MODULES = "recent_modules"
+        private const val PREF_THEME_MODE = "theme_mode"
+        private const val PREF_ACCENT_COLOR = "accent_color"
+        private const val PREF_FIRMWARE_ONBOARDING_DISMISSED = "firmware_onboarding_dismissed"
         private const val DISCONNECT_TEARDOWN_WAIT_MS = 8_000L
         internal val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
     }

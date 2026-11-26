@@ -10,6 +10,8 @@ import com.swp81x.nrsuite.core.wps.WpsPinAttemptResult
 import com.swp81x.nrsuite.core.wps.WpsPinGenerator
 import com.swp81x.nrsuite.core.wps.WpsPinRecord
 import com.swp81x.nrsuite.core.wps.WpsPinSource
+import com.swp81x.nrsuite.core.wps.shouldKeepWpsScanResults
+import com.swp81x.nrsuite.core.wps.shouldRetryWpsTargetScan
 import com.swp81x.nrsuite.core.wps.WpsPixieCapturedMaterial
 import com.swp81x.nrsuite.core.wps.WpsPixieCracker
 import com.swp81x.nrsuite.core.wps.WpsPixieMaterial
@@ -98,23 +100,46 @@ internal fun MainViewModel.scanWpsTargetsImpl() {
     logWpsPixieLive("Scanning for WPS-enabled access points...")
     wpsTargetScanJob = scope.launch {
         try {
-            val response = runCatching {
-                activeSession.sendCommand(
-                    "WPS_LOCK_SCAN",
-                    JSONObject().apply {
-                        put("band", "auto")
-                        put("dwell_ms", 120)
-                    },
-                    timeoutMs = 45_000,
+            val scan = runWpsLockScanWithRecovery(
+                activeSession,
+                destination = WifiScanDestination.WPS,
+                includeNonWps = true,
+            )
+            val visibleTargetCount = _wpsPixieLive.value.targets.size
+            val wpsTargetCount = _wpsPixieLive.value.targets.count { it.wps }
+            val keepPartial = shouldKeepWpsScanResults(scan.receivedCount, visibleTargetCount)
+            if (scan.response?.optBoolean("ok") == true) {
+                if (shouldRetryWpsTargetScan(scan.reportedCount, scan.receivedCount)) {
+                    appendLog(
+                        "WPS Pixie: scan returned ${scan.reportedCount} target(s) but only " +
+                            "${scan.receivedCount} complete result(s) arrived" +
+                            (scan.transportError?.let { " ($it)" } ?: "") +
+                            "; kept $visibleTargetCount partial target(s).",
+                        level = LogLevel.ERROR,
+                    )
+                    logWpsPixieLive(
+                        "Scan incomplete: ${scan.receivedCount} of ${scan.reportedCount} " +
+                            "result(s) received; $wpsTargetCount WPS target(s) visible.",
+                    )
+                } else {
+                    logWpsPixieLive(
+                        "Scan complete: $wpsTargetCount WPS target(s) " +
+                            "from $visibleTargetCount result(s).",
+                    )
+                    appendLog(
+                        "WPS Pixie: WPS scan complete ($wpsTargetCount WPS target(s) " +
+                            "from $visibleTargetCount result(s)).",
+                    )
+                }
+            } else if (keepPartial) {
+                appendLog(
+                    "WPS Pixie: scan failed but kept $visibleTargetCount partial target(s).",
+                    level = LogLevel.ERROR,
                 )
-            }.getOrNull()
-            val count = response?.optInt("count", _wpsPixieLive.value.targets.size) ?: 0
-            if (response?.optBoolean("ok") == true) {
-                logWpsPixieLive("Scan complete: $count WPS target(s).")
-                appendLog("WPS Pixie: WPS scan complete ($count targets).")
+                logWpsPixieLive("Scan failed; kept $visibleTargetCount partial target(s).")
             } else {
-                val message = response?.optString("error")?.takeIf { it.isNotBlank() }
-                    ?: response?.optString("msg")?.takeIf { it.isNotBlank() }
+                val message = scan.response?.optString("error")?.takeIf { it.isNotBlank() }
+                    ?: scan.response?.optString("msg")?.takeIf { it.isNotBlank() }
                     ?: "scan timed out"
                 _wpsPixieLive.update { it.copy(error = message) }
                 logWpsPixieLive("Scan failed: $message")
@@ -343,15 +368,24 @@ internal fun MainViewModel.startWpsPixieLiveAttemptImpl(
             val code = response?.optString("error").orEmpty().ifBlank {
                 response?.optString("msg").orEmpty()
             }
+            val memoryDetail = buildString {
+                if (response?.has("free_heap") == true) {
+                    append(" free_heap=${response.optInt("free_heap")}")
+                }
+                if (response?.has("largest_block") == true) {
+                    append(" largest_block=${response.optInt("largest_block")}")
+                }
+            }.trim()
             val message = when (code) {
                 "softap_start_failed" -> "Firmware could not start the hidden WPS helper SoftAP."
                 "apsta_failed" -> "Firmware could not enable Wi-Fi AP+STA mode."
                 "set_channel_failed" -> "Firmware could not tune to the target channel."
                 "wps_pixie_not_supported" -> "This firmware build does not support WPS Pixie Dust."
                 "wps_pixie_busy" -> "A WPS Pixie attempt is already running."
+                "wps_pixie_queue_failed" -> "Firmware could not allocate the WPS receive queue."
                 "" -> "No command response from firmware."
                 else -> code
-            }
+            } + if (memoryDetail.isBlank()) "" else " [$memoryDetail]"
             _wpsPixieLive.update { it.copy(running = false, error = message, stage = "error") }
             appendLog("WPS Pixie attempt failed to start: $message", level = LogLevel.ERROR)
         }
@@ -526,8 +560,42 @@ internal fun MainViewModel.handleWpsPixieLiveEventImpl(event: JSONObject) {
                 )
             }
             if (!stopped) {
+                val rxDiagnostics = buildList {
+                    fun addInt(key: String, label: String? = null) {
+                        if (event.has(key)) {
+                            add("${label ?: key}=${event.optInt(key)}")
+                        }
+                    }
+                    addInt("rx_eapol_seen", "eapol_seen")
+                    addInt("rx_eapol_queued", "eapol_queued")
+                    addInt("rx_eapol_dropped", "eapol_dropped")
+                    addInt("rx_eapol_parsed", "eapol_parsed")
+                    addInt("rx_m1", "m1")
+                    addInt("rx_m3", "m3")
+                    addInt("rx_m5", "m5")
+                    addInt("rx_m7", "m7")
+                    addInt("m3_retries", "m3_retries")
+                    addInt("last_rx_eap_id", "last_eap_id")
+                    addInt("last_rx_wps_message", "last_wps_msg")
+                    addInt("last_rx_eapol_len", "last_eapol_len")
+                    addInt("rx_eapol_unparsed", "eapol_unparsed")
+                    addInt("last_unparsed_eap_code", "unparsed_eap_code")
+                    addInt("last_unparsed_eap_type", "unparsed_eap_type")
+                    addInt("m2_tx_count", "m2_tx")
+                    addInt("last_m2_len", "m2_len")
+                    addInt("last_m2_eap_id", "m2_eap_id")
+                    event.optString("station_mac").takeIf { it.isNotBlank() }?.let {
+                        add("station_mac=$it")
+                    }
+                }.joinToString(", ")
                 logWpsPixieLive("ERROR: $message")
-                appendLog("WPS Pixie: $message", level = LogLevel.ERROR)
+                if (rxDiagnostics.isNotBlank()) {
+                    logWpsPixieLive("WPS RX diagnostics: $rxDiagnostics")
+                }
+                appendLog(
+                    "WPS Pixie: $message" + if (rxDiagnostics.isBlank()) "" else " [$rxDiagnostics]",
+                    level = LogLevel.ERROR,
+                )
             } else {
                 logWpsPixieLive(message)
             }

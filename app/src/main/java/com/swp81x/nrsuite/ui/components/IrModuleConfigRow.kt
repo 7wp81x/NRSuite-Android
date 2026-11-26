@@ -12,15 +12,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -33,7 +30,6 @@ fun IrModuleConfigRow(
     rxLabel: String,
     onOpenConfig: () -> Unit,
     modifier: Modifier = Modifier,
-    accentColor: Color? = null,
 ) {
     Row(
         modifier = modifier,
@@ -43,25 +39,13 @@ fun IrModuleConfigRow(
         IrStatusChip(txLabel)
         IrStatusChip(rxLabel)
         Spacer(Modifier.weight(1f))
-        TextButton(
+        NrQuietButton(
+            text = "IR Config",
             onClick = onOpenConfig,
-            colors = ButtonDefaults.textButtonColors(
-                contentColor = NrOnSurfaceVariant,
-            ),
-        ) {
-            Icon(
-                Icons.Default.Tune,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = accentColor ?: MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                "IR Config",
-                color = NrOnSurfaceVariant,
-                fontWeight = FontWeight.Medium,
-            )
-        }
+            leadingIcon = Icons.Default.Tune,
+            leadingIconTint = null,
+            compact = true,
+        )
     }
 }
 

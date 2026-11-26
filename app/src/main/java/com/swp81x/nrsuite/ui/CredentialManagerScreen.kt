@@ -2,9 +2,12 @@ package com.swp81x.nrsuite.ui
 
 import android.content.Intent
 import android.graphics.Bitmap
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
@@ -50,9 +54,12 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.swp81x.nrsuite.core.credentials.CapturedCredential
@@ -86,12 +93,19 @@ fun CredentialManagerScreen(
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val focusManager = LocalFocusManager.current
+    var searchFocused by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<CredentialSession?>(null) }
     var confirmClearAll by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var sourceFilter by remember { mutableStateOf<CredentialSource?>(null) }
     var detailSession by remember { mutableStateOf<CredentialSession?>(null) }
     var qrTarget by remember { mutableStateOf<QrCredentialTarget?>(null) }
+
+    BackHandler(enabled = searchFocused) {
+        searchFocused = false
+        focusManager.clearFocus()
+    }
 
     val displayedSessions = sessions.filter { session ->
         val matchesSource = sourceFilter == null || session.source == sourceFilter
@@ -110,6 +124,10 @@ fun CredentialManagerScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                ) { focusManager.clearFocus() }
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -120,7 +138,9 @@ fun CredentialManagerScreen(
                 placeholder = { Text("Search SSID, BSSID, password...") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { searchFocused = it.isFocused },
                 shape = RoundedCornerShape(12.dp),
             )
 
@@ -130,27 +150,27 @@ fun CredentialManagerScreen(
             ) {
                 NrFilterChip(
                     selected = sourceFilter == null,
-                    onClick = { sourceFilter = null },
+                    onClick = { focusManager.clearFocus(); sourceFilter = null },
                     label = "All",
                 )
                 NrFilterChip(
                     selected = sourceFilter == CredentialSource.EVIL_TWIN,
-                    onClick = { sourceFilter = CredentialSource.EVIL_TWIN },
+                    onClick = { focusManager.clearFocus(); sourceFilter = CredentialSource.EVIL_TWIN },
                     label = "Evil Twin",
                 )
                 NrFilterChip(
                     selected = sourceFilter == CredentialSource.WPA_CRACKER,
-                    onClick = { sourceFilter = CredentialSource.WPA_CRACKER },
+                    onClick = { focusManager.clearFocus(); sourceFilter = CredentialSource.WPA_CRACKER },
                     label = "WPA Cracker",
                 )
                 NrFilterChip(
                     selected = sourceFilter == CredentialSource.WPS_PIXIE,
-                    onClick = { sourceFilter = CredentialSource.WPS_PIXIE },
+                    onClick = { focusManager.clearFocus(); sourceFilter = CredentialSource.WPS_PIXIE },
                     label = "WPS Pixie",
                 )
                 NrFilterChip(
                     selected = sourceFilter == CredentialSource.PORTAL,
-                    onClick = { sourceFilter = CredentialSource.PORTAL },
+                    onClick = { focusManager.clearFocus(); sourceFilter = CredentialSource.PORTAL },
                     label = "Portal",
                 )
             }
@@ -415,6 +435,7 @@ private fun EmptyCredsState() {
             text = "Run Evil Twin or the offline cracker to save a recovered password.",
             style = MaterialTheme.typography.bodySmall,
             color = NrOnSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
     }
 }
@@ -551,23 +572,37 @@ private fun CredentialSessionCard(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                text = if (compactCredential) {
-                                    credential.value
-                                } else {
-                                    "[${credential.capturedAt}] ${credential.value}  :  ✓"
-                                },
-                                style = if (compactCredential) {
-                                    MaterialTheme.typography.titleMedium.copy(
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                } else {
-                                    MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
-                                },
-                                color = StatusGreen,
+                            Row(
                                 modifier = Modifier.weight(1f),
-                            )
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = if (compactCredential) {
+                                        credential.value
+                                    } else {
+                                        "[${credential.capturedAt}] ${credential.value}"
+                                    },
+                                    style = if (compactCredential) {
+                                        MaterialTheme.typography.titleMedium.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                    } else {
+                                        MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
+                                    },
+                                    color = StatusGreen,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (!compactCredential) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = "Correct password",
+                                        tint = StatusGreen,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            }
                             IconButton(onClick = { onCopyPassword(credential.value) }) {
                                 Icon(
                                     imageVector = Icons.Default.ContentCopy,

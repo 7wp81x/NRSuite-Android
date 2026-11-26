@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -54,6 +55,7 @@ import com.swp81x.nrsuite.core.ble.BleDeviceObservation
 import com.swp81x.nrsuite.core.ble.MAX_BLE_SCAN_DEVICES
 import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.StatusIndicator
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
@@ -142,12 +144,11 @@ fun BleScannerScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = when {
-                    starting || stopping -> StatusAmber
-                    running -> StatusRed
-                    else -> MaterialTheme.colorScheme.primary
+                statusAction = when {
+                    starting || stopping -> NrStatusAction.PAUSE
+                    running -> NrStatusAction.STOP
+                    else -> NrStatusAction.START
                 },
-                contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 if (starting || stopping) {
                     CircularProgressIndicator(
@@ -209,7 +210,7 @@ private fun BleScannerStatusCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
-        border = BorderStroke(0.5.dp, if (running) MaterialTheme.colorScheme.primary else NrOutline),
+        border = BorderStroke(0.5.dp, NrOutline),
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -233,7 +234,7 @@ private fun BleScannerStatusCard(
                     )
                     Text(
                         text = when {
-                            !connected -> "Connect a device to begin"
+                            !connected -> ""
                             running -> "${if (active) "Active" else "Passive"} scan · $deviceCount device(s)"
                             else -> "BLE device discovery"
                         },
@@ -285,7 +286,7 @@ private fun BleScannerConfigCard(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     NrFilterChip(

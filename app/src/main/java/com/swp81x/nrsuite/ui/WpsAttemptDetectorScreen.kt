@@ -58,6 +58,7 @@ import com.swp81x.nrsuite.ui.components.NrFilterChip
 import com.swp81x.nrsuite.ui.components.ScanButtonContent
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.TargetSelectionControl
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.NrOutline
@@ -156,13 +157,6 @@ fun WpsAttemptDetectorScreen(
                                 color = NrOnSurfaceVariant,
                             )
                         }
-                    }
-                    if (!connected) {
-                        Text(
-                            text = "Connect a device before scanning or monitoring.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusAmber,
-                        )
                     }
                     if (state.running || state.sessions.isNotEmpty()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -274,7 +268,7 @@ fun WpsAttemptDetectorScreen(
                                         ouiBlacklisted = network.ouiBlacklisted,
                                         selected = network.bssid in selectedBssids,
                                         selectionControl = TargetSelectionControl.CHECKBOX,
-                                        enabled = !state.running && !state.starting,
+                                        enabled = !state.running && !state.starting && !state.scanningTargets,
                                         onClick = {
                                             autoSelectPending = false
                                             selectedBssids = if (network.bssid in selectedBssids) {
@@ -439,8 +433,8 @@ fun WpsAttemptDetectorScreen(
                     }
                 },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
-                containerColor = if (state.running) StatusRed else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                enabled = state.running || state.starting || !state.scanningTargets,
+                statusAction = if (state.running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 when {
                     state.starting -> CircularProgressIndicator(

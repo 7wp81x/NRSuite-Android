@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
@@ -48,6 +49,7 @@ import com.swp81x.nrsuite.core.wifi.WifiBand
 import com.swp81x.nrsuite.ui.components.NetworkStatusBadge
 import com.swp81x.nrsuite.ui.components.WifiBandSelector
 import com.swp81x.nrsuite.ui.util.copyWithToast
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.util.ouiStatusColor
@@ -146,8 +148,7 @@ fun WifiScanScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
-                containerColor = NrAccent,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = NrStatusAction.START,
             ) {
                 if (scanning) {
                     CircularProgressIndicator(
@@ -210,7 +211,7 @@ private fun ScanConfigCard(
                 }
             }
 
-            AnimatedVisibility(visible = expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Column {
                     Spacer(Modifier.height(8.dp))
                     Text(

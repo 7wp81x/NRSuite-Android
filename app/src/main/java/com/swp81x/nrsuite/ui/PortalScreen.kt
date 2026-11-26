@@ -1,5 +1,6 @@
 package com.swp81x.nrsuite.ui
 
+import com.swp81x.nrsuite.ui.components.NrAnimatedVisibility
 import com.swp81x.nrsuite.core.wifi.WIFI_AUTO_CHANNELS
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannel
 import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
@@ -7,6 +8,7 @@ import com.swp81x.nrsuite.core.wifi.normalizeWifiChannelForAllowed
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -67,12 +69,14 @@ import com.swp81x.nrsuite.core.portal.PortalVisitor
 import com.swp81x.nrsuite.ui.util.copyWithToast
 import com.swp81x.nrsuite.ui.components.HtmlTemplatesTab
 import com.swp81x.nrsuite.ui.components.HtmlUploadSection
+import com.swp81x.nrsuite.ui.components.PortalDnsHijackToggle
 import com.swp81x.nrsuite.ui.components.PortalFirmwareNoticeToggle
 import com.swp81x.nrsuite.ui.components.PortalVisitorsTab
 import com.swp81x.nrsuite.ui.components.RoundedTabRow
 import com.swp81x.nrsuite.ui.components.StatusIndicator
 import com.swp81x.nrsuite.ui.components.WifiChannelStepper
 import com.swp81x.nrsuite.ui.components.WifiChannelSummaryPill
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusAmber
@@ -118,6 +122,8 @@ fun PortalScreen(
     allowedChannels: List<Int> = emptyList(),
     firmwareNoticeEnabled: Boolean = true,
     onFirmwareNoticeEnabledChange: (Boolean) -> Unit = {},
+    dnsHijackEnabled: Boolean = true,
+    onDnsHijackEnabledChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var configExpanded by rememberSaveable { mutableStateOf(true) }
@@ -150,6 +156,10 @@ fun PortalScreen(
             PortalFirmwareNoticeToggle(
                 enabled = firmwareNoticeEnabled,
                 onEnabledChange = onFirmwareNoticeEnabledChange,
+            )
+            PortalDnsHijackToggle(
+                enabled = dnsHijackEnabled,
+                onEnabledChange = onDnsHijackEnabledChange,
             )
             Spacer(Modifier.height(6.dp))
             RoundedTabRow(
@@ -220,6 +230,11 @@ fun PortalScreen(
                 if (credentials.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
                     CapturedCredentialsZone(credentials)
+                }
+                if (connected) {
+                    // Leave room for the bottom-end module FAB so the final
+                    // submission's copy action remains reachable.
+                    Spacer(Modifier.height(80.dp))
                 }
                 }
             } else if (selectedTab == 1) {
@@ -328,8 +343,7 @@ fun PortalScreen(
                     .align(Alignment.BottomEnd)
                     .padding(20.dp),
                 enabled = !starting && !stopping,
-                containerColor = if (running) StatusRed else MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = if (running) NrStatusAction.STOP else NrStatusAction.START,
             ) {
                 if (starting || stopping) {
                     CircularProgressIndicator(
@@ -443,7 +457,7 @@ private fun ConfigZone(
                 }
             }
 
-            if (expanded) {
+            NrAnimatedVisibility(visible = expanded) {
                 Column {
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
@@ -499,8 +513,6 @@ private fun ConfigZone(
 private fun CapturedCredentialsZone(credentials: List<CapturedCredential>) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
-    val latest = credentials.lastOrNull() ?: return
-    val shownFields = latest.knownPortalFields()
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -508,7 +520,10 @@ private fun CapturedCredentialsZone(credentials: List<CapturedCredential>) {
         border = BorderStroke(0.5.dp, NrOutline),
         shape = RoundedCornerShape(12.dp),
     ) {
-        Column(Modifier.padding(14.dp)) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Default.Lock,
@@ -523,15 +538,58 @@ private fun CapturedCredentialsZone(credentials: List<CapturedCredential>) {
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            Spacer(Modifier.height(6.dp))
             Text(
-                text = "Latest submission: ${latest.capturedAt}  ·  ${latest.details.size} field(s)",
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                text = "All submitted form data for this portal session, newest first.",
+                style = MaterialTheme.typography.bodySmall,
                 color = NrOnSurfaceVariant,
             )
 
-            Spacer(Modifier.height(6.dp))
-            shownFields.forEach { (label, value) ->
+            credentials.asReversed().forEachIndexed { reverseIndex, credential ->
+                val submissionNumber = credentials.size - reverseIndex
+                PortalSubmissionCard(
+                    submissionNumber = submissionNumber,
+                    credential = credential,
+                    onCopy = { label, value ->
+                        clipboard.copyWithToast(context, value, "Copied $label")
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PortalSubmissionCard(
+    submissionNumber: Int,
+    credential: CapturedCredential,
+    onCopy: (String, String) -> Unit,
+) {
+    val fields = credential.portalSubmissionFields()
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(10.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Submission #$submissionNumber  ·  ${credential.capturedAt}",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontFamily = FontFamily.Monospace,
+                    ),
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = "${fields.size} field(s)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NrOnSurfaceVariant,
+                )
+            }
+            fields.forEach { (label, value) ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -540,15 +598,25 @@ private fun CapturedCredentialsZone(credentials: List<CapturedCredential>) {
                         text = "$label:",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
-                        modifier = Modifier.width(78.dp),
+                        modifier = Modifier.width(92.dp),
                     )
-                    Text(
-                        text = value,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                        color = if (label == "Password") StatusGreen else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f),
-                    )
-                    IconButton(onClick = { clipboard.copyWithToast(context, value) }) {
+                    SelectionContainer(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = value.ifBlank { "(empty)" },
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = FontFamily.Monospace,
+                            ),
+                            color = if (label.contains("pass", ignoreCase = true)) {
+                                StatusGreen
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        )
+                    }
+                    IconButton(
+                        onClick = { onCopy(label, value) },
+                        enabled = value.isNotBlank(),
+                    ) {
                         Icon(
                             imageVector = Icons.Default.ContentCopy,
                             contentDescription = "Copy $label",
@@ -557,48 +625,31 @@ private fun CapturedCredentialsZone(credentials: List<CapturedCredential>) {
                     }
                 }
             }
-
-            val extraFields = (latest.details.size - shownFields.size).coerceAtLeast(0)
-            if (extraFields > 0) {
-                Text(
-                    text = "+$extraFields more field(s) in Credential Manager · Portal filter.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
-            } else {
-                Text(
-                    text = "Full submissions are available in Credential Manager · Portal filter.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = NrOnSurfaceVariant,
-                )
-            }
         }
     }
 }
 
-private fun CapturedCredential.knownPortalFields(): List<Pair<String, String>> {
-    val known = listOf(
-        "Username" to listOf("username", "user", "login"),
-        "Email" to listOf("email", "mail"),
-        "Password" to listOf("password", "pass"),
-        "Phone" to listOf("phone", "mobile"),
-    )
-    val fields = linkedMapOf<String, String>()
-    known.forEach { (label, keys) ->
-        keys.forEach { key ->
-            val value = details.entries.firstOrNull { it.key.equals(key, ignoreCase = true) }?.value
-            if (!value.isNullOrBlank()) {
-                fields.putIfAbsent(label, value)
-                return@forEach
-            }
+private fun CapturedCredential.portalSubmissionFields(): List<Pair<String, String>> {
+    if (details.isNotEmpty()) {
+        return details.entries.map { (key, value) ->
+            portalFieldLabel(key) to value
         }
     }
-
-    if (fields.isEmpty()) {
-        fields["Value"] = value
-    }
-    return fields.entries.map { it.key to it.value }
+    return listOf("Value" to value)
 }
+
+private fun portalFieldLabel(raw: String): String =
+    raw.trim()
+        .replace('_', ' ')
+        .replace('-', ' ')
+        .split(' ')
+        .filter { it.isNotBlank() }
+        .joinToString(" ") { part ->
+            part.replaceFirstChar { character ->
+                if (character.isLowerCase()) character.titlecase() else character.toString()
+            }
+        }
+        .ifBlank { "Field" }
 
 @Composable
 private fun ResultZone(

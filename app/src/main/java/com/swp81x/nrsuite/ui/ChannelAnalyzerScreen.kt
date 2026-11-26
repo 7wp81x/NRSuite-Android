@@ -1,10 +1,13 @@
 package com.swp81x.nrsuite.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,22 +33,37 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlin.math.exp
+import kotlin.math.roundToInt
 import com.swp81x.nrsuite.core.wifi.bandForWifiChannel
 import com.swp81x.nrsuite.ui.components.NetworkTargetRow
 import com.swp81x.nrsuite.ui.components.NrFilterChip
+import com.swp81x.nrsuite.ui.components.NrStatusAction
 import com.swp81x.nrsuite.ui.theme.NrAccent
 import com.swp81x.nrsuite.ui.theme.NrOnSurface
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
@@ -177,13 +195,6 @@ fun ChannelAnalyzerScreen(
                             )
                         }
                     }
-                    if (!connected) {
-                        Text(
-                            text = "Connect a device before scanning.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusAmber,
-                        )
-                    }
                     if (aps.isNotEmpty()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -230,29 +241,16 @@ fun ChannelAnalyzerScreen(
                     }
                 }
                 else -> {
-                    if (stats2g.isNotEmpty()) {
-                        ChannelBarChart(
-                            title = "2.4 GHz",
-                            stats = stats2g,
-                            maxAps = maxAps,
-                            selectedChannel = selectedChannel,
-                            onSelectChannel = { selectedChannel = it },
-                        )
-                    }
-                    if (stats5g.isNotEmpty()) {
-                        ChannelBarChart(
-                            title = "5 GHz",
-                            stats = stats5g,
-                            maxAps = maxAps,
-                            selectedChannel = selectedChannel,
-                            onSelectChannel = { selectedChannel = it },
-                        )
-                    }
+                    ChannelSpectrumChart(
+                        aps = aps,
+                        selectedChannel = selectedChannel,
+                        onSelectChannel = { selectedChannel = it },
+                    )
                     selectedStat?.let { stat ->
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = NrSurface),
-                            border = BorderStroke(1.dp, NrAccent.copy(alpha = 0.65f)),
+                            border = BorderStroke(0.5.dp, NrOutline),
                             shape = RoundedCornerShape(12.dp),
                         ) {
                             Row(
@@ -261,10 +259,10 @@ fun ChannelAnalyzerScreen(
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     Text(
-                                        text = "Channel ${stat.channel}",
+                                        text = "Selected · Channel ${stat.channel}",
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = NrOnSurface,
+                                        color = NrAccent,
                                     )
                                     Text(
                                         text = "${bandForWifiChannel(stat.channel).label} · " +
@@ -364,8 +362,7 @@ fun ChannelAnalyzerScreen(
             ModuleActionFab(
                 onClick = { if (!scanning) onScan() },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                statusAction = NrStatusAction.START,
             ) {
                 if (scanning) {
                     CircularProgressIndicator(
@@ -409,13 +406,20 @@ private fun SummaryMetric(
 }
 
 @Composable
-private fun ChannelBarChart(
-    title: String,
-    stats: List<ChannelStat>,
-    maxAps: Int,
+private fun ChannelSpectrumChart(
+    aps: List<AnalyzerAp>,
     selectedChannel: Int?,
     onSelectChannel: (Int) -> Unit,
 ) {
+    val channels = remember(aps) { aps.map { it.channel }.distinct().sorted() }
+    if (channels.isEmpty()) return
+    var zoom by rememberSaveable { mutableFloatStateOf(1f) }
+    val scrollState = rememberScrollState()
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
+    val gridColor = NrOutline.copy(alpha = 0.45f)
+    val channelLabelColor = NrOnSurfaceVariant.toArgb()
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
@@ -423,56 +427,202 @@ private fun ChannelBarChart(
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = NrOnSurface,
-            )
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .height(148.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.Bottom,
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                stats.forEach { stat ->
-                    val selected = selectedChannel == stat.channel
-                    val barHeight = (18f + (84f * stat.accessPoints.toFloat() / maxAps.toFloat())).dp
-                    Column(
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "Signal overlap",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = NrOnSurface,
+                    )
+                    Text(
+                        text = "Overlapping AP signal profiles by channel. Tap a channel to inspect it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NrOnSurfaceVariant,
+                    )
+                }
+                TextButton(
+                    onClick = { zoom = (zoom - 0.25f).coerceAtLeast(0.75f) },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp),
+                ) { Text("−") }
+                Text(
+                    text = "${"%.2f".format(zoom)}×",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                    color = NrOnSurfaceVariant,
+                )
+                TextButton(
+                    onClick = { zoom = (zoom + 0.25f).coerceAtMost(4f) },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp),
+                ) { Text("+") }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SpectrumLegendDot(color = primary, label = "2.4 GHz")
+                SpectrumLegendDot(color = secondary, label = "5 GHz")
+            }
+
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val chartWidth = maxOf(
+                    maxWidth,
+                    (channels.size.coerceAtLeast(4) * 54).dp * zoom,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(scrollState),
+                ) {
+                    Canvas(
                         modifier = Modifier
-                            .width(44.dp)
-                            .clickable { onSelectChannel(stat.channel) },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Bottom,
+                            .width(chartWidth)
+                            .height(200.dp)
+                            .pointerInput(channels) {
+                                detectTapGestures { offset ->
+                                    val leftPadding = 18.dp.toPx()
+                                    val rightPadding = 18.dp.toPx()
+                                    val usableWidth = size.width - leftPadding - rightPadding
+                                    val step = if (channels.size > 1) {
+                                        usableWidth / (channels.size - 1)
+                                    } else {
+                                        0f
+                                    }
+                                    val index = if (step <= 0f) {
+                                        0
+                                    } else {
+                                        ((offset.x - leftPadding) / step)
+                                            .roundToInt()
+                                            .coerceIn(channels.indices)
+                                    }
+                                    onSelectChannel(channels[index])
+                                }
+                            },
                     ) {
-                        Text(
-                            text = stat.accessPoints.toString(),
-                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                            color = if (selected) NrAccent else NrOnSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(3.dp))
-                        Box(
-                            modifier = Modifier
-                                .width(28.dp)
-                                .height(barHeight)
-                                .background(
-                                    if (selected) NrAccent else NrAccent.copy(alpha = 0.58f),
-                                    RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp),
+                        val left = 18.dp.toPx()
+                        val right = size.width - 18.dp.toPx()
+                        val top = 12.dp.toPx()
+                        val bottom = size.height - 30.dp.toPx()
+                        val plotHeight = bottom - top
+                        val step = if (channels.size > 1) {
+                            (right - left) / (channels.size - 1)
+                        } else {
+                            0f
+                        }
+                        val drawStep = if (step > 0f) step else size.width * 0.28f
+                        val channelIndex = channels.withIndex().associate { it.value to it.index }
+                        val selectedIndex = selectedChannel?.let(channelIndex::get)
+
+                        repeat(5) { stripe ->
+                            val y = top + plotHeight * stripe / 4f
+                            drawLine(
+                                color = gridColor,
+                                start = Offset(left, y),
+                                end = Offset(right, y),
+                                strokeWidth = 1.dp.toPx(),
+                            )
+                        }
+
+                        if (selectedIndex != null) {
+                            val x = if (channels.size > 1) left + selectedIndex * step else (left + right) / 2f
+                            val bandWidth = drawStep.coerceAtLeast(34.dp.toPx())
+                            drawRoundRect(
+                                color = primary.copy(alpha = 0.10f),
+                                topLeft = Offset(x - bandWidth / 2f, top),
+                                size = Size(bandWidth, plotHeight),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()),
+                            )
+                        }
+
+                        aps.forEach { ap ->
+                            val index = channelIndex[ap.channel] ?: return@forEach
+                            val centerX = if (channels.size > 1) {
+                                left + index * step
+                            } else {
+                                (left + right) / 2f
+                            }
+                            val halfWidth = drawStep * 0.95f
+                            val amplitude = ((ap.rssi + 100f) / 68f).coerceIn(0.16f, 1f)
+                            val peakY = bottom - amplitude * plotHeight
+                            val color = if (ap.channel <= 14) primary else secondary
+                            val samples = 22
+                            val curve = Path()
+                            val fill = Path()
+                            fill.moveTo(centerX - halfWidth, bottom)
+                            for (sample in 0..samples) {
+                                val t = sample / samples.toFloat()
+                                val x = centerX - halfWidth + (halfWidth * 2f * t)
+                                val normalized = (x - centerX) / (drawStep * 0.48f)
+                                val y = bottom - (bottom - peakY) * exp(-0.5f * normalized * normalized)
+                                if (sample == 0) {
+                                    curve.moveTo(x, y)
+                                } else {
+                                    curve.lineTo(x, y)
+                                }
+                                fill.lineTo(x, y)
+                            }
+                            fill.lineTo(centerX + halfWidth, bottom)
+                            fill.close()
+                            drawPath(
+                                path = fill,
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        color.copy(alpha = 0.20f),
+                                        color.copy(alpha = 0.02f),
+                                    ),
+                                    startY = top,
+                                    endY = bottom,
                                 ),
-                        )
-                        Spacer(Modifier.height(5.dp))
-                        Text(
-                            text = "CH ${stat.channel}",
-                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (selected) NrAccent else NrOnSurface,
-                            maxLines = 1,
-                        )
+                            )
+                            drawPath(
+                                path = curve,
+                                color = color.copy(alpha = 0.78f),
+                                style = Stroke(width = 1.5.dp.toPx()),
+                            )
+                            drawCircle(
+                                color = color,
+                                radius = 2.4.dp.toPx(),
+                                center = Offset(centerX, peakY),
+                            )
+                        }
+
+                        val labelPaint = android.graphics.Paint().apply {
+                            isAntiAlias = true
+                            textAlign = android.graphics.Paint.Align.CENTER
+                            textSize = 10.sp.toPx()
+                            color = channelLabelColor
+                        }
+                        channels.forEachIndexed { index, channel ->
+                            val x = if (channels.size > 1) left + index * step else (left + right) / 2f
+                            drawContext.canvas.nativeCanvas.drawText(
+                                "CH $channel",
+                                x,
+                                bottom + 20.dp.toPx(),
+                                labelPaint,
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SpectrumLegendDot(
+    color: Color,
+    label: String,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .background(color, RoundedCornerShape(50)),
+        )
+        Spacer(Modifier.width(5.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = NrOnSurfaceVariant,
+        )
     }
 }

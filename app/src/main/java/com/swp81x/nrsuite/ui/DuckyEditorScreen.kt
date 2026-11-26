@@ -13,8 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import com.swp81x.nrsuite.ui.components.SavedScriptPicker
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
@@ -23,7 +21,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +33,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.swp81x.nrsuite.ui.components.NrPrimaryButton
+import com.swp81x.nrsuite.ui.components.NrSecondaryButton
 import com.swp81x.nrsuite.ui.theme.NrOnSurfaceVariant
 import com.swp81x.nrsuite.ui.theme.StatusRed
 
@@ -120,12 +119,11 @@ fun DuckyEditorScreen(
                         },
                         modifier = Modifier.weight(1f),
                     )
-                    OutlinedButton(
+                    NrSecondaryButton(
+                        text = "Save",
                         onClick = { showSaveDialog = true },
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
-                    ) {
-                        Text("Save")
-                    }
+                        compact = true,
+                    )
                     if (selectedName != null) {
                         IconButton(
                             onClick = { confirmDeleteName = selectedName },
@@ -143,21 +141,16 @@ fun DuckyEditorScreen(
                     modifier = Modifier.align(androidx.compose.ui.Alignment.End),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    OutlinedButton(
+                    NrSecondaryButton(
+                        text = "Import .txt",
                         onClick = { importPicker.launch(arrayOf("text/plain", "*/*")) },
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = accent),
-                    ) {
-                        Text("Import .txt")
-                    }
-                    Button(
+                        compact = true,
+                    )
+                    NrPrimaryButton(
+                        text = "Export .txt",
                         onClick = { exportLauncher.launch("ducky.txt") },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = accent,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
-                    ) {
-                        Text("Export .txt")
-                    }
+                        compact = true,
+                    )
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
