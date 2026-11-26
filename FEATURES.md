@@ -73,7 +73,7 @@ This document lists all current and planned features across the NRSuite ecosyste
 - [x] **Terminal UI defaults** - 34 dp font, block cursor, 500 ms blink, pinch-to-zoom, keyboard controls, and extra keys shown only with the IME
 - [x] **Terminal startup branding** - SSH-managed `~/.NRSuite/nr.sh` startup helper, styled version banner on new shells, automatic missing/modified script repair and SHA-256 verification, plus an optional non-persistent NRSuite Bash prompt with shortened paths and `$`/`#` user-root indicator
 - [x] **Terminal Shortcuts** - Quick shortcut bottom sheet, search/category filters, run modes, Home pinning, confirmations, parameterized `{{name}}` commands with previews, and seeded editable examples
-- [x] **Terminal documentation** - [Terminal / Termux SSH guide](docs/TERMINAL-GUIDE.md)
+- [x] **Terminal documentation** - [Terminal / Termux SSH guide](https://7wp81x.github.io/NRSuite-Docs/android/terminal-guide/)
 - [ ] **Termux tools** - planned Nmap scanning/topology, PCAP workflows, and optional Wireshark through Termux:X11
 
 ## 6. Mesh Network (ESP-NOW)
