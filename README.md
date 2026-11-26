@@ -3,9 +3,9 @@
 # NRSuite
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
-[![Platform: Android](https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84?logo=android&logoColor=white)](#requirements)
+[![Platform: Android](https://img.shields.io/badge/platform-Android%207.0%2B-3DDC84?logo=android&logoColor=white)](#requirements)
 [![Firmware: ESP32](https://img.shields.io/badge/firmware-ESP32-E7352C?logo=espressif&logoColor=white)](https://github.com/7wp81x/nrsuite-firmware)
-[![Status: Beta](https://img.shields.io/badge/status-beta-yellow.svg)](../../releases)
+[![Status: Stable](https://img.shields.io/badge/status-1.0.0-brightgreen.svg)](../../releases)
 [![Discord](https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/nnU9QSX5UZ)
 
 **NRSuite turns a phone and a cheap ESP32 board into a portable Wi-Fi/BLE security research platform** - no laptop required.
@@ -69,11 +69,13 @@ NRSuite uses a refreshed, high-contrast field-instrument UI across Home, Devices
 Terminal, Logs, the module catalog, settings, dialogs, cards, filters, and
 shared controls.
 
-Three switchable themes are available in **Settings → Appearance**:
+Appearance options are available in **Settings → Appearance**:
 
-- **Obsidian** — near-black layered surfaces with a lime accent.
+- **System** — follows the Android light/dark appearance.
+- **Obsidian** — near-black layered surfaces.
 - **Black** — true-black AMOLED surfaces for darker environments.
 - **Daylight** — high-contrast light surfaces for bright environments.
+- **Accent colors** — Lime, Cyan, Blue, Orange, Magenta, and Teal.
 
 ### Board Capability Matrix
 
@@ -89,18 +91,18 @@ Not every ESP32 variant supports every capability. Check your board before relyi
 
 See [nrsuite-firmware](https://github.com/7wp81x/nrsuite-firmware) for the authoritative per-board build matrix - this table covers core transport capabilities, not every individual module.
 
-<details open>
+<details>
 <summary><strong>WiFi Recon</strong></summary>
 
 - [x] **Wi-Fi Scan** - AP/channel discovery with SSID, BSSID, RSSI, security, and WPS flags; AUTO 2.4/5 GHz and regulatory-country channel filtering on C5-capable firmware; serialized/reliable scans with retry, previous-result preservation, and response-vs-event transport diagnostics
 - [x] **Packet Sniffer** - monitor-mode capture with PCAP export; per-module Auto/2.4/5 GHz hopping, target-channel-aware fixed capture, and retrying deauth assist that starts after the sniffer
 - [x] **Probe Request Monitor** - probe requests by MAC/SSID/channel/RSSI with vendor and randomized-MAC indication
-- [x] **Channel Analyzer** - FAB-driven scan with loading state, compact 2.4/5 GHz occupancy bars, selected-channel detail, and a scrollable nearby-AP list sorted by RSSI with band filters and WPS/security metadata
+- [x] **Channel Analyzer** - FAB-driven scan with overlapping per-AP signal curves, 2.4/5 GHz colors, selected-channel detail, 0.75x–4x zoom, and a scrollable nearby-AP list sorted by RSSI with band filters and WPS/security metadata
 - [x] **Hidden AP Revealer** - passive hidden AP detection, probe-request SSID candidates, and association-based SSID resolution
 
 </details>
 
-<details open>
+<details>
 <summary><strong>WiFi Attacks</strong></summary>
 
 - [x] **WPS Pixie Dust** - live registrar flow with module-isolated target scans, AP-lock preflight, M3-only capture, on-phone Pixiewps recovery, same-session recovered-PIN continuation, and PIN/PSK persistence on all supported ESP32 targets
@@ -115,7 +117,7 @@ See [nrsuite-firmware](https://github.com/7wp81x/nrsuite-firmware) for the autho
 
 </details>
 
-<details open>
+<details>
 <summary><strong>WiFi Defense</strong></summary>
 
 - [x] **Deauth Detector** - passive deauth/disassoc monitoring with BSSID, client, RSSI, and reason filters; async alerts; live logs
@@ -188,13 +190,12 @@ Provision, monitor, and control the ESP-NOW mesh from its own module. The underl
 - [x] **BLE HID** - BadBLE payloads and realtime keyboard input, Bluetooth LE keyboard/mouse HID and DuckyScript payloads
 - [x] **BadUSB** - native USB HID payload injection
 - [x] **PIN Bruteforce** - supervised native-HID range/wordlist tester; one-shot boot-arm like BadUSB; max-attempt cap, progress/ETA, configurable typing/start delays, saved sessions, compact attempt feed
-- [x] **BLE HID PIN Bruteforce** - hidden/experimental BLE-HID tester retained for future unlocked-host and mesh HID work; not exposed in the normal module grid, lock-screen use is unsupported
 - [x] **Multi-device USB sessions** - connect and use multiple USB serial devices independently, with per-device permissions and connection state; idle-session reuse keeps S2 CDC stable on user-initiated disconnect
 - [x] **BadUSB device picker** - choose the target USB device without interrupting other connections
 
 </details>
 
-<details open>
+<details>
 <summary><strong>Terminal / Termux SSH</strong></summary>
 
 - [x] **Native SSH terminal** - local Termux OpenSSH connection at `127.0.0.1:8022`, forced `nrsuite` username for local connections, native terminal emulator, multiple shell tabs, PTY resize, scrollback, selection, and clipboard support
@@ -219,7 +220,7 @@ Provision, monitor, and control the ESP-NOW mesh from its own module. The underl
 <summary><strong>Firmware</strong></summary>
 
 - [x] **Firmware Flasher** - flash merged NRSuite firmware directly from the app over USB; supports ESP32, S2, S3, C3, and C5 images with target-chip validation, esptool-aligned reset timing, C5 SYNC/SPI-attach handling, TinyUSB-to-ROM bootloader restart, automatic manual-recovery fallback, and background foreground-service progress notification
-- [x] **Serial Monitor** - raw USB serial monitor for any ESP32 or USB-UART firmware, with reliable clipboard copy, bounded log retention, and visible save/export feedback
+- [x] **Serial Monitor** - generalized raw USB serial monitor for any ESP32 or USB-UART firmware, with optional timestamps, text/hex modes, wrap/follow controls, smooth pinch and button zoom, compact send bar, TX echo, chunk/UTF-8-safe line assembly, clipboard copy, bounded retention, and visible export feedback
 - [x] **Persistent firmware device ID** - `NRxxxxxxx` NVS ID shown in the app so devices remain identifiable across reconnects
 - [x] **Dual USB/UART transport reporting** - Native-USB-capable firmware reports `usb_cdc` or `uart0`; device specs and logs show which path is active
 
