@@ -200,20 +200,6 @@ Provision, monitor, and control the ESP-NOW mesh from its own module. The underl
 
 </details>
 
-<details open>
-<summary><strong>Terminal / Termux SSH</strong></summary>
-
-- [x] **Native SSH terminal** - local Termux OpenSSH connection at `127.0.0.1:8022`, forced `nrsuite` username for local connections, native terminal emulator, multiple shell tabs, PTY resize, scrollback, selection, and clipboard support
-- [x] **Ed25519 / RSA public-key authentication** - encrypted key import, JSch BouncyCastle Ed25519 support, key fingerprint display, public-key-only auth, and pinned host-key validation
-- [x] **Autoconnect and recovery** - one connection attempt per Terminal visit, setup/connecting status, manual disconnect behavior, and explicit force reconnect
-- [x] **Terminal settings** - 34 dp default font size, block cursor, 500 ms blink, pinch-to-zoom, keyboard toggle, and IME-aware extra-key rows
-- [x] **Terminal Shortcuts** - quick bottom sheet, search, category filters, run modes, Home pinning, confirmation, `{{parameter}}` forms with command previews, and built-in editable examples
-- [x] **Tab/session safety** - closing the last tab is disabled; Disconnect SSH is the explicit transport-close action
-- [x] **Terminal guide** - [Termux SSH setup, auth, shortcuts, and troubleshooting](https://7wp81x.github.io/NRSuite-Docs/android/terminal-guide/)
-- [ ] **Termux tools** - planned Nmap topology visualization, PCAP workflows, and optional Wireshark through Termux:X11
-
-</details>
-
 <details>
 <summary><strong>Terminal / Termux SSH</strong></summary>
 
@@ -227,6 +213,7 @@ Provision, monitor, and control the ESP-NOW mesh from its own module. The underl
 - [ ] **Termux tools** - planned Nmap topology visualization, PCAP workflows, and optional Wireshark through Termux:X11
 
 </details>
+
 
 <details>
 <summary><strong>Storage</strong></summary>
@@ -350,9 +337,9 @@ Useful entry points:
 
 ## Installation
 
-### Option A - Prebuilt APK (recommended for beta)
+### Option A - Prebuilt APK (recommended)
 
-1. Download the latest `nrsuite-vX.X.X-beta.apk` from [Releases](../../releases).
+1. Download the latest `NRSuite-Android-1.0.0-stable.apk` from [Releases](../../releases).
 2. Enable **Install from unknown sources** on your device if needed - Settings → Security.
 3. Install the APK. Android's package installer checks the APK signature against the previous install on update, so a tampered or mismatched build will simply fail to install.
 
@@ -363,10 +350,10 @@ Each release lists a SHA256 checksum in its notes. To confirm the file you downl
 
 ```sh
 # Linux / macOS
-sha256sum nrsuite-vX.X.X-beta.apk
+sha256sum NRSuite-Android-1.0.0-stable.apk
 
 # Windows (PowerShell)
-certutil -hashfile nrsuite-vX.X.X-beta.apk SHA256
+certutil -hashfile NRSuite-Android-1.0.0-stable.apk SHA256
 ```
 
 </details>
