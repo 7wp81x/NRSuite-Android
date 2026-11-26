@@ -7,7 +7,7 @@
 [![Platform: Android](https://img.shields.io/badge/platform-Android%207.0%2B-3DDC84?logo=android&logoColor=white)](#requirements)
 [![Firmware: ESP32](https://img.shields.io/badge/firmware-ESP32-E7352C?logo=espressif&logoColor=white)](https://github.com/7wp81x/nrsuite-firmware)
 [![Status: Stable](https://img.shields.io/badge/status-1.0.0-brightgreen.svg)](../../releases)
-[![Discord](https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/nnU9QSX5UZ)
+[![Discord](https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/nyUSyqkeZ)
 
 **NRSuite turns a phone and a cheap ESP32 board into a portable Wi-Fi/BLE security research platform** - no laptop required.
 
