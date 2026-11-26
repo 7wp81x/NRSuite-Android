@@ -124,17 +124,6 @@ fun HiddenApScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp),
         ) {
-            HiddenApStatusCard(
-                connected = connected,
-                running = running,
-                starting = starting,
-                fixed = fixed,
-                channel = channel,
-                currentHopChannel = currentHopChannel,
-            )
-
-            Spacer(Modifier.height(10.dp))
-
             HiddenApConfigCard(
                 running = running || starting,
                 expanded = configExpanded,
@@ -235,66 +224,6 @@ fun HiddenApScreen(
 }
 
 @Composable
-private fun HiddenApStatusCard(
-    connected: Boolean,
-    running: Boolean,
-    starting: Boolean,
-    fixed: Boolean,
-    channel: Int,
-    currentHopChannel: Int?,
-) {
-    val color = when {
-        !connected -> StatusNeutral
-        starting -> StatusAmber
-        running -> StatusGreen
-        else -> MaterialTheme.colorScheme.primary
-    }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = NrSurface),
-        border = BorderStroke(0.5.dp, if (running) MaterialTheme.colorScheme.primary else NrOutline),
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.VisibilityOff,
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.size(22.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = when {
-                            !connected -> "Disconnected"
-                            starting -> "Scanning nearby..."
-                            running -> "Monitoring"
-                            else -> "Idle"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = when {
-                            !connected -> "Connect a device before starting hidden AP detection."
-                            starting -> "Running baseline scan before passive detection"
-                            running -> buildString {
-                                append(if (fixed) "Fixed ch $channel" else "Hopping")
-                                currentHopChannel?.let { append(" · now ch $it") }
-                            }
-                            else -> "Passive hidden AP detection"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = NrOnSurfaceVariant,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun HiddenApConfigCard(
     running: Boolean,
     expanded: Boolean,
@@ -337,7 +266,7 @@ private fun HiddenApConfigCard(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "Passive scanning and optional reconnect trigger",
+                        text = "Passive hidden AP detection",
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
@@ -398,13 +327,8 @@ private fun HiddenApConfigCard(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            text = "Deauth reconnect trigger",
+                            text = "Send deauth packet",
                             style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Text(
-                            text = "Allow sending broadcast deauth to a hidden BSSID. Authorized networks only.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusAmber,
                         )
                     }
                     Spacer(Modifier.width(8.dp))

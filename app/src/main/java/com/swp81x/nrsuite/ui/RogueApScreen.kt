@@ -194,7 +194,7 @@ private fun RogueApStatusCard(
             else -> "Idle"
         },
         subtitle = when {
-            !connected -> "Connect a device before starting the detector."
+            !connected -> ""
             running && scanning -> "Scanning for rogue APs..."
             running -> "Monitoring rogue AP activity"
             else -> "Capture a baseline, then start monitoring"

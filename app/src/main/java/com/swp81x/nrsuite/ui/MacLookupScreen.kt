@@ -541,7 +541,7 @@ private fun LookupInputCard(
                 text = "Location data is approximate and may be stale. The BSSID may be " +
                     "sent to a third-party location service. Use only for authorized testing.",
                 style = MaterialTheme.typography.bodySmall,
-                color = StatusAmber,
+                color = NrOnSurfaceVariant,
             )
             if (input.isNotBlank() && normalizedInput == null) {
                 Text(

@@ -465,20 +465,6 @@ internal val modules = listOf(
         available = true,
     ),
 
-    // Hidden/experimental: retained for future unlocked-host or mesh HID work.
-    // Android/iOS lock screens generally ignore BLE HID input, so this module is
-    // intentionally not exposed in the normal module grid.
-    ModuleCardSpec(
-        id = "ble_pin_bruteforce",
-        title = "BLE HID PIN Bruteforce",
-        description = "Experimental BLE HID PIN range and wordlist testing with live controls.",
-        icon = Icons.Default.Bluetooth,
-        category = "HID",
-        radio = "BLE",
-        available = false,
-        statusLabel = "Experimental / hidden",
-    ),
-
     ModuleCardSpec(
         id = "ble",
         title = "BLE HID",
@@ -600,6 +586,7 @@ fun NRSuiteApp() {
         (appContext as NrSuiteApplication).controller
     }
     val themeMode by viewModel.themeMode.collectAsState()
+    val accentColor by viewModel.accentColor.collectAsState()
     val serialMonitorSelected by viewModel.serialMonitorSelected.collectAsState()
     val serialMonitorConnected by viewModel.serialMonitorConnected.collectAsState()
     val serialMonitorConnecting by viewModel.serialMonitorConnecting.collectAsState()
@@ -611,7 +598,7 @@ fun NRSuiteApp() {
         kotlinx.coroutines.delay(900)
         showStartup = false
     }
-    NRSuiteTheme(mode = themeMode) {
+    NRSuiteTheme(mode = themeMode, accentColor = accentColor) {
         CompositionLocalProvider(
             LocalSerialMonitorBusyDeviceId provides serialMonitorBusyDeviceId,
         ) {

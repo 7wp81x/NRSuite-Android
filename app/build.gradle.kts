@@ -49,10 +49,10 @@ android {
             "com.swp81x.nrsuite"
         }
         manifestPlaceholders["appLabel"] = if (mockReleaseData) "NRSuite Mock" else "NRSuite"
-        minSdk = 26
+        minSdk = 24
         targetSdk = 36
-        versionCode = 15
-        versionName = "1.0.0-rc.3.1"
+        versionCode = 16
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -66,7 +66,7 @@ android {
 
         externalNativeBuild {
             ndkBuild {
-                arguments += "APP_PLATFORM=android-26"
+                arguments += "APP_PLATFORM=android-24"
             }
         }
     }
@@ -103,6 +103,7 @@ android {
         }
     }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
@@ -138,6 +139,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     testImplementation(libs.junit)
     testImplementation(libs.json)
     androidTestImplementation(libs.androidx.junit)

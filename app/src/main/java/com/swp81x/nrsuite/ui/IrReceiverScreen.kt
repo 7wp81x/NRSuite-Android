@@ -150,13 +150,7 @@ fun IrReceiverScreen(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                if (esp32 == null) {
-                    Text(
-                        text = "No ESP32 connected. Connect a device with IR RX support.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = StatusAmber,
-                    )
-                } else {
+                if (esp32 != null) {
                     Text(
                         text = "Connected: ${esp32.chip ?: "ESP32"} · " +
                             "${esp32.firmwareVersion ?: "unknown firmware"}",

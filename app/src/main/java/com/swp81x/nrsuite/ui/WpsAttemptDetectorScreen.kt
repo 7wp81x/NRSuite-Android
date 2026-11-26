@@ -158,13 +158,6 @@ fun WpsAttemptDetectorScreen(
                             )
                         }
                     }
-                    if (!connected) {
-                        Text(
-                            text = "Connect a device before scanning or monitoring.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusAmber,
-                        )
-                    }
                     if (state.running || state.sessions.isNotEmpty()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             CountCell("Attempts", state.sessions.size.toString(), StatusNeutral, Modifier.weight(1f))

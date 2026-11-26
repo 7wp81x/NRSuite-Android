@@ -54,6 +54,8 @@ import com.swp81x.nrsuite.core.hid.BlePinAttemptRecord
 import com.swp81x.nrsuite.core.hid.BlePinBruteforceUiState
 import com.swp81x.nrsuite.core.hid.PinAttemptRecord
 import com.swp81x.nrsuite.core.sensors.Ld2450UiState
+import com.swp81x.nrsuite.core.serial.SerialLineAccumulator
+import com.swp81x.nrsuite.core.serial.SerialLogLine
 import com.swp81x.nrsuite.core.rfid.RfidUiState
 import com.swp81x.nrsuite.core.hid.PinBruteforceUiState
 import com.swp81x.nrsuite.core.flasher.UsbSerialFlasherTransport
@@ -131,6 +133,7 @@ import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 import com.swp81x.nrsuite.core.usb.UsbSerialDevice
 import com.swp81x.nrsuite.core.usb.UsbSerialDeviceCatalog
 import com.swp81x.nrsuite.core.usb.UsbSerialTransport
+import com.swp81x.nrsuite.ui.theme.NrAccentColor
 import com.swp81x.nrsuite.ui.theme.NrThemeMode
 import com.swp81x.nrsuite.service.NrSuiteForegroundService
 import com.swp81x.nrsuite.service.WpaCrackerForegroundService
@@ -189,6 +192,9 @@ internal data class DeviceSession(
 internal enum class WifiScanDestination { WIFI, TARGETS, CHANNEL_ANALYZER, WPS, WPS_ATTEMPT_TARGETS }
 
 internal const val PREF_EVIL_TWIN_SAVE_PCAP = "evil_twin_save_pcap"
+internal const val PREF_SERIAL_MONITOR_SHOW_TIMESTAMPS = "serial_monitor_show_timestamps"
+internal const val PREF_SERIAL_MONITOR_WRAP_LINES = "serial_monitor_wrap_lines"
+internal const val PREF_SERIAL_MONITOR_TEXT_SIZE_SP = "serial_monitor_text_size_sp"
 
 class MainViewModel(internal val app: Application) {
     internal val scope = CoroutineScope(
@@ -352,8 +358,35 @@ class MainViewModel(internal val app: Application) {
     internal val _serialMonitorLogLines = MutableStateFlow<List<SerialLogLine>>(emptyList())
     val serialMonitorLogLines: StateFlow<List<SerialLogLine>> = _serialMonitorLogLines.asStateFlow()
 
+    internal val _serialMonitorPartialLine = MutableStateFlow<SerialLogLine?>(null)
+    val serialMonitorPartialLine: StateFlow<SerialLogLine?> = _serialMonitorPartialLine.asStateFlow()
+
     internal val _serialMonitorHexMode = MutableStateFlow(false)
     val serialMonitorHexMode: StateFlow<Boolean> = _serialMonitorHexMode.asStateFlow()
+
+    internal val _serialMonitorShowTimestamps = MutableStateFlow(
+        preferences.getBoolean(PREF_SERIAL_MONITOR_SHOW_TIMESTAMPS, false),
+    )
+    val serialMonitorShowTimestamps: StateFlow<Boolean> =
+        _serialMonitorShowTimestamps.asStateFlow()
+
+    internal val _serialMonitorWrapLines = MutableStateFlow(
+        preferences.getBoolean(PREF_SERIAL_MONITOR_WRAP_LINES, true),
+    )
+    val serialMonitorWrapLines: StateFlow<Boolean> = _serialMonitorWrapLines.asStateFlow()
+
+    internal val _serialMonitorFollowOutput = MutableStateFlow(true)
+    val serialMonitorFollowOutput: StateFlow<Boolean> =
+        _serialMonitorFollowOutput.asStateFlow()
+
+    internal val _serialMonitorTextSizeSp = MutableStateFlow(
+        (preferences.all[PREF_SERIAL_MONITOR_TEXT_SIZE_SP] as? Number)
+            ?.toFloat()
+            ?.coerceIn(10f, 24f)
+            ?: 12f,
+    )
+    val serialMonitorTextSizeSp: StateFlow<Float> =
+        _serialMonitorTextSizeSp.asStateFlow()
 
     internal val _serialMonitorInput = MutableStateFlow("")
     val serialMonitorInput: StateFlow<String> = _serialMonitorInput.asStateFlow()
@@ -371,6 +404,9 @@ class MainViewModel(internal val app: Application) {
     internal var serialMonitorReadJob: Job? = null
     internal val serialMonitorOperationMutex = Mutex()
     internal var serialMonitorPermissionDeviceId: Int? = null
+    internal val serialMonitorLineAccumulator = SerialLineAccumulator()
+    internal val serialMonitorLogLock = Any()
+    internal var serialMonitorPartialTimestamp: String? = null
     internal var firmwarePermissionDeviceId: Int? = null
 
     internal val _connectionState =
@@ -481,6 +517,9 @@ class MainViewModel(internal val app: Application) {
 
     private val _themeMode = MutableStateFlow(loadThemeMode())
     val themeMode: StateFlow<NrThemeMode> = _themeMode.asStateFlow()
+
+    private val _accentColor = MutableStateFlow(loadAccentColor())
+    val accentColor: StateFlow<NrAccentColor> = _accentColor.asStateFlow()
 
     private val _firmwareOnboardingDismissed = MutableStateFlow(
         preferences.getBoolean(PREF_FIRMWARE_ONBOARDING_DISMISSED, false),
@@ -1971,6 +2010,11 @@ class MainViewModel(internal val app: Application) {
         preferences.edit().putString(PREF_THEME_MODE, mode.name).apply()
     }
 
+    fun setAccentColor(accentColor: NrAccentColor) {
+        _accentColor.value = accentColor
+        preferences.edit().putString(PREF_ACCENT_COLOR, accentColor.name).apply()
+    }
+
     fun dismissFirmwareOnboarding() {
         _firmwareOnboardingDismissed.value = true
         preferences.edit().putBoolean(PREF_FIRMWARE_ONBOARDING_DISMISSED, true).apply()
@@ -1979,6 +2023,11 @@ class MainViewModel(internal val app: Application) {
     private fun loadThemeMode(): NrThemeMode {
         val stored = preferences.getString(PREF_THEME_MODE, null) ?: return NrThemeMode.DARK
         return runCatching { NrThemeMode.valueOf(stored) }.getOrDefault(NrThemeMode.DARK)
+    }
+
+    private fun loadAccentColor(): NrAccentColor {
+        val stored = preferences.getString(PREF_ACCENT_COLOR, null) ?: return NrAccentColor.LIME
+        return runCatching { NrAccentColor.valueOf(stored) }.getOrDefault(NrAccentColor.LIME)
     }
     fun checkForUpdates(force: Boolean = false) = this.checkForUpdatesImpl(force)
     fun clearUpdateError() {
@@ -2350,6 +2399,18 @@ class MainViewModel(internal val app: Application) {
     fun setSerialMonitorLineEnding(value: String) = this.setSerialMonitorLineEndingImpl(value)
 
     fun setSerialMonitorHexMode(enabled: Boolean) = this.setSerialMonitorHexModeImpl(enabled)
+
+    fun setSerialMonitorShowTimestamps(enabled: Boolean) =
+        this.setSerialMonitorShowTimestampsImpl(enabled)
+
+    fun setSerialMonitorWrapLines(enabled: Boolean) =
+        this.setSerialMonitorWrapLinesImpl(enabled)
+
+    fun setSerialMonitorFollowOutput(enabled: Boolean) =
+        this.setSerialMonitorFollowOutputImpl(enabled)
+
+    fun setSerialMonitorTextSizeSp(sizeSp: Float) =
+        this.setSerialMonitorTextSizeSpImpl(sizeSp)
 
     fun clearSerialMonitorLog() = this.clearSerialMonitorLogImpl()
 
@@ -3348,6 +3409,7 @@ class MainViewModel(internal val app: Application) {
         private const val PREF_HISTORY = "session_history"
         private const val PREF_RECENT_MODULES = "recent_modules"
         private const val PREF_THEME_MODE = "theme_mode"
+        private const val PREF_ACCENT_COLOR = "accent_color"
         private const val PREF_FIRMWARE_ONBOARDING_DISMISSED = "firmware_onboarding_dismissed"
         private const val DISCONNECT_TEARDOWN_WAIT_MS = 8_000L
         internal val MAC_PATTERN = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")

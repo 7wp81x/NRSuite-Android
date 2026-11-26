@@ -85,11 +85,11 @@ fun ModuleCard(
         ),
         shape = RoundedCornerShape(12.dp),
         border = BorderStroke(
-            width = 1.dp,
-            color = when {
-                module.isRunning -> StatusGreen.copy(alpha = 0.55f)
-                module.available -> NrOutline.copy(alpha = 0.34f)
-                else -> NrOutline.copy(alpha = 0.22f)
+            width = 0.5.dp,
+            color = if (module.available) {
+                NrOutline.copy(alpha = 0.34f)
+            } else {
+                NrOutline.copy(alpha = 0.22f)
             },
         ),
     ) {

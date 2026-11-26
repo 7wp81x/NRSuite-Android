@@ -494,15 +494,6 @@ private fun ConfigZone(
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
-
-                    if (!connected) {
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            text = "Connect a device before starting deauth.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusAmber,
-                        )
-                    }
                 }
             }
         }
@@ -654,15 +645,6 @@ private fun ResultZone(
                 Text(
                     text = "Channel: $activeChannel",
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = NrOnSurfaceVariant,
-                )
-            }
-
-            if (!connected) {
-                Spacer(Modifier.height(24.dp))
-                Text(
-                    text = "Connect a device before starting deauth.",
-                    style = MaterialTheme.typography.bodySmall,
                     color = NrOnSurfaceVariant,
                 )
             }

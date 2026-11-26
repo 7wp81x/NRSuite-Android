@@ -12,7 +12,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 data class TerminalUiSettings(
-    val showLauncherOnHome: Boolean = true,
+    val showLauncherOnHome: Boolean = false,
     val autoconnect: Boolean = true,
     val savePassword: Boolean = false,
     val defaultFontSize: Int = 34,
@@ -28,7 +28,7 @@ internal class TerminalPreferences(context: Context) {
     private val secretStore = TerminalSecretStore()
 
     fun load(): TerminalUiSettings = TerminalUiSettings(
-        showLauncherOnHome = preferences.getBoolean(KEY_SHOW_HOME, true),
+        showLauncherOnHome = preferences.getBoolean(KEY_SHOW_HOME, false),
         autoconnect = if (preferences.getBoolean(KEY_AUTOCONNECT_USER_SET, false)) {
             preferences.getBoolean(KEY_AUTOCONNECT, true)
         } else {

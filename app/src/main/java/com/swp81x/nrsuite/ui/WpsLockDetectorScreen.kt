@@ -130,13 +130,6 @@ fun WpsLockDetectorScreen(
                             )
                         }
                     }
-                    if (!connected) {
-                        Text(
-                            text = "Connect a device before scanning.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = StatusAmber,
-                        )
-                    }
                     if (accessPoints.isNotEmpty()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             SummaryCell("Locked", lockedCount.toString(), StatusRed, Modifier.weight(1f))

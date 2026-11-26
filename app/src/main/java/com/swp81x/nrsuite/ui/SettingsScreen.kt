@@ -28,11 +28,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.swp81x.nrsuite.ui.theme.LogColorError
 import com.swp81x.nrsuite.ui.theme.LogColorInfo
 import com.swp81x.nrsuite.ui.theme.LogColorSuccess
 import com.swp81x.nrsuite.ui.theme.LogColorUsb
+import com.swp81x.nrsuite.ui.theme.NrAccentColor
+import com.swp81x.nrsuite.ui.theme.previewColor
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.sp
@@ -233,6 +236,8 @@ internal fun SettingsScreen(
     onClearUpdateDownloads: () -> Unit = {},
     themeMode: NrThemeMode = NrThemeMode.DARK,
     onThemeModeChange: (NrThemeMode) -> Unit = {},
+    accentColor: NrAccentColor = NrAccentColor.LIME,
+    onAccentColorChange: (NrAccentColor) -> Unit = {},
     flasherOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -473,12 +478,6 @@ internal fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = "Firmware flasher",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                    )
                     val flashFailed = firmwareFlashStatus?.startsWith("Flash failed") == true
                     StatusIndicator(
                         label = when {
@@ -1103,6 +1102,8 @@ internal fun SettingsScreen(
         AppearanceCard(
             themeMode = themeMode,
             onThemeModeChange = onThemeModeChange,
+            accentColor = accentColor,
+            onAccentColorChange = onAccentColorChange,
         )
 
         Card(
@@ -1154,6 +1155,8 @@ internal fun SettingsScreen(
 private fun AppearanceCard(
     themeMode: NrThemeMode,
     onThemeModeChange: (NrThemeMode) -> Unit,
+    accentColor: NrAccentColor,
+    onAccentColorChange: (NrAccentColor) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1173,7 +1176,9 @@ private fun AppearanceCard(
             )
             Spacer(Modifier.height(12.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 NrThemeMode.entries.forEach { mode ->
@@ -1181,7 +1186,6 @@ private fun AppearanceCard(
                         selected = themeMode == mode,
                         onClick = { onThemeModeChange(mode) },
                         label = mode.label,
-                        modifier = Modifier.weight(1f),
                         selectedColor = MaterialTheme.colorScheme.primary,
                     )
                 }
@@ -1192,6 +1196,30 @@ private fun AppearanceCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Spacer(Modifier.height(14.dp))
+            Text(
+                text = "Accent color",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                val isLight = MaterialTheme.colorScheme.background.luminance() > 0.5f
+                NrAccentColor.entries.forEach { accent ->
+                    val preview = accent.previewColor(isLight)
+                    NrFilterChip(
+                        selected = accentColor == accent,
+                        onClick = { onAccentColorChange(accent) },
+                        label = accent.label,
+                        selectedColor = preview,
+                    )
+                }
+            }
         }
     }
 }

@@ -267,7 +267,7 @@ private fun DetectorStatusCard(
         },
         subtitle = when {
             alert != null -> "${alert.ssid} · ch ${alert.channel}"
-            !connected -> "Connect a device before starting the detector."
+            !connected -> ""
             running -> "Monitoring for deauth activity"
             else -> "Start monitoring to watch for deauth activity"
         },

@@ -166,20 +166,6 @@ fun NrugochiScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(12.dp),
         ) {
-            item {
-                ModuleStatusCard(
-                    icon = Icons.Default.Key,
-                    title = "NRuGochi",
-                    subtitle = nrugochiSubtitle(connected, state),
-                    state = when {
-                        !connected -> ModuleStatusState.DISCONNECTED
-                        state.error != null -> ModuleStatusState.ALERT
-                        state.running -> ModuleStatusState.RUNNING
-                        else -> ModuleStatusState.READY
-                    },
-                )
-            }
-            item { Spacer(Modifier.height(8.dp)) }
             item { NrugochiBodyCard(state) }
             item { Spacer(Modifier.height(8.dp)) }
             item {
@@ -462,12 +448,12 @@ private fun NrugochiConfigCard(
                     )
                     Text(
                         text = if (deauthAssist) {
-                            "Channel hunting with active deauth"
+                            "Channel hunting + deauth packets"
                         } else {
-                            "Channel hunting, passive capture"
+                            "Channel hunting + passive capture"
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (deauthAssist) StatusAmber else NrOnSurfaceVariant,
+                        color = NrOnSurfaceVariant,
                     )
                 }
                 IconButton(onClick = onToggleConfig) {

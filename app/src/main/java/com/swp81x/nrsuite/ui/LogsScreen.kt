@@ -1,9 +1,11 @@
 package com.swp81x.nrsuite.ui
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,7 +56,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -123,6 +127,8 @@ private fun RuntimeLogsTab(
     context: android.content.Context,
     onClearLogs: () -> Unit,
 ) {
+    val focusManager = LocalFocusManager.current
+    var searchFocused by remember { mutableStateOf(false) }
     var selectedLevelIndex by rememberSaveable { mutableIntStateOf(0) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var liveFollow by rememberSaveable { mutableStateOf(true) }
@@ -146,12 +152,22 @@ private fun RuntimeLogsTab(
                 entry.tag.contains(normalizedQuery, ignoreCase = true) ||
                 entry.timestamp.contains(normalizedQuery, ignoreCase = true))
     }
+    BackHandler(enabled = searchFocused) {
+        searchFocused = false
+        focusManager.clearFocus()
+    }
+
     LaunchedEffect(filtered.size, liveFollow) {
         if (liveFollow && filtered.isNotEmpty()) listState.animateScrollToItem(0)
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+            ) { focusManager.clearFocus() },
         state = listState,
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -239,7 +255,9 @@ private fun RuntimeLogsTab(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { searchFocused = it.isFocused },
                 placeholder = { Text("Search message, tag, or time") },
                 leadingIcon = {
                     Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -268,7 +286,7 @@ private fun RuntimeLogsTab(
                 levels.forEachIndexed { index, (label, _) ->
                     NrFilterChip(
                         selected = selectedLevelIndex == index,
-                        onClick = { selectedLevelIndex = index },
+                        onClick = { focusManager.clearFocus(); selectedLevelIndex = index },
                         label = label,
                     )
                 }

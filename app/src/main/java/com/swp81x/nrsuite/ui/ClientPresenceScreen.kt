@@ -262,7 +262,7 @@ private fun ClientPresenceStatusCard(
             else -> "Idle"
         },
         subtitle = when {
-            !connected -> "Connect a device before starting client detection."
+            !connected -> ""
             running -> "${mode.name.lowercase().replaceFirstChar { it.uppercase() }} mode · $frameCount frames"
             else -> "Passive or active client detection"
         },

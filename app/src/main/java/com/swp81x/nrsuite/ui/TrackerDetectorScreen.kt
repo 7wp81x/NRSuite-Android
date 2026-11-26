@@ -102,12 +102,6 @@ fun TrackerDetectorScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = NrOnSurfaceVariant,
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Use only on devices and environments you are authorized to assess.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = StatusAmber,
-                    )
                 }
             }
 
@@ -179,7 +173,7 @@ private fun TrackerStatusCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = NrSurface),
-        border = BorderStroke(0.5.dp, if (scanning) MaterialTheme.colorScheme.primary else NrOutline),
+        border = BorderStroke(0.5.dp, NrOutline),
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -203,7 +197,7 @@ private fun TrackerStatusCard(
                     )
                     Text(
                         text = when {
-                            !connected -> "Connect a device to begin"
+                            !connected -> ""
                             scanning -> "Watching BLE advertisements · $trackerCount candidate(s)"
                             else -> "Start BLE scan to monitor for trackers"
                         },

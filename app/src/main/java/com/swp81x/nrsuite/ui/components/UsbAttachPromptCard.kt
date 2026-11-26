@@ -54,8 +54,8 @@ fun UsbAttachPromptCard(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.98f),
         ),
         border = BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.42f),
+            0.5.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
         ),
         shape = RoundedCornerShape(14.dp),
     ) {

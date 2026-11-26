@@ -15,6 +15,7 @@ zxing = "3.5.3"
 json = "20240303"
 jsch = "0.2.20"
 bouncyCastle = "1.79"
+desugarJdkLibs = "2.1.5"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -31,6 +32,7 @@ usb-serial = { group = "com.github.mik3y", name = "usb-serial-for-android", vers
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 ssh-jsch = { group = "com.github.mwiede", name = "jsch", version.ref = "jsch" }
 bouncycastle-bcprov = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncyCastle" }
+desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }

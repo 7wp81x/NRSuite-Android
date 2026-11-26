@@ -420,13 +420,6 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
     val serialMonitorSelected by viewModel.serialMonitorSelected.collectAsState()
     val serialMonitorConnected by viewModel.serialMonitorConnected.collectAsState()
     val serialMonitorConnecting by viewModel.serialMonitorConnecting.collectAsState()
-    val serialMonitorBaud by viewModel.serialMonitorBaud.collectAsState()
-    val serialMonitorLogLines by viewModel.serialMonitorLogLines.collectAsState()
-    val serialMonitorHexMode by viewModel.serialMonitorHexMode.collectAsState()
-    val serialMonitorInput by viewModel.serialMonitorInput.collectAsState()
-    val serialMonitorLineEnding by viewModel.serialMonitorLineEnding.collectAsState()
-    val serialMonitorBlockingMessage by viewModel.serialMonitorBlockingMessage.collectAsState()
-    val serialMonitorError by viewModel.serialMonitorError.collectAsState()
     val autoHandshakeState by viewModel.autoHandshake.uiState.collectAsState()
     val autoHandshakeSessions by viewModel.autoHandshake.sessions.collectAsState()
     val autoHandshakeFeed by viewModel.autoHandshake.feed.collectAsState()
@@ -540,6 +533,9 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         wpsAttemptDetectorState.starting,
         wpsAttemptDetectorState.running,
         wpsAttemptDetectorState.sessions.size,
+        serialMonitorConnected,
+        serialMonitorConnecting,
+        firmwareFlashing,
     ) {
         modules.map { module ->
         val runsWithoutDevice = module.id == "ducky" ||
@@ -651,6 +647,8 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
                 "mesh" -> meshActive
                 "ld2450" -> ld2450.running
                 "rfid" -> rfid.running
+                "serial_monitor" -> serialMonitorConnected || serialMonitorConnecting
+                "firmware" -> firmwareFlashing
                 else -> false
             },
         )
@@ -2409,32 +2407,12 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
             }
 
             activeModuleId == "serial_monitor" -> {
-                SerialMonitorScreen(
+                SerialMonitorRoute(
+                    viewModel = viewModel,
                     devices = devices,
-                    selectedDevice = serialMonitorSelected,
-                    connected = serialMonitorConnected,
-                    connecting = serialMonitorConnecting,
-                    baudRate = serialMonitorBaud,
-                    logLines = serialMonitorLogLines,
-                    hexMode = serialMonitorHexMode,
-                    inputText = serialMonitorInput,
-                    lineEnding = serialMonitorLineEnding,
-                    blockingMessage = serialMonitorBlockingMessage,
-                    errorMessage = serialMonitorError,
                     permissionRevision = permissionRevision,
-                    hasPermission = { usbManager.hasPermission(it.device) },
-                    onRefreshDevices = viewModel::refreshDevices,
-                    onSelectDevice = viewModel::selectSerialMonitorDevice,
+                    usbManager = usbManager,
                     onRequestPermission = { device -> requestSerialMonitorPermission(device.device) },
-                    onConnect = { device, baud -> viewModel.startSerialMonitor(device, baud) },
-                    onDisconnect = viewModel::stopSerialMonitor,
-                    onBaudChange = viewModel::setSerialMonitorBaud,
-                    onHexModeChange = viewModel::setSerialMonitorHexMode,
-                    onInputChange = viewModel::setSerialMonitorInput,
-                    onLineEndingChange = viewModel::setSerialMonitorLineEnding,
-                    onSend = viewModel::sendSerialMonitorInput,
-                    onClearLog = viewModel::clearSerialMonitorLog,
-                    onExport = viewModel::exportSerialMonitorLog,
                     modifier = Modifier,
                 )
             }
@@ -2905,6 +2883,7 @@ private fun NRSuiteSettingsRoute(
     viewModel: MainViewModel,
 ) {
     val themeMode by viewModel.themeMode.collectAsState()
+    val accentColor by viewModel.accentColor.collectAsState()
     val selectedFlashTargetChip by viewModel.firmwareTargetChip.collectAsState()
     val selectedFlashTargetFirmwareVersion by
         viewModel.firmwareTargetFirmwareVersion.collectAsState()
@@ -2960,6 +2939,8 @@ private fun NRSuiteSettingsRoute(
         onClearUpdateDownloads = viewModel::clearUpdateDownloads,
         themeMode = themeMode,
         onThemeModeChange = viewModel::setThemeMode,
+        accentColor = accentColor,
+        onAccentColorChange = viewModel::setAccentColor,
         flasherOnly = flasherOnly,
         modifier = Modifier,
     )

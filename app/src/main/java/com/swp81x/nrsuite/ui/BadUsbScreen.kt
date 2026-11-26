@@ -262,7 +262,7 @@ private fun BadUsbDeviceSelectorCard(
                 Text(
                     text = "No USB devices detected. Connect an ESP32-S2/S3 before arming.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = StatusAmber,
+                    color = NrOnSurfaceVariant,
                 )
             } else {
                 Row(

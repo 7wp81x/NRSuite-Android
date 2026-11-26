@@ -336,7 +336,7 @@ internal fun HomeScreen(
     firmwareAssetDownload: FirmwareAssetDownloadState,
     firmwareFlashDeviceState: FirmwareFlashDeviceState?,
     terminalShortcuts: List<TerminalShortcut> = emptyList(),
-    showTerminalLauncherCard: Boolean = true,
+    showTerminalLauncherCard: Boolean = false,
     onOpenShortcuts: () -> Unit = {},
     onManageTerminalShortcuts: () -> Unit = {},
     onRunTerminalShortcut: (TerminalShortcut) -> Unit = {},

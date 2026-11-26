@@ -67,6 +67,7 @@ import com.swp81x.nrsuite.ui.theme.NrOutline
 import com.swp81x.nrsuite.ui.theme.NrSurface
 import com.swp81x.nrsuite.ui.theme.StatusAmber
 import com.swp81x.nrsuite.ui.theme.StatusGreen
+import com.swp81x.nrsuite.ui.theme.StatusNeutral
 import com.swp81x.nrsuite.ui.theme.StatusRed
 
 @Composable
@@ -127,8 +128,6 @@ fun PinBruteforceScreen(
                 .padding(12.dp),
         ) {
             StatusCard(state, connected = connected, onDisarm = onStop)
-            Spacer(Modifier.height(10.dp))
-            WarningCard()
             Spacer(Modifier.height(10.dp))
             ConfigCard(
                 connected = connected,
@@ -263,14 +262,14 @@ private fun StatusCard(
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "PIN Bruteforce",
+                        text = "Session status",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
                         text = if (connected) "Device connected" else "Device not connected",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (connected) StatusGreen else StatusRed,
+                        color = if (connected) StatusGreen else StatusNeutral,
                     )
                     Text(
                         text = "State: ${state.state} · ${state.mode.wireName}",
@@ -342,28 +341,6 @@ private fun StatusValue(label: String, value: String) {
             style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
             color = MaterialTheme.colorScheme.primary,
         )
-    }
-}
-
-@Composable
-private fun WarningCard() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = NrSurface),
-        border = BorderStroke(0.5.dp, StatusAmber),
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Row(Modifier.padding(14.dp)) {
-            Icon(Icons.Default.WarningAmber, contentDescription = null, tint = StatusAmber)
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = "Supervised authorized testing only. Android, Windows, and iOS " +
-                    "devices rate-limit attempts, and some devices erase data after too " +
-                    "many failed PINs. HID cannot confirm success.",
-                style = MaterialTheme.typography.bodySmall,
-                color = NrOnSurfaceVariant,
-            )
-        }
     }
 }
 
