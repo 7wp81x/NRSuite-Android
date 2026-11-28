@@ -6,7 +6,7 @@
 [![Documentation](https://img.shields.io/badge/docs-NRSuite--Docs-3DDC84?logo=readthedocs&logoColor=white)](https://7wp81x.github.io/NRSuite-Docs/)
 [![Platform: Android](https://img.shields.io/badge/platform-Android%207.0%2B-3DDC84?logo=android&logoColor=white)](#requirements)
 [![Firmware: ESP32](https://img.shields.io/badge/firmware-ESP32-E7352C?logo=espressif&logoColor=white)](https://github.com/7wp81x/nrsuite-firmware)
-[![Status: Stable](https://img.shields.io/badge/status-1.0.0-brightgreen.svg)](../../releases)
+[![Status: Stable](https://img.shields.io/badge/status-1.0.1-brightgreen.svg)](../../releases)
 [![Discord](https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/nyUSyqkeZ)
 
 **NRSuite turns a phone and a cheap ESP32 board into a portable Wi-Fi/BLE security research platform** - no laptop required.
@@ -34,7 +34,7 @@ Full user documentation, downloadable resources, and troubleshooting:
 
 Join the NRSuite Discord server for setup help, build showcases, release news, and development discussion:
 
-[![Discord](https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/nnU9QSX5UZ)
+[![Discord](https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/nyUSyqkeZ)
 
 Use `#support` for help, `#showcase` for builds, and `#github` for repo/code discussion.
 
@@ -339,7 +339,7 @@ Useful entry points:
 
 ### Option A - Prebuilt APK (recommended)
 
-1. Download the latest `NRSuite-Android-1.0.0-stable.apk` from [Releases](../../releases).
+1. Download the latest `NRSuite-Android-1.0.1-stable.apk` from [Releases](../../releases).
 2. Enable **Install from unknown sources** on your device if needed - Settings → Security.
 3. Install the APK. Android's package installer checks the APK signature against the previous install on update, so a tampered or mismatched build will simply fail to install.
 
@@ -350,10 +350,10 @@ Each release lists a SHA256 checksum in its notes. To confirm the file you downl
 
 ```sh
 # Linux / macOS
-sha256sum NRSuite-Android-1.0.0-stable.apk
+sha256sum NRSuite-Android-1.0.1-stable.apk
 
 # Windows (PowerShell)
-certutil -hashfile NRSuite-Android-1.0.0-stable.apk SHA256
+certutil -hashfile NRSuite-Android-1.0.1-stable.apk SHA256
 ```
 
 </details>
@@ -593,6 +593,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide: branching model, PR
 
 | App version | Firmware version | Protocol spec |
 |---|---|---|
+| v1.0.1 | v1.0.1 | v1.0 / proto_minor 2 (non-mesh); mesh protocol 1.1 is experimental |
 | v1.0.0 | v1.0.0 | v1.0 / proto_minor 2 (non-mesh); mesh protocol 1.1 is experimental |
 | v1.0.0-rc.3 | v1.0.0-rc.2 | v1.0 / proto_minor 2 (non-mesh); mesh protocol 1.1 is experimental |
 | v1.0.0-beta.3.2.0 | v1.0.0-beta.3.2.0 | v1.0 / proto_minor 2 (non-mesh); mesh protocol 1.1 is experimental |

@@ -197,6 +197,9 @@ internal fun MainViewModel.startPortalInternalImpl(
     }
 
     val startJob = scope.launch {
+        val supportsPrestartHtml = (_connectionState.value as? ConnectionState.Connected)
+            ?.features
+            ?.contains("portal_html_prestart") == true
         val renderedHtmlFile = withContext(Dispatchers.IO) {
             htmlUri?.let { uri ->
                 runCatching {
@@ -247,6 +250,25 @@ internal fun MainViewModel.startPortalInternalImpl(
                 "upload will stream from storage."
         )
 
+        if (supportsPrestartHtml) {
+            htmlCompleteFlowImpl().value = false
+            val uploadOk = uploadPortalHtmlImpl(activeSession, renderedHtmlFile)
+            renderedHtmlFile.delete()
+            if (!uploadOk) {
+                val message = "Firmware rejected the HTML upload; portal was not started."
+                appendLog(message, level = LogLevel.ERROR)
+                _toastMessage.value = message
+                _portalMode.value = null
+                return@launch
+            }
+            appendLog("HTML upload confirmed before starting the AP.")
+        } else {
+            appendLog(
+                "Firmware does not advertise pre-start HTML upload; " +
+                    "using legacy upload after portal start."
+            )
+        }
+
         val args = JSONObject().apply {
             put("ssid", cleanSsid)
             put("band", bandForWifiChannel(safeChannel).wireName)
@@ -272,6 +294,8 @@ internal fun MainViewModel.startPortalInternalImpl(
                 "capture_start_failed" ->
                     "The access point started, but packet capture could not start. " +
                         "Stop and retry, or check firmware heap/storage state."
+                "html_not_ready" ->
+                    "The HTML template was not ready on the firmware. Re-select it and try again."
                 else -> response?.optString("msg")?.takeIf { it.isNotBlank() } ?: "timeout"
             }
             renderedHtmlFile.delete()
@@ -411,16 +435,17 @@ internal fun MainViewModel.startPortalInternalImpl(
                 }
             }
         }
-        htmlCompleteFlowImpl().value = false
-
-        val uploadOk = uploadPortalHtmlImpl(activeSession, renderedHtmlFile)
-        renderedHtmlFile.delete()
-        if (!uploadOk) {
-            val message = "Firmware rejected the HTML upload; portal was stopped."
-            appendLog(message, level = LogLevel.ERROR)
-            _toastMessage.value = message
-            stopPortalImpl()
-            return@launch
+        if (!supportsPrestartHtml) {
+            htmlCompleteFlowImpl().value = false
+            val uploadOk = uploadPortalHtmlImpl(activeSession, renderedHtmlFile)
+            renderedHtmlFile.delete()
+            if (!uploadOk) {
+                val message = "Firmware rejected the HTML upload; portal was stopped."
+                appendLog(message, level = LogLevel.ERROR)
+                _toastMessage.value = message
+                stopPortalImpl()
+                return@launch
+            }
         }
 
         startPortalStatusPollingImpl(activeSession)

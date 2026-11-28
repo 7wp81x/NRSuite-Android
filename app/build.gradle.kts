@@ -51,8 +51,8 @@ android {
         manifestPlaceholders["appLabel"] = if (mockReleaseData) "NRSuite Mock" else "NRSuite"
         minSdk = 24
         targetSdk = 36
-        versionCode = 16
-        versionName = "1.0.0"
+        versionCode = 17
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

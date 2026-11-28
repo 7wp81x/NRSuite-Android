@@ -1237,15 +1237,17 @@ internal fun NRSuiteContent(viewModel: MainViewModel) {
         terminalState is TerminalConnectionState.Connected &&
         terminalSessions.isNotEmpty()
     val terminalImmersive = terminalReady && imeVisible
+    val serialMonitorImeManaged = activeModuleId == "serial_monitor" && imeVisible
     val shortcutManagerFullScreen = activeModuleId == "terminal_shortcuts"
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = if (terminalImmersive) {
+        contentWindowInsets = if (terminalImmersive || serialMonitorImeManaged) {
             // Keep the status-bar and side insets while the keyboard is open,
-            // but drop bottom system-bar padding. The terminal root applies
-            // the IME inset exactly once, so extra keys sit directly above
-            // the keyboard without duplicating navigation-bar space.
+            // but drop bottom system-bar padding. The terminal and serial
+            // monitor roots apply the IME inset exactly once, so content sits
+            // directly above the keyboard without duplicating navigation-bar
+            // space.
             WindowInsets.safeDrawing.only(
                 WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
             )
